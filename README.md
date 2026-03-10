@@ -98,6 +98,8 @@ pnpm test:e2e:web
 
 ## CI 与文档
 
+- 系统设计：[`docs/system-design.md`](docs/system-design.md)
+- 文档索引：[`docs/README.md`](docs/README.md)
 - 日常校验：[`ci.yml`](.github/workflows/ci.yml)
 - 发布流水线：[`release.yml`](.github/workflows/release.yml)
 - npm 打包说明：[`docs/npm-packaging.md`](docs/npm-packaging.md)
