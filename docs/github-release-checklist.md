@@ -1,0 +1,80 @@
+# GitHub Upload And Release Checklist
+
+## 1. 首次上传前
+
+- 确认仓库根目录不提交本地产物：`node_modules`、`target`、`bin`、`src/*/dist`、`test-results`、`.pack`
+- 确认 `README.md`、`LICENSE`、`.gitignore`、`.github/workflows/*.yml` 已就绪
+- 确认 npm 包名已归属当前发布账号：
+  - `@chenpu17/cc-gw`
+  - `@chenpu17/cc-gw-darwin-arm64`
+  - `@chenpu17/cc-gw-linux-x64`
+  - `@chenpu17/cc-gw-linux-arm64`
+  - `@chenpu17/cc-gw-win32-ia32`
+
+## 2. 本地验收
+
+首次机器运行 Playwright 时先安装浏览器：
+
+```bash
+pnpm exec playwright install --with-deps chromium
+```
+
+完整检查：
+
+```bash
+cargo test
+pnpm build
+pnpm test:e2e:web
+pnpm smoke:cli
+pnpm pack:dry-run
+```
+
+## 3. 初始化 Git 仓库
+
+如果当前目录还没初始化：
+
+```bash
+git init -b main
+git add .
+git commit -m "Initial import"
+```
+
+关联 GitHub：
+
+```bash
+git remote add origin git@github.com:chenpu17/cc-gw2.git
+git push -u origin main
+```
+
+## 4. GitHub 仓库设置
+
+- 在 GitHub 仓库里配置 `NPM_TOKEN` secret
+- 确认 Actions 权限允许读取代码并运行工作流
+- 如果要保护主分支，至少要求 `CI` 工作流通过后才能合并
+
+## 5. 版本发布
+
+发布前：
+
+```bash
+pnpm run sync:native-versions
+```
+
+确认版本号一致后打 tag：
+
+```bash
+git tag v0.8.0-alpha.0
+git push origin v0.8.0-alpha.0
+```
+
+`release.yml` 会按下面顺序执行：
+
+1. 打包根 npm 包
+2. 构建四个平台 native npm 包
+3. 先发布 native 包，再发布根包
+
+## 6. 首次发版后核查
+
+- 用 macOS arm64、Linux x64、Linux arm64、Windows ia32 分别验证安装
+- 验证 `npm install -g @chenpu17/cc-gw` 后 `cc-gw start --foreground` 可直接启动
+- 验证旧 `~/.cc-gw` 配置和 SQLite 数据可直接复用

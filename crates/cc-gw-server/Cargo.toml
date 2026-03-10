@@ -1,0 +1,26 @@
+[package]
+name = "cc-gw-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-stream.workspace = true
+axum.workspace = true
+axum-server.workspace = true
+base64.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+futures-util.workspace = true
+mime_guess.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+scrypt.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+zip.workspace = true
+cc-gw-core = { path = "../cc-gw-core" }

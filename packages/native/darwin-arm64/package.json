@@ -1,0 +1,19 @@
+{
+  "name": "@chenpu17/cc-gw-darwin-arm64",
+  "version": "0.8.0-alpha.0",
+  "private": false,
+  "description": "Prebuilt darwin arm64 binary for cc-gw",
+  "license": "MIT",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

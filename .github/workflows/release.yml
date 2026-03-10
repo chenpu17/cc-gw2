@@ -1,0 +1,157 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-root-package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync package versions
+        run: pnpm run sync:native-versions
+
+      - name: Build npm package assets
+        run: pnpm run build:package
+
+      - name: Pack root npm package
+        run: |
+          mkdir -p artifacts
+          pnpm pack --pack-destination artifacts
+
+      - name: Upload root package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: root-package
+          path: artifacts/*.tgz
+
+  build-native-packages:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: win32-ia32
+            runner: windows-latest
+            rust_target: i686-pc-windows-msvc
+            binary_path: target/i686-pc-windows-msvc/release/cc-gw-server.exe
+            build_command: cargo build --release -p cc-gw-server --target i686-pc-windows-msvc
+          - id: linux-x64
+            runner: ubuntu-latest
+            rust_target: x86_64-unknown-linux-musl
+            binary_path: target/x86_64-unknown-linux-musl/release/cc-gw-server
+            build_command: cargo zigbuild --release -p cc-gw-server --target x86_64-unknown-linux-musl
+          - id: linux-arm64
+            runner: ubuntu-latest
+            rust_target: aarch64-unknown-linux-musl
+            binary_path: target/aarch64-unknown-linux-musl/release/cc-gw-server
+            build_command: cargo zigbuild --release -p cc-gw-server --target aarch64-unknown-linux-musl
+          - id: darwin-arm64
+            runner: macos-14
+            rust_target: aarch64-apple-darwin
+            binary_path: target/aarch64-apple-darwin/release/cc-gw-server
+            build_command: cargo build --release -p cc-gw-server --target aarch64-apple-darwin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Zig
+        if: startsWith(matrix.id, 'linux-')
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.13.0
+
+      - name: Install cargo-zigbuild
+        if: startsWith(matrix.id, 'linux-')
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Sync package versions
+        run: pnpm run sync:native-versions
+
+      - name: Build native binary
+        run: ${{ matrix.build_command }}
+
+      - name: Prepare native package
+        run: node scripts/prepare-native-package.mjs --target ${{ matrix.id }} --source ${{ matrix.binary_path }}
+
+      - name: Pack native npm package
+        run: |
+          mkdir -p artifacts
+          pnpm --dir packages/native/${{ matrix.id }} pack --pack-destination ../../../artifacts
+
+      - name: Upload native package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.id }}
+          path: artifacts/*.tgz
+
+  publish-npm:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs:
+      - build-root-package
+      - build-native-packages
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish native packages first, then root package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          find artifacts -name '*.tgz' | sort > publish-order.txt
+          grep -v '/root-package/' publish-order.txt | while read -r file; do
+            npm publish "$file" --access public
+          done
+          grep '/root-package/' publish-order.txt | while read -r file; do
+            npm publish "$file" --access public
+          done

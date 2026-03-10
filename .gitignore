@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+.npm-cache/
+target/
+bin/
+.pack/
+test-results/
+playwright-report/
+src/cli/dist/
+src/web/dist/
+coverage/
+*.log
+*.pid
+.DS_Store
+.env
+.env.*
+!.env.example

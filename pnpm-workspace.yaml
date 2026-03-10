@@ -1,0 +1,4 @@
+packages:
+  - "packages/native/*"
+  - "src/cli"
+  - "src/web"
