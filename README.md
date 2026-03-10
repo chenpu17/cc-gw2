@@ -99,6 +99,8 @@ pnpm test:e2e:web
 ## CI 与文档
 
 - 系统设计：[`docs/system-design.md`](docs/system-design.md)
+- 存储设计：[`docs/database-schema.md`](docs/database-schema.md)
+- API 兼容矩阵：[`docs/api-compatibility.md`](docs/api-compatibility.md)
 - 文档索引：[`docs/README.md`](docs/README.md)
 - 日常校验：[`ci.yml`](.github/workflows/ci.yml)
 - 发布流水线：[`release.yml`](.github/workflows/release.yml)

@@ -212,6 +212,8 @@ SQLite 主要承担以下职责：
 - 单机场景下 SQLite 足够，减少部署复杂度
 - 使用 `rusqlite bundled` 规避宿主机 SQLite 版本依赖
 
+更细的本地目录和表结构说明见 [`database-schema.md`](./database-schema.md)。
+
 ## 8. 流式响应设计
 
 流式链路是兼容性最敏感的部分，当前设计分成两层：
@@ -306,3 +308,10 @@ SQLite 主要承担以下职责：
 1. 补真实发布和安装回归验证
 2. 继续缩小与旧后端在边缘流式行为上的差异
 3. 把监控和错误诊断能力做得更明确
+
+## 13. 相关文档
+
+- 存储设计：[`database-schema.md`](./database-schema.md)
+- API 兼容矩阵：[`api-compatibility.md`](./api-compatibility.md)
+- npm 打包：[`npm-packaging.md`](./npm-packaging.md)
+- GitHub 发版：[`github-release-checklist.md`](./github-release-checklist.md)
