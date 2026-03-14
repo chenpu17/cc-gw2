@@ -69,7 +69,7 @@ function resolveNativePackageBinary(): string | null {
     'darwin-arm64': '@chenpu17/cc-gw-darwin-arm64',
     'linux-x64': '@chenpu17/cc-gw-linux-x64',
     'linux-arm64': '@chenpu17/cc-gw-linux-arm64',
-    'win32-ia32': '@chenpu17/cc-gw-win32-ia32'
+    'win32-x64': '@chenpu17/cc-gw-win32-x64'
   }
   const packageName = packageMap[`${process.platform}-${process.arch}`]
   if (!packageName) {

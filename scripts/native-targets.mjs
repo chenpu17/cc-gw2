@@ -24,11 +24,11 @@ export const NATIVE_TARGETS = [
     executable: 'cc-gw-server',
   },
   {
-    id: 'win32-ia32',
-    packageName: '@chenpu17/cc-gw-win32-ia32',
+    id: 'win32-x64',
+    packageName: '@chenpu17/cc-gw-win32-x64',
     os: ['win32'],
-    cpu: ['ia32'],
-    rustTarget: 'i686-pc-windows-msvc',
+    cpu: ['x64'],
+    rustTarget: 'x86_64-pc-windows-msvc',
     executable: 'cc-gw-server.exe',
   },
 ]

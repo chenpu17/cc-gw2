@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: 'Optional npm dist-tag override. Leave empty to derive from package.json version.'
+        required: false
+        type: string
   push:
     tags:
       - 'v*'
@@ -51,11 +56,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: win32-ia32
+          - id: win32-x64
             runner: windows-latest
-            rust_target: i686-pc-windows-msvc
-            binary_path: target/i686-pc-windows-msvc/release/cc-gw-server.exe
-            build_command: cargo build --release -p cc-gw-server --target i686-pc-windows-msvc
+            rust_target: x86_64-pc-windows-msvc
+            binary_path: target/x86_64-pc-windows-msvc/release/cc-gw-server.exe
+            build_command: cargo build --release -p cc-gw-server --target x86_64-pc-windows-msvc
           - id: linux-x64
             runner: ubuntu-latest
             rust_target: x86_64-unknown-linux-musl
@@ -133,6 +138,17 @@ jobs:
       - build-native-packages
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Download packaged artifacts
         uses: actions/download-artifact@v4
         with:
@@ -147,11 +163,6 @@ jobs:
       - name: Publish native packages first, then root package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_DIST_TAG: ${{ github.event.inputs.dist_tag || '' }}
         run: |
-          find artifacts -name '*.tgz' | sort > publish-order.txt
-          grep -v '/root-package/' publish-order.txt | while read -r file; do
-            npm publish "$file" --access public
-          done
-          grep '/root-package/' publish-order.txt | while read -r file; do
-            npm publish "$file" --access public
-          done
+          node scripts/publish-artifacts.mjs --dir artifacts

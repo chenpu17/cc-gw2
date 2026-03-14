@@ -7,6 +7,13 @@ settings:
 importers:
 
   .:
+    dependencies:
+      colorette:
+        specifier: ^2.0.20
+        version: 2.0.20
+      commander:
+        specifier: ^12.0.0
+        version: 12.1.0
     optionalDependencies:
       '@chenpu17/cc-gw-darwin-arm64':
         specifier: workspace:*
@@ -17,9 +24,9 @@ importers:
       '@chenpu17/cc-gw-linux-x64':
         specifier: workspace:*
         version: link:packages/native/linux-x64
-      '@chenpu17/cc-gw-win32-ia32':
+      '@chenpu17/cc-gw-win32-x64':
         specifier: workspace:*
-        version: link:packages/native/win32-ia32
+        version: link:packages/native/win32-x64
     devDependencies:
       '@playwright/test':
         specifier: ^1.55.1
@@ -31,7 +38,7 @@ importers:
 
   packages/native/linux-x64: {}
 
-  packages/native/win32-ia32: {}
+  packages/native/win32-x64: {}
 
   src/cli:
     dependencies:

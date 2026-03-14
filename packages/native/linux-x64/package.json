@@ -10,6 +10,9 @@
   "cpu": [
     "x64"
   ],
+  "bin": {
+    "cc-gw-server": "bin/cc-gw-server"
+  },
   "files": [
     "bin"
   ],

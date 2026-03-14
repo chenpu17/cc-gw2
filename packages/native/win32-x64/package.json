@@ -1,15 +1,18 @@
 {
-  "name": "@chenpu17/cc-gw-win32-ia32",
+  "name": "@chenpu17/cc-gw-win32-x64",
   "version": "0.8.0-alpha.0",
   "private": false,
-  "description": "Prebuilt win32 ia32 binary for cc-gw",
+  "description": "Prebuilt win32 x64 binary for cc-gw",
   "license": "MIT",
   "os": [
     "win32"
   ],
   "cpu": [
-    "ia32"
+    "x64"
   ],
+  "bin": {
+    "cc-gw-server": "bin/cc-gw-server.exe"
+  },
   "files": [
     "bin"
   ],
