@@ -50,10 +50,11 @@ test('theme and language switchers open menus', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/`)
   await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
 
-  await page.getByTestId('theme-switcher-trigger').click()
+  await page.getByTestId('theme-switcher-trigger').click({ force: true })
   await expect(page.getByRole('menuitem').first()).toBeVisible()
   await page.keyboard.press('Escape')
 
-  await page.getByTestId('language-switcher-trigger').click()
+  await expect(page.getByTestId('theme-switcher-trigger')).toHaveAttribute('aria-expanded', 'false')
+  await page.getByTestId('language-switcher-trigger').click({ force: true })
   await expect(page.getByRole('menuitem').first()).toBeVisible()
 })
