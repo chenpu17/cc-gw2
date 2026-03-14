@@ -12,6 +12,7 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 pub struct RequestLogInput {
     pub timestamp: i64,
     pub session_id: Option<String>,
+    pub source_ip: Option<String>,
     pub endpoint: String,
     pub provider: String,
     pub model: String,
@@ -144,6 +145,13 @@ pub struct DatabaseInfo {
     pub memory_rss_bytes: Option<i64>,
 }
 
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientActivityMetrics {
+    pub unique_source_ips: i64,
+    pub unique_session_ids: i64,
+}
+
 #[derive(Debug, Default)]
 pub struct LogQuery {
     pub limit: i64,
@@ -197,9 +205,8 @@ fn open_db(db_path: &Path) -> Result<Connection> {
 
 fn current_process_memory_rss_bytes() -> Option<i64> {
     let pid = Pid::from_u32(std::process::id());
-    let refresh = RefreshKind::nothing().with_processes(
-        ProcessRefreshKind::nothing().with_memory(),
-    );
+    let refresh =
+        RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_memory());
     let mut system = System::new_with_specifics(refresh);
     system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
     system.process(pid).map(|process| process.memory() as i64)
@@ -213,12 +220,13 @@ pub fn insert_request_log(db_path: &Path, input: &RequestLogInput) -> Result<i64
     let conn = open_db(db_path)?;
     conn.execute(
         "INSERT INTO request_logs (
-          timestamp, session_id, endpoint, provider, model, client_model, stream,
+          timestamp, session_id, source_ip, endpoint, provider, model, client_model, stream,
           api_key_id, api_key_name, api_key_value
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             input.timestamp,
             input.session_id,
+            input.source_ip,
             input.endpoint,
             input.provider,
             input.model,
@@ -847,6 +855,39 @@ pub fn get_database_info(db_path: &Path) -> Result<DatabaseInfo> {
     })
 }
 
+pub fn get_recent_client_activity(
+    db_path: &Path,
+    since: i64,
+    endpoint: Option<&str>,
+) -> Result<ClientActivityMetrics> {
+    let conn = open_db(db_path)?;
+    let (unique_source_ips, unique_session_ids): (i64, i64) = if let Some(endpoint) = endpoint {
+        conn.query_row(
+            "SELECT
+               COUNT(DISTINCT NULLIF(TRIM(source_ip), '')),
+               COUNT(DISTINCT NULLIF(TRIM(session_id), ''))
+             FROM request_logs
+             WHERE timestamp >= ?1 AND endpoint = ?2",
+            params![since, endpoint],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?
+    } else {
+        conn.query_row(
+            "SELECT
+               COUNT(DISTINCT NULLIF(TRIM(source_ip), '')),
+               COUNT(DISTINCT NULLIF(TRIM(session_id), ''))
+             FROM request_logs
+             WHERE timestamp >= ?1",
+            params![since],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?
+    };
+    Ok(ClientActivityMetrics {
+        unique_source_ips,
+        unique_session_ids,
+    })
+}
+
 pub fn compact_database(db_path: &Path) -> Result<()> {
     let conn = open_db(db_path)?;
     conn.execute_batch("VACUUM;")?;
@@ -867,4 +908,55 @@ pub fn clear_all_logs(db_path: &Path) -> Result<(i64, i64)> {
     let deleted_logs = conn.execute("DELETE FROM request_logs", [])?;
     let deleted_metrics = conn.execute("DELETE FROM daily_metrics", [])?;
     Ok((deleted_logs as i64, deleted_metrics as i64))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::initialize_database;
+
+    #[test]
+    fn recent_client_activity_counts_distinct_ips_and_sessions() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let now = chrono::Utc::now().timestamp_millis();
+        for (session_id, source_ip, timestamp) in [
+            (Some("session-a".to_string()), Some("10.0.0.1".to_string()), now),
+            (Some("session-a".to_string()), Some("10.0.0.1".to_string()), now - 1000),
+            (Some("session-b".to_string()), Some("10.0.0.2".to_string()), now - 2000),
+            (None, Some("10.0.0.3".to_string()), now - 3000),
+            (Some("stale-session".to_string()), Some("10.0.0.9".to_string()), now - 2 * 60 * 60 * 1000),
+        ] {
+            insert_request_log(
+                &db_path,
+                &RequestLogInput {
+                    timestamp,
+                    session_id,
+                    source_ip,
+                    endpoint: "anthropic".to_string(),
+                    provider: "mock".to_string(),
+                    model: "mock-model".to_string(),
+                    client_model: None,
+                    stream: false,
+                    api_key_id: None,
+                    api_key_name: None,
+                    api_key_value: None,
+                },
+            )
+            .expect("insert request log");
+        }
+
+        let metrics = get_recent_client_activity(&db_path, now - 60 * 60 * 1000, None)
+            .expect("query client activity");
+        assert_eq!(metrics.unique_source_ips, 3);
+        assert_eq!(metrics.unique_session_ids, 2);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

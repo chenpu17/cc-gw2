@@ -935,7 +935,9 @@ impl CrossProtocolStreamTransformer {
                     .unwrap_or_else(|| json!({}));
                 let arguments = match &arguments_value {
                     Value::String(value) => value.clone(),
-                    _ => serde_json::to_string(&arguments_value).unwrap_or_else(|_| "{}".to_string()),
+                    _ => {
+                        serde_json::to_string(&arguments_value).unwrap_or_else(|_| "{}".to_string())
+                    }
                 };
                 let index = *synthesized_tool_index;
                 *synthesized_tool_index += 1;
@@ -1368,15 +1370,12 @@ fn infer_openai_responses_stop_reason(event: &Value) -> Option<&'static str> {
         return map_openai_responses_stop_reason_to_anthropic(reason);
     }
 
-    let status = event
-        .get("status")
-        .and_then(Value::as_str)
-        .or_else(|| {
-            event
-                .get("response")
-                .and_then(|response| response.get("status"))
-                .and_then(Value::as_str)
-        });
+    let status = event.get("status").and_then(Value::as_str).or_else(|| {
+        event
+            .get("response")
+            .and_then(|response| response.get("status"))
+            .and_then(Value::as_str)
+    });
     match status {
         Some("requires_action") => Some("tool_use"),
         Some("incomplete") => Some("max_tokens"),

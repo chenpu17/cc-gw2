@@ -88,6 +88,7 @@ mod tests {
             table_columns(&conn, "request_logs").expect("request log columns");
         for column in [
             "session_id",
+            "source_ip",
             "client_model",
             "cached_tokens",
             "cache_read_tokens",
@@ -252,6 +253,7 @@ pub fn initialize_database(path: &Path) -> Result<()> {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           timestamp INTEGER NOT NULL,
           session_id TEXT,
+          source_ip TEXT,
           endpoint TEXT NOT NULL DEFAULT 'anthropic',
           provider TEXT NOT NULL,
           model TEXT NOT NULL,
@@ -346,6 +348,7 @@ pub fn initialize_database(path: &Path) -> Result<()> {
 
     maybe_add_column(&conn, "request_logs", "client_model", "TEXT")?;
     maybe_add_column(&conn, "request_logs", "session_id", "TEXT")?;
+    maybe_add_column(&conn, "request_logs", "source_ip", "TEXT")?;
     maybe_add_column(&conn, "request_logs", "cached_tokens", "INTEGER")?;
     maybe_add_column(
         &conn,

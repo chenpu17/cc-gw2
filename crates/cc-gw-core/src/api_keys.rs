@@ -8,10 +8,7 @@ use aes_gcm::{
 use anyhow::{Context, Result, anyhow, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use rand::RngCore;
-use rusqlite::{
-    Connection, OptionalExtension, Row, params,
-    types::ValueRef,
-};
+use rusqlite::{Connection, OptionalExtension, Row, params, types::ValueRef};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -1019,8 +1016,14 @@ mod tests {
         let items = list_api_keys(&db_path).expect("list keys");
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].name, "legacy-key");
-        assert_eq!(items[0].created_at.as_deref(), Some("2025-10-05T13:57:16.084+00:00"));
-        assert_eq!(items[0].last_used_at.as_deref(), Some("2025-10-06T06:30:18.901+00:00"));
+        assert_eq!(
+            items[0].created_at.as_deref(),
+            Some("2025-10-05T13:57:16.084+00:00")
+        );
+        assert_eq!(
+            items[0].last_used_at.as_deref(),
+            Some("2025-10-06T06:30:18.901+00:00")
+        );
         assert_eq!(
             items[0].allowed_endpoints.as_ref(),
             Some(&vec!["anthropic".to_string(), "openai".to_string()])
