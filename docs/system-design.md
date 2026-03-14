@@ -261,12 +261,13 @@ SQLite 主要承担以下职责：
 - macOS arm64
 - Linux x64
 - Linux arm64
-- Windows ia32
+- Windows x64（npm 平台包 `win32-x64`）
 
 关键策略：
 
 - Linux 使用 `musl`
 - Windows 使用静态 CRT
+- 不要求用户在目标机器上安装 Rust 运行环境
 - 根包通过 `optionalDependencies` 装配平台包
 
 ## 11. 测试与验证

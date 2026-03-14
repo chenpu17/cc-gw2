@@ -25,7 +25,7 @@
 
 ## 2. SQLite 初始化策略
 
-数据库初始化由 [`storage.rs`](/Users/chenpu/workspace/claude-code/cc-gw2/crates/cc-gw-core/src/storage.rs) 负责。
+数据库初始化由 [`storage.rs`](../crates/cc-gw-core/src/storage.rs) 负责。
 
 启动时会执行以下动作：
 

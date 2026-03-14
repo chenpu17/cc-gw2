@@ -57,12 +57,12 @@ packages/native/darwin-arm64/bin/cc-gw-server
   - `@chenpu17/cc-gw-darwin-arm64`
   - `@chenpu17/cc-gw-linux-x64`
   - `@chenpu17/cc-gw-linux-arm64`
-  - `@chenpu17/cc-gw-win32-ia32`
+- `@chenpu17/cc-gw-win32-x64`
 
 其中：
 
 - Linux 产物基于 `musl` 目标构建，尽量减少宿主机依赖
-- Windows 产物启用静态 CRT
+- Windows x64 产物对应 npm 平台包 `win32-x64`，并启用静态 CRT
 - macOS arm64 发布原生二进制
 
 ## Smoke Verification
@@ -92,8 +92,40 @@ pnpm smoke:cli
 - `pnpm test:e2e:web`
 - `pnpm smoke:cli`
 - `pnpm pack:dry-run`
-- 包内容包含 `bin`、`src/cli/dist`、`src/web/dist`
+- 根包内容包含 `src/cli/dist`、`src/web/dist`
+- 平台 native 包内容包含 `bin/cc-gw-server`
 - 目标平台二进制名称与 CLI 解析规则一致
+
+测试版发布规则：
+
+- 如果根包版本号是 `0.8.0-alpha.0`、`0.8.0-beta.1`、`0.8.0-rc.0` 这种 prerelease，发布脚本会自动把 dist-tag 设为 `alpha`、`beta`、`rc`
+- 稳定版如 `0.8.0` 才会默认发布到 `latest`
+- 如需手工覆盖，可设置 `NPM_DIST_TAG=next`
+
+本地发布已打包产物：
+
+```bash
+NPM_DIST_TAG=alpha pnpm publish:packed -- --dir artifacts
+```
+
+仅做发布命令预演：
+
+```bash
+pnpm publish:packed -- --dir artifacts --dry-run
+```
+
+## Local Unpublished Install
+
+如果还没把 native 包发布到 npm，只在本地用 root tgz 做 `npm install -g`，CLI 无法自动下载平台包，会回退到 `cargo run`。
+
+本地模拟真实安装时，先安装当前平台 native 包，再安装 root 包。例如 macOS arm64：
+
+```bash
+pnpm pack:dry-run
+pnpm --dir packages/native/darwin-arm64 pack --pack-destination ../../../.pack/native
+npm install -g ./.pack/native/chenpu17-cc-gw-darwin-arm64-0.8.0-alpha.0.tgz
+npm install -g ./.pack/chenpu17-cc-gw-0.8.0-alpha.0.tgz
+```
 
 ## CI
 
@@ -110,5 +142,6 @@ pnpm smoke:cli
 - `build-root-package` 打包根 npm 包
 - `build-native-packages` 矩阵构建四个平台 native 包
 - `publish-npm` 先发布 native 子包，再发布根包
+- 默认根据根包版本号推导 npm dist-tag；如 `0.8.0-alpha.0` 会发布到 `alpha`，不会覆盖 `latest`
 
 另外，`prepack` 会自动触发 `pnpm run build:package`，只打包 CLI 与 Web 资源；native 二进制由独立平台包承载。

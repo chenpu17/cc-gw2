@@ -9,7 +9,7 @@
   - `@chenpu17/cc-gw-darwin-arm64`
   - `@chenpu17/cc-gw-linux-x64`
   - `@chenpu17/cc-gw-linux-arm64`
-  - `@chenpu17/cc-gw-win32-ia32`
+  - `@chenpu17/cc-gw-win32-x64`
 
 ## 2. 本地验收
 
@@ -71,10 +71,20 @@ git push origin v0.8.0-alpha.0
 
 1. 打包根 npm 包
 2. 构建四个平台 native npm 包
-3. 先发布 native 包，再发布根包
+3. 根据版本号自动选择 npm dist-tag
+4. 先发布 native 包，再发布根包
+
+dist-tag 规则：
+
+- `0.8.0` -> `latest`
+- `0.8.0-alpha.0` -> `alpha`
+- `0.8.0-beta.1` -> `beta`
+- `0.8.0-rc.0` -> `rc`
+
+如果想临时改成别的标签，可在 GitHub Actions 手动运行 `Release` 时填写 `dist_tag`。
 
 ## 6. 首次发版后核查
 
-- 用 macOS arm64、Linux x64、Linux arm64、Windows ia32 分别验证安装
+- 用 macOS arm64、Linux x64、Linux arm64、Windows x64（npm 包名 `win32-x64`）分别验证安装
 - 验证 `npm install -g @chenpu17/cc-gw` 后 `cc-gw start --foreground` 可直接启动
 - 验证旧 `~/.cc-gw` 配置和 SQLite 数据可直接复用
