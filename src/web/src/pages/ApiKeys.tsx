@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { EChart, echarts, type EChartOption } from '@/components/EChart'
 import { Key, Copy, Trash2, Plus, Check, Eye, EyeOff, Shield } from 'lucide-react'
@@ -113,6 +113,26 @@ function EndpointSelector({
           </label>
         ))}
       </div>
+    </div>
+  )
+}
+
+function QuickStartCard({
+  icon,
+  title,
+  description
+}: {
+  icon: ReactNode
+  title: string
+  description: string
+}) {
+  return (
+    <div className="rounded-[1.25rem] border border-white/50 bg-card/88 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+      <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]">
+        {icon}
+      </div>
+      <p className="mt-4 text-sm font-semibold">{title}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
     </div>
   )
 }
@@ -385,6 +405,9 @@ export default function ApiKeysPage() {
         icon={<Key className="h-5 w-5" aria-hidden="true" />}
         title={t('apiKeys.title')}
         description={t('apiKeys.description')}
+        eyebrow="Access Control"
+        breadcrumb="Gateway / API Keys"
+        helper={t('apiKeys.helper')}
         actions={
           <Button onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -394,6 +417,32 @@ export default function ApiKeysPage() {
       />
 
       <PageSection
+        eyebrow="Recommended"
+        title={t('apiKeys.quickStart.title')}
+        description={t('apiKeys.quickStart.description')}
+        contentClassName="pt-5"
+      >
+        <div className="grid gap-4 md:grid-cols-3">
+          <QuickStartCard
+            icon={<Key className="h-4 w-4" aria-hidden="true" />}
+            title={t('apiKeys.quickStart.create.title')}
+            description={t('apiKeys.quickStart.create.description')}
+          />
+          <QuickStartCard
+            icon={<Shield className="h-4 w-4" aria-hidden="true" />}
+            title={t('apiKeys.quickStart.restrict.title')}
+            description={t('apiKeys.quickStart.restrict.description')}
+          />
+          <QuickStartCard
+            icon={<EyeOff className="h-4 w-4" aria-hidden="true" />}
+            title={t('apiKeys.quickStart.wildcard.title')}
+            description={t('apiKeys.quickStart.wildcard.description')}
+          />
+        </div>
+      </PageSection>
+
+      <PageSection
+        eyebrow="Usage"
         title={t('apiKeys.analytics.title')}
         description={t('apiKeys.analytics.description', { days: rangeDays })}
         actions={
@@ -445,8 +494,18 @@ export default function ApiKeysPage() {
       </PageSection>
 
       <PageSection
+        eyebrow="Inventory"
         title={t('apiKeys.list.title')}
         description={hasWildcard ? t('apiKeys.wildcardHint') : undefined}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">
+              {`${filteredKeys.length}/${keys.length}`}
+            </Badge>
+            <Badge variant="outline">{t('apiKeys.summary.wildcard', { count: keys.filter((item) => item.isWildcard).length })}</Badge>
+            <Badge variant="outline">{t('apiKeys.summary.restricted', { count: restrictedCount })}</Badge>
+          </div>
+        }
       >
         <div className="space-y-4">
           <div className="grid gap-3 rounded-2xl border border-white/40 bg-card/80 p-4 md:grid-cols-[minmax(0,1fr)_180px_auto]">

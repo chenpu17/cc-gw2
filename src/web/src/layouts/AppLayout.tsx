@@ -124,6 +124,7 @@ export function AppLayout() {
 
   const activeTitle = t(activeItem.labelKey)
   const activeDescription = t(activeItem.descriptionKey)
+  const appTitle = t('app.title')
 
   const handleLogout = async () => {
     if (loggingOut) return
@@ -204,8 +205,12 @@ export function AppLayout() {
           </div>
 
           <div className="hidden min-w-0 flex-1 lg:block">
-            <div className="min-w-0">
-              <p className="truncate text-lg font-semibold tracking-[-0.02em] text-foreground">{activeTitle}</p>
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <span>{appTitle}</span>
+                <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                <span className="truncate text-foreground/85">{activeTitle}</span>
+              </div>
               <p className="truncate text-sm text-muted-foreground">{activeDescription}</p>
             </div>
           </div>

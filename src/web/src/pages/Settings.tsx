@@ -224,6 +224,11 @@ export default function SettingsPage() {
     if (defaults.background) mappings.push(t('settings.defaults.background', { model: defaults.background }))
     return mappings.length > 0 ? mappings.join(' ｜ ') : t('settings.defaults.none')
   }, [config, t])
+  const protocolSummaryLabel = useMemo(() => {
+    if (form.httpEnabled && form.httpsEnabled) return t('settings.overview.values.httpAndHttps')
+    if (form.httpsEnabled) return t('settings.overview.values.httpsOnly')
+    return t('settings.overview.values.httpOnly')
+  }, [form.httpEnabled, form.httpsEnabled, t])
 
   const needsPassword = useMemo(() => {
     if (!authForm.enabled) return false
@@ -584,6 +589,9 @@ export default function SettingsPage() {
         icon={<SettingsIcon className="h-5 w-5" aria-hidden="true" />}
         title={t('settings.title')}
         description={t('settings.description')}
+        eyebrow="Gateway Controls"
+        breadcrumb="Gateway / Settings"
+        helper={t('settings.overview.description')}
         badge={isConfigDirty || isAuthDirty ? t('modelManagement.actions.unsaved') : undefined}
         actions={
           config ? (
@@ -638,6 +646,55 @@ export default function SettingsPage() {
           </nav>
 
           <div className="flex flex-col gap-6">
+          <Card className="border-white/40 bg-card/88 backdrop-blur">
+            <CardContent className="space-y-4 pt-5">
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  {t('settings.overview.title')}
+                </p>
+                <p className="text-sm text-muted-foreground">{t('settings.overview.description')}</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <OverviewCard
+                  label={t('settings.overview.cards.protocols')}
+                  value={protocolSummaryLabel}
+                  helper={`${form.httpHost || '127.0.0.1'}:${form.httpPort}${form.httpsEnabled ? ` / ${form.httpsHost || '127.0.0.1'}:${form.httpsPort}` : ''}`}
+                />
+                <OverviewCard
+                  label={t('settings.overview.cards.security')}
+                  value={authSettings?.enabled ? t('settings.overview.values.authEnabled') : t('settings.overview.values.authDisabled')}
+                  helper={authSettings?.username ? `${t('settings.auth.username')}: ${authSettings.username}` : t('settings.auth.enableHint')}
+                />
+                <OverviewCard
+                  label={t('settings.overview.cards.configFile')}
+                  value={configPath || t('settings.file.unknown')}
+                  helper={t('settings.file.description')}
+                  mono
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="xl:hidden">
+            <div className="flex flex-wrap gap-2">
+              {SETTINGS_SECTIONS.map((section) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => handleSectionClick(section.id)}
+                  className={cn(
+                    'rounded-full border px-3.5 py-2 text-xs font-medium transition-all',
+                    activeSection === section.id
+                      ? 'border-primary/20 bg-primary text-primary-foreground shadow-[0_10px_24px_-18px_rgba(59,130,246,0.8)]'
+                      : 'border-border/70 bg-background/80 text-muted-foreground hover:border-primary/20 hover:bg-primary/5 hover:text-foreground'
+                  )}
+                >
+                  {t(section.labelKey)}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Basic Settings */}
           <Card id="section-basics" ref={setSectionRef('section-basics')}>
             <CardContent className="pt-6">
@@ -1243,6 +1300,32 @@ export default function SettingsPage() {
           setConfirmClearAllOpen(false)
         }}
       />
+    </div>
+  )
+}
+
+function OverviewCard({
+  label,
+  value,
+  helper,
+  mono = false
+}: {
+  label: string
+  value: string
+  helper: string
+  mono?: boolean
+}) {
+  return (
+    <div className="rounded-[1.2rem] border border-border/70 bg-background/60 p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </p>
+      <p className={cn('mt-2 text-sm font-semibold text-foreground', mono && 'break-all font-mono text-xs')}>
+        {value}
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {helper}
+      </p>
     </div>
   )
 }

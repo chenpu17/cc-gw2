@@ -1,10 +1,27 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import fs from 'node:fs'
 import { spawn } from 'node:child_process'
 import http from 'node:http'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+
+function resolveBuiltServerBinary() {
+  const executable = process.platform === 'win32' ? 'cc-gw-server.exe' : 'cc-gw-server'
+  const candidates = [
+    path.join(process.cwd(), 'target', 'release', executable),
+    path.join(process.cwd(), 'target', 'debug', executable),
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  return null
+}
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -70,11 +87,13 @@ async function main() {
   const homeDir = await mkdtemp(path.join(os.tmpdir(), 'cc-gw-smoke-'))
   const port = await getFreePort()
   const cliPath = path.join(process.cwd(), 'src/cli/dist/index.js')
+  const serverBinary = resolveBuiltServerBinary()
   const child = spawn(process.execPath, [cliPath, 'start', '--foreground', '--port', String(port)], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       HOME: homeDir,
+      ...(serverBinary ? { CC_GW_SERVER_BIN: serverBinary } : {}),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })

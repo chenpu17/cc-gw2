@@ -38,6 +38,7 @@ const resources = {
         saving: '保存中...',
         cancel: '取消',
         actions: {
+          loading: '处理中...',
           refresh: '刷新',
           refreshing: '刷新中...',
           manualRefresh: '手动刷新',
@@ -250,11 +251,20 @@ const resources = {
           apiKeySelected: '{{count}} 个已选'
         },
         actions: {
+          columns: '列设置',
+          visibleCount: '已显示 {{count}} 列',
           manualRefresh: '手动刷新',
           refreshing: '刷新中...',
           export: '导出日志',
           exporting: '导出中...',
           detail: '详情'
+        },
+        quickViews: {
+          all: '全部流量',
+          errors: '仅看失败',
+          today: '今天',
+          anthropic: 'Anthropic',
+          openai: 'OpenAI'
         },
         table: {
           loading: '正在加载日志...',
@@ -758,6 +768,22 @@ const resources = {
           protocol: '协议配置',
           jump: '跳转到'
         },
+        overview: {
+          title: '当前运行概览',
+          description: '先确认当前监听方式、访问保护和配置文件位置，再进入具体调优。',
+          cards: {
+            protocols: '协议入口',
+            security: '控制台访问',
+            configFile: '配置文件'
+          },
+          values: {
+            authEnabled: '已启用登录保护',
+            authDisabled: '未启用登录保护',
+            httpOnly: '仅 HTTP',
+            httpsOnly: '仅 HTTPS',
+            httpAndHttps: 'HTTP + HTTPS'
+          }
+        },
         fields: {
           port: '监听端口',
           host: '监听地址（可选）',
@@ -902,6 +928,7 @@ const resources = {
         title: '使用指南',
         intro: '完整的 cc-gw 配置和使用指南，帮助您从零开始搭建 AI 模型网关。',
         note: '所有配置变更都会实时生效。建议通过 Web UI 进行配置管理，CLI 主要用于服务启动和重启。',
+        helper: '推荐顺序：先启动服务，再配置 Provider，然后创建 API 密钥，最后接入 Claude Code 或 Codex。',
         clientConfig: {
           title: '客户端配置指南',
           subtitle: '选择您的客户端工具，按照步骤进行配置'
@@ -1047,6 +1074,7 @@ const resources = {
       apiKeys: {
         title: 'API 密钥管理',
         description: '创建和管理用于访问网关的 API 密钥',
+        helper: '建议为不同客户端、环境或自动化任务使用独立密钥，便于回溯、限权和停用。',
         createNew: '创建新密钥',
         createAction: '创建',
         createDescription: '创建一个新的 API 密钥用于身份验证，可选填写密钥描述。',
@@ -1101,6 +1129,22 @@ const resources = {
           requestsSeries: '请求次数',
           empty: '所选时间范围内暂无统计数据。',
           unknownKey: '未知密钥'
+        },
+        quickStart: {
+          title: '推荐使用方式',
+          description: '先按客户端拆分密钥，再逐步收紧权限，可以显著降低排查成本。',
+          create: {
+            title: '按客户端分组',
+            description: '例如为 Claude Code、Codex、CI 或测试环境分别创建独立密钥。'
+          },
+          restrict: {
+            title: '按端点限制访问',
+            description: '需要时只开放 Anthropic、OpenAI 或自定义接入点，避免误用。'
+          },
+          wildcard: {
+            title: '谨慎使用通配密钥',
+            description: '通配密钥适合临时兼容；生产环境更推荐关闭它并使用命名密钥。'
+          }
         },
         list: {
           title: '密钥列表',
@@ -1231,6 +1275,7 @@ const resources = {
         saving: 'Saving...',
         cancel: 'Cancel',
         actions: {
+          loading: 'Working...',
           refresh: 'Refresh',
           refreshing: 'Refreshing...',
           manualRefresh: 'Manual refresh',
@@ -1443,11 +1488,20 @@ const resources = {
           apiKeySelected: '{{count}} selected'
         },
         actions: {
+          columns: 'Columns',
+          visibleCount: '{{count}} columns visible',
           manualRefresh: 'Manual refresh',
           refreshing: 'Refreshing...',
           export: 'Export logs',
           exporting: 'Exporting...',
           detail: 'Detail'
+        },
+        quickViews: {
+          all: 'All traffic',
+          errors: 'Errors only',
+          today: 'Today',
+          anthropic: 'Anthropic',
+          openai: 'OpenAI'
         },
         table: {
           loading: 'Loading logs...',
@@ -1951,6 +2005,22 @@ const resources = {
           protocol: 'Protocol Configuration',
           jump: 'Jump to'
         },
+        overview: {
+          title: 'Current snapshot',
+          description: 'Confirm listening protocols, console protection, and config location before editing deeper settings.',
+          cards: {
+            protocols: 'Protocols',
+            security: 'Console access',
+            configFile: 'Config file'
+          },
+          values: {
+            authEnabled: 'Sign-in required',
+            authDisabled: 'Open access',
+            httpOnly: 'HTTP only',
+            httpsOnly: 'HTTPS only',
+            httpAndHttps: 'HTTP + HTTPS'
+          }
+        },
         fields: {
           port: 'Listen port',
           host: 'Listen host (optional)',
@@ -2095,6 +2165,7 @@ const resources = {
         title: 'Help & Guidance',
         intro: 'This page summarises how to configure cc-gw via the Web UI and how to operate it day to day.',
         note: 'Changes are written to ~/.cc-gw/config.json immediately. Prefer editing through the Web UI; use the CLI mainly to start or restart the daemon.',
+        helper: 'Recommended order: start the service, add providers, create API keys, then connect Claude Code or Codex.',
         clientConfig: {
           title: 'Client Configuration Guide',
           subtitle: 'Choose your client tool and follow the steps to configure'
@@ -2175,6 +2246,7 @@ const resources = {
       apiKeys: {
         title: 'API Keys Management',
         description: 'Create and manage API keys for gateway access',
+        helper: 'Use separate keys for each client, environment, or automation task so you can audit, restrict, and revoke access cleanly.',
         createNew: 'Create New Key',
         createAction: 'Create',
         createDescription: 'Create a new API key for authentication and optionally add a description.',
@@ -2229,6 +2301,22 @@ const resources = {
           requestsSeries: 'Requests',
           empty: 'No activity for the selected range.',
           unknownKey: 'Unknown key'
+        },
+        quickStart: {
+          title: 'Recommended workflow',
+          description: 'Start with separate keys per client, then tighten endpoint access as needed.',
+          create: {
+            title: 'Split keys by client',
+            description: 'Create different keys for Claude Code, Codex, CI, or staging so logs stay easy to trace.'
+          },
+          restrict: {
+            title: 'Restrict endpoint access',
+            description: 'Limit keys to Anthropic, OpenAI, or custom endpoints when you want tighter isolation.'
+          },
+          wildcard: {
+            title: 'Use wildcard sparingly',
+            description: 'Wildcard access is convenient for migration, but named keys are safer for production.'
+          }
         },
         list: {
           title: 'Key Inventory',

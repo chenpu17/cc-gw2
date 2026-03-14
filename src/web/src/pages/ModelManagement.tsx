@@ -56,6 +56,15 @@ interface AnthropicHeaderOption {
   description: string
 }
 
+interface ManagementTab {
+  key: string
+  label: string
+  description: string
+  isSystem: boolean
+  canDelete: boolean
+  protocols?: string[]
+}
+
 type ConfirmAction =
   | { kind: 'provider'; provider: ProviderConfig }
   | { kind: 'preset'; endpoint: string; preset: RoutingPreset }
@@ -198,8 +207,8 @@ export default function ModelManagementPage() {
 
   type Endpoint = string
 
-  const tabs = useMemo(() => {
-    const baseTabs: Array<{ key: string; label: string; description: string; isSystem: boolean; canDelete: boolean; protocols?: string[] }> = [
+  const tabs = useMemo<ManagementTab[]>(() => {
+    const baseTabs: ManagementTab[] = [
       { key: 'providers', label: t('modelManagement.tabs.providers'), description: t('modelManagement.tabs.providersDesc'), isSystem: true, canDelete: false },
       { key: 'anthropic', label: t('modelManagement.tabs.anthropic'), description: t('modelManagement.tabs.anthropicDesc'), isSystem: true, canDelete: false, protocols: ['anthropic'] },
       { key: 'openai', label: t('modelManagement.tabs.openai'), description: t('modelManagement.tabs.openaiDesc'), isSystem: true, canDelete: false, protocols: ['openai-auto', 'openai-chat', 'openai-responses'] }
@@ -233,8 +242,14 @@ export default function ModelManagementPage() {
 
     return [...baseTabs, ...customTabs]
   }, [t, customEndpoints])
-
   const [activeTab, setActiveTab] = useState<string>('providers')
+  const systemTabs = useMemo(() => tabs.filter((tab) => tab.isSystem), [tabs])
+  const customTabs = useMemo(() => tabs.filter((tab) => !tab.isSystem), [tabs])
+  const activeTabInfo = useMemo(
+    () => tabs.find((tab) => tab.key === activeTab) ?? tabs[0] ?? null,
+    [activeTab, tabs]
+  )
+
   const [config, setConfig] = useState<GatewayConfig | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
@@ -1124,60 +1139,74 @@ export default function ModelManagementPage() {
   const renderProvidersSection = () => (
     <Card className="surface-1">
       <CardContent className="pt-6 space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold">{t('providers.title')}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{t('providers.description')}</p>
-          </div>
-          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
-            <Badge variant="secondary">{t('providers.count', { count: providerCount })}</Badge>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => configQuery.refetch()}
-              disabled={configQuery.isFetching}
-            >
-              <RefreshCw className={cn('mr-2 h-4 w-4', configQuery.isFetching && 'animate-spin')} />
-              {configQuery.isFetching ? t('common.actions.refreshing') : t('providers.actions.refresh')}
-            </Button>
-            <Button size="sm" onClick={handleOpenCreate}>
-              <Plus className="mr-2 h-4 w-4" />
-              {t('providers.actions.add')}
-            </Button>
-          </div>
-        </div>
+        <SectionIntro
+          eyebrow="Model Access"
+          title={t('providers.title')}
+          description={t('providers.description')}
+          breadcrumb={[t('modelManagement.title'), t('modelManagement.tabs.providers')]}
+          aside={(
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
+              <Badge variant="secondary">{t('providers.count', { count: providerCount })}</Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => configQuery.refetch()}
+                disabled={configQuery.isFetching}
+              >
+                <RefreshCw className={cn('mr-2 h-4 w-4', configQuery.isFetching && 'animate-spin')} />
+                {configQuery.isFetching ? t('common.actions.refreshing') : t('providers.actions.refresh')}
+              </Button>
+              <Button size="sm" onClick={handleOpenCreate}>
+                <Plus className="mr-2 h-4 w-4" />
+                {t('providers.actions.add')}
+              </Button>
+            </div>
+          )}
+        />
 
-        <div className="grid gap-3 rounded-[1.35rem] border border-white/40 bg-background/45 p-4 md:grid-cols-[minmax(0,1fr)_220px_auto]">
-          <Input
-            value={providerSearch}
-            onChange={(event) => setProviderSearch(event.target.value)}
-            placeholder={t('providers.filters.searchPlaceholder')}
-          />
-          <Select value={providerTypeFilter} onValueChange={setProviderTypeFilter}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('providers.filters.typeAll')}</SelectItem>
-              <SelectItem value="openai">OpenAI</SelectItem>
-              <SelectItem value="anthropic">Anthropic</SelectItem>
-              <SelectItem value="deepseek">DeepSeek</SelectItem>
-              <SelectItem value="huawei">Huawei</SelectItem>
-              <SelectItem value="kimi">Kimi</SelectItem>
-              <SelectItem value="custom">Custom</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setProviderSearch('')
-              setProviderTypeFilter('all')
-            }}
-            disabled={!providerSearch.trim() && providerTypeFilter === 'all'}
-          >
-            {t('common.actions.reset')}
-          </Button>
+        <div className="grid gap-3 rounded-[1.35rem] border border-border/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.7),rgba(248,250,252,0.82))] p-4 lg:grid-cols-[minmax(0,1fr)_220px_auto]">
+          <div className="space-y-2">
+            <Label className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+              {t('providers.filters.searchPlaceholder')}
+            </Label>
+            <Input
+              value={providerSearch}
+              onChange={(event) => setProviderSearch(event.target.value)}
+              placeholder={t('providers.filters.searchPlaceholder')}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+              {t('providers.filters.typeAll')}
+            </Label>
+            <Select value={providerTypeFilter} onValueChange={setProviderTypeFilter}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('providers.filters.typeAll')}</SelectItem>
+                <SelectItem value="openai">OpenAI</SelectItem>
+                <SelectItem value="anthropic">Anthropic</SelectItem>
+                <SelectItem value="deepseek">DeepSeek</SelectItem>
+                <SelectItem value="huawei">Huawei</SelectItem>
+                <SelectItem value="kimi">Kimi</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setProviderSearch('')
+                setProviderTypeFilter('all')
+              }}
+              disabled={!providerSearch.trim() && providerTypeFilter === 'all'}
+            >
+              {t('common.actions.reset')}
+            </Button>
+          </div>
         </div>
 
         {configQuery.isPending || (!config && configQuery.isFetching) ? (
@@ -1198,16 +1227,16 @@ export default function ModelManagementPage() {
         ) : (
           <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">
             {filteredProviders.map((provider) => (
-              <Card key={provider.id} className="surface-1 flex flex-col">
+              <Card key={provider.id} className="surface-1 flex flex-col overflow-hidden border-border/70">
                 <CardContent className="flex flex-1 flex-col gap-4 pt-6">
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{provider.label || provider.id}</h3>
+                        <h3 className="text-base font-semibold tracking-[-0.02em]">{provider.label || provider.id}</h3>
                         {provider.type && <TypeBadge type={provider.type} />}
                       </div>
                       <p className="text-xs text-muted-foreground">ID: {provider.id}</p>
-                      <p className="text-xs text-muted-foreground break-all">{provider.baseUrl}</p>
+                      <p className="break-all text-xs text-muted-foreground">{provider.baseUrl}</p>
                     </div>
                     {provider.defaultModel ? (
                       <Badge variant="default" className="text-xs">
@@ -1221,7 +1250,7 @@ export default function ModelManagementPage() {
                   </div>
 
                   <div className="grid gap-2 sm:grid-cols-3">
-                    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2">
+                    <div className="rounded-2xl border border-border/70 bg-background/80 px-3 py-3">
                       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                         {t('providers.card.authMode')}
                       </p>
@@ -1233,7 +1262,7 @@ export default function ModelManagementPage() {
                             : 'API Key'}
                       </p>
                     </div>
-                    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2">
+                    <div className="rounded-2xl border border-border/70 bg-background/80 px-3 py-3">
                       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                         {t('providers.card.modelsTitle')}
                       </p>
@@ -1243,7 +1272,7 @@ export default function ModelManagementPage() {
                           : t('providers.card.passthrough')}
                       </p>
                     </div>
-                    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2">
+                    <div className="rounded-2xl border border-border/70 bg-background/80 px-3 py-3">
                       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                         {t('providers.card.defaultModelLabel')}
                       </p>
@@ -1255,8 +1284,8 @@ export default function ModelManagementPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-xs">{t('providers.card.modelsTitle')}</Label>
+                  <div className="space-y-2 rounded-[1.1rem] border border-border/70 bg-background/55 p-3">
+                    <Label className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t('providers.card.modelsTitle')}</Label>
                     {provider.models && provider.models.length > 0 ? (
                       <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
                         {provider.models.map((model) => (
@@ -1270,7 +1299,7 @@ export default function ModelManagementPage() {
                     )}
                   </div>
 
-                  <div className="mt-auto flex flex-wrap gap-2 border-t pt-4">
+                  <div className="mt-auto flex flex-wrap gap-2 border-t border-border/70 pt-4">
                     <Button variant="default" size="sm" onClick={() => handleOpenEdit(provider)}>
                       {t('providers.actions.edit')}
                     </Button>
@@ -1432,12 +1461,27 @@ export default function ModelManagementPage() {
     return (
       <Card className="surface-1">
         <CardContent className="pt-6 space-y-6">
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold">
-              {t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}
-            </h2>
-            <p className="max-w-3xl text-sm text-muted-foreground">{endpointDescription}</p>
-            <p className="max-w-3xl text-xs text-muted-foreground">{t('settings.routing.wildcardHint')}</p>
+          <SectionIntro
+            eyebrow="Routing Workspace"
+            title={t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}
+            description={endpointDescription}
+            breadcrumb={[t('modelManagement.title'), endpointLabel]}
+            aside={(
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{entries.length} rules</Badge>
+                {isDirty ? (
+                  <Badge variant="outline" className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300">
+                    {t('modelManagement.actions.unsaved')}
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary">{t('common.status.success')}</Badge>
+                )}
+              </div>
+            )}
+          />
+
+          <div className="rounded-[1.2rem] border border-border/70 bg-background/55 px-4 py-3 text-xs text-muted-foreground">
+            {t('settings.routing.wildcardHint')}
           </div>
 
           {isAnthropicProtocol && (
@@ -1473,14 +1517,12 @@ export default function ModelManagementPage() {
             <p className="text-sm text-destructive">{error}</p>
           )}
 
-          <div className="space-y-3">
+          <div className="space-y-3 rounded-[1.35rem] border border-border/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.7),rgba(248,250,252,0.82))] p-4">
             <div className="flex items-center justify-between gap-3">
-              <Label>{t('modelManagement.routesEditorTitle')}</Label>
-              {isDirty && (
-                <Badge variant="outline" className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300">
-                  {t('modelManagement.actions.unsaved')}
-                </Badge>
-              )}
+              <div>
+                <Label className="text-sm font-semibold text-foreground">{t('modelManagement.routesEditorTitle')}</Label>
+                <p className="mt-1 text-xs text-muted-foreground">Source model -&gt; target provider:model</p>
+              </div>
             </div>
 
             {entries.length === 0 ? (
@@ -1496,14 +1538,15 @@ export default function ModelManagementPage() {
                   <span>{t('settings.routing.target')}</span>
                   <span />
                 </div>
-                {entries.map((entry) => (
-                  <div key={entry.id} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-3">
+                {entries.map((entry, index) => (
+                  <div key={entry.id} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[1rem] border border-border/60 bg-background/80 p-3">
                     <Input
                       value={entry.source}
                       onChange={(e) => handleRouteChange(endpoint, entry.id, 'source', e.target.value)}
                       placeholder={t('settings.routing.sourcePlaceholder')}
                       list={sourceListId}
                       disabled={isSaving}
+                      aria-label={`route-source-${index + 1}`}
                     />
                     <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     <TargetCombobox
@@ -1529,7 +1572,10 @@ export default function ModelManagementPage() {
           </div>
 
           <div className="rounded-[1.25rem] border border-border/70 bg-background/55 p-4 space-y-3">
-            <Label>{t('settings.routing.suggested')}</Label>
+            <div>
+              <Label className="text-sm font-semibold text-foreground">{t('settings.routing.suggested')}</Label>
+              <p className="mt-1 text-xs text-muted-foreground">One click to seed common source models for this endpoint.</p>
+            </div>
             <div className="flex flex-wrap gap-2">
               {suggestions.map((model) => {
                 const alreadyAdded = existingSources.has(model)
@@ -1621,47 +1667,153 @@ export default function ModelManagementPage() {
         }
       />
 
-      <div className="flex gap-3 overflow-x-auto pb-2">
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.key
-          const tabDirty = tab.key !== 'providers' && isDirtyByEndpoint[tab.key]
-          return (
-            <div key={tab.key} className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={cn(
-                  'flex min-w-[150px] flex-col gap-1 rounded-[1.15rem] border px-4 py-3 text-left transition-all sm:min-w-[190px]',
-                  isActive
-                    ? 'border-primary/30 bg-primary/8 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]'
-                    : 'border-white/50 bg-card/84 hover:bg-primary/5'
-                )}
-              >
-                <span className="font-medium flex items-center gap-2">
-                  {tab.label}
-                  {tabDirty && <span className="h-2 w-2 rounded-full bg-amber-500" />}
-                </span>
-                <span className="line-clamp-2 text-xs text-muted-foreground">{tab.description}</span>
-              </button>
-              {tab.canDelete && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    const endpoint = customEndpoints.find((item) => item.id === tab.key)
-                    if (endpoint) {
-                      setConfirmAction({ kind: 'endpoint', endpoint })
-                    }
-                  }}
-                  className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs hover:bg-destructive/90"
-                  title={t('common.delete')}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
+      <Card className="surface-1 overflow-hidden">
+        <CardContent className="space-y-5 pt-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
+                  {t('modelManagement.tabs.providers')}
+                  {' · '}
+                  {providerCount}
+                </Badge>
+                <Badge variant="outline">
+                  {t('modelManagement.tabs.customEndpoint')}
+                  {' · '}
+                  {customTabs.length}
+                </Badge>
+              </div>
+              <p className="text-sm font-semibold text-foreground">
+                {activeTabInfo?.label}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {activeTabInfo?.description}
+              </p>
             </div>
-          )
-        })}
-      </div>
+            <div className="rounded-2xl border border-border/70 bg-background/75 px-3 py-2 text-xs text-muted-foreground">
+              {customTabs.length > 0
+                ? '自定义端点较多时，优先在下方端点带中切换，避免横向挤压布局。'
+                : '先配置提供商与内置路由，需要时再追加自定义端点。'}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                内置视图
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {systemTabs.map((tab) => {
+                const isActive = activeTab === tab.key
+                const tabDirty = tab.key !== 'providers' && isDirtyByEndpoint[tab.key]
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className={cn(
+                      'group flex min-h-[108px] flex-col justify-between rounded-[1.25rem] border px-4 py-4 text-left transition-all',
+                      isActive
+                        ? 'border-primary/35 bg-[linear-gradient(135deg,rgba(59,130,246,0.12),rgba(59,130,246,0.03))] shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]'
+                        : 'border-border/70 bg-background/75 hover:border-primary/20 hover:bg-primary/5'
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className={cn('text-lg font-semibold tracking-[-0.02em]', isActive ? 'text-primary' : 'text-foreground')}>
+                        {tab.label}
+                      </span>
+                      {tabDirty ? <span className="mt-1 h-2.5 w-2.5 rounded-full bg-amber-500" /> : null}
+                    </div>
+                    <span className="line-clamp-2 text-sm text-muted-foreground">
+                      {tab.description}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {customTabs.length > 0 ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    自定义接入端点
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    端点较多时保留紧凑卡片与横向滚动，避免标题和路径把整行撑乱。
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-x-auto pb-1">
+                <div className="flex min-w-full gap-3">
+                  {customTabs.map((tab) => {
+                    const isActive = activeTab === tab.key
+                    const tabDirty = isDirtyByEndpoint[tab.key]
+                    return (
+                      <div
+                        key={tab.key}
+                        className={cn(
+                          'group relative flex w-[260px] shrink-0 snap-start flex-col gap-3 rounded-[1.2rem] border px-4 py-4 text-left transition-all',
+                          isActive
+                            ? 'border-primary/35 bg-[linear-gradient(135deg,rgba(59,130,246,0.12),rgba(59,130,246,0.03))] shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]'
+                            : 'border-border/70 bg-background/80 hover:border-primary/20 hover:bg-primary/5'
+                        )}
+                      >
+                        <div className="flex items-start gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab(tab.key)}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={cn('truncate text-base font-semibold tracking-[-0.02em]', isActive ? 'text-primary' : 'text-foreground')}>
+                                {tab.label}
+                              </span>
+                              {tabDirty ? <span className="h-2 w-2 rounded-full bg-amber-500" /> : null}
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                              {tab.description}
+                            </p>
+                          </button>
+                          {tab.canDelete ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const endpoint = customEndpoints.find((item) => item.id === tab.key)
+                                if (endpoint) {
+                                  setConfirmAction({ kind: 'endpoint', endpoint })
+                                }
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-destructive/20 hover:bg-destructive/10 hover:text-destructive"
+                              title={t('common.delete')}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(tab.protocols ?? []).map((protocol) => (
+                            <Badge
+                              key={`${tab.key}-${protocol}`}
+                              variant="outline"
+                              className="max-w-full truncate border-border/70 bg-background/80 text-[11px] text-muted-foreground"
+                            >
+                              {protocol}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {activeTab === 'providers' ? renderProvidersSection() : renderRoutesSection(activeTab)}
 
@@ -1733,6 +1885,41 @@ export default function ModelManagementPage() {
           </div>
         ) : null}
       </ConfirmDialog>
+    </div>
+  )
+}
+
+function SectionIntro({
+  eyebrow,
+  title,
+  description,
+  breadcrumb,
+  aside
+}: {
+  eyebrow: string
+  title: string
+  description: string
+  breadcrumb: string[]
+  aside?: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <span>{eyebrow}</span>
+          {breadcrumb.map((item, index) => (
+            <React.Fragment key={`${item}-${index}`}>
+              {index > 0 ? <ChevronRight className="h-3.5 w-3.5" /> : null}
+              <span className={cn(index === breadcrumb.length - 1 && 'text-foreground')}>{item}</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <div>
+          <h2 className="text-xl font-semibold tracking-[-0.03em] text-foreground">{title}</h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      {aside ? <div className="flex shrink-0 items-center gap-2">{aside}</div> : null}
     </div>
   )
 }

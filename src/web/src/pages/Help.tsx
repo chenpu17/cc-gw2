@@ -78,6 +78,9 @@ export default function HelpPage(): JSX.Element {
         icon={<BookOpen className="h-5 w-5" aria-hidden="true" />}
         title={t('help.title')}
         description={t('help.intro')}
+        eyebrow="Guided Setup"
+        breadcrumb="Gateway / Help"
+        helper={t('help.helper')}
       />
 
       <Card className="surface-1">
@@ -107,7 +110,7 @@ export default function HelpPage(): JSX.Element {
       <div className="space-y-6">
         {/* Basic configuration */}
         <div id="help-configuration">
-          <PageSection title={sections[0].title}>
+          <PageSection eyebrow="01" title={sections[0].title}>
             <StepList items={sections[0].items} />
           </PageSection>
         </div>
@@ -121,7 +124,7 @@ export default function HelpPage(): JSX.Element {
         {/* Claude Code and Codex configuration */}
         <div className="grid gap-6 lg:grid-cols-2">
           <div id="help-claude">
-            <PageSection title={sections[1].title}>
+            <PageSection eyebrow="02" title={sections[1].title}>
               <div className="mb-4 flex items-center gap-3 rounded-xl bg-primary/5 p-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
                   <Code className="h-4 w-4" />
@@ -136,7 +139,7 @@ export default function HelpPage(): JSX.Element {
           </div>
 
           <div id="help-codex">
-            <PageSection title={sections[2].title}>
+            <PageSection eyebrow="03" title={sections[2].title}>
               <div className="mb-4 flex items-center gap-3 rounded-xl bg-emerald-500/5 p-4 dark:bg-emerald-500/10">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-white">
                   <Terminal className="h-4 w-4" />
@@ -158,10 +161,10 @@ export default function HelpPage(): JSX.Element {
             <p className="text-sm text-muted-foreground">{t('help.advancedGuide.subtitle')}</p>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
-            <PageSection title={sections[3].title}>
+            <PageSection eyebrow="04" title={sections[3].title}>
               <StepList items={sections[3].items} />
             </PageSection>
-            <PageSection title={sections[4].title}>
+            <PageSection eyebrow="05" title={sections[4].title}>
               <StepList items={sections[4].items} />
             </PageSection>
           </div>
@@ -169,7 +172,7 @@ export default function HelpPage(): JSX.Element {
       </div>
 
       <div id="help-faq">
-        <PageSection title={t('help.faq.title')}>
+        <PageSection eyebrow="FAQ" title={t('help.faq.title')}>
           <FaqList items={faqItems} />
         </PageSection>
       </div>

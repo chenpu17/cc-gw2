@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 interface PageSectionProps {
   title?: ReactNode
   description?: ReactNode
+  eyebrow?: ReactNode
   actions?: ReactNode
   className?: string
   contentClassName?: string
@@ -14,6 +15,7 @@ interface PageSectionProps {
 export function PageSection({
   title,
   description,
+  eyebrow,
   actions,
   className,
   contentClassName,
@@ -26,6 +28,11 @@ export function PageSection({
       {hasHeader && (
         <CardHeader className="flex flex-col gap-4 border-b border-border/60 bg-background/35 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
           <div className="space-y-1.5">
+            {eyebrow ? (
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {eyebrow}
+              </div>
+            ) : null}
             {typeof title === 'string' ? (
               <CardTitle className="text-base font-semibold">{title}</CardTitle>
             ) : (

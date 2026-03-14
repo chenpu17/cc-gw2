@@ -30,6 +30,9 @@ import {
   TableRow
 } from '@/components/ui/table'
 
+const LIVE_REFRESH_MS = 15_000
+const TREND_REFRESH_MS = 60_000
+
 interface OverviewStats {
   totals: {
     requests: number
@@ -143,7 +146,8 @@ export default function DashboardPage() {
 
   const customEndpointsQuery = useApiQuery<CustomEndpointsResponse, ApiError>(
     ['custom-endpoints'],
-    { url: '/api/custom-endpoints', method: 'GET' }
+    { url: '/api/custom-endpoints', method: 'GET' },
+    { refetchInterval: TREND_REFRESH_MS, refetchIntervalInBackground: true }
   )
 
   const overviewQuery = useApiQuery<OverviewStats, ApiError>(
@@ -152,7 +156,8 @@ export default function DashboardPage() {
       url: '/api/stats/overview',
       method: 'GET',
       params: endpointParam ? { endpoint: endpointParam } : undefined
-    }
+    },
+    { refetchInterval: LIVE_REFRESH_MS, refetchIntervalInBackground: true }
   )
 
   const dailyQuery = useApiQuery<DailyMetric[], ApiError>(
@@ -164,7 +169,8 @@ export default function DashboardPage() {
         days: 14,
         ...(endpointParam ? { endpoint: endpointParam } : {})
       }
-    }
+    },
+    { refetchInterval: TREND_REFRESH_MS, refetchIntervalInBackground: true }
   )
 
   const modelUsageQuery = useApiQuery<ModelUsageMetric[], ApiError>(
@@ -177,7 +183,8 @@ export default function DashboardPage() {
         limit: 6,
         ...(endpointParam ? { endpoint: endpointParam } : {})
       }
-    }
+    },
+    { refetchInterval: TREND_REFRESH_MS, refetchIntervalInBackground: true }
   )
 
   const statusQuery = useApiQuery<ServiceStatus, ApiError>(
@@ -186,12 +193,14 @@ export default function DashboardPage() {
       url: '/api/status',
       method: 'GET',
       params: endpointParam ? { endpoint: endpointParam } : undefined
-    }
+    },
+    { refetchInterval: LIVE_REFRESH_MS, refetchIntervalInBackground: true }
   )
 
   const dbInfoQuery = useApiQuery<DatabaseInfo, ApiError>(
     ['db', 'info'],
-    { url: '/api/db/info', method: 'GET' }
+    { url: '/api/db/info', method: 'GET' },
+    { refetchInterval: LIVE_REFRESH_MS, refetchIntervalInBackground: true }
   )
   const refetchDbInfo = dbInfoQuery.refetch ?? (async () => undefined)
 
@@ -205,8 +214,35 @@ export default function DashboardPage() {
         ...(endpointParam ? { endpoint: endpointParam } : {})
       }
     },
-    { refetchInterval: 30_000 }
+    { refetchInterval: LIVE_REFRESH_MS, refetchIntervalInBackground: true }
   )
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([
+      customEndpointsQuery.refetch(),
+      overviewQuery.refetch(),
+      dailyQuery.refetch(),
+      modelUsageQuery.refetch(),
+      statusQuery.refetch(),
+      dbInfoQuery.refetch(),
+      latestLogsQuery.refetch()
+    ])
+  }, [
+    customEndpointsQuery,
+    dailyQuery,
+    dbInfoQuery,
+    latestLogsQuery,
+    modelUsageQuery,
+    overviewQuery,
+    statusQuery
+  ])
+  const isRefreshing =
+    customEndpointsQuery.isFetching ||
+    overviewQuery.isFetching ||
+    dailyQuery.isFetching ||
+    modelUsageQuery.isFetching ||
+    statusQuery.isFetching ||
+    dbInfoQuery.isFetching ||
+    latestLogsQuery.isFetching
 
   useEffect(() => {
     if (overviewQuery.isError && overviewQuery.error) {
@@ -503,6 +539,14 @@ export default function DashboardPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleRefresh()}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? t('common.actions.refreshing') : t('common.actions.refresh')}
+            </Button>
           </div>
         }
       />

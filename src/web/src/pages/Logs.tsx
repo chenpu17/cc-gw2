@@ -25,6 +25,11 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from '@/components/ui/popover'
 
 interface ProviderSummary {
   id: string
@@ -35,8 +40,75 @@ const PAGE_SIZE_OPTIONS = [20, 50, 100]
 
 type StatusFilter = 'all' | 'success' | 'error'
 type RowDensity = 'comfortable' | 'compact'
+type QuickView = 'all' | 'errors' | 'today' | 'anthropic' | 'openai'
+type LogColumnId =
+  | 'endpoint'
+  | 'provider'
+  | 'requestedModel'
+  | 'routedModel'
+  | 'apiKey'
+  | 'inputTokens'
+  | 'cacheReadTokens'
+  | 'cacheCreationTokens'
+  | 'outputTokens'
+  | 'latency'
+  | 'ttft'
+  | 'tpot'
+  | 'status'
+  | 'error'
 
 type DateInput = string
+
+const LOG_COLUMN_STORAGE_KEY = 'cc-gw.logs.visible-columns'
+const LOG_DENSITY_STORAGE_KEY = 'cc-gw.logs.density'
+const DEFAULT_VISIBLE_COLUMNS: LogColumnId[] = [
+  'endpoint',
+  'provider',
+  'requestedModel',
+  'routedModel',
+  'apiKey',
+  'inputTokens',
+  'outputTokens',
+  'latency',
+  'status',
+  'error'
+]
+const LOG_COLUMN_ORDER: LogColumnId[] = [
+  'endpoint',
+  'provider',
+  'requestedModel',
+  'routedModel',
+  'apiKey',
+  'inputTokens',
+  'cacheReadTokens',
+  'cacheCreationTokens',
+  'outputTokens',
+  'latency',
+  'ttft',
+  'tpot',
+  'status',
+  'error'
+]
+
+function loadStoredColumns(): LogColumnId[] {
+  if (typeof window === 'undefined') return DEFAULT_VISIBLE_COLUMNS
+  try {
+    const raw = window.localStorage.getItem(LOG_COLUMN_STORAGE_KEY)
+    if (!raw) return DEFAULT_VISIBLE_COLUMNS
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return DEFAULT_VISIBLE_COLUMNS
+    const next = parsed.filter((value): value is LogColumnId => LOG_COLUMN_ORDER.includes(value))
+    return next.length > 0 ? next : DEFAULT_VISIBLE_COLUMNS
+  } catch {
+    return DEFAULT_VISIBLE_COLUMNS
+  }
+}
+
+function loadStoredDensity(): RowDensity {
+  if (typeof window === 'undefined') return 'comfortable'
+  const raw = window.localStorage.getItem(LOG_DENSITY_STORAGE_KEY)
+  return raw === 'compact' ? 'compact' : 'comfortable'
+}
 
 function toTimestamp(value: DateInput, endOfDay = false): number | undefined {
   if (!value) return undefined
@@ -76,6 +148,10 @@ function formatPayloadDisplay(value: string | null | undefined, fallback: string
   }
 }
 
+function isSameDateFilter(fromDate: DateInput, toDate: DateInput, date: string): boolean {
+  return fromDate === date && toDate === date
+}
+
 export default function LogsPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
@@ -92,9 +168,20 @@ export default function LogsPage() {
   const [selectedApiKeys, setSelectedApiKeys] = useState<number[]>([])
   const [exporting, setExporting] = useState(false)
   const [filtersExpanded, setFiltersExpanded] = useState(false)
-  const [rowDensity, setRowDensity] = useState<RowDensity>('comfortable')
+  const [rowDensity, setRowDensity] = useState<RowDensity>(loadStoredDensity)
+  const [visibleColumns, setVisibleColumns] = useState<LogColumnId[]>(loadStoredColumns)
   const [showScrollHint, setShowScrollHint] = useState(false)
   const tableScrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(LOG_DENSITY_STORAGE_KEY, rowDensity)
+  }, [rowDensity])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(LOG_COLUMN_STORAGE_KEY, JSON.stringify(visibleColumns))
+  }, [visibleColumns])
 
   useEffect(() => {
     setPage(1)
@@ -282,7 +369,87 @@ export default function LogsPage() {
     return map
   }, [apiKeys])
 
-  const handleResetFilters = () => {
+  const visibleColumnSet = useMemo(() => new Set(visibleColumns), [visibleColumns])
+  const columnOptions = useMemo(
+    () => LOG_COLUMN_ORDER.map((id) => ({
+      id,
+      label: t(`logs.table.columns.${id}` as const)
+    })),
+    [t]
+  )
+  const visibleColumnCount = visibleColumns.length + 2
+  const todayString = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const activeQuickView = useMemo<QuickView | null>(() => {
+    if (
+      providerFilter === 'all' &&
+      endpointFilter === 'all' &&
+      modelFilter.trim() === '' &&
+      statusFilter === 'all' &&
+      fromDate === '' &&
+      toDate === '' &&
+      selectedApiKeys.length === 0
+    ) {
+      return 'all'
+    }
+    if (
+      statusFilter === 'error' &&
+      endpointFilter === 'all' &&
+      providerFilter === 'all' &&
+      modelFilter.trim() === '' &&
+      fromDate === '' &&
+      toDate === '' &&
+      selectedApiKeys.length === 0
+    ) {
+      return 'errors'
+    }
+    if (
+      isSameDateFilter(fromDate, toDate, todayString) &&
+      endpointFilter === 'all' &&
+      providerFilter === 'all' &&
+      modelFilter.trim() === '' &&
+      statusFilter === 'all' &&
+      selectedApiKeys.length === 0
+    ) {
+      return 'today'
+    }
+    if (
+      endpointFilter === 'anthropic' &&
+      providerFilter === 'all' &&
+      modelFilter.trim() === '' &&
+      statusFilter === 'all' &&
+      fromDate === '' &&
+      toDate === '' &&
+      selectedApiKeys.length === 0
+    ) {
+      return 'anthropic'
+    }
+    if (
+      endpointFilter === 'openai' &&
+      providerFilter === 'all' &&
+      modelFilter.trim() === '' &&
+      statusFilter === 'all' &&
+      fromDate === '' &&
+      toDate === '' &&
+      selectedApiKeys.length === 0
+    ) {
+      return 'openai'
+    }
+    return null
+  }, [endpointFilter, fromDate, modelFilter, providerFilter, selectedApiKeys.length, statusFilter, toDate, todayString])
+
+  const toggleColumn = useCallback((column: LogColumnId) => {
+    setVisibleColumns((prev) => {
+      if (prev.includes(column)) {
+        if (prev.length === 1) return prev
+        return prev.filter((item) => item !== column)
+      }
+      const next = [...prev, column]
+      next.sort((a, b) => LOG_COLUMN_ORDER.indexOf(a) - LOG_COLUMN_ORDER.indexOf(b))
+      return next
+    })
+  }, [])
+
+  const handleResetFilters = useCallback(() => {
     setProviderFilter('all')
     setModelFilter('')
     setEndpointFilter('all')
@@ -290,7 +457,31 @@ export default function LogsPage() {
     setFromDate('')
     setToDate('')
     setSelectedApiKeys([])
-  }
+  }, [])
+
+  const applyQuickView = useCallback((view: QuickView) => {
+    setPage(1)
+    handleResetFilters()
+    if (view === 'all') {
+      return
+    }
+    if (view === 'errors') {
+      setStatusFilter('error')
+      return
+    }
+    if (view === 'today') {
+      setFromDate(todayString)
+      setToDate(todayString)
+      return
+    }
+    if (view === 'anthropic') {
+      setEndpointFilter('anthropic')
+      return
+    }
+    if (view === 'openai') {
+      setEndpointFilter('openai')
+    }
+  }, [handleResetFilters, todayString])
 
   const handleExport = useCallback(async () => {
     if (exporting) return
@@ -365,6 +556,9 @@ export default function LogsPage() {
         icon={<FileText className="h-5 w-5" aria-hidden="true" />}
         title={t('logs.title')}
         description={t('logs.description')}
+        eyebrow="Traffic Explorer"
+        breadcrumb="Gateway / Logs"
+        helper={t('logs.filtersDescription')}
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1 rounded-full border border-border/70 bg-background/80 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
@@ -393,6 +587,53 @@ export default function LogsPage() {
                 {t('logs.table.density.compact')}
               </button>
             </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm">
+                  {t('logs.actions.columns')}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 rounded-[1.2rem] border-white/60 p-3">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">{t('logs.actions.columns')}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('logs.actions.visibleCount', { count: visibleColumns.length })}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setVisibleColumns(DEFAULT_VISIBLE_COLUMNS)}
+                    disabled={JSON.stringify(visibleColumns) === JSON.stringify(DEFAULT_VISIBLE_COLUMNS)}
+                  >
+                    {t('common.actions.reset')}
+                  </Button>
+                </div>
+                <div className="grid gap-1.5">
+                  {columnOptions.map((column) => {
+                    const checked = visibleColumnSet.has(column.id)
+                    return (
+                      <label
+                        key={column.id}
+                        className={cn(
+                          'flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-primary/5',
+                          checked && 'bg-primary/10 text-primary'
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleColumn(column.id)}
+                          className="h-4 w-4 rounded border-border"
+                        />
+                        <span>{column.label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
             <Button onClick={handleExport} disabled={exporting}>
               <Download className="mr-2 h-4 w-4" />
               {exporting ? t('common.actions.loading') : t('logs.actions.export')}
@@ -455,27 +696,40 @@ export default function LogsPage() {
 
             <div className="flex items-center justify-between gap-3">
               <div className="flex flex-1 items-center gap-3 overflow-hidden">
-              {activeFilters.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  {activeFilters.map((f) => (
-                    <Badge
-                      key={f.key}
-                      variant="secondary"
-                      role="button"
-                      tabIndex={0}
-                      className="cursor-pointer gap-1 hover:bg-destructive/10 hover:text-destructive"
-                      onClick={f.onRemove}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f.onRemove() } }}
-                    >
-                      {f.label}
-                      <X className="h-3 w-3" aria-hidden="true" />
-                    </Badge>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-sm text-muted-foreground">{t('common.filters.allRequests')}</span>
-              )}
+                {activeFilters.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {activeFilters.map((f) => (
+                      <Badge
+                        key={f.key}
+                        variant="secondary"
+                        role="button"
+                        tabIndex={0}
+                        className="cursor-pointer gap-1 hover:bg-destructive/10 hover:text-destructive"
+                        onClick={f.onRemove}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f.onRemove() } }}
+                      >
+                        {f.label}
+                        <X className="h-3 w-3" aria-hidden="true" />
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-sm text-muted-foreground">{t('common.filters.allRequests')}</span>
+                )}
+              </div>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {(['all', 'errors', 'today', 'anthropic', 'openai'] as QuickView[]).map((view) => (
+                <Button
+                  key={view}
+                  variant={activeQuickView === view ? 'default' : 'outline'}
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => applyQuickView(view)}
+                >
+                  {t(`logs.quickViews.${view}` as const)}
+                </Button>
+              ))}
             </div>
           </div>
           {filtersExpanded && (
@@ -579,20 +833,48 @@ export default function LogsPage() {
                     <th className="sticky left-0 z-20 bg-muted/95 px-3 py-2 text-left text-xs font-medium backdrop-blur">
                       {t('logs.table.columns.time')}
                     </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.endpoint')}</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.provider')}</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.requestedModel')}</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.routedModel')}</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.apiKey')}</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.inputTokens')}</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.cacheReadTokens')}</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.cacheCreationTokens')}</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.outputTokens')}</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.latency')}</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.ttft')}</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.tpot')}</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium">{t('logs.table.columns.status')}</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.error')}</th>
+                    {visibleColumnSet.has('endpoint') && (
+                      <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.endpoint')}</th>
+                    )}
+                    {visibleColumnSet.has('provider') && (
+                      <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.provider')}</th>
+                    )}
+                    {visibleColumnSet.has('requestedModel') && (
+                      <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.requestedModel')}</th>
+                    )}
+                    {visibleColumnSet.has('routedModel') && (
+                      <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.routedModel')}</th>
+                    )}
+                    {visibleColumnSet.has('apiKey') && (
+                      <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.apiKey')}</th>
+                    )}
+                    {visibleColumnSet.has('inputTokens') && (
+                      <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.inputTokens')}</th>
+                    )}
+                    {visibleColumnSet.has('cacheReadTokens') && (
+                      <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.cacheReadTokens')}</th>
+                    )}
+                    {visibleColumnSet.has('cacheCreationTokens') && (
+                      <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.cacheCreationTokens')}</th>
+                    )}
+                    {visibleColumnSet.has('outputTokens') && (
+                      <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.outputTokens')}</th>
+                    )}
+                    {visibleColumnSet.has('latency') && (
+                      <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.latency')}</th>
+                    )}
+                    {visibleColumnSet.has('ttft') && (
+                      <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.ttft')}</th>
+                    )}
+                    {visibleColumnSet.has('tpot') && (
+                      <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.tpot')}</th>
+                    )}
+                    {visibleColumnSet.has('status') && (
+                      <th className="px-3 py-2 text-center text-xs font-medium">{t('logs.table.columns.status')}</th>
+                    )}
+                    {visibleColumnSet.has('error') && (
+                      <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.error')}</th>
+                    )}
                     <th className="sticky right-0 z-20 bg-muted/95 px-3 py-2 text-center text-xs font-medium backdrop-blur">
                       {t('logs.table.columns.actions')}
                     </th>
@@ -601,11 +883,11 @@ export default function LogsPage() {
                 <tbody className="divide-y">
                   {logsQuery.isPending ? (
                     Array.from({ length: 8 }).map((_, i) => (
-                      <TableRowSkeleton key={i} columns={16} />
+                      <TableRowSkeleton key={i} columns={visibleColumnCount} />
                     ))
                   ) : items.length === 0 ? (
                   <tr>
-                    <td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                    <td colSpan={visibleColumnCount} className="px-3 py-8 text-center text-sm text-muted-foreground">
                       <div className="flex flex-col items-center gap-3 py-4">
                         <span>{t('logs.table.empty')}</span>
                         {activeFilters.length > 0 && (
@@ -626,6 +908,7 @@ export default function LogsPage() {
                       onSelect={handleOpenDetail}
                       isEven={index % 2 === 0}
                       density={rowDensity}
+                      visibleColumnSet={visibleColumnSet}
                     />
                   ))
                 )}
@@ -695,7 +978,8 @@ function LogRow({
   apiKeyMap,
   onSelect,
   isEven,
-  density
+  density,
+  visibleColumnSet
 }: {
   record: LogRecord
   providerLabelMap: Map<string, string>
@@ -703,6 +987,7 @@ function LogRow({
   onSelect: (id: number) => void
   isEven: boolean
   density: RowDensity
+  visibleColumnSet: ReadonlySet<LogColumnId>
 }) {
   const { t } = useTranslation()
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
@@ -732,36 +1017,64 @@ function LogRow({
   return (
     <tr className={cn('transition-colors', isEven ? 'bg-muted/30' : '', 'hover:bg-muted/50')}>
       <td className={cn('sticky left-0 z-10 text-xs', cellPadding, stickyCellBg)}>{formatDateTime(record.timestamp)}</td>
-      <td className={cn(cellPadding, 'text-xs')}>{endpointLabel}</td>
-      <td className={cn(cellPadding, 'text-xs')}>
-        <div className="max-w-[100px] truncate" title={providerLabel}>{providerLabel}</div>
-      </td>
-      <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
-        <div className="max-w-[120px] truncate" title={requestedModel}>{requestedModel}</div>
-      </td>
-      <td className={cn(cellPadding, 'text-xs')}>
-        <div className="max-w-[120px] truncate" title={record.model}>{record.model}</div>
-      </td>
-      <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
-        <div className="max-w-[90px] truncate" title={apiKeyLabel}>{apiKeyLabel}</div>
-      </td>
-      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.input_tokens)}</td>
-      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.cache_read_tokens)}</td>
-      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.cache_creation_tokens)}</td>
-      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.output_tokens)}</td>
-      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.latency_ms, 'ms')}</td>
-      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.ttft_ms, 'ms')}</td>
-      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.tpot_ms, 'ms/tk')}</td>
-      <td className={cn(cellPadding, 'text-center')}>
-        <Badge variant={isError ? 'destructive' : 'default'} className="text-xs">
-          {statusCode ?? (isError ? 500 : 200)}
-        </Badge>
-      </td>
-      <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
-        <div className="max-w-[100px] truncate" title={record.error ?? ''}>
-          {record.error ? record.error : '-'}
-        </div>
-      </td>
+      {visibleColumnSet.has('endpoint') && (
+        <td className={cn(cellPadding, 'text-xs')}>{endpointLabel}</td>
+      )}
+      {visibleColumnSet.has('provider') && (
+        <td className={cn(cellPadding, 'text-xs')}>
+          <div className="max-w-[100px] truncate" title={providerLabel}>{providerLabel}</div>
+        </td>
+      )}
+      {visibleColumnSet.has('requestedModel') && (
+        <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
+          <div className="max-w-[120px] truncate" title={requestedModel}>{requestedModel}</div>
+        </td>
+      )}
+      {visibleColumnSet.has('routedModel') && (
+        <td className={cn(cellPadding, 'text-xs')}>
+          <div className="max-w-[120px] truncate" title={record.model}>{record.model}</div>
+        </td>
+      )}
+      {visibleColumnSet.has('apiKey') && (
+        <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
+          <div className="max-w-[90px] truncate" title={apiKeyLabel}>{apiKeyLabel}</div>
+        </td>
+      )}
+      {visibleColumnSet.has('inputTokens') && (
+        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.input_tokens)}</td>
+      )}
+      {visibleColumnSet.has('cacheReadTokens') && (
+        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.cache_read_tokens)}</td>
+      )}
+      {visibleColumnSet.has('cacheCreationTokens') && (
+        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.cache_creation_tokens)}</td>
+      )}
+      {visibleColumnSet.has('outputTokens') && (
+        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.output_tokens)}</td>
+      )}
+      {visibleColumnSet.has('latency') && (
+        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.latency_ms, 'ms')}</td>
+      )}
+      {visibleColumnSet.has('ttft') && (
+        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.ttft_ms, 'ms')}</td>
+      )}
+      {visibleColumnSet.has('tpot') && (
+        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.tpot_ms, 'ms/tk')}</td>
+      )}
+      {visibleColumnSet.has('status') && (
+        <td className={cn(cellPadding, 'text-center')}>
+          <Badge variant={isError ? 'destructive' : 'default'} className="text-xs">
+            {statusCode ?? (isError ? 500 : 200)}
+          </Badge>
+        </td>
+      )}
+      {visibleColumnSet.has('error') && (
+        <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
+          <div className="max-w-[100px] truncate" title={record.error ?? ''}>
+            {record.error ? record.error : '-'}
+          </div>
+        </td>
+      )}
       <td className={cn('sticky right-0 z-10 text-center', cellPadding, stickyCellBg)}>
         <Button variant="outline" size="sm" onClick={() => onSelect(record.id)}>
           {t('logs.actions.detail')}

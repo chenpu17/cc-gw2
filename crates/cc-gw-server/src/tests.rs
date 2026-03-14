@@ -2,6 +2,7 @@ use super::*;
 use axum::extract::Query;
 use std::fs as stdfs;
 use tokio::task::JoinHandle;
+use tokio::time::{sleep, Duration};
 
 fn test_paths(label: &str) -> GatewayPaths {
     let root = std::env::temp_dir().join(format!(
@@ -725,6 +726,180 @@ async fn api_key_admin_reveal_and_stats_work_end_to_end() {
         .await
         .expect("request with disabled api key");
     assert_eq!(disabled_response.status(), StatusCode::UNAUTHORIZED);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn api_status_reports_live_and_recent_client_activity() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            sleep(Duration::from_millis(600)).await;
+            Json(json!({
+                "choices": [{
+                    "message": { "content": "ok" }
+                }],
+                "usage": {
+                    "prompt_tokens": 4,
+                    "completion_tokens": 2
+                }
+            }))
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.defaults.completion = Some("gpt-test".to_string());
+    if let Some(openai) = config.endpoint_routing.get_mut("openai") {
+        openai.defaults.completion = Some("gpt-test".to_string());
+    }
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "api-status-activity").await;
+    let client = reqwest::Client::new();
+
+    let create_key: Value = client
+        .post(format!("http://{gateway_addr}/api/keys"))
+        .json(&json!({ "name": "status-test" }))
+        .send()
+        .await
+        .expect("create api key")
+        .json()
+        .await
+        .expect("decode api key create");
+    let api_key = create_key
+        .get("key")
+        .and_then(Value::as_str)
+        .expect("created api key")
+        .to_string();
+
+    let request_client = client.clone();
+    let request_url = format!("http://{gateway_addr}/openai/v1/chat/completions");
+    let in_flight = tokio::spawn(async move {
+        request_client
+            .post(request_url)
+            .header("x-api-key", api_key)
+            .header("x-forwarded-for", "203.0.113.10")
+            .json(&json!({
+                "model": "gpt-test",
+                "user": "session-live",
+                "messages": [{ "role": "user", "content": "hello" }]
+            }))
+            .send()
+            .await
+            .expect("send in-flight request")
+    });
+
+    sleep(Duration::from_millis(150)).await;
+
+    let live_status: Value = client
+        .get(format!("http://{gateway_addr}/api/status?endpoint=openai"))
+        .send()
+        .await
+        .expect("request live status")
+        .json()
+        .await
+        .expect("decode live status");
+    assert_eq!(
+        live_status
+            .get("activeRequests")
+            .and_then(Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        live_status
+            .get("activeClientAddresses")
+            .and_then(Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        live_status
+            .get("activeClientSessions")
+            .and_then(Value::as_u64),
+        Some(1)
+    );
+
+    let response = in_flight.await.expect("join in-flight request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    for (source_ip, session_id) in [
+        ("203.0.113.11", "session-live"),
+        ("203.0.113.12", "session-b"),
+    ] {
+        let follow_up = client
+            .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+            .header(
+                "x-api-key",
+                create_key
+                    .get("key")
+                    .and_then(Value::as_str)
+                    .expect("created api key"),
+            )
+            .header("x-forwarded-for", source_ip)
+            .json(&json!({
+                "model": "gpt-test",
+                "user": session_id,
+                "messages": [{ "role": "user", "content": "follow up" }]
+            }))
+            .send()
+            .await
+            .expect("send follow up request");
+        assert_eq!(follow_up.status(), StatusCode::OK);
+    }
+
+    let settled_status: Value = client
+        .get(format!("http://{gateway_addr}/api/status?endpoint=openai"))
+        .send()
+        .await
+        .expect("request settled status")
+        .json()
+        .await
+        .expect("decode settled status");
+    assert_eq!(
+        settled_status
+            .get("activeRequests")
+            .and_then(Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        settled_status
+            .get("activeClientAddresses")
+            .and_then(Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        settled_status
+            .get("activeClientSessions")
+            .and_then(Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        settled_status
+            .get("uniqueClientAddressesLastHour")
+            .and_then(Value::as_u64),
+        Some(3)
+    );
+    assert_eq!(
+        settled_status
+            .get("uniqueClientSessionsLastHour")
+            .and_then(Value::as_u64),
+        Some(2)
+    );
 
     gateway_handle.abort();
     upstream_handle.abort();
