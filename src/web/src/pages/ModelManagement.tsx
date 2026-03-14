@@ -6,6 +6,7 @@ import { apiClient, customEndpointsApi, toApiError, type ApiError } from '@/serv
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import { PageHeader } from '@/components/PageHeader'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,6 +55,11 @@ interface AnthropicHeaderOption {
   label: string
   description: string
 }
+
+type ConfirmAction =
+  | { kind: 'provider'; provider: ProviderConfig }
+  | { kind: 'preset'; endpoint: string; preset: RoutingPreset }
+  | { kind: 'endpoint'; endpoint: CustomEndpoint }
 
 const CLAUDE_MODEL_SUGGESTIONS = [
   'claude-sonnet-4-5-20250929',
@@ -254,9 +260,29 @@ export default function ModelManagementPage() {
   const [savingClaudeValidation, setSavingClaudeValidation] = useState(false)
   const [presetsExpanded, setPresetsExpanded] = useState<Record<string, boolean>>({})
   const [presetDiffDialog, setPresetDiffDialog] = useState<{ endpoint: string; preset: RoutingPreset } | null>(null)
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
+  const [confirmingAction, setConfirmingAction] = useState(false)
+  const [providerSearch, setProviderSearch] = useState('')
+  const [providerTypeFilter, setProviderTypeFilter] = useState<string>('all')
 
   const providers = config?.providers ?? []
   const providerCount = providers.length
+  const filteredProviders = useMemo(() => {
+    return providers.filter((provider) => {
+      const matchesType = providerTypeFilter === 'all' || (provider.type ?? 'custom') === providerTypeFilter
+      if (!matchesType) return false
+      const keyword = providerSearch.trim().toLowerCase()
+      if (!keyword) return true
+      const haystack = [
+        provider.id,
+        provider.label ?? '',
+        provider.baseUrl,
+        provider.defaultModel ?? '',
+        ...(provider.models?.map((model) => model.id) ?? [])
+      ].join(' ').toLowerCase()
+      return haystack.includes(keyword)
+    })
+  }, [providerSearch, providerTypeFilter, providers])
 
   const anthropicTestHeaderOptions = useMemo<AnthropicHeaderOption[]>(() => [
     {
@@ -544,8 +570,6 @@ export default function ModelManagementPage() {
 
   const handleDeletePreset = async (endpoint: Endpoint, preset: RoutingPreset) => {
     if (!ensureConfig()) return
-    const confirmed = window.confirm(t('modelManagement.confirm.deletePreset', { name: preset.name }))
-    if (!confirmed) return
 
     setDeletingPreset({ endpoint, name: preset.name })
     try {
@@ -613,10 +637,6 @@ export default function ModelManagementPage() {
     const endpoint = customEndpoints.find((e) => e.id === endpointId)
     if (!endpoint) return
     if (endpoint.deletable === false) return
-
-    if (!confirm(t('modelManagement.deleteEndpointConfirm', { label: endpoint.label }))) {
-      return
-    }
 
     try {
       await customEndpointsApi.delete(endpointId)
@@ -759,10 +779,6 @@ export default function ModelManagementPage() {
 
   const handleDelete = async (provider: ProviderConfig) => {
     if (!ensureConfig()) return
-    const confirmed = window.confirm(
-      t('providers.confirm.delete', { name: provider.label || provider.id })
-    )
-    if (!confirmed) return
 
     const nextProviders = providers.filter((item) => item.id !== provider.id)
 
@@ -819,6 +835,24 @@ export default function ModelManagementPage() {
         }),
         variant: 'error'
       })
+    }
+  }
+
+  const handleConfirmDialog = async () => {
+    if (!confirmAction) return
+
+    setConfirmingAction(true)
+    try {
+      if (confirmAction.kind === 'provider') {
+        await handleDelete(confirmAction.provider)
+      } else if (confirmAction.kind === 'preset') {
+        await handleDeletePreset(confirmAction.endpoint, confirmAction.preset)
+      } else {
+        await handleDeleteEndpoint(confirmAction.endpoint.id)
+      }
+      setConfirmAction(null)
+    } finally {
+      setConfirmingAction(false)
     }
   }
 
@@ -1088,14 +1122,14 @@ export default function ModelManagementPage() {
   }
 
   const renderProvidersSection = () => (
-    <Card>
+    <Card className="surface-1">
       <CardContent className="pt-6 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">{t('providers.title')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{t('providers.description')}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
             <Badge variant="secondary">{t('providers.count', { count: providerCount })}</Badge>
             <Button
               variant="outline"
@@ -1113,21 +1147,58 @@ export default function ModelManagementPage() {
           </div>
         </div>
 
+        <div className="grid gap-3 rounded-[1.35rem] border border-white/40 bg-background/45 p-4 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+          <Input
+            value={providerSearch}
+            onChange={(event) => setProviderSearch(event.target.value)}
+            placeholder={t('providers.filters.searchPlaceholder')}
+          />
+          <Select value={providerTypeFilter} onValueChange={setProviderTypeFilter}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('providers.filters.typeAll')}</SelectItem>
+              <SelectItem value="openai">OpenAI</SelectItem>
+              <SelectItem value="anthropic">Anthropic</SelectItem>
+              <SelectItem value="deepseek">DeepSeek</SelectItem>
+              <SelectItem value="huawei">Huawei</SelectItem>
+              <SelectItem value="kimi">Kimi</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setProviderSearch('')
+              setProviderTypeFilter('all')
+            }}
+            disabled={!providerSearch.trim() && providerTypeFilter === 'all'}
+          >
+            {t('common.actions.reset')}
+          </Button>
+        </div>
+
         {configQuery.isPending || (!config && configQuery.isFetching) ? (
-          <div className="flex min-h-[200px] items-center justify-center rounded-lg border bg-muted/50 text-sm text-muted-foreground">
+          <div className="flex min-h-[200px] items-center justify-center rounded-[1.25rem] border border-border/70 bg-background/45 text-sm text-muted-foreground">
             {t('common.loading')}
           </div>
         ) : providers.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">
+          <div className="rounded-[1.25rem] border border-dashed border-border/70 bg-background/45 p-12 text-center text-sm text-muted-foreground">
             <p className="font-medium">{t('providers.emptyState')}</p>
             <p className="mt-2 text-xs">
               {t('providers.emptyStateSub', { default: '点击上方按钮添加您的第一个提供商' })}
             </p>
           </div>
+        ) : filteredProviders.length === 0 ? (
+          <div className="rounded-[1.25rem] border border-dashed border-border/70 bg-background/45 p-12 text-center text-sm text-muted-foreground">
+            <p className="font-medium">{t('providers.emptyFiltered')}</p>
+          </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {providers.map((provider) => (
-              <Card key={provider.id} className="flex flex-col">
+          <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">
+            {filteredProviders.map((provider) => (
+              <Card key={provider.id} className="surface-1 flex flex-col">
                 <CardContent className="flex flex-1 flex-col gap-4 pt-6">
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
@@ -1149,10 +1220,45 @@ export default function ModelManagementPage() {
                     )}
                   </div>
 
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                        {t('providers.card.authMode')}
+                      </p>
+                      <p className="mt-1 text-sm font-medium">
+                        {provider.authMode === 'authToken'
+                          ? 'Bearer'
+                          : provider.authMode === 'xAuthToken'
+                            ? 'X-Auth-Token'
+                            : 'API Key'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                        {t('providers.card.modelsTitle')}
+                      </p>
+                      <p className="mt-1 text-sm font-medium">
+                        {provider.models?.length
+                          ? t('providers.card.modelCount', { count: provider.models.length })
+                          : t('providers.card.passthrough')}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                        {t('providers.card.defaultModelLabel')}
+                      </p>
+                      <p className="mt-1 truncate text-sm font-medium">
+                        {provider.defaultModel
+                          ? defaultLabels.get(provider.id) ?? provider.defaultModel
+                          : t('providers.card.noDefault')}
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <Label className="text-xs">{t('providers.card.modelsTitle')}</Label>
                     {provider.models && provider.models.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
                         {provider.models.map((model) => (
                           <Badge key={model.id} variant="outline" className="text-xs">
                             {resolveModelLabel(model)}
@@ -1164,8 +1270,8 @@ export default function ModelManagementPage() {
                     )}
                   </div>
 
-                  <div className="mt-auto flex flex-wrap gap-2 pt-4 border-t">
-                    <Button variant="outline" size="sm" onClick={() => handleOpenEdit(provider)}>
+                  <div className="mt-auto flex flex-wrap gap-2 border-t pt-4">
+                    <Button variant="default" size="sm" onClick={() => handleOpenEdit(provider)}>
                       {t('providers.actions.edit')}
                     </Button>
                     <Button
@@ -1176,7 +1282,7 @@ export default function ModelManagementPage() {
                     >
                       {testingProviderId === provider.id ? t('common.actions.testingConnection') : t('providers.actions.test')}
                     </Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDelete(provider)}>
+                    <Button variant="destructive" size="sm" onClick={() => setConfirmAction({ kind: 'provider', provider })}>
                       {t('providers.actions.delete')}
                     </Button>
                   </div>
@@ -1197,10 +1303,10 @@ export default function ModelManagementPage() {
     const expanded = presetsExpanded[endpoint] === true
 
     return (
-      <div className="rounded-lg border border-dashed bg-muted/30">
+      <div className="rounded-[1.25rem] border border-dashed border-border/70 bg-background/45">
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/50 transition-colors"
+          className="flex w-full items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-primary/5"
           onClick={() => setPresetsExpanded((prev) => ({ ...prev, [endpoint]: !expanded }))}
         >
           <div className="flex items-center gap-2">
@@ -1242,7 +1348,7 @@ export default function ModelManagementPage() {
                     return (
                       <div
                         key={preset.name}
-                        className="flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3"
+                        className="flex items-center justify-between gap-3 rounded-[1.15rem] border border-white/50 bg-card/88 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
                       >
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -1283,7 +1389,7 @@ export default function ModelManagementPage() {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => void handleDeletePreset(endpoint, preset)}
+                            onClick={() => setConfirmAction({ kind: 'preset', endpoint, preset })}
                             disabled={isDeleting || isApplying}
                           >
                             {isDeleting ? t('modelManagement.presets.deleting') : t('modelManagement.presets.delete')}
@@ -1324,32 +1430,18 @@ export default function ModelManagementPage() {
     const existingSources = new Set(entries.map(e => e.source.trim()).filter(Boolean))
 
     return (
-      <Card>
+      <Card className="surface-1">
         <CardContent className="pt-6 space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold">
-                {t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}
-              </h2>
-              <p className="max-w-3xl text-sm text-muted-foreground">{endpointDescription}</p>
-              <p className="max-w-3xl text-xs text-muted-foreground">{t('settings.routing.wildcardHint')}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => handleAddRoute(endpoint)} disabled={isSaving}>
-                {t('settings.routing.add')}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handleResetRoutes(endpoint)} disabled={isSaving}>
-                {t('common.actions.reset')}
-              </Button>
-              <Button size="sm" onClick={() => void handleSaveRoutes(endpoint)} disabled={isSaving} className="relative">
-                {isSaving ? t('common.actions.saving') : t('modelManagement.actions.saveRoutes')}
-                {isDirty && <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-500" />}
-              </Button>
-            </div>
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">
+              {t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}
+            </h2>
+            <p className="max-w-3xl text-sm text-muted-foreground">{endpointDescription}</p>
+            <p className="max-w-3xl text-xs text-muted-foreground">{t('settings.routing.wildcardHint')}</p>
           </div>
 
           {isAnthropicProtocol && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+            <div className="rounded-[1.25rem] border border-blue-200 bg-blue-50/75 p-4 dark:border-blue-800 dark:bg-blue-950">
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
@@ -1381,51 +1473,62 @@ export default function ModelManagementPage() {
             <p className="text-sm text-destructive">{error}</p>
           )}
 
-          {entries.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">
-              <p className="font-medium">{t('settings.routing.empty')}</p>
-              <p className="mt-2 text-xs">{t('settings.routing.emptySub', { default: '点击上方按钮添加路由规则' })}</p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label>{t('modelManagement.routesEditorTitle')}</Label>
+              {isDirty && (
+                <Badge variant="outline" className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300">
+                  {t('modelManagement.actions.unsaved')}
+                </Badge>
+              )}
             </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-3 px-1 text-xs font-medium text-muted-foreground">
-                <span>{t('settings.routing.source')}</span>
-                <span />
-                <span>{t('settings.routing.target')}</span>
-                <span />
-              </div>
-              {entries.map((entry) => (
-                <div key={entry.id} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-3">
-                  <Input
-                    value={entry.source}
-                    onChange={(e) => handleRouteChange(endpoint, entry.id, 'source', e.target.value)}
-                    placeholder={t('settings.routing.sourcePlaceholder')}
-                    list={sourceListId}
-                    disabled={isSaving}
-                  />
-                  <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                  <TargetCombobox
-                    value={entry.target}
-                    onChange={(v) => handleRouteChange(endpoint, entry.id, 'target', v)}
-                    options={providerModelOptions}
-                    disabled={isSaving}
-                    placeholder={t('settings.routing.targetPlaceholder')}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleRemoveRoute(endpoint, entry.id)}
-                    disabled={isSaving}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
 
-          <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+            {entries.length === 0 ? (
+              <div className="rounded-[1.25rem] border border-dashed border-border/70 bg-background/45 p-12 text-center text-sm text-muted-foreground">
+                <p className="font-medium">{t('settings.routing.empty')}</p>
+                <p className="mt-2 text-xs">{t('modelManagement.emptyRoutesHint')}</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-3 px-1 text-xs font-medium text-muted-foreground">
+                  <span>{t('settings.routing.source')}</span>
+                  <span />
+                  <span>{t('settings.routing.target')}</span>
+                  <span />
+                </div>
+                {entries.map((entry) => (
+                  <div key={entry.id} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-3">
+                    <Input
+                      value={entry.source}
+                      onChange={(e) => handleRouteChange(endpoint, entry.id, 'source', e.target.value)}
+                      placeholder={t('settings.routing.sourcePlaceholder')}
+                      list={sourceListId}
+                      disabled={isSaving}
+                    />
+                    <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <TargetCombobox
+                      value={entry.target}
+                      onChange={(v) => handleRouteChange(endpoint, entry.id, 'target', v)}
+                      options={providerModelOptions}
+                      disabled={isSaving}
+                      placeholder={t('settings.routing.targetPlaceholder')}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleRemoveRoute(endpoint, entry.id)}
+                      disabled={isSaving}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-[1.25rem] border border-border/70 bg-background/55 p-4 space-y-3">
             <Label>{t('settings.routing.suggested')}</Label>
             <div className="flex flex-wrap gap-2">
               {suggestions.map((model) => {
@@ -1446,6 +1549,27 @@ export default function ModelManagementPage() {
             </div>
           </div>
 
+          <div className="flex flex-col gap-3 rounded-[1.25rem] border border-white/50 bg-card/82 p-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">{t('modelManagement.actions.footerTitle')}</p>
+              <p className="text-xs text-muted-foreground">
+                {isDirty ? t('modelManagement.actions.footerDirtyHint') : t('modelManagement.actions.footerSavedHint')}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => handleAddRoute(endpoint)} disabled={isSaving}>
+                {t('settings.routing.add')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleResetRoutes(endpoint)} disabled={isSaving || !isDirty}>
+                {t('common.actions.reset')}
+              </Button>
+              <Button size="sm" onClick={() => void handleSaveRoutes(endpoint)} disabled={isSaving} className="relative">
+                {isSaving ? t('common.actions.saving') : t('modelManagement.actions.saveRoutes')}
+                {isDirty && <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-500" />}
+              </Button>
+            </div>
+          </div>
+
           <datalist id={sourceListId}>
             {suggestions.map((model) => (
               <option key={`${sourceListId}-${model}`} value={model} />
@@ -1455,6 +1579,30 @@ export default function ModelManagementPage() {
       </Card>
     )
   }
+
+  const confirmDialogTitle = confirmAction?.kind === 'provider'
+    ? t('providers.actions.delete')
+    : confirmAction?.kind === 'preset'
+      ? t('modelManagement.presets.delete')
+      : confirmAction?.kind === 'endpoint'
+        ? t('common.delete')
+        : ''
+
+  const confirmDialogDescription = confirmAction?.kind === 'provider'
+    ? t('providers.confirm.delete', { name: confirmAction.provider.label || confirmAction.provider.id })
+    : confirmAction?.kind === 'preset'
+      ? t('modelManagement.confirm.deletePreset', { name: confirmAction.preset.name })
+      : confirmAction?.kind === 'endpoint'
+        ? t('modelManagement.deleteEndpointConfirm', { label: confirmAction.endpoint.label })
+        : ''
+
+  const confirmDialogName = confirmAction?.kind === 'provider'
+    ? confirmAction.provider.label || confirmAction.provider.id
+    : confirmAction?.kind === 'preset'
+      ? confirmAction.preset.name
+      : confirmAction?.kind === 'endpoint'
+        ? confirmAction.endpoint.label
+        : ''
 
   return (
     <div className="flex flex-col gap-6">
@@ -1473,33 +1621,36 @@ export default function ModelManagementPage() {
         }
       />
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex gap-3 overflow-x-auto pb-2">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key
           const tabDirty = tab.key !== 'providers' && isDirtyByEndpoint[tab.key]
           return (
-            <div key={tab.key} className="relative">
+            <div key={tab.key} className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
                 className={cn(
-                  'flex min-w-[200px] flex-col gap-1 rounded-lg border px-4 py-3 text-left transition-all',
+                  'flex min-w-[150px] flex-col gap-1 rounded-[1.15rem] border px-4 py-3 text-left transition-all sm:min-w-[190px]',
                   isActive
-                    ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-border bg-card hover:bg-accent'
+                    ? 'border-primary/30 bg-primary/8 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]'
+                    : 'border-white/50 bg-card/84 hover:bg-primary/5'
                 )}
               >
                 <span className="font-medium flex items-center gap-2">
                   {tab.label}
                   {tabDirty && <span className="h-2 w-2 rounded-full bg-amber-500" />}
                 </span>
-                <span className="text-xs text-muted-foreground">{tab.description}</span>
+                <span className="line-clamp-2 text-xs text-muted-foreground">{tab.description}</span>
               </button>
               {tab.canDelete && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    void handleDeleteEndpoint(tab.key)
+                    const endpoint = customEndpoints.find((item) => item.id === tab.key)
+                    if (endpoint) {
+                      setConfirmAction({ kind: 'endpoint', endpoint })
+                    }
                   }}
                   className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs hover:bg-destructive/90"
                   title={t('common.delete')}
@@ -1561,6 +1712,27 @@ export default function ModelManagementPage() {
         }}
         onClose={() => setPresetDiffDialog(null)}
       />
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => {
+          if (!open && !confirmingAction) {
+            setConfirmAction(null)
+          }
+        }}
+        title={confirmDialogTitle}
+        description={confirmDialogDescription}
+        confirmLabel={confirmingAction ? t('common.actions.loading') : t('common.delete')}
+        cancelLabel={t('common.actions.cancel')}
+        loading={confirmingAction}
+        onConfirm={handleConfirmDialog}
+      >
+        {confirmDialogName ? (
+          <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-3 py-2 font-mono text-xs text-foreground">
+            {confirmDialogName}
+          </div>
+        ) : null}
+      </ConfirmDialog>
     </div>
   )
 }
@@ -1599,7 +1771,7 @@ function TestConnectionDialog({
         </DialogHeader>
         <div className="min-h-0 space-y-4 overflow-y-auto">
           <p className="text-sm text-muted-foreground">{t('providers.testDialog.description')}</p>
-          <div className="flex items-start gap-3 rounded-lg border p-4">
+          <div className="flex items-start gap-3 rounded-[1.2rem] border border-border/70 bg-background/45 p-4">
             <input
               type="checkbox"
               className="mt-1 h-4 w-4 rounded border"
@@ -1609,13 +1781,13 @@ function TestConnectionDialog({
             <div className="space-y-2">
               <Label>{t('providers.testDialog.presetLabel')}</Label>
               <p className="text-xs text-muted-foreground">{t('providers.testDialog.presetDescription')}</p>
-              <details className="rounded-md bg-muted p-2 text-xs">
+              <details className="rounded-[1rem] border border-border/70 bg-background/70 p-2 text-xs">
                 <summary className="cursor-pointer text-primary hover:underline">
                   {t('providers.testDialog.presetPreviewSummary')}
                 </summary>
                 <div className="mt-2 space-y-1">
                   {options.map((option) => (
-                    <code key={option.key} className="block rounded bg-background px-2 py-1 text-xs">
+                    <code key={option.key} className="block rounded-xl border border-border/70 bg-background/85 px-2 py-1 text-xs">
                       {option.key}: {option.value}
                     </code>
                   ))}
@@ -1624,10 +1796,10 @@ function TestConnectionDialog({
             </div>
           </div>
           {Object.keys(preservedExtras).length > 0 && (
-            <div className="rounded-lg border bg-muted p-4 text-xs space-y-2">
+            <div className="rounded-[1.15rem] border border-border/70 bg-background/70 p-4 text-xs space-y-2">
               <p className="font-medium">{t('providers.testDialog.preservedInfo')}</p>
               {Object.entries(preservedExtras).map(([key, value]) => (
-                <code key={key} className="block rounded bg-background px-2 py-1">
+                <code key={key} className="block rounded-xl border border-border/70 bg-background/85 px-2 py-1">
                   {key}: {value}
                 </code>
               ))}
@@ -1800,7 +1972,7 @@ function PresetDiffDialog({
         ) : (
           <div className="max-h-72 overflow-y-auto space-y-2 text-sm">
             {added.map(([src, tgt]) => (
-              <div key={`add-${src}`} className="flex items-center gap-2 rounded px-2 py-1 bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200">
+              <div key={`add-${src}`} className="flex items-center gap-2 rounded-xl px-2 py-1.5 bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200">
                 <Badge variant="outline" className="text-xs border-emerald-300 dark:border-emerald-700">{t('modelManagement.presets.diffAdded')}</Badge>
                 <span className="truncate">{src}</span>
                 <ArrowRight className="h-3 w-3 flex-shrink-0" />
@@ -1808,7 +1980,7 @@ function PresetDiffDialog({
               </div>
             ))}
             {removed.map(([src, tgt]) => (
-              <div key={`rm-${src}`} className="flex items-center gap-2 rounded px-2 py-1 bg-red-50 dark:bg-red-950 text-red-800 dark:text-red-200">
+              <div key={`rm-${src}`} className="flex items-center gap-2 rounded-xl px-2 py-1.5 bg-red-50 dark:bg-red-950 text-red-800 dark:text-red-200">
                 <Badge variant="outline" className="text-xs border-red-300 dark:border-red-700">{t('modelManagement.presets.diffRemoved')}</Badge>
                 <span className="truncate">{src}</span>
                 <ArrowRight className="h-3 w-3 flex-shrink-0" />
@@ -1816,7 +1988,7 @@ function PresetDiffDialog({
               </div>
             ))}
             {changed.map(([src, oldTgt, newTgt]) => (
-              <div key={`chg-${src}`} className="flex items-center gap-2 rounded px-2 py-1 bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200">
+              <div key={`chg-${src}`} className="flex items-center gap-2 rounded-xl px-2 py-1.5 bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200">
                 <Badge variant="outline" className="text-xs border-amber-300 dark:border-amber-700">{t('modelManagement.presets.diffChanged')}</Badge>
                 <span className="truncate">{src}</span>
                 <ArrowRight className="h-3 w-3 flex-shrink-0" />
@@ -2024,14 +2196,14 @@ function EndpointDrawer({
   return (
     <>
       <div
-        className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40"
+        className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l shadow-xl z-50">
+      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-white/50 bg-background/96 shadow-[0_24px_80px_-32px_rgba(15,23,42,0.4)] backdrop-blur-xl">
         <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between p-6 border-b">
-            <h2 className="text-lg font-semibold">
+          <div className="flex items-center justify-between border-b border-border/70 bg-background/70 p-6">
+            <h2 className="text-lg font-semibold tracking-[-0.02em]">
               {endpoint ? t('modelManagement.editEndpoint') : t('modelManagement.createEndpoint')}
             </h2>
             <Button variant="ghost" size="sm" onClick={onClose}>
@@ -2073,7 +2245,7 @@ function EndpointDrawer({
 
               <div className="space-y-3">
                 {formData.paths.map((pathItem, index) => (
-                  <div key={index} className="rounded-lg border p-3 space-y-2">
+                  <div key={index} className="rounded-[1.15rem] border border-white/50 bg-card/88 p-3 space-y-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 space-y-2">
                         <Input
@@ -2126,7 +2298,7 @@ function EndpointDrawer({
             </div>
 
             {!endpoint && (
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+              <div className="rounded-[1.2rem] border border-blue-200 bg-blue-50/75 p-4 dark:border-blue-800 dark:bg-blue-950">
                 <p className="text-sm text-blue-800 dark:text-blue-200">
                   {t('modelManagement.endpointRoutingHint')}
                 </p>
@@ -2134,7 +2306,7 @@ function EndpointDrawer({
             )}
           </form>
 
-          <div className="flex gap-3 p-6 border-t">
+          <div className="flex gap-3 border-t border-border/70 bg-background/70 p-6">
             <Button variant="outline" className="flex-1" onClick={onClose} disabled={isSubmitting}>
               {t('common.cancel')}
             </Button>

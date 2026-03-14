@@ -1,12 +1,12 @@
 import { cn } from '@/lib/utils'
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div role="status" aria-label="Loading" className={cn('animate-pulse rounded-md bg-muted', className)} />
+  return <div role="status" aria-label="Loading" className={cn('animate-pulse rounded-xl bg-muted/70', className)} />
 }
 
 export function StatCardSkeleton() {
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-3">
+    <div className="rounded-[1.35rem] border border-white/60 bg-card/92 p-5 space-y-3 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-24px_rgba(15,23,42,0.26)]">
       <div className="flex items-center justify-between">
         <Skeleton className="h-3 w-24" />
         <Skeleton className="h-10 w-10 rounded-xl" />
@@ -18,12 +18,12 @@ export function StatCardSkeleton() {
 
 export function ChartSkeleton() {
   return (
-    <div className="rounded-xl border bg-card p-4 space-y-4">
+    <div className="rounded-[1.35rem] border border-white/60 bg-card/92 p-4 space-y-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-24px_rgba(15,23,42,0.26)]">
       <div className="space-y-2">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-3 w-48" />
       </div>
-      <Skeleton className="h-[320px] w-full rounded-lg" />
+      <Skeleton className="h-[320px] w-full rounded-[1.2rem]" />
     </div>
   )
 }

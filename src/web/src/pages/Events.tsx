@@ -102,6 +102,17 @@ export default function EventsPage() {
     )
   }, [cursor, nextCursor, t])
 
+  const activeFilters = useMemo(() => {
+    const items: string[] = []
+    if (filters.level) {
+      items.push(t(`events.levels.${filters.level}` as const))
+    }
+    if (filters.type.trim()) {
+      items.push(filters.type.trim())
+    }
+    return items
+  }, [filters.level, filters.type, t])
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -110,7 +121,6 @@ export default function EventsPage() {
         description={t('events.description')}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {paginationControls}
             <Button
               variant="outline"
               size="sm"
@@ -124,12 +134,26 @@ export default function EventsPage() {
         }
       />
 
-      <Card>
+      <Card className="sticky top-20 z-20 surface-1">
         <CardContent className="pt-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Filter className="h-4 w-4" />
-              {t('events.filters.title')}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Filter className="h-4 w-4 text-primary" />
+                  {t('events.filters.title')}
+                  <Badge variant="outline">{events.length}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">{t('events.description')}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {activeFilters.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+                    {t('common.actions.reset')}
+                  </Button>
+                )}
+                {paginationControls}
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Select
@@ -152,10 +176,17 @@ export default function EventsPage() {
                 value={filters.type}
                 onChange={(event) => setFilters((prev) => ({ ...prev, type: event.target.value }))}
               />
-              <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+              <Button variant="ghost" size="sm" onClick={handleResetFilters} disabled={activeFilters.length === 0}>
                 {t('common.actions.reset')}
               </Button>
             </div>
+            {activeFilters.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {activeFilters.map((item) => (
+                  <Badge key={item} variant="secondary">{item}</Badge>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -165,14 +196,24 @@ export default function EventsPage() {
           <LoadingState />
         </div>
       ) : events.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-10 text-center">
+        <div className="flex flex-col items-center justify-center rounded-[1.25rem] border border-dashed border-border/70 bg-background/45 p-10 text-center">
           <p className="text-base font-medium">{t('events.empty.title')}</p>
           <p className="mt-1 text-sm text-muted-foreground">{t('events.empty.subtitle')}</p>
         </div>
       ) : (
         <div className="grid gap-4">
           {events.map((event) => (
-            <Card key={event.id}>
+            <Card
+              key={event.id}
+              className={cn(
+                'overflow-hidden border-l-4',
+                event.level === 'error'
+                  ? 'border-l-destructive'
+                  : event.level === 'warn'
+                    ? 'border-l-amber-500'
+                    : 'border-l-emerald-500'
+              )}
+            >
               <CardHeader className="pb-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-3">
@@ -225,11 +266,11 @@ export default function EventsPage() {
                   )}
                 </div>
                 {event.details && (
-                  <details className="rounded-md border p-3 text-sm">
+                  <details className="rounded-[1rem] border border-border/70 bg-background/45 p-3 text-sm">
                     <summary className="cursor-pointer text-sm font-medium text-primary">
                       {t('events.details')}
                     </summary>
-                    <pre className="mt-3 overflow-x-auto rounded-md bg-muted p-3 text-xs">
+                    <pre className="mt-3 overflow-x-auto rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
                       {JSON.stringify(event.details, null, 2)}
                     </pre>
                   </details>

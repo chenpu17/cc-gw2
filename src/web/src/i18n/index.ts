@@ -6,7 +6,10 @@ const resources = {
     translation: {
       app: {
         title: 'cc-gw 控制台',
-        skipToContent: '跳转到主要内容'
+        skipToContent: '跳转到主要内容',
+        consoleSubtitle: '网关控制平面',
+        environmentLabel: '运行状态',
+        online: '服务在线'
       },
       nav: {
         dashboard: '仪表盘',
@@ -102,6 +105,17 @@ const resources = {
       },
       dashboard: {
         description: '快速了解请求规模与实时运行状态。',
+        labels: {
+          providers: 'Provider 数量',
+          activeClientAddresses: '活跃来源地址',
+          activeClientSessions: '活跃会话',
+          uniqueClientAddressesLastHour: '1小时来源地址',
+          uniqueClientSessionsLastHour: '1小时会话',
+          todayRequests: '今日请求',
+          activeRequests: '活跃转发连接',
+          database: '数据库',
+          memory: '内存占用'
+        },
         filters: {
           endpoint: '端点筛选',
           endpointAll: '全部端点',
@@ -109,6 +123,7 @@ const resources = {
           endpointOpenAI: 'openai'
         },
         status: {
+          listeningLabel: '监听地址',
           listening: '监听：{{host}}:{{port}}',
           providers: 'Provider 数量：{{value}}',
           todayRequests: '今日请求：{{value}}',
@@ -168,6 +183,15 @@ const resources = {
           ttftAxis: 'TTFT (ms)',
           tpotAxis: 'TPOT (ms/Token)',
           empty: '暂无数据'
+        },
+        insights: {
+          totalRequests: '趋势期总请求',
+          totalRequestsHint: '最近 14 天累计请求量',
+          busiestDay: '最忙的一天',
+          busiestDayHint: '{{value}} 次请求',
+          topModel: '最高频模型',
+          topModelHint: '{{value}} 次调用',
+          fastestTtft: '最快 TTFT 模型'
         },
         recent: {
           title: '最新请求',
@@ -235,6 +259,10 @@ const resources = {
         table: {
           loading: '正在加载日志...',
           empty: '未找到符合条件的日志记录。',
+          density: {
+            comfortable: '标准',
+            compact: '紧凑'
+          },
           requestedModelFallback: '未指定',
           apiKeyUnknown: '未知密钥',
           columns: {
@@ -353,7 +381,12 @@ const resources = {
         title: '模型提供商',
         description: '管理集成的模型服务，查看默认模型及支持能力。',
         emptyState: '暂无 Provider，请点击“新增提供商”以开始配置。',
+        emptyFiltered: '当前筛选条件下没有匹配的 Provider。',
         count: '已配置：{{count}} 个 Provider',
+        filters: {
+          searchPlaceholder: '按名称、ID 或 Base URL 搜索',
+          typeAll: '全部类型'
+        },
         toast: {
           createSuccess: '已添加 Provider：{{name}}',
           updateSuccess: '已更新 Provider：{{name}}',
@@ -473,22 +506,51 @@ const resources = {
           }
         },
         card: {
+          defaultModelLabel: '默认模型',
           defaultModel: '默认模型：{{model}}',
           noDefault: '未设置默认模型',
           modelsTitle: '支持模型',
-          noModels: '尚未配置模型。'
+          noModels: '尚未配置模型。',
+          authMode: '认证方式',
+          modelCount: '{{count}} 个模型',
+          passthrough: '透传模式'
         },
         drawer: {
           createTitle: '新增 Provider',
           editTitle: '编辑 Provider',
+          quickStart: '快速配置',
           description: '配置基础信息与模型列表。',
+          formSummary: '当前草稿',
           modelsDescription: '维护支持的模型列表。',
           defaultHint: '当前默认模型：{{model}}',
+          summary: {
+            type: 'Provider 类型',
+            auth: '认证方式',
+            models: '模型数量',
+            untitled: '未命名 Provider'
+          },
+          sections: {
+            type: '1. 选择 Provider 类型',
+            basic: '2. 填写基础信息',
+            auth: '3. 设置认证',
+            checklist: '提交前检查'
+          },
+          hints: {
+            type: '先选择 Provider 模板，可自动填入推荐 Base URL。',
+            basic: 'ID 用于路由映射；显示名称用于界面展示。',
+            auth: '根据上游接口要求选择 Header 认证方式。',
+            customProvider: '自定义兼容服务',
+            checkUrl: '确认 Base URL 指向上游 API 根路径。',
+            checkAuth: '确认密钥与认证 Header 类型匹配。',
+            checkModels: '如需路由提示和默认模型，请补充模型列表。',
+            advancedTitle: '高级模式说明',
+            advancedBody: '开启后可单独维护显示名称与模型别名；如果只是快速接入，保留默认同步即可。'
+          },
           fields: {
             id: 'Provider ID',
             idPlaceholder: '如 openai',
             label: '显示名称',
-            labelPlaceholder: '如 OpenAI 官方',
+            labelPlaceholder: '如 官方主账号',
             baseUrl: 'Base URL',
             baseUrlPlaceholder: 'https://api.example.com/v1',
             type: 'Provider 类型',
@@ -580,8 +642,14 @@ const resources = {
           'openai-responses': 'OpenAI Responses API 协议（/v1/responses）'
         },
         actions: {
-          saveRoutes: '保存路由'
+          saveRoutes: '保存路由',
+          unsaved: '有未保存修改',
+          footerTitle: '路由操作',
+          footerDirtyHint: '已修改当前路由规则，请在此处完成保存。',
+          footerSavedHint: '当前路由已与服务器保持同步。'
         },
+        routesEditorTitle: '路由规则',
+        emptyRoutesHint: '点击下方按钮添加路由规则。',
         routing: {
           selectTarget: '请选择目标 Provider:模型'
         },
@@ -664,7 +732,7 @@ const resources = {
         }
       },
       settings: {
-        title: '系统设置',
+        title: '设置',
         description: '调整网关端口、日志策略及其他运行参数。',
         toast: {
           loadFailure: '配置加载失败：{{message}}',
@@ -818,8 +886,15 @@ const resources = {
         },
         cleanup: {
           description: '立即清理早于当前保留天数的日志记录。',
+          softLabel: '轻度操作',
+          softTitle: '清理过期日志',
+          softDescription: '仅删除超过保留天数的历史日志，适合日常维护。',
+          hardLabel: '高风险操作',
+          hardTitle: '彻底清空日志',
           clearAll: '彻底清空',
           clearingAll: '清空中...',
+          confirmCleanup: '该操作会删除超过保留天数的历史日志，但不会影响当前较新的记录。',
+          confirmClearAll: '此操作会删除全部请求日志和日统计数据，且无法恢复。',
           clearAllWarning: '该操作会删除所有日志记录及日统计数据，请谨慎操作。'
         }
       },
@@ -841,7 +916,7 @@ const resources = {
             items: [
               '📦 **安装并启动服务**：运行 `npm install -g @chenpu17/cc-gw && cc-gw start --daemon --port 4100`，然后访问 http://127.0.0.1:4100/ui',
               '🔧 **配置模型提供商**：在"模型管理 → 模型提供商"中添加至少一个 Provider，配置 Base URL、API Key 和默认模型',
-              '🔑 **生成网关 API Key（可选）**：在"系统设置 → API 密钥管理"创建 API 密钥，为不同客户端创建独立密钥。默认情况下，所有请求都可以通过网关访问。'
+              '🔑 **生成网关 API Key（可选）**：在"API 密钥"页面创建 API 密钥，为不同客户端创建独立密钥。默认情况下，所有请求都可以通过网关访问。'
             ]
           },
           claudeCodeConfig: {
@@ -866,7 +941,7 @@ const resources = {
               '📈 **仪表盘监控**：实时查看请求量、Token 使用量、缓存命中率和响应时间（TTFT/TPOT）等关键指标',
               '📋 **日志分析**：使用"请求日志"页面筛选和分析请求记录，支持按 Provider、模型、状态、时间范围等多维度过滤',
               '🔄 **模型路由管理**：在"模型管理 → 路由配置"中设置模型映射规则，实现不同模型的智能路由',
-              '🎛️ **系统配置**：在"系统设置"中调整日志保留策略、数据存储设置和运行参数',
+              '🎛️ **系统配置**：在"设置"页面中调整日志保留策略、数据存储设置和运行参数',
               '🔐 **安全配置**：启用 Web UI 登录保护，设置用户名密码，确保管理接口安全'
             ]
           },
@@ -997,6 +1072,7 @@ const resources = {
         lastUsed: '最后使用',
         requestCount: '请求次数',
         totalTokens: '总令牌数',
+        deleteDialogTitle: '删除 API 密钥',
         confirmDelete: '确定要删除此 API 密钥吗？此操作无法撤销。',
         errors: {
           nameRequired: '密钥名称不能为空'
@@ -1028,7 +1104,18 @@ const resources = {
         },
         list: {
           title: '密钥列表',
-          empty: '尚未创建 API 密钥，点击右上角按钮开始创建。'
+          empty: '尚未创建 API 密钥，点击右上角按钮开始创建。',
+          emptyFiltered: '当前筛选条件下没有匹配的 API 密钥。'
+        },
+        filters: {
+          searchPlaceholder: '按名称、描述或端点搜索',
+          all: '全部',
+          enabled: '已启用',
+          disabled: '已禁用'
+        },
+        summary: {
+          wildcard: '通配符密钥：{{count}}',
+          restricted: '受限密钥：{{count}}'
         },
         toast: {
           keyCreated: 'API 密钥创建成功',
@@ -1112,7 +1199,10 @@ const resources = {
     translation: {
       app: {
         title: 'cc-gw Console',
-        skipToContent: 'Skip to main content'
+        skipToContent: 'Skip to main content',
+        consoleSubtitle: 'Gateway control plane',
+        environmentLabel: 'Environment',
+        online: 'Service online'
       },
       nav: {
         dashboard: 'Dashboard',
@@ -1208,6 +1298,17 @@ const resources = {
       },
       dashboard: {
         description: 'Monitor request volume and runtime health at a glance.',
+        labels: {
+          providers: 'Providers',
+          activeClientAddresses: 'Active client addresses',
+          activeClientSessions: 'Active sessions',
+          uniqueClientAddressesLastHour: '1h client addresses',
+          uniqueClientSessionsLastHour: '1h sessions',
+          todayRequests: 'Today requests',
+          activeRequests: 'Active forwarded connections',
+          database: 'Database',
+          memory: 'Memory'
+        },
         filters: {
           endpoint: 'Endpoint',
           endpointAll: 'All endpoints',
@@ -1215,6 +1316,7 @@ const resources = {
           endpointOpenAI: 'openai'
         },
         status: {
+          listeningLabel: 'Listening',
           listening: 'Listening: {{host}}:{{port}}',
           providers: 'Providers: {{value}}',
           todayRequests: 'Requests today: {{value}}',
@@ -1274,6 +1376,15 @@ const resources = {
           ttftAxis: 'TTFT (ms)',
           tpotAxis: 'TPOT (ms/token)',
           empty: 'No data'
+        },
+        insights: {
+          totalRequests: 'Requests in range',
+          totalRequestsHint: 'Total requests across the last 14 days',
+          busiestDay: 'Busiest day',
+          busiestDayHint: '{{value}} requests',
+          topModel: 'Top model',
+          topModelHint: '{{value}} calls',
+          fastestTtft: 'Fastest TTFT model'
         },
         recent: {
           title: 'Recent Requests',
@@ -1341,6 +1452,10 @@ const resources = {
         table: {
           loading: 'Loading logs...',
           empty: 'No records match the current filters.',
+          density: {
+            comfortable: 'Comfortable',
+            compact: 'Compact'
+          },
           requestedModelFallback: 'Not specified',
           apiKeyUnknown: 'Unknown key',
           columns: {
@@ -1459,7 +1574,12 @@ const resources = {
         title: 'Model Providers',
         description: 'Manage integrated services and default models.',
         emptyState: 'No providers yet. Click "Add provider" to get started.',
+        emptyFiltered: 'No providers match the current filters.',
         count: '{{count}} providers configured',
+        filters: {
+          searchPlaceholder: 'Search by name, ID, or Base URL',
+          typeAll: 'All types'
+        },
         toast: {
           createSuccess: 'Provider added: {{name}}',
           updateSuccess: 'Provider updated: {{name}}',
@@ -1579,17 +1699,46 @@ const resources = {
           }
         },
         card: {
+          defaultModelLabel: 'Default model',
           defaultModel: 'Default model: {{model}}',
           noDefault: 'No default model',
           modelsTitle: 'Supported models',
-          noModels: 'No models configured yet.'
+          noModels: 'No models configured yet.',
+          authMode: 'Auth mode',
+          modelCount: '{{count}} models',
+          passthrough: 'Pass-through'
         },
         drawer: {
           createTitle: 'Add Provider',
           editTitle: 'Edit Provider',
+          quickStart: 'Quick setup',
           description: 'Configure base settings and model list.',
+          formSummary: 'Current draft',
           modelsDescription: 'Maintain supported models.',
           defaultHint: 'Current default model: {{model}}',
+          summary: {
+            type: 'Provider type',
+            auth: 'Authentication',
+            models: 'Models',
+            untitled: 'Untitled provider'
+          },
+          sections: {
+            type: '1. Choose provider type',
+            basic: '2. Basic information',
+            auth: '3. Authentication',
+            checklist: 'Pre-flight checks'
+          },
+          hints: {
+            type: 'Start from a provider template to prefill the recommended Base URL.',
+            basic: 'The ID is used by routing rules; the display name is used in the UI.',
+            auth: 'Pick the header strategy expected by the upstream API.',
+            customProvider: 'Custom compatible service',
+            checkUrl: 'Make sure the Base URL points to the upstream API root.',
+            checkAuth: 'Make sure the key matches the selected auth header mode.',
+            checkModels: 'Add models if you want route suggestions and a default model.',
+            advancedTitle: 'About advanced mode',
+            advancedBody: 'Advanced mode lets you manage display names and model aliases separately. Keep the default sync if you only need a fast integration.'
+          },
           fields: {
             id: 'Provider ID',
             idPlaceholder: 'e.g. openai',
@@ -1686,8 +1835,14 @@ const resources = {
           'openai-responses': 'OpenAI Responses API protocol (/v1/responses)'
         },
         actions: {
-          saveRoutes: 'Save routes'
+          saveRoutes: 'Save routes',
+          unsaved: 'Unsaved changes',
+          footerTitle: 'Route actions',
+          footerDirtyHint: 'You changed the current rules. Save them here when you are ready.',
+          footerSavedHint: 'The current routing rules are in sync with the server.'
         },
+        routesEditorTitle: 'Routing rules',
+        emptyRoutesHint: 'Use the buttons below to add your first route.',
         routing: {
           selectTarget: 'Select provider:model'
         },
@@ -1770,7 +1925,7 @@ const resources = {
         }
       },
       settings: {
-        title: 'System Settings',
+        title: 'Settings',
         description: 'Adjust gateway port, log retention, and runtime parameters.',
         toast: {
           loadFailure: 'Failed to load config: {{message}}',
@@ -1924,8 +2079,15 @@ const resources = {
         },
         cleanup: {
           description: 'Immediately purge logs older than the retention window.',
+          softLabel: 'Routine action',
+          softTitle: 'Clean up expired logs',
+          softDescription: 'Deletes only logs older than the retention window. Suitable for normal maintenance.',
+          hardLabel: 'High-risk action',
+          hardTitle: 'Clear all logs',
           clearAll: 'Clear everything',
           clearingAll: 'Clearing…',
+          confirmCleanup: 'This deletes only logs older than the configured retention window and keeps recent records intact.',
+          confirmClearAll: 'This removes every request log and daily metric row. The operation cannot be undone.',
           clearAllWarning: 'Deletes every log entry and daily metric. This cannot be undone.'
         }
       },
@@ -1947,7 +2109,7 @@ const resources = {
             items: [
               'Install the service and start it with `npm install -g @chenpu17/cc-gw && cc-gw start --daemon --port 4100`, then open http://127.0.0.1:4100/ui.',
               'Go to "Model Management → Providers" to add upstream providers including base URL, API key, and default model.',
-              'Generate Gateway API Keys (Optional): Create API keys in "System Settings → API Keys" for different clients. By default, all requests can pass through the gateway.'
+              'Generate Gateway API Keys (Optional): Create API keys on the "API Keys" page for different clients. By default, all requests can pass through the gateway.'
             ]
           },
           claudeCodeConfig: {
@@ -2038,6 +2200,7 @@ const resources = {
         lastUsed: 'Last Used',
         requestCount: 'Requests',
         totalTokens: 'Total Tokens',
+        deleteDialogTitle: 'Delete API key',
         confirmDelete: 'Are you sure you want to delete this API key? This action cannot be undone.',
         errors: {
           nameRequired: 'Key name is required'
@@ -2069,7 +2232,18 @@ const resources = {
         },
         list: {
           title: 'Key Inventory',
-          empty: 'No API keys found. Use the button above to create one.'
+          empty: 'No API keys found. Use the button above to create one.',
+          emptyFiltered: 'No API keys match the current filters.'
+        },
+        filters: {
+          searchPlaceholder: 'Search by name, description, or endpoint',
+          all: 'All',
+          enabled: 'Enabled',
+          disabled: 'Disabled'
+        },
+        summary: {
+          wildcard: 'Wildcard keys: {{count}}',
+          restricted: 'Restricted keys: {{count}}'
         },
         toast: {
           keyCreated: 'API key created successfully',

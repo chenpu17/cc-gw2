@@ -26,7 +26,7 @@ test('web ui can create a provider, test connectivity, and add a custom endpoint
   const providerDrawer = page.locator('aside').filter({ hasText: '新增 Provider' })
   await expect(providerDrawer).toBeVisible()
   await providerDrawer.getByPlaceholder('如 openai').fill(providerId)
-  await providerDrawer.locator('select').selectOption('openai')
+  await providerDrawer.getByRole('button', { name: /OpenAI/ }).click()
   await providerDrawer.getByPlaceholder('https://api.example.com/v1').fill(providerBaseUrl)
   await providerDrawer.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
   await providerDrawer.getByRole('button', { name: '新增模型' }).click()

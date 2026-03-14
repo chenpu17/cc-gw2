@@ -34,6 +34,7 @@ interface ProviderSummary {
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
 
 type StatusFilter = 'all' | 'success' | 'error'
+type RowDensity = 'comfortable' | 'compact'
 
 type DateInput = string
 
@@ -91,6 +92,7 @@ export default function LogsPage() {
   const [selectedApiKeys, setSelectedApiKeys] = useState<number[]>([])
   const [exporting, setExporting] = useState(false)
   const [filtersExpanded, setFiltersExpanded] = useState(false)
+  const [rowDensity, setRowDensity] = useState<RowDensity>('comfortable')
   const [showScrollHint, setShowScrollHint] = useState(false)
   const tableScrollRef = useRef<HTMLDivElement>(null)
 
@@ -365,6 +367,32 @@ export default function LogsPage() {
         description={t('logs.description')}
         actions={
           <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1 rounded-full border border-border/70 bg-background/80 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+              <button
+                type="button"
+                onClick={() => setRowDensity('comfortable')}
+                className={cn(
+                  'inline-flex h-8 items-center rounded-full px-3.5 text-xs font-medium transition-all',
+                  rowDensity === 'comfortable'
+                    ? 'bg-primary text-primary-foreground shadow-[0_8px_18px_-14px_rgba(59,130,246,0.7)]'
+                    : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
+                )}
+              >
+                {t('logs.table.density.comfortable')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRowDensity('compact')}
+                className={cn(
+                  'inline-flex h-8 items-center rounded-full px-3.5 text-xs font-medium transition-all',
+                  rowDensity === 'compact'
+                    ? 'bg-primary text-primary-foreground shadow-[0_8px_18px_-14px_rgba(59,130,246,0.7)]'
+                    : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
+                )}
+              >
+                {t('logs.table.density.compact')}
+              </button>
+            </div>
             <Button onClick={handleExport} disabled={exporting}>
               <Download className="mr-2 h-4 w-4" />
               {exporting ? t('common.actions.loading') : t('logs.actions.export')}
@@ -385,10 +413,48 @@ export default function LogsPage() {
         }
       />
 
-      <Card>
+      <Card className="sticky top-20 z-20 border-white/40 bg-card/90 backdrop-blur">
         <CardContent className="pt-4">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-1 items-center gap-3 overflow-hidden">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-foreground">{t('logs.filtersTitle')}</p>
+                  <Badge variant="outline">{t('logs.summary.total', { value: total.toLocaleString() })}</Badge>
+                  {activeFilters.length > 0 && (
+                    <Badge variant="secondary">{t('common.filters.activeCount', { count: activeFilters.length })}</Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">{t('logs.filtersDescription')}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {activeFilters.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+                    {t('common.actions.reset')}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFiltersExpanded((prev) => !prev)}
+                >
+                  {filtersExpanded ? (
+                    <>
+                      {t('common.filters.collapse')}
+                      <ChevronUp className="ml-1 h-4 w-4" />
+                    </>
+                  ) : (
+                    <>
+                      {t('common.filters.expand')}
+                      <ChevronDown className="ml-1 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-1 items-center gap-3 overflow-hidden">
               {activeFilters.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-2">
                   {activeFilters.map((f) => (
@@ -410,29 +476,6 @@ export default function LogsPage() {
                 <span className="text-sm text-muted-foreground">{t('common.filters.allRequests')}</span>
               )}
             </div>
-            <div className="flex items-center gap-2 ml-3 flex-shrink-0">
-              {activeFilters.length > 0 && (
-                <Button variant="ghost" size="sm" onClick={handleResetFilters}>
-                  {t('common.actions.reset')}
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setFiltersExpanded((prev) => !prev)}
-              >
-                {filtersExpanded ? (
-                  <>
-                    {t('common.filters.collapse')}
-                    <ChevronUp className="ml-1 h-4 w-4" />
-                  </>
-                ) : (
-                  <>
-                    {t('common.filters.expand')}
-                    <ChevronDown className="ml-1 h-4 w-4" />
-                  </>
-                )}
-              </Button>
             </div>
           </div>
           {filtersExpanded && (
@@ -533,7 +576,9 @@ export default function LogsPage() {
               <table className="w-full min-w-[1200px] text-sm">
                 <thead className="border-b bg-muted/50">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.time')}</th>
+                    <th className="sticky left-0 z-20 bg-muted/95 px-3 py-2 text-left text-xs font-medium backdrop-blur">
+                      {t('logs.table.columns.time')}
+                    </th>
                     <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.endpoint')}</th>
                     <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.provider')}</th>
                     <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.requestedModel')}</th>
@@ -548,7 +593,9 @@ export default function LogsPage() {
                     <th className="px-3 py-2 text-right text-xs font-medium">{t('logs.table.columns.tpot')}</th>
                     <th className="px-3 py-2 text-center text-xs font-medium">{t('logs.table.columns.status')}</th>
                     <th className="px-3 py-2 text-left text-xs font-medium">{t('logs.table.columns.error')}</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium">{t('logs.table.columns.actions')}</th>
+                    <th className="sticky right-0 z-20 bg-muted/95 px-3 py-2 text-center text-xs font-medium backdrop-blur">
+                      {t('logs.table.columns.actions')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -559,7 +606,14 @@ export default function LogsPage() {
                   ) : items.length === 0 ? (
                   <tr>
                     <td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                      {t('logs.table.empty')}
+                      <div className="flex flex-col items-center gap-3 py-4">
+                        <span>{t('logs.table.empty')}</span>
+                        {activeFilters.length > 0 && (
+                          <Button variant="outline" size="sm" onClick={handleResetFilters}>
+                            {t('common.actions.reset')}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -571,6 +625,7 @@ export default function LogsPage() {
                       apiKeyMap={apiKeyMap}
                       onSelect={handleOpenDetail}
                       isEven={index % 2 === 0}
+                      density={rowDensity}
                     />
                   ))
                 )}
@@ -639,13 +694,15 @@ function LogRow({
   providerLabelMap,
   apiKeyMap,
   onSelect,
-  isEven
+  isEven,
+  density
 }: {
   record: LogRecord
   providerLabelMap: Map<string, string>
   apiKeyMap: Map<number, ApiKeySummary>
   onSelect: (id: number) => void
   isEven: boolean
+  density: RowDensity
 }) {
   const { t } = useTranslation()
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
@@ -669,41 +726,43 @@ function LogRow({
     }
     return t('logs.table.apiKeyUnknown')
   })()
+  const cellPadding = density === 'compact' ? 'px-3 py-1.5' : 'px-3 py-2'
+  const stickyCellBg = isEven ? 'bg-muted/30' : 'bg-background'
 
   return (
     <tr className={cn('transition-colors', isEven ? 'bg-muted/30' : '', 'hover:bg-muted/50')}>
-      <td className="px-3 py-2 text-xs">{formatDateTime(record.timestamp)}</td>
-      <td className="px-3 py-2 text-xs">{endpointLabel}</td>
-      <td className="px-3 py-2 text-xs">
+      <td className={cn('sticky left-0 z-10 text-xs', cellPadding, stickyCellBg)}>{formatDateTime(record.timestamp)}</td>
+      <td className={cn(cellPadding, 'text-xs')}>{endpointLabel}</td>
+      <td className={cn(cellPadding, 'text-xs')}>
         <div className="max-w-[100px] truncate" title={providerLabel}>{providerLabel}</div>
       </td>
-      <td className="px-3 py-2 text-xs text-muted-foreground">
+      <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
         <div className="max-w-[120px] truncate" title={requestedModel}>{requestedModel}</div>
       </td>
-      <td className="px-3 py-2 text-xs">
+      <td className={cn(cellPadding, 'text-xs')}>
         <div className="max-w-[120px] truncate" title={record.model}>{record.model}</div>
       </td>
-      <td className="px-3 py-2 text-xs text-muted-foreground">
+      <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
         <div className="max-w-[90px] truncate" title={apiKeyLabel}>{apiKeyLabel}</div>
       </td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums">{formatNumber(record.input_tokens)}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums">{formatNumber(record.cache_read_tokens)}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums">{formatNumber(record.cache_creation_tokens)}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums">{formatNumber(record.output_tokens)}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums">{formatLatency(record.latency_ms, 'ms')}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums">{formatLatency(record.ttft_ms, 'ms')}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums">{formatLatency(record.tpot_ms, 'ms/tk')}</td>
-      <td className="px-3 py-2 text-center">
+      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.input_tokens)}</td>
+      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.cache_read_tokens)}</td>
+      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.cache_creation_tokens)}</td>
+      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.output_tokens)}</td>
+      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.latency_ms, 'ms')}</td>
+      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.ttft_ms, 'ms')}</td>
+      <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.tpot_ms, 'ms/tk')}</td>
+      <td className={cn(cellPadding, 'text-center')}>
         <Badge variant={isError ? 'destructive' : 'default'} className="text-xs">
           {statusCode ?? (isError ? 500 : 200)}
         </Badge>
       </td>
-      <td className="px-3 py-2 text-xs text-muted-foreground">
+      <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
         <div className="max-w-[100px] truncate" title={record.error ?? ''}>
           {record.error ? record.error : '-'}
         </div>
       </td>
-      <td className="px-3 py-2 text-center">
+      <td className={cn('sticky right-0 z-10 text-center', cellPadding, stickyCellBg)}>
         <Button variant="outline" size="sm" onClick={() => onSelect(record.id)}>
           {t('logs.actions.detail')}
         </Button>
@@ -792,6 +851,7 @@ function LogDetailsDrawer({
   const record = logDetailQuery.data
   const providerLabel = record ? providerLabelMap.get(record.provider) ?? record.provider : ''
   const apiKeyMeta = record && record.api_key_id != null ? apiKeyMap.get(record.api_key_id) : undefined
+  const statusCode = record ? record.status_code ?? (record.error ? 500 : 200) : null
 
   if (typeof document === 'undefined') {
     return null
@@ -836,7 +896,7 @@ function LogDetailsDrawer({
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {t('logs.detail.infoSection')}
                 </h3>
-                <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted p-3 text-xs">
+                <div className="flex flex-wrap items-center gap-2 rounded-[1.15rem] border border-white/50 bg-background/70 p-3 text-xs shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
                   <span className="font-medium">
                     {t('logs.detail.summary.route', {
                       from: record.client_model ?? t('logs.detail.info.noRequestedModel'),
@@ -854,8 +914,25 @@ function LogDetailsDrawer({
                     </span>
                   )}
                   <Badge variant={record.error ? 'destructive' : 'default'}>
-                    {(record.status_code ?? (record.error ? 500 : 200)).toString()}
+                    {statusCode?.toString()}
                   </Badge>
+                  <Badge variant="outline">
+                    {record.stream ? t('logs.stream.streaming') : t('logs.stream.single')}
+                  </Badge>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <DetailStatCard
+                    label={t('logs.detail.info.latency')}
+                    value={formatLatency(record.latency_ms, t('common.units.ms'))}
+                  />
+                  <DetailStatCard
+                    label={t('logs.detail.info.ttft')}
+                    value={formatLatency(record.ttft_ms, t('common.units.ms'))}
+                  />
+                  <DetailStatCard
+                    label={t('logs.detail.info.tpot')}
+                    value={formatLatency(record.tpot_ms, t('common.units.msPerToken'))}
+                  />
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
                   <div>
@@ -887,34 +964,38 @@ function LogDetailsDrawer({
                     <dd className="font-medium">{formatStreamLabel(record.stream)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">{t('logs.detail.info.inputTokens')}</dt>
-                    <dd className="font-medium">{formatNumber(record.input_tokens)}</dd>
+                    <dt className="text-xs text-muted-foreground">{t('logs.detail.info.status')}</dt>
+                    <dd className="font-medium">{statusCode}</dd>
                   </div>
+                </dl>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <DetailStatCard
+                    label={t('logs.detail.info.inputTokens')}
+                    value={formatNumber(record.input_tokens)}
+                  />
+                  <DetailStatCard
+                    label={t('logs.detail.info.cacheReadTokens')}
+                    value={formatNumber(record.cache_read_tokens)}
+                  />
+                  <DetailStatCard
+                    label={t('logs.detail.info.cacheCreationTokens')}
+                    value={formatNumber(record.cache_creation_tokens)}
+                  />
+                  <DetailStatCard
+                    label={t('logs.detail.info.outputTokens')}
+                    value={formatNumber(record.output_tokens)}
+                  />
+                </div>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
                   <div>
-                    <dt className="text-xs text-muted-foreground">{t('logs.detail.info.cacheReadTokens')}</dt>
-                    <dd className="font-medium">{formatNumber(record.cache_read_tokens)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">{t('logs.detail.info.cacheCreationTokens')}</dt>
-                    <dd className="font-medium">{formatNumber(record.cache_creation_tokens)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">{t('logs.detail.info.outputTokens')}</dt>
-                    <dd className="font-medium">{formatNumber(record.output_tokens)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">{t('logs.detail.info.ttft')}</dt>
-                    <dd className="font-medium">{formatLatency(record.ttft_ms, t('common.units.ms'))}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">{t('logs.detail.info.tpot')}</dt>
-                    <dd className="font-medium">{formatLatency(record.tpot_ms, t('common.units.msPerToken'))}</dd>
+                    <dt className="text-xs text-muted-foreground">{t('logs.detail.info.latency')}</dt>
+                    <dd className="font-medium">{formatLatency(record.latency_ms, t('common.units.ms'))}</dd>
                   </div>
                 </dl>
                 {record.error && (
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t('logs.detail.info.error')}</p>
-                    <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive">
+                    <p className="rounded-[1rem] border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive">
                       {record.error}
                     </p>
                   </div>
@@ -955,7 +1036,7 @@ function LogDetailsDrawer({
                     </dd>
                   </div>
                 </dl>
-                <div className="rounded-md border bg-muted p-3 text-xs">
+                <div className="rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
                   <p className="font-medium">{t('logs.detail.apiKey.rawMasked')}</p>
                   <p className="mt-1 break-all font-mono">
                     {record.api_key_value_available
@@ -965,6 +1046,37 @@ function LogDetailsDrawer({
                   <p className="mt-2 text-[11px] text-muted-foreground">
                     {t('logs.detail.apiKey.rawMaskedHint')}
                   </p>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      handleCopy(
+                        t('logs.detail.payload.request'),
+                        record.payload?.prompt,
+                        'logs.detail.copy.requestSuccess'
+                      )
+                    }
+                  >
+                    {t('logs.detail.payload.request')} · {t('common.actions.copy')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      handleCopy(
+                        t('logs.detail.payload.response'),
+                        record.payload?.response,
+                        'logs.detail.copy.responseSuccess'
+                      )
+                    }
+                  >
+                    {t('logs.detail.payload.response')} · {t('common.actions.copy')}
+                  </Button>
                 </div>
               </section>
 
@@ -987,7 +1099,7 @@ function LogDetailsDrawer({
                     {t('common.actions.copy')}
                   </Button>
                 </div>
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border bg-muted p-3 text-xs">
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
                   {formatPayloadDisplay(record.payload?.prompt, t('logs.detail.payload.emptyRequest'))}
                 </pre>
               </section>
@@ -1011,7 +1123,7 @@ function LogDetailsDrawer({
                     {t('common.actions.copy')}
                   </Button>
                 </div>
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border bg-muted p-3 text-xs">
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
                   {formatPayloadDisplay(record.payload?.response, t('logs.detail.payload.emptyResponse'))}
                 </pre>
               </section>
@@ -1021,6 +1133,15 @@ function LogDetailsDrawer({
       </aside>
     </div>,
     document.body
+  )
+}
+
+function DetailStatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className="mt-2 text-sm font-semibold">{value}</p>
+    </div>
   )
 }
 
@@ -1091,7 +1212,7 @@ function ApiKeyFilter({
         disabled={disabled || apiKeys.length === 0}
         title={t('logs.filters.apiKeyHint')}
         className={cn(
-          'flex h-10 w-full items-center justify-between rounded-md border bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+          'flex h-11 w-full items-center justify-between rounded-2xl border border-border/80 bg-background/85 px-4 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.03)] ring-offset-background transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring/30 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
           selected.length > 0 && 'border-primary',
           open && 'ring-2 ring-ring ring-offset-2'
         )}
@@ -1117,8 +1238,8 @@ function ApiKeyFilter({
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-1 w-64 rounded-md border bg-popover p-2 shadow-lg">
-          <div className="flex items-center justify-between rounded-md bg-muted px-3 py-2 text-xs">
+        <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-[1.2rem] border border-white/60 bg-popover/95 p-2 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.45)] backdrop-blur">
+          <div className="flex items-center justify-between rounded-xl bg-background/70 px-3 py-2 text-xs">
             <span>{summaryText}</span>
             <button
               type="button"
@@ -1137,13 +1258,13 @@ function ApiKeyFilter({
                 <label
                   key={key.id}
                   className={cn(
-                    'flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm transition hover:bg-muted',
+                    'flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm transition hover:bg-primary/5',
                     checked && 'bg-primary/10 text-primary'
                   )}
                 >
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border"
+                    className="h-4 w-4 rounded border-border"
                     checked={checked}
                     onChange={() => handleToggle(key.id)}
                   />

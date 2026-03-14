@@ -7,6 +7,7 @@ import type { ApiError } from '@/services/api'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import packageJson from '../../../../package.json' assert { type: 'json' }
 
@@ -34,7 +35,7 @@ function InfoGrid({ items }: { items: InfoGridItem[] }) {
   return (
     <dl className="grid gap-4 sm:grid-cols-2">
       {items.map((item) => (
-        <Card key={item.label}>
+        <Card key={item.label} className="surface-1">
           <CardContent className="pt-4">
             <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {item.label}
@@ -166,6 +167,13 @@ export default function AboutPage() {
         }
       />
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">{statusQuery.data?.runtime ?? 'rust'}</Badge>
+        <Badge variant="outline">{statusQuery.data?.platform ?? '-'}</Badge>
+        <Badge variant="secondary">{t('about.status.labels.providers')}: {statusQuery.data?.providers?.toLocaleString() ?? '-'}</Badge>
+        <Badge variant="secondary">{t('about.status.labels.active')}: {(statusQuery.data?.activeRequests ?? 0).toLocaleString()}</Badge>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-2">
         <PageSection
           title={t('about.app.title')}
@@ -197,7 +205,7 @@ export default function AboutPage() {
           ) : runtimeItems.length > 0 ? (
             <InfoGrid items={runtimeItems} />
           ) : (
-            <div className="flex h-32 flex-col items-center justify-center gap-1 rounded-lg border border-dashed p-6 text-center">
+            <div className="flex h-32 flex-col items-center justify-center gap-1 rounded-[1.25rem] border border-dashed border-border/70 bg-background/45 p-6 text-center">
               <p className="text-sm font-medium">{t('about.status.empty')}</p>
               <p className="text-xs text-muted-foreground">{t('common.actions.refresh')}</p>
             </div>
@@ -216,17 +224,17 @@ export default function AboutPage() {
           </span>
         }
       >
-        <Card>
+        <Card className="surface-1">
           <CardContent className="flex flex-col gap-4 pt-4">
             <div className="flex flex-wrap items-start gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]">
                 <LifeBuoy className="h-5 w-5" aria-hidden="true" />
               </div>
               <p className="flex-1 text-sm text-muted-foreground">
                 {t('about.support.tip')}
               </p>
             </div>
-            <code className="inline-flex self-start rounded-md bg-muted px-3 py-1.5 text-xs font-medium">
+            <code className="inline-flex self-start rounded-xl border border-border/70 bg-background/70 px-3 py-1.5 text-xs font-medium">
               ~/.cc-gw/config.json
             </code>
           </CardContent>

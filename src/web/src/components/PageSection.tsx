@@ -22,12 +22,12 @@ export function PageSection({
   const hasHeader = title || description || actions
 
   return (
-    <Card className={className}>
+    <Card className={cn('surface-1 overflow-hidden', className)}>
       {hasHeader && (
-        <CardHeader className="flex flex-row items-start justify-between space-y-0">
+        <CardHeader className="flex flex-col gap-4 border-b border-border/60 bg-background/35 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
           <div className="space-y-1.5">
             {typeof title === 'string' ? (
-              <CardTitle className="text-base">{title}</CardTitle>
+              <CardTitle className="text-base font-semibold">{title}</CardTitle>
             ) : (
               title
             )}
@@ -40,13 +40,13 @@ export function PageSection({
             )}
           </div>
           {actions && (
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
               {actions}
             </div>
           )}
         </CardHeader>
       )}
-      <CardContent className={cn(!hasHeader && 'pt-6', contentClassName)}>
+      <CardContent className={cn(!hasHeader && 'pt-6', hasHeader && 'pt-5', contentClassName)}>
         {children}
       </CardContent>
     </Card>

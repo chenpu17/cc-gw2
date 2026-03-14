@@ -4,34 +4,33 @@
 
 @layer base {
   :root {
-    /* 现代简洁的浅色主题 - 蓝紫色调 */
-    --background: 220 25% 97%;
-    --foreground: 222 47% 11%;
+    /* Material-inspired light theme */
+    --background: 210 20% 98%;
+    --foreground: 220 18% 18%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 220 18% 18%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 239 84% 67%;
+    --popover-foreground: 220 18% 18%;
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 239 84% 97%;
-    --accent-foreground: 239 84% 50%;
+    --secondary: 220 20% 95%;
+    --secondary-foreground: 220 18% 18%;
+    --muted: 220 18% 95%;
+    --muted-foreground: 220 9% 42%;
+    --accent: 217 70% 95%;
+    --accent-foreground: 217 91% 42%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 239 84% 67%;
-    --radius: 0.625rem;
+    --border: 220 16% 89%;
+    --input: 220 16% 89%;
+    --ring: 217 91% 60%;
+    --radius: 1rem;
 
-    /* 图表颜色 */
-    --chart-1: 239 84% 67%;
-    --chart-2: 142 71% 45%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 280 67% 55%;
-    --chart-5: 340 75% 55%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 188 88% 40%;
+    --chart-3: 34 94% 55%;
+    --chart-4: 262 83% 62%;
+    --chart-5: 142 71% 45%;
 
     /* 扩展颜色变量 */
     --success: 142 71% 45%;
@@ -50,31 +49,31 @@
 
   .dark,
   [data-theme="dark"] {
-    /* 现代深色主题 - 深蓝灰色调 */
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-    --card: 224 71% 7%;
-    --card-foreground: 213 31% 91%;
-    --popover: 224 71% 7%;
-    --popover-foreground: 213 31% 91%;
-    --primary: 239 84% 67%;
+    /* Material-inspired dark theme */
+    --background: 222 28% 8%;
+    --foreground: 210 20% 92%;
+    --card: 222 22% 11%;
+    --card-foreground: 210 20% 92%;
+    --popover: 222 22% 11%;
+    --popover-foreground: 210 20% 92%;
+    --primary: 214 90% 68%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 215 28% 17%;
-    --secondary-foreground: 213 31% 91%;
-    --muted: 215 28% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 239 40% 20%;
-    --accent-foreground: 239 84% 75%;
+    --secondary: 222 16% 16%;
+    --secondary-foreground: 210 20% 92%;
+    --muted: 222 14% 15%;
+    --muted-foreground: 217 10% 68%;
+    --accent: 217 35% 19%;
+    --accent-foreground: 214 90% 76%;
     --destructive: 0 63% 31%;
     --destructive-foreground: 0 0% 100%;
-    --border: 215 28% 17%;
-    --input: 215 28% 17%;
-    --ring: 239 84% 67%;
-    --chart-1: 239 84% 67%;
-    --chart-2: 142 71% 50%;
-    --chart-3: 38 92% 55%;
-    --chart-4: 280 67% 60%;
-    --chart-5: 340 75% 60%;
+    --border: 222 15% 20%;
+    --input: 222 15% 20%;
+    --ring: 214 90% 68%;
+    --chart-1: 214 90% 68%;
+    --chart-2: 188 82% 52%;
+    --chart-3: 34 94% 62%;
+    --chart-4: 262 83% 70%;
+    --chart-5: 142 71% 52%;
 
     /* 扩展颜色变量 */
     --success: 142 71% 50%;
@@ -108,10 +107,31 @@
 
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.10), transparent 24rem),
+      radial-gradient(circle at top right, hsl(var(--chart-2) / 0.08), transparent 22rem),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+    font-family: "Google Sans", "Roboto", "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+}
+
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 10% 12%, hsl(var(--primary) / 0.06), transparent 20rem),
+    radial-gradient(circle at 90% 8%, hsl(var(--chart-2) / 0.06), transparent 20rem);
+  z-index: 0;
+}
+
+.app-shell > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* Scrollbar styles */
@@ -312,6 +332,22 @@
 /* Smooth transitions for theme switching */
 html {
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+@layer utilities {
+  .surface-1 {
+    @apply border border-white/50 bg-card/90 backdrop-blur;
+    box-shadow:
+      0 1px 2px rgb(15 23 42 / 0.04),
+      0 8px 24px -18px rgb(15 23 42 / 0.22);
+  }
+
+  .surface-2 {
+    @apply border border-white/50 bg-background/85 backdrop-blur;
+    box-shadow:
+      0 1px 2px rgb(15 23 42 / 0.04),
+      0 14px 32px -24px rgb(15 23 42 / 0.24);
+  }
 }
 
 /* Toast slide-in animation */

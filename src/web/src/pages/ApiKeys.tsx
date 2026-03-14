@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import ReactECharts from 'echarts-for-react'
-import type { EChartsOption } from 'echarts'
+import { EChart, echarts, type EChartOption } from '@/components/EChart'
 import { Key, Copy, Trash2, Plus, Check, Eye, EyeOff, Shield } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import { Loader } from '@/components/Loader'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { copyToClipboard } from '@/utils/clipboard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -87,7 +87,7 @@ function EndpointSelector({
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">{hint}</p>
-      <label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition-colors hover:bg-muted/50">
+      <label className="flex cursor-pointer items-center gap-2 rounded-2xl border border-border/70 bg-background/70 px-3 py-2.5 transition-colors hover:border-primary/20 hover:bg-primary/5">
         <input
           type="checkbox"
           checked={allSelected}
@@ -100,7 +100,7 @@ function EndpointSelector({
         {available.map((ep) => (
           <label
             key={ep.id}
-            className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition-colors hover:bg-muted/50"
+            className="flex cursor-pointer items-center gap-2 rounded-2xl border border-border/70 bg-background/70 px-3 py-2.5 transition-colors hover:border-primary/20 hover:bg-primary/5"
           >
             <input
               type="checkbox"
@@ -132,11 +132,14 @@ export default function ApiKeysPage() {
   const [newKeyEndpoints, setNewKeyEndpoints] = useState<string[]>([])
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<NewApiKeyResponse | null>(null)
   const [isDeleting, setIsDeleting] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ApiKeySummary | null>(null)
   const [rangeDays, setRangeDays] = useState<number>(7)
   const [revealedKeys, setRevealedKeys] = useState<Map<number, string>>(new Map())
   const [isRevealing, setIsRevealing] = useState<number | null>(null)
   const [editEndpointsKey, setEditEndpointsKey] = useState<ApiKeySummary | null>(null)
   const [editEndpointsSelection, setEditEndpointsSelection] = useState<string[]>([])
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
 
   const availableEndpoints = useAvailableEndpoints()
 
@@ -159,9 +162,26 @@ export default function ApiKeysPage() {
   const overview = overviewQuery.data
   const usage = usageQuery.data ?? []
   const hasWildcard = keys.some((item) => item.isWildcard)
+  const restrictedCount = keys.filter((item) => !item.isWildcard && (item.allowedEndpoints?.length ?? 0) > 0).length
   const totalKeysValue = overview ? overview.totalKeys.toLocaleString() : '-'
   const enabledKeysValue = overview ? overview.enabledKeys.toLocaleString() : '-'
   const activeKeysValue = overview ? overview.activeKeys.toLocaleString() : '-'
+  const filteredKeys = useMemo(() => {
+    return keys.filter((key) => {
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'enabled' ? key.enabled : !key.enabled)
+      if (!matchesStatus) return false
+      const keyword = search.trim().toLowerCase()
+      if (!keyword) return true
+      return [
+        key.name,
+        key.description ?? '',
+        key.maskedKey ?? '',
+        ...(key.allowedEndpoints ?? [])
+      ].join(' ').toLowerCase().includes(keyword)
+    })
+  }, [keys, search, statusFilter])
 
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) {
@@ -212,16 +232,17 @@ export default function ApiKeysPage() {
     }
   }
 
-  const handleDeleteKey = async (id: number) => {
-    if (!confirm(t('apiKeys.confirmDelete'))) return
+  const handleDeleteKey = async () => {
+    if (!deleteTarget) return
 
-    setIsDeleting(id)
+    setIsDeleting(deleteTarget.id)
     try {
-      await apiClient.delete(`/api/keys/${id}`)
+      await apiClient.delete(`/api/keys/${deleteTarget.id}`)
       keysQuery.refetch()
       overviewQuery.refetch()
       usageQuery.refetch()
       pushToast({ title: t('apiKeys.toast.keyDeleted'), variant: 'success' })
+      setDeleteTarget(null)
     } catch (error: unknown) {
       const apiError = toApiError(error)
       pushToast({
@@ -307,7 +328,7 @@ export default function ApiKeysPage() {
     return new Date(isoString).toLocaleString()
   }
 
-  const requestsChartOption = useMemo<EChartsOption>(() => {
+  const requestsChartOption = useMemo<EChartOption>(() => {
     const categories = usage.map((item) => item.apiKeyName ?? t('apiKeys.analytics.unknownKey'))
     return {
       tooltip: { trigger: 'axis' },
@@ -325,7 +346,7 @@ export default function ApiKeysPage() {
     }
   }, [usage, t])
 
-  const tokensChartOption = useMemo<EChartsOption>(() => {
+  const tokensChartOption = useMemo<EChartOption>(() => {
     const categories = usage.map((item) => item.apiKeyName ?? t('apiKeys.analytics.unknownKey'))
     return {
       tooltip: { trigger: 'axis' },
@@ -376,7 +397,7 @@ export default function ApiKeysPage() {
         title={t('apiKeys.analytics.title')}
         description={t('apiKeys.analytics.description', { days: rangeDays })}
         actions={
-          <div className="flex items-center gap-1 rounded-lg border p-1">
+          <div className="flex items-center gap-1 rounded-full border border-border/70 bg-background/80 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
             {RANGE_OPTIONS.map((option) => {
               const active = rangeDays === option.value
               return (
@@ -385,10 +406,10 @@ export default function ApiKeysPage() {
                   type="button"
                   onClick={() => setRangeDays(option.value)}
                   className={cn(
-                    'inline-flex h-7 items-center rounded-md px-3 text-xs font-medium transition-colors',
+                    'inline-flex h-8 items-center rounded-full px-3.5 text-xs font-medium transition-all',
                     active
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-muted'
+                      ? 'bg-primary text-primary-foreground shadow-[0_8px_18px_-14px_rgba(59,130,246,0.7)]'
+                      : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
                   )}
                 >
                   {t(option.labelKey)}
@@ -427,18 +448,52 @@ export default function ApiKeysPage() {
         title={t('apiKeys.list.title')}
         description={hasWildcard ? t('apiKeys.wildcardHint') : undefined}
       >
-        {keys.length === 0 ? (
-          <div className="flex h-32 items-center justify-center rounded-lg border border-dashed">
+        <div className="space-y-4">
+          <div className="grid gap-3 rounded-2xl border border-white/40 bg-card/80 p-4 md:grid-cols-[minmax(0,1fr)_180px_auto]">
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t('apiKeys.filters.searchPlaceholder')}
+            />
+            <div className="flex items-center gap-1 rounded-full border border-border/70 bg-background/80 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+              {(['all', 'enabled', 'disabled'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStatusFilter(value)}
+                  className={cn(
+                    'inline-flex h-8 items-center rounded-full px-3.5 text-xs font-medium transition-all',
+                    statusFilter === value
+                      ? 'bg-primary text-primary-foreground shadow-[0_8px_18px_-14px_rgba(59,130,246,0.7)]'
+                      : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
+                  )}
+                >
+                  {t(`apiKeys.filters.${value}`)}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{t('apiKeys.summary.wildcard', { count: keys.filter((item) => item.isWildcard).length })}</Badge>
+              <Badge variant="outline">{t('apiKeys.summary.restricted', { count: restrictedCount })}</Badge>
+            </div>
+          </div>
+
+          {keys.length === 0 ? (
+          <div className="flex h-32 items-center justify-center rounded-[1.25rem] border border-dashed border-border/70 bg-background/45">
             <p className="text-sm text-muted-foreground">{t('apiKeys.list.empty')}</p>
           </div>
-        ) : (
+          ) : filteredKeys.length === 0 ? (
+            <div className="flex h-32 items-center justify-center rounded-[1.25rem] border border-dashed border-border/70 bg-background/45">
+              <p className="text-sm text-muted-foreground">{t('apiKeys.list.emptyFiltered')}</p>
+            </div>
+          ) : (
           <div className="grid gap-4">
-            {keys.map((key) => {
+            {filteredKeys.map((key) => {
               const totalTokens = (key.totalInputTokens + key.totalOutputTokens).toLocaleString()
               const revealedKey = revealedKeys.get(key.id)
               const isKeyRevealing = isRevealing === key.id
               return (
-                <Card key={key.id}>
+                <Card key={key.id} className="border-white/40 bg-card/90 backdrop-blur">
                   <CardContent className="space-y-4 pt-4">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="space-y-3">
@@ -458,8 +513,26 @@ export default function ApiKeysPage() {
                             <Badge variant="secondary" className="text-xs opacity-60">{t('apiKeys.allEndpoints')}</Badge>
                           ) : null}
                         </div>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          <KeyMetaChip
+                            label={t('apiKeys.requestCount')}
+                            value={key.requestCount.toLocaleString()}
+                          />
+                          <KeyMetaChip
+                            label={t('apiKeys.totalTokens')}
+                            value={totalTokens}
+                          />
+                          <KeyMetaChip
+                            label={t('apiKeys.allowedEndpoints')}
+                            value={key.isWildcard
+                              ? t('apiKeys.wildcard')
+                              : key.allowedEndpoints && key.allowedEndpoints.length > 0
+                                ? key.allowedEndpoints.join(', ')
+                                : t('apiKeys.allEndpoints')}
+                          />
+                        </div>
                         <div className="flex items-center gap-2">
-                          <code className="rounded-md bg-muted px-3 py-1.5 font-mono text-sm">
+                          <code className="rounded-xl border border-border/70 bg-background/70 px-3 py-1.5 font-mono text-sm">
                             {key.isWildcard
                               ? t('apiKeys.wildcard')
                               : revealedKey ?? key.maskedKey ?? '********'}
@@ -525,18 +598,6 @@ export default function ApiKeysPage() {
                             </span>
                             <p className="font-medium">{formatDate(key.lastUsedAt)}</p>
                           </div>
-                          <div className="space-y-1">
-                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              {t('apiKeys.requestCount')}
-                            </span>
-                            <p className="font-medium">{key.requestCount.toLocaleString()}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              {t('apiKeys.totalTokens')}
-                            </span>
-                            <p className="font-medium">{totalTokens}</p>
-                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -562,7 +623,7 @@ export default function ApiKeysPage() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => handleDeleteKey(key.id)}
+                            onClick={() => setDeleteTarget(key)}
                             disabled={isDeleting === key.id}
                             aria-label={t('apiKeys.actions.delete')}
                           >
@@ -576,7 +637,8 @@ export default function ApiKeysPage() {
               )
             })}
           </div>
-        )}
+          )}
+        </div>
       </PageSection>
 
       {/* Create Key Dialog */}
@@ -655,7 +717,7 @@ export default function ApiKeysPage() {
           <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
             {t('apiKeys.saveKeyWarning')}
           </p>
-          <div className="rounded-md bg-muted px-4 py-3 font-mono text-sm">
+          <div className="rounded-[1.1rem] border border-border/70 bg-background/70 px-4 py-3 font-mono text-sm">
             {newlyCreatedKey?.key}
           </div>
           {newlyCreatedKey?.description && (
@@ -702,13 +764,34 @@ export default function ApiKeysPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open && isDeleting === null) {
+            setDeleteTarget(null)
+          }
+        }}
+        title={t('apiKeys.deleteDialogTitle')}
+        description={t('apiKeys.confirmDelete')}
+        confirmLabel={deleteTarget && isDeleting === deleteTarget.id ? t('common.actions.loading') : t('apiKeys.actions.delete')}
+        cancelLabel={t('common.actions.cancel')}
+        loading={deleteTarget ? isDeleting === deleteTarget.id : false}
+        onConfirm={handleDeleteKey}
+      >
+        {deleteTarget ? (
+          <div className="rounded-[1.1rem] border border-destructive/20 bg-destructive/5 px-3 py-2 font-mono text-xs text-foreground">
+            {deleteTarget.name}
+          </div>
+        ) : null}
+      </ConfirmDialog>
     </div>
   )
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <Card>
+    <Card className="surface-1">
       <CardContent className="pt-4">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
         <p className="mt-2 text-2xl font-semibold">{value}</p>
@@ -717,9 +800,18 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   )
 }
 
+function KeyMetaChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2">
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-sm font-medium">{value}</p>
+    </div>
+  )
+}
+
 interface AnalyticsChartCardProps {
   title: string
-  option: EChartsOption
+  option: EChartOption
   loading: boolean
   empty: boolean
   emptyText: string
@@ -729,7 +821,7 @@ function AnalyticsChartCard({ title, option, loading, empty, emptyText }: Analyt
   const { t } = useTranslation()
 
   return (
-    <Card>
+    <Card className="surface-1">
       <CardContent className="space-y-4 pt-4">
         <h3 className="text-base font-semibold">{title}</h3>
         {loading ? (
@@ -737,11 +829,12 @@ function AnalyticsChartCard({ title, option, loading, empty, emptyText }: Analyt
             <span className="text-sm text-muted-foreground">{t('common.loadingShort')}</span>
           </div>
         ) : empty ? (
-          <div className="flex h-[280px] items-center justify-center rounded-lg border border-dashed">
+          <div className="flex h-[280px] items-center justify-center rounded-[1.25rem] border border-dashed border-border/70 bg-background/45">
             <span className="text-sm text-muted-foreground">{emptyText}</span>
           </div>
         ) : (
-          <ReactECharts
+          <EChart
+            echarts={echarts}
             option={option}
             style={{ height: 280 }}
             notMerge

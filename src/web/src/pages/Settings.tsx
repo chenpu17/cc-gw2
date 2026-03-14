@@ -5,9 +5,11 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import { Loader } from '@/components/Loader'
 import { PageHeader } from '@/components/PageHeader'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { cn } from '@/lib/utils'
 import { copyToClipboard } from '@/utils/clipboard'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
@@ -98,6 +100,50 @@ const SETTINGS_SECTIONS = [
   { id: 'section-cleanup', labelKey: 'settings.sections.cleanup' }
 ] as const
 
+function deriveFormState(config: GatewayConfig): FormState {
+  const legacyStore = config.storePayloads
+  const deriveStoreFlag = (value?: boolean) =>
+    typeof value === 'boolean' ? value : typeof legacyStore === 'boolean' ? legacyStore : true
+
+  return {
+    port: String(config.port ?? config.http?.port ?? ''),
+    host: config.host ?? config.http?.host ?? '127.0.0.1',
+    logRetentionDays: String(config.logRetentionDays ?? 30),
+    logExportTimeoutSeconds: String(config.logExportTimeoutSeconds ?? 60),
+    storeRequestPayloads: deriveStoreFlag(config.storeRequestPayloads),
+    storeResponsePayloads: deriveStoreFlag(config.storeResponsePayloads),
+    logLevel: (config.logLevel as LogLevel) ?? 'info',
+    requestLogging: config.requestLogging !== false,
+    responseLogging: config.responseLogging ?? config.requestLogging !== false,
+    bodyLimitMb: (() => {
+      const raw = config.bodyLimit
+      if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+        return String(Math.max(1, Math.round(raw / (1024 * 1024))))
+      }
+      return '10'
+    })(),
+    enableRoutingFallback: config.enableRoutingFallback === true,
+    httpEnabled: config.http?.enabled !== false,
+    httpPort: String(config.http?.port ?? config.port ?? 4100),
+    httpHost: config.http?.host ?? config.host ?? '127.0.0.1',
+    httpsEnabled: config.https?.enabled === true,
+    httpsPort: String(config.https?.port ?? 4443),
+    httpsHost: config.https?.host ?? config.host ?? '127.0.0.1',
+    httpsKeyPath: config.https?.keyPath ?? '',
+    httpsCertPath: config.https?.certPath ?? '',
+    httpsCaPath: config.https?.caPath ?? ''
+  }
+}
+
+function deriveAuthFormState(auth: WebAuthStatusResponse): AuthFormState {
+  return {
+    enabled: auth.enabled,
+    username: auth.username ?? '',
+    password: '',
+    confirmPassword: ''
+  }
+}
+
 export default function SettingsPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
@@ -156,6 +202,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [cleaning, setCleaning] = useState(false)
   const [clearingAll, setClearingAll] = useState(false)
+  const [confirmCleanupOpen, setConfirmCleanupOpen] = useState(false)
+  const [confirmClearAllOpen, setConfirmClearAllOpen] = useState(false)
   const [authSettings, setAuthSettings] = useState<WebAuthStatusResponse | null>(null)
   const [authForm, setAuthForm] = useState<AuthFormState>({
     enabled: false,
@@ -183,56 +231,32 @@ export default function SettingsPage() {
     return authForm.username.trim() !== (authSettings?.username ?? '')
   }, [authForm.enabled, authForm.username, authSettings])
 
+  const initialForm = useMemo(() => (config ? deriveFormState(config) : null), [config])
+  const isConfigDirty = useMemo(
+    () => (initialForm ? JSON.stringify(form) !== JSON.stringify(initialForm) : false),
+    [form, initialForm]
+  )
+  const initialAuthForm = useMemo(
+    () => (authSettings ? deriveAuthFormState(authSettings) : null),
+    [authSettings]
+  )
+  const isAuthDirty = useMemo(
+    () => (initialAuthForm ? JSON.stringify(authForm) !== JSON.stringify(initialAuthForm) : false),
+    [authForm, initialAuthForm]
+  )
+
   useEffect(() => {
     if (configQuery.data) {
       setConfig(configQuery.data.config)
       setConfigPath(configQuery.data.path)
-      const legacyStore = configQuery.data.config.storePayloads
-      const deriveStoreFlag = (value?: boolean) =>
-        typeof value === 'boolean' ? value : typeof legacyStore === 'boolean' ? legacyStore : true
-
-      const cfg = configQuery.data.config
-
-      setForm({
-        port: String(cfg.port ?? cfg.http?.port ?? ''),
-        host: cfg.host ?? cfg.http?.host ?? '127.0.0.1',
-        logRetentionDays: String(cfg.logRetentionDays ?? 30),
-        logExportTimeoutSeconds: String(cfg.logExportTimeoutSeconds ?? 60),
-        storeRequestPayloads: deriveStoreFlag(cfg.storeRequestPayloads),
-        storeResponsePayloads: deriveStoreFlag(cfg.storeResponsePayloads),
-        logLevel: (cfg.logLevel as LogLevel) ?? 'info',
-        requestLogging: cfg.requestLogging !== false,
-        responseLogging: cfg.responseLogging ?? cfg.requestLogging !== false,
-        bodyLimitMb: (() => {
-          const raw = cfg.bodyLimit
-          if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
-            return String(Math.max(1, Math.round(raw / (1024 * 1024))))
-          }
-          return '10'
-        })(),
-        enableRoutingFallback: cfg.enableRoutingFallback === true,
-        httpEnabled: cfg.http?.enabled !== false,
-        httpPort: String(cfg.http?.port ?? cfg.port ?? 4100),
-        httpHost: cfg.http?.host ?? cfg.host ?? '127.0.0.1',
-        httpsEnabled: cfg.https?.enabled === true,
-        httpsPort: String(cfg.https?.port ?? 4443),
-        httpsHost: cfg.https?.host ?? cfg.host ?? '127.0.0.1',
-        httpsKeyPath: cfg.https?.keyPath ?? '',
-        httpsCertPath: cfg.https?.certPath ?? '',
-        httpsCaPath: cfg.https?.caPath ?? ''
-      })
+      setForm(deriveFormState(configQuery.data.config))
     }
   }, [configQuery.data])
 
   useEffect(() => {
     if (authQuery.data) {
       setAuthSettings(authQuery.data)
-      setAuthForm({
-        enabled: authQuery.data.enabled,
-        username: authQuery.data.username ?? '',
-        password: '',
-        confirmPassword: ''
-      })
+      setAuthForm(deriveAuthFormState(authQuery.data))
       setAuthErrors({})
     }
   }, [authQuery.data])
@@ -420,44 +444,7 @@ export default function SettingsPage() {
 
   const handleReset = () => {
     if (!config) return
-    setForm({
-      port: String(config.port ?? ''),
-      host: config.host ?? '',
-      logRetentionDays: String(config.logRetentionDays ?? 30),
-      logExportTimeoutSeconds: String(config.logExportTimeoutSeconds ?? 60),
-      storeRequestPayloads:
-        typeof config.storeRequestPayloads === 'boolean'
-          ? config.storeRequestPayloads
-          : typeof config.storePayloads === 'boolean'
-          ? config.storePayloads
-          : true,
-      storeResponsePayloads:
-        typeof config.storeResponsePayloads === 'boolean'
-          ? config.storeResponsePayloads
-          : typeof config.storePayloads === 'boolean'
-          ? config.storePayloads
-          : true,
-      logLevel: (config.logLevel as LogLevel) ?? 'info',
-      requestLogging: config.requestLogging !== false,
-      responseLogging: config.responseLogging ?? config.requestLogging !== false,
-      bodyLimitMb: (() => {
-        const raw = config.bodyLimit
-        if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
-          return String(Math.max(1, Math.round(raw / (1024 * 1024))))
-        }
-        return '10'
-      })(),
-      enableRoutingFallback: config.enableRoutingFallback === true,
-      httpEnabled: config.http?.enabled !== false,
-      httpPort: String(config.http?.port ?? config.port ?? 4100),
-      httpHost: config.http?.host ?? config.host ?? '127.0.0.1',
-      httpsEnabled: config.https?.enabled === true,
-      httpsPort: String(config.https?.port ?? 4443),
-      httpsHost: config.https?.host ?? config.host ?? '127.0.0.1',
-      httpsKeyPath: config.https?.keyPath ?? '',
-      httpsCertPath: config.https?.certPath ?? '',
-      httpsCaPath: config.https?.caPath ?? ''
-    })
+    setForm(deriveFormState(config))
     setErrors({})
   }
 
@@ -499,12 +486,7 @@ export default function SettingsPage() {
 
   const handleAuthReset = () => {
     if (!authSettings) return
-    setAuthForm({
-      enabled: authSettings.enabled,
-      username: authSettings.username ?? '',
-      password: '',
-      confirmPassword: ''
-    })
+    setAuthForm(deriveAuthFormState(authSettings))
     setAuthErrors({})
   }
 
@@ -602,13 +584,14 @@ export default function SettingsPage() {
         icon={<SettingsIcon className="h-5 w-5" aria-hidden="true" />}
         title={t('settings.title')}
         description={t('settings.description')}
+        badge={isConfigDirty || isAuthDirty ? t('modelManagement.actions.unsaved') : undefined}
         actions={
           config ? (
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={handleReset} disabled={saving}>
+              <Button variant="outline" onClick={handleReset} disabled={saving || !isConfigDirty}>
                 {t('common.actions.reset')}
               </Button>
-              <Button onClick={() => void handleSave()} disabled={saving}>
+              <Button onClick={() => void handleSave()} disabled={saving || !isConfigDirty}>
                 {saving ? t('common.actions.saving') : t('common.actions.save')}
               </Button>
             </div>
@@ -642,10 +625,10 @@ export default function SettingsPage() {
                   type="button"
                   onClick={() => handleSectionClick(section.id)}
                   className={cn(
-                    'block w-full rounded-md px-3 py-2 text-left text-sm transition-colors',
+                    'block w-full rounded-2xl px-3.5 py-2.5 text-left text-sm transition-all',
                     activeSection === section.id
-                      ? 'bg-primary/10 font-medium text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      ? 'bg-primary/10 font-medium text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]'
+                      : 'text-muted-foreground hover:bg-background/80 hover:text-foreground'
                   )}
                 >
                   {t(section.labelKey)}
@@ -751,7 +734,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="md:col-span-2 grid gap-4 sm:grid-cols-2">
-                  <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="flex items-center justify-between rounded-[1.2rem] border border-border/70 bg-background/55 p-4">
                     <div className="space-y-1">
                       <Label className="text-sm font-medium">{t('settings.fields.storeRequestPayloads')}</Label>
                       <p className="text-xs text-muted-foreground">{t('settings.fields.storeRequestPayloadsHint')}</p>
@@ -762,7 +745,7 @@ export default function SettingsPage() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="flex items-center justify-between rounded-[1.2rem] border border-border/70 bg-background/55 p-4">
                     <div className="space-y-1">
                       <Label className="text-sm font-medium">{t('settings.fields.storeResponsePayloads')}</Label>
                       <p className="text-xs text-muted-foreground">{t('settings.fields.storeResponsePayloadsHint')}</p>
@@ -773,7 +756,7 @@ export default function SettingsPage() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="flex items-center justify-between rounded-[1.2rem] border border-border/70 bg-background/55 p-4">
                     <div className="space-y-1">
                       <Label className="text-sm font-medium">{t('settings.fields.requestLogging')}</Label>
                       <p className="text-xs text-muted-foreground">{t('settings.fields.requestLoggingHint')}</p>
@@ -784,7 +767,7 @@ export default function SettingsPage() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="flex items-center justify-between rounded-[1.2rem] border border-border/70 bg-background/55 p-4">
                     <div className="space-y-1">
                       <Label className="text-sm font-medium">{t('settings.fields.responseLogging')}</Label>
                       <p className="text-xs text-muted-foreground">{t('settings.fields.responseLoggingHint')}</p>
@@ -795,7 +778,7 @@ export default function SettingsPage() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
+                  <div className="flex items-center justify-between rounded-[1.2rem] border border-amber-200 bg-amber-50/85 p-4 dark:border-amber-800 dark:bg-amber-950">
                     <div className="space-y-1">
                       <Label className="text-sm font-medium text-amber-700 dark:text-amber-300">
                         {t('settings.fields.enableRoutingFallback')}
@@ -811,7 +794,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="md:col-span-2 rounded-lg border bg-muted/50 p-4">
+                <div className="md:col-span-2 rounded-[1.2rem] border border-border/70 bg-background/55 p-4">
                   <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                     {t('settings.fields.defaults')}
                   </Label>
@@ -830,7 +813,7 @@ export default function SettingsPage() {
               </div>
 
               {/* Restart Warning */}
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
+              <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50/85 p-4 dark:border-amber-800 dark:bg-amber-950">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                   <div className="space-y-2">
@@ -840,7 +823,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-amber-700 dark:text-amber-300">
                       {t('settings.protocol.restartHint')}
                     </p>
-                    <code className="block rounded-md bg-amber-100 px-3 py-2 text-xs font-mono text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+                    <code className="block rounded-xl bg-amber-100/90 px-3 py-2 text-xs font-mono text-amber-900 dark:bg-amber-900 dark:text-amber-100">
                       cc-gw restart --daemon
                     </code>
                     <p className="text-xs text-amber-600 dark:text-amber-400">
@@ -851,14 +834,14 @@ export default function SettingsPage() {
               </div>
 
               {errors.protocol && (
-                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                <div className="rounded-[1.2rem] border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
                   <AlertCircle className="inline h-4 w-4 mr-2" />
                   {errors.protocol}
                 </div>
               )}
 
               {/* HTTP Config */}
-              <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-5 dark:border-blue-800 dark:bg-blue-950/50">
+              <div className="rounded-[1.4rem] border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-800 dark:bg-blue-950/50">
                 <div className="flex items-center justify-between mb-4">
                   <div className="space-y-1">
                     <Label className="text-sm font-medium text-blue-800 dark:text-blue-200">
@@ -904,7 +887,7 @@ export default function SettingsPage() {
               </div>
 
               {/* HTTPS Config */}
-              <div className="rounded-lg border border-green-200 bg-green-50/50 p-5 dark:border-green-800 dark:bg-green-950/50">
+              <div className="rounded-[1.4rem] border border-green-200 bg-green-50/60 p-5 dark:border-green-800 dark:bg-green-950/50">
                 <div className="flex items-center justify-between mb-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -982,7 +965,7 @@ export default function SettingsPage() {
                     </div>
 
                     {/* HTTPS Certificate Warning */}
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
+                    <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50/85 p-4 dark:border-amber-800 dark:bg-amber-950">
                       <div className="flex items-start gap-3">
                         <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                         <div className="space-y-2 flex-1">
@@ -1023,14 +1006,14 @@ export default function SettingsPage() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="flex items-center justify-between rounded-[1.2rem] border border-border/70 bg-background/55 p-4">
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">{t('settings.auth.enable')}</Label>
                       <p className="text-xs text-muted-foreground">{t('settings.auth.enableHint')}</p>
                       <div className="flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
-                        <span className="rounded-full bg-muted px-3 py-1">/ui</span>
-                        <span className="rounded-full bg-muted px-3 py-1">/api/*</span>
-                        <span className="rounded-full bg-muted px-3 py-1">Cookie Session</span>
+                        <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1">/ui</span>
+                        <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1">/api/*</span>
+                        <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1">Cookie Session</span>
                       </div>
                     </div>
                     <Switch
@@ -1087,7 +1070,7 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="flex flex-col gap-4">
-                      <div className="rounded-lg border bg-card p-4">
+                      <div className="rounded-[1.2rem] border border-border/70 bg-card/88 p-4">
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">
                           {t('settings.auth.status')}
                         </p>
@@ -1097,23 +1080,23 @@ export default function SettingsPage() {
                             : t('settings.auth.statusDisabled')}
                         </p>
                         {authSettings?.username && (
-                          <div className="mt-3 rounded-md bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
+                          <div className="mt-3 rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
                             {t('settings.auth.username')}: {authSettings.username}
                           </div>
                         )}
                       </div>
 
-                      <div className="rounded-lg border bg-muted/50 p-4 text-xs text-muted-foreground">
+                      <div className="rounded-[1.2rem] border border-border/70 bg-background/55 p-4 text-xs text-muted-foreground">
                         {t(needsPassword ? 'settings.auth.passwordHintRequired' : 'settings.auth.passwordHintOptional')}
                       </div>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-end gap-3">
-                    <Button onClick={() => void handleAuthSave()} disabled={savingAuth}>
+                    <Button onClick={() => void handleAuthSave()} disabled={savingAuth || !isAuthDirty}>
                       {savingAuth ? t('common.actions.saving') : t('settings.auth.actions.save')}
                     </Button>
-                    <Button variant="outline" onClick={handleAuthReset} disabled={savingAuth}>
+                    <Button variant="outline" onClick={handleAuthReset} disabled={savingAuth || !isAuthDirty}>
                       {t('common.actions.reset')}
                     </Button>
                   </div>
@@ -1135,7 +1118,7 @@ export default function SettingsPage() {
                   {t('common.actions.copy')}
                 </Button>
               </div>
-              <code className="block break-all rounded-lg border bg-muted px-4 py-3 text-xs">
+              <code className="block break-all rounded-[1.2rem] border border-border/70 bg-background/70 px-4 py-3 text-xs">
                 {configPath || t('settings.file.unknown')}
               </code>
             </CardContent>
@@ -1148,31 +1131,118 @@ export default function SettingsPage() {
                 <h3 className="text-sm font-semibold">{t('settings.sections.cleanup')}</h3>
                 <p className="mt-1 text-xs text-muted-foreground">{t('settings.cleanup.description')}</p>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => void handleCleanupLogs()}
-                  disabled={cleaning}
-                  className="border-destructive/50 text-destructive hover:bg-destructive/10"
-                >
-                  {cleaning ? t('common.actions.cleaning') : t('common.actions.cleanup')}
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => void handleClearAllLogs()}
-                  disabled={clearingAll}
-                >
-                  {clearingAll ? t('settings.cleanup.clearingAll') : t('settings.cleanup.clearAll')}
-                </Button>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-amber-300/70 bg-amber-50/70 p-4 dark:border-amber-700/70 dark:bg-amber-950/20">
+                  <div className="space-y-2">
+                    <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                      {t('settings.cleanup.softLabel')}
+                    </Badge>
+                    <p className="text-sm font-medium">{t('settings.cleanup.softTitle')}</p>
+                    <p className="text-xs text-muted-foreground">{t('settings.cleanup.softDescription')}</p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setConfirmCleanupOpen(true)}
+                      disabled={cleaning}
+                      className="border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+                    >
+                      {cleaning ? t('common.actions.cleaning') : t('common.actions.cleanup')}
+                    </Button>
+                  </div>
+                </div>
+                <div className="rounded-[1.3rem] border border-destructive/40 bg-destructive/5 p-4">
+                  <div className="space-y-2">
+                    <Badge variant="outline" className="border-destructive/40 bg-destructive/10 text-destructive">
+                      {t('settings.cleanup.hardLabel')}
+                    </Badge>
+                    <p className="text-sm font-medium">{t('settings.cleanup.hardTitle')}</p>
+                    <p className="text-xs text-muted-foreground">{t('settings.cleanup.clearAllWarning')}</p>
+                    <Button
+                      variant="destructive"
+                      onClick={() => setConfirmClearAllOpen(true)}
+                      disabled={clearingAll}
+                    >
+                      {clearingAll ? t('settings.cleanup.clearingAll') : t('settings.cleanup.clearAll')}
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-destructive">
-                {t('settings.cleanup.clearAllWarning')}
-              </p>
             </CardContent>
           </Card>
           </div>
+
+          {(isConfigDirty || isAuthDirty) && (
+            <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-[1.35rem] border border-primary/20 bg-background/95 p-4 shadow-[0_24px_64px_-28px_rgba(15,23,42,0.35)] backdrop-blur md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary">{t('modelManagement.actions.unsaved')}</Badge>
+                  {isConfigDirty && <Badge variant="outline">{t('settings.sections.basics')}</Badge>}
+                  {isAuthDirty && <Badge variant="outline">{t('settings.sections.security')}</Badge>}
+                </div>
+                <p className="text-sm text-muted-foreground">{t('modelManagement.actions.footerDirtyHint')}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {isAuthDirty && (
+                  <>
+                    <Button variant="outline" onClick={handleAuthReset} disabled={savingAuth}>
+                      {t('common.actions.reset')}
+                    </Button>
+                    <Button onClick={() => void handleAuthSave()} disabled={savingAuth}>
+                      {savingAuth ? t('common.actions.saving') : t('settings.auth.actions.save')}
+                    </Button>
+                  </>
+                )}
+                {isConfigDirty && (
+                  <>
+                    <Button variant="outline" onClick={handleReset} disabled={saving}>
+                      {t('common.actions.reset')}
+                    </Button>
+                    <Button onClick={() => void handleSave()} disabled={saving}>
+                      {saving ? t('common.actions.saving') : t('common.actions.save')}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmCleanupOpen}
+        onOpenChange={(open) => {
+          if (!open && !cleaning) {
+            setConfirmCleanupOpen(false)
+          }
+        }}
+        title={t('settings.cleanup.softTitle')}
+        description={t('settings.cleanup.confirmCleanup')}
+        confirmLabel={cleaning ? t('common.actions.loading') : t('common.actions.cleanup')}
+        cancelLabel={t('common.actions.cancel')}
+        loading={cleaning}
+        confirmVariant="default"
+        onConfirm={async () => {
+          await handleCleanupLogs()
+          setConfirmCleanupOpen(false)
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmClearAllOpen}
+        onOpenChange={(open) => {
+          if (!open && !clearingAll) {
+            setConfirmClearAllOpen(false)
+          }
+        }}
+        title={t('settings.cleanup.clearAll')}
+        description={t('settings.cleanup.confirmClearAll')}
+        confirmLabel={clearingAll ? t('common.actions.loading') : t('settings.cleanup.clearAll')}
+        cancelLabel={t('common.actions.cancel')}
+        loading={clearingAll}
+        onConfirm={async () => {
+          await handleClearAllLogs()
+          setConfirmClearAllOpen(false)
+        }}
+      />
     </div>
   )
 }

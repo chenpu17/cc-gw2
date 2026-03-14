@@ -46,6 +46,31 @@ export default function HelpPage(): JSX.Element {
   }, [t])
 
   const faqItems = t('help.faq.items', { returnObjects: true }) as Array<{ q: string; a: string }>
+  const quickPaths = useMemo(
+    () => [
+      {
+        id: 'configuration',
+        title: sections[0].title,
+        subtitle: sections[0].items[0] ?? ''
+      },
+      {
+        id: 'claude',
+        title: sections[1].title,
+        subtitle: sections[1].items[0] ?? ''
+      },
+      {
+        id: 'codex',
+        title: sections[2].title,
+        subtitle: sections[2].items[0] ?? ''
+      },
+      {
+        id: 'faq',
+        title: t('help.faq.title'),
+        subtitle: `${faqItems.length} FAQ`
+      }
+    ],
+    [faqItems.length, sections, t]
+  )
 
   return (
     <div className="space-y-6">
@@ -55,9 +80,9 @@ export default function HelpPage(): JSX.Element {
         description={t('help.intro')}
       />
 
-      <Card>
+      <Card className="surface-1">
         <CardContent className="flex items-start gap-4 pt-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]">
             <Info className="h-5 w-5" aria-hidden="true" />
           </div>
           <p className="text-sm text-muted-foreground">
@@ -66,11 +91,26 @@ export default function HelpPage(): JSX.Element {
         </CardContent>
       </Card>
 
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {quickPaths.map((path) => (
+          <a
+            key={path.id}
+            href={`#help-${path.id}`}
+            className="rounded-[1.35rem] border border-white/50 bg-card/88 px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_36px_-24px_rgba(15,23,42,0.3)]"
+          >
+            <p className="text-sm font-semibold">{path.title}</p>
+            <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{path.subtitle}</p>
+          </a>
+        ))}
+      </div>
+
       <div className="space-y-6">
         {/* Basic configuration */}
-        <PageSection title={sections[0].title}>
-          <StepList items={sections[0].items} />
-        </PageSection>
+        <div id="help-configuration">
+          <PageSection title={sections[0].title}>
+            <StepList items={sections[0].items} />
+          </PageSection>
+        </div>
 
         {/* Client configuration header */}
         <div className="space-y-1 text-center">
@@ -80,31 +120,35 @@ export default function HelpPage(): JSX.Element {
 
         {/* Claude Code and Codex configuration */}
         <div className="grid gap-6 lg:grid-cols-2">
-          <PageSection title={sections[1].title}>
-            <div className="mb-4 flex items-center gap-3 rounded-lg bg-primary/5 p-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <Code className="h-4 w-4" />
+          <div id="help-claude">
+            <PageSection title={sections[1].title}>
+              <div className="mb-4 flex items-center gap-3 rounded-xl bg-primary/5 p-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                  <Code className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="text-sm font-medium">Claude Code</span>
+                  <p className="text-xs text-muted-foreground">IDE / Desktop workflow</p>
+                </div>
               </div>
-              <div>
-                <span className="text-sm font-medium">Claude Code</span>
-                <p className="text-xs text-muted-foreground">IDE 插件配置</p>
-              </div>
-            </div>
-            <StepList items={sections[1].items} />
-          </PageSection>
+              <StepList items={sections[1].items} />
+            </PageSection>
+          </div>
 
-          <PageSection title={sections[2].title}>
-            <div className="mb-4 flex items-center gap-3 rounded-lg bg-emerald-500/5 p-3 dark:bg-emerald-500/10">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 text-white">
-                <Terminal className="h-4 w-4" />
+          <div id="help-codex">
+            <PageSection title={sections[2].title}>
+              <div className="mb-4 flex items-center gap-3 rounded-xl bg-emerald-500/5 p-4 dark:bg-emerald-500/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-white">
+                  <Terminal className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="text-sm font-medium">Codex CLI</span>
+                  <p className="text-xs text-muted-foreground">Terminal workflow</p>
+                </div>
               </div>
-              <div>
-                <span className="text-sm font-medium">Codex CLI</span>
-                <p className="text-xs text-muted-foreground">命令行工具配置</p>
-              </div>
-            </div>
-            <StepList items={sections[2].items} />
-          </PageSection>
+              <StepList items={sections[2].items} />
+            </PageSection>
+          </div>
         </div>
 
         {/* Usage guide and tips */}
@@ -124,9 +168,11 @@ export default function HelpPage(): JSX.Element {
         </div>
       </div>
 
-      <PageSection title={t('help.faq.title')}>
-        <FaqList items={faqItems} />
-      </PageSection>
+      <div id="help-faq">
+        <PageSection title={t('help.faq.title')}>
+          <FaqList items={faqItems} />
+        </PageSection>
+      </div>
     </div>
   )
 }
@@ -137,9 +183,9 @@ function StepList({ items }: { items: string[] }) {
       {items.map((item, index) => (
         <li
           key={`${index}-${item}`}
-          className="flex gap-3 rounded-lg border p-3"
+          className="flex gap-3 rounded-[1.2rem] border border-white/50 bg-card/82 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
         >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-medium text-primary-foreground">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-primary text-xs font-medium text-primary-foreground">
             {index + 1}
           </span>
           <div className="flex-1 text-sm text-muted-foreground">
@@ -185,7 +231,7 @@ function StepContent({ content }: { content: string }) {
                     {t('common.actions.copy')}
                   </Button>
                 </div>
-                <pre className="overflow-x-auto rounded-md border bg-muted p-3 text-xs">
+                <pre className="overflow-x-auto rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
                   <code>{code}</code>
                 </pre>
               </div>
@@ -228,7 +274,7 @@ function FaqList({ items }: { items: Array<{ q: string; a: string }> }) {
   return (
     <dl className="flex flex-col gap-3">
       {items.map((item) => (
-        <Card key={item.q}>
+        <Card key={item.q} className="surface-1">
           <CardContent className="pt-4">
             <dt className="text-sm font-medium">{item.q}</dt>
             <dd className="mt-2 text-sm text-muted-foreground">
@@ -302,7 +348,7 @@ function FaqAnswer({ content }: { content: string }) {
                     {t('common.actions.copy')}
                   </Button>
                 </div>
-                <pre className="overflow-x-auto rounded-md border bg-muted p-3 text-xs">
+                <pre className="overflow-x-auto rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
                   <code>{code}</code>
                 </pre>
               </div>

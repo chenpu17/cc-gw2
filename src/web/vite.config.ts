@@ -4,6 +4,45 @@ import react from '@vitejs/plugin-react-swc'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+
+          if (id.includes('zrender')) {
+            return 'charts-engine'
+          }
+
+          if (id.includes('echarts-for-react')) {
+            return 'charts-react'
+          }
+
+          if (id.includes('echarts')) {
+            return 'charts-core'
+          }
+
+          if (id.includes('@radix-ui')) {
+            return 'radix'
+          }
+
+          if (id.includes('@tanstack/react-query')) {
+            return 'query'
+          }
+
+          if (id.includes('react-i18next') || id.includes('i18next')) {
+            return 'i18n'
+          }
+
+          if (id.includes('react-router')) {
+            return 'router'
+          }
+
+          return 'vendor'
+        }
+      }
+    }
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src')

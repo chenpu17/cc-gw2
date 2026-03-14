@@ -58,8 +58,8 @@ export default function LoginPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Card className="w-full max-w-md">
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <Card className="surface-2 w-full max-w-md">
           <CardContent className="flex min-h-[320px] items-center justify-center">
             <Loader />
           </CardContent>
@@ -74,9 +74,9 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
+      <Card className="surface-2 w-full max-w-md overflow-hidden">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[1.15rem] bg-gradient-to-br from-primary via-primary to-sky-400 text-lg font-bold text-primary-foreground shadow-[0_14px_30px_-18px_rgba(59,130,246,0.75)]">
             GW
           </div>
           <CardTitle className="text-2xl">{t('login.title')}</CardTitle>
@@ -111,7 +111,7 @@ export default function LoginPage() {
             </div>
 
             {(formError || error) && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <div className="rounded-[1rem] border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {formError || error}
               </div>
             )}
