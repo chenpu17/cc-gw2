@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { AxiosHeaders } from 'axios'
 import type {
   CustomEndpointsResponse,
   CreateEndpointRequest,
@@ -11,6 +11,17 @@ export const apiClient = axios.create({
   baseURL: '/',
   timeout: 15000,
   withCredentials: true
+})
+
+apiClient.interceptors.request.use((config) => {
+  const method = (config.method ?? 'get').toLowerCase()
+  if (method === 'get' || method === 'head') {
+    const headers = AxiosHeaders.from(config.headers)
+    headers.set('Cache-Control', 'no-cache')
+    headers.set('Pragma', 'no-cache')
+    config.headers = headers
+  }
+  return config
 })
 
 apiClient.interceptors.response.use(

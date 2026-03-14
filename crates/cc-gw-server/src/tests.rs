@@ -22,6 +22,22 @@ fn test_paths(label: &str) -> GatewayPaths {
     }
 }
 
+fn build_test_state(config: GatewayConfig, paths: GatewayPaths, ui_root: Option<PathBuf>) -> AppState {
+    AppState {
+        config: Arc::new(RwLock::new(config)),
+        paths: Arc::new(paths),
+        ui_root: ui_root.map(Arc::new),
+        active_requests: Arc::new(AtomicU64::new(0)),
+        active_client_addresses: Arc::new(Mutex::new(HashMap::new())),
+        active_client_sessions: Arc::new(Mutex::new(HashMap::new())),
+        active_requests_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        http_client: reqwest::Client::builder().build().expect("client"),
+        sessions: auth::SessionStore::default(),
+    }
+}
+
 async fn spawn_router(app: Router) -> (SocketAddr, JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -102,19 +118,7 @@ async fn spawn_test_gateway(
 ) -> (PathBuf, SocketAddr, JoinHandle<()>) {
     let paths = test_paths(label);
     initialize_database(&paths.db_path).expect("init db");
-    let state = AppState {
-        config: Arc::new(RwLock::new(config)),
-        paths: Arc::new(paths.clone()),
-        ui_root: None,
-        active_requests: Arc::new(AtomicU64::new(0)),
-        active_client_addresses: Arc::new(Mutex::new(HashMap::new())),
-        active_client_sessions: Arc::new(Mutex::new(HashMap::new())),
-        active_requests_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
-        active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
-        active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
-        http_client: reqwest::Client::builder().build().expect("client"),
-        sessions: auth::SessionStore::default(),
-    };
+    let state = build_test_state(config, paths.clone(), None);
     let (addr, handle) = spawn_router(build_router(state)).await;
     (paths.home_dir, addr, handle)
 }
@@ -904,4 +908,94 @@ async fn api_status_reports_live_and_recent_client_activity() {
     gateway_handle.abort();
     upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn api_status_responses_disable_http_caching() {
+    let config = GatewayConfig::default();
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "api-status-cache-headers").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(format!("http://{gateway_addr}/api/status"))
+        .send()
+        .await
+        .expect("request api status");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|value| value.to_str().ok()),
+        Some("no-store, no-cache, must-revalidate, max-age=0")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get(header::PRAGMA)
+            .and_then(|value| value.to_str().ok()),
+        Some("no-cache")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get(header::EXPIRES)
+            .and_then(|value| value.to_str().ok()),
+        Some("0")
+    );
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn ui_html_is_not_cached_but_hashed_assets_are_cacheable() {
+    let paths = test_paths("ui-cache-headers");
+    initialize_database(&paths.db_path).expect("init db");
+
+    let ui_root = paths.home_dir.join("ui-dist");
+    let assets_dir = ui_root.join("assets");
+    stdfs::create_dir_all(&assets_dir).expect("create assets dir");
+    stdfs::write(
+        ui_root.join("index.html"),
+        "<!doctype html><html><body>ok</body></html>",
+    )
+    .expect("write index");
+    stdfs::write(assets_dir.join("app-123.js"), "console.log('ok');").expect("write asset");
+
+    let state = build_test_state(GatewayConfig::default(), paths.clone(), Some(ui_root));
+    let (gateway_addr, gateway_handle) = spawn_router(build_router(state)).await;
+    let client = reqwest::Client::new();
+
+    let html = client
+        .get(format!("http://{gateway_addr}/ui/"))
+        .send()
+        .await
+        .expect("request ui index");
+    assert_eq!(html.status(), StatusCode::OK);
+    assert_eq!(
+        html.headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|value| value.to_str().ok()),
+        Some("no-store, no-cache, must-revalidate, max-age=0")
+    );
+
+    let asset = client
+        .get(format!("http://{gateway_addr}/assets/app-123.js"))
+        .send()
+        .await
+        .expect("request asset");
+    assert_eq!(asset.status(), StatusCode::OK);
+    assert_eq!(
+        asset
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|value| value.to_str().ok()),
+        Some("public, max-age=31536000, immutable")
+    );
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
 }

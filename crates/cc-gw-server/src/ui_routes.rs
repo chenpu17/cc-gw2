@@ -111,10 +111,30 @@ pub(super) async fn serve_file(path: &Path) -> Response {
     match fs::read(path).await {
         Ok(contents) => {
             let mut headers = HeaderMap::new();
+            let extension = path.extension().and_then(|value| value.to_str());
             if let Some(mime) = mime_guess::from_path(path).first() {
                 if let Ok(value) = HeaderValue::from_str(mime.as_ref()) {
                     headers.insert(header::CONTENT_TYPE, value);
                 }
+            }
+            match extension {
+                Some("html") => {
+                    headers.insert(
+                        header::CACHE_CONTROL,
+                        HeaderValue::from_static("no-store, no-cache, must-revalidate, max-age=0"),
+                    );
+                    headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+                    headers.insert(header::EXPIRES, HeaderValue::from_static("0"));
+                }
+                Some("js") | Some("css") | Some("woff") | Some("woff2") | Some("ttf")
+                | Some("otf") | Some("ico") | Some("svg") | Some("png") | Some("jpg")
+                | Some("jpeg") | Some("webp") => {
+                    headers.insert(
+                        header::CACHE_CONTROL,
+                        HeaderValue::from_static("public, max-age=31536000, immutable"),
+                    );
+                }
+                _ => {}
             }
             (StatusCode::OK, headers, contents).into_response()
         }
