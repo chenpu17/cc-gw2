@@ -26,6 +26,22 @@ export interface GatewayHarnessOptions {
   }
 }
 
+function resolveBuiltServerBinary(): string | null {
+  const executable = process.platform === 'win32' ? 'cc-gw-server.exe' : 'cc-gw-server'
+  const candidates = [
+    path.join(process.cwd(), 'target', 'release', executable),
+    path.join(process.cwd(), 'target', 'debug', executable),
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
 async function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = http.createServer()
@@ -211,12 +227,14 @@ async function waitForServer(port: number): Promise<void> {
 
 async function startGateway(tempHome: string, gatewayPort: number): Promise<ChildProcessWithoutNullStreams> {
   const cliPath = path.join(process.cwd(), 'src/cli/dist/index.js')
+  const serverBinary = resolveBuiltServerBinary()
   const child = spawn(process.execPath, [cliPath, 'start', '--foreground', '--port', String(gatewayPort)], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       HOME: tempHome,
       NODE_ENV: 'test',
+      ...(serverBinary ? { CC_GW_SERVER_BIN: serverBinary } : {}),
     },
     stdio: 'pipe',
   })

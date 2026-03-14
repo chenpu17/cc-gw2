@@ -50,10 +50,10 @@ test('theme and language switchers open menus', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/`)
   await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
 
-  await page.getByRole('button', { name: /主题|Theme|亮色|暗色|跟随系统|Light|Dark|System/ }).click()
+  await page.getByTestId('theme-switcher-trigger').click()
   await expect(page.getByRole('menuitem').first()).toBeVisible()
   await page.keyboard.press('Escape')
 
-  await page.getByRole('button', { name: /语言选择|Language selector|中文|English/ }).click()
+  await page.getByTestId('language-switcher-trigger').click()
   await expect(page.getByRole('menuitem').first()).toBeVisible()
 })

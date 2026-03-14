@@ -21,7 +21,12 @@ export function LanguageSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" aria-label={t('common.languageSelector')}>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={t('common.languageSelector')}
+          data-testid="language-switcher-trigger"
+        >
           <Languages className="mr-2 h-4 w-4" aria-hidden="true" />
           <span className="hidden sm:inline">{currentLanguage?.nativeName ?? 'Language'}</span>
         </Button>

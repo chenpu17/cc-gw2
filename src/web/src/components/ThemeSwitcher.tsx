@@ -25,7 +25,12 @@ export function ThemeSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" aria-label={t('common.theme.label')}>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={t('common.theme.label')}
+          data-testid="theme-switcher-trigger"
+        >
           <Icon className="mr-2 h-4 w-4" aria-hidden="true" />
           <span className="hidden sm:inline">{t(currentMode?.labelKey ?? 'common.theme.label')}</span>
         </Button>
