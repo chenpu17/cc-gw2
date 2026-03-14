@@ -639,13 +639,13 @@ pub fn get_metrics_overview(db_path: &Path, endpoint: Option<&str>) -> Result<Me
     let today = today_key();
     let today_sql = format!(
         "SELECT
-           COALESCE(request_count, 0),
-           COALESCE(total_input_tokens, 0),
-           COALESCE(total_output_tokens, 0),
-           COALESCE(total_cached_tokens, 0),
-           COALESCE(total_cache_read_tokens, 0),
-           COALESCE(total_cache_creation_tokens, 0),
-           COALESCE(total_latency_ms, 0)
+           COALESCE(SUM(request_count), 0),
+           COALESCE(SUM(total_input_tokens), 0),
+           COALESCE(SUM(total_output_tokens), 0),
+           COALESCE(SUM(total_cached_tokens), 0),
+           COALESCE(SUM(total_cache_read_tokens), 0),
+           COALESCE(SUM(total_cache_creation_tokens), 0),
+           COALESCE(SUM(total_latency_ms), 0)
          FROM daily_metrics
          WHERE date = ?1 {}",
         if endpoint.is_some() {
@@ -655,61 +655,9 @@ pub fn get_metrics_overview(db_path: &Path, endpoint: Option<&str>) -> Result<Me
         }
     );
     let today_section = if let Some(endpoint) = endpoint {
-        conn.query_row(&today_sql, params![today, endpoint], |row| {
-            let requests: i64 = row.get(0)?;
-            let total_latency: i64 = row.get(6)?;
-            Ok(MetricsOverviewSection {
-                requests,
-                input_tokens: row.get(1)?,
-                output_tokens: row.get(2)?,
-                cached_tokens: row.get(3)?,
-                cache_read_tokens: row.get(4)?,
-                cache_creation_tokens: row.get(5)?,
-                avg_latency_ms: if requests > 0 {
-                    total_latency / requests
-                } else {
-                    0
-                },
-            })
-        })
-        .optional()?
-        .unwrap_or(MetricsOverviewSection {
-            requests: 0,
-            input_tokens: 0,
-            output_tokens: 0,
-            cached_tokens: 0,
-            cache_read_tokens: 0,
-            cache_creation_tokens: 0,
-            avg_latency_ms: 0,
-        })
+        metrics_section(&conn, &today_sql, &[&today, &endpoint])?
     } else {
-        conn.query_row(&today_sql, params![today], |row| {
-            let requests: i64 = row.get(0)?;
-            let total_latency: i64 = row.get(6)?;
-            Ok(MetricsOverviewSection {
-                requests,
-                input_tokens: row.get(1)?,
-                output_tokens: row.get(2)?,
-                cached_tokens: row.get(3)?,
-                cache_read_tokens: row.get(4)?,
-                cache_creation_tokens: row.get(5)?,
-                avg_latency_ms: if requests > 0 {
-                    total_latency / requests
-                } else {
-                    0
-                },
-            })
-        })
-        .optional()?
-        .unwrap_or(MetricsOverviewSection {
-            requests: 0,
-            input_tokens: 0,
-            output_tokens: 0,
-            cached_tokens: 0,
-            cache_read_tokens: 0,
-            cache_creation_tokens: 0,
-            avg_latency_ms: 0,
-        })
+        metrics_section(&conn, &today_sql, &[&today])?
     };
 
     Ok(MetricsOverview {
@@ -956,6 +904,48 @@ mod tests {
             .expect("query client activity");
         assert_eq!(metrics.unique_source_ips, 3);
         assert_eq!(metrics.unique_session_ids, 2);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn metrics_overview_today_aggregates_all_endpoints() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-metrics-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        increment_daily_metrics(
+            &db_path,
+            "anthropic",
+            120,
+            &UsageStats {
+                input_tokens: 10,
+                output_tokens: 5,
+                ..UsageStats::default()
+            },
+        )
+        .expect("increment anthropic metrics");
+        increment_daily_metrics(
+            &db_path,
+            "openai",
+            80,
+            &UsageStats {
+                input_tokens: 6,
+                output_tokens: 4,
+                ..UsageStats::default()
+            },
+        )
+        .expect("increment openai metrics");
+
+        let overview = get_metrics_overview(&db_path, None).expect("query overview");
+        assert_eq!(overview.today.requests, 2);
+        assert_eq!(overview.today.input_tokens, 16);
+        assert_eq!(overview.today.output_tokens, 9);
+        assert_eq!(overview.today.avg_latency_ms, 100);
 
         let _ = std::fs::remove_dir_all(root);
     }
