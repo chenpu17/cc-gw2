@@ -1038,7 +1038,11 @@ fn endpoint_name(endpoint: GatewayEndpoint<'_>, _protocol: ProviderProtocol) -> 
 }
 
 fn extract_usage_stats(payload: &Value) -> UsageStats {
-    let usage = payload.get("usage").unwrap_or(payload);
+    let usage = payload
+        .get("usage")
+        .or_else(|| payload.get("response").and_then(|value| value.get("usage")))
+        .or_else(|| payload.get("message").and_then(|value| value.get("usage")))
+        .unwrap_or(payload);
     let input_tokens = usage
         .get("input_tokens")
         .or_else(|| usage.get("prompt_tokens"))
@@ -1124,5 +1128,50 @@ fn finalize_stream_logging(
             None,
             response_payload.as_deref(),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_usage_stats;
+    use serde_json::json;
+
+    #[test]
+    fn extract_usage_stats_sums_cache_read_and_creation_tokens() {
+        let usage = extract_usage_stats(&json!({
+            "usage": {
+                "input_tokens": 11,
+                "output_tokens": 7,
+                "cache_read_input_tokens": 3,
+                "cache_creation_input_tokens": 2
+            }
+        }));
+
+        assert_eq!(usage.input_tokens, 11);
+        assert_eq!(usage.output_tokens, 7);
+        assert_eq!(usage.cache_read_tokens, 3);
+        assert_eq!(usage.cache_creation_tokens, 2);
+        assert_eq!(usage.cached_tokens, 5);
+    }
+
+    #[test]
+    fn extract_usage_stats_reads_nested_response_usage() {
+        let usage = extract_usage_stats(&json!({
+            "response": {
+                "usage": {
+                    "input_tokens": 9,
+                    "output_tokens": 4,
+                    "input_tokens_details": {
+                        "cached_tokens": 6
+                    }
+                }
+            }
+        }));
+
+        assert_eq!(usage.input_tokens, 9);
+        assert_eq!(usage.output_tokens, 4);
+        assert_eq!(usage.cache_read_tokens, 6);
+        assert_eq!(usage.cache_creation_tokens, 0);
+        assert_eq!(usage.cached_tokens, 6);
     }
 }

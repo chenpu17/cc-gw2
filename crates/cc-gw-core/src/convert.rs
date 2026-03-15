@@ -1,5 +1,29 @@
 use serde_json::{Map, Value, json};
 
+fn openai_cache_usage(usage: &Value) -> (Option<i64>, Option<i64>, i64) {
+    let cache_read_tokens = usage
+        .get("cache_read_input_tokens")
+        .or_else(|| usage.get("cache_read_tokens"))
+        .or_else(|| usage.get("cached_tokens"))
+        .or_else(|| {
+            usage
+                .get("prompt_tokens_details")
+                .and_then(|details| details.get("cached_tokens"))
+        })
+        .or_else(|| {
+            usage
+                .get("input_tokens_details")
+                .and_then(|details| details.get("cached_tokens"))
+        })
+        .and_then(Value::as_i64);
+    let cache_creation_tokens = usage
+        .get("cache_creation_input_tokens")
+        .or_else(|| usage.get("cache_creation_tokens"))
+        .and_then(Value::as_i64);
+    let cached_tokens = cache_read_tokens.unwrap_or(0) + cache_creation_tokens.unwrap_or(0);
+    (cache_read_tokens, cache_creation_tokens, cached_tokens)
+}
+
 fn extract_text(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
@@ -556,6 +580,36 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
 
     let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
     let metadata = body.get("metadata").cloned().unwrap_or_else(|| json!({}));
+    let (cache_read_tokens, cache_creation_tokens, _) = openai_cache_usage(&usage);
+    let mut anthropic_usage = Map::new();
+    anthropic_usage.insert(
+        "input_tokens".to_string(),
+        Value::from(
+            usage
+                .get("prompt_tokens")
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
+        ),
+    );
+    anthropic_usage.insert(
+        "output_tokens".to_string(),
+        Value::from(
+            usage
+                .get("completion_tokens")
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
+        ),
+    );
+    if let Some(value) = cache_read_tokens {
+        anthropic_usage.insert("cache_read_input_tokens".to_string(), Value::from(value));
+    }
+    if let Some(value) = cache_creation_tokens {
+        anthropic_usage.insert(
+            "cache_creation_input_tokens".to_string(),
+            Value::from(value),
+        );
+    }
+
     json!({
         "id": body.get("id").and_then(Value::as_str).map(|id| id.replace("chatcmpl", "msg")).unwrap_or_else(|| "msg_generated".to_string()),
         "type": "message",
@@ -564,11 +618,7 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
         "content": content,
         "stop_reason": map_openai_finish_to_anthropic(choice.get("finish_reason").and_then(Value::as_str)),
         "stop_sequence": Value::Null,
-        "usage": {
-            "input_tokens": usage.get("prompt_tokens").and_then(Value::as_i64).unwrap_or(0),
-            "output_tokens": usage.get("completion_tokens").and_then(Value::as_i64).unwrap_or(0),
-            "cache_read_input_tokens": usage.get("cached_tokens").and_then(Value::as_i64)
-        },
+        "usage": anthropic_usage,
         "metadata": metadata
     })
 }
@@ -626,6 +676,38 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
         _ => Some("end_turn"),
     };
 
+    let (cache_read_tokens, cache_creation_tokens, _) = openai_cache_usage(&usage);
+    let mut anthropic_usage = Map::new();
+    anthropic_usage.insert(
+        "input_tokens".to_string(),
+        Value::from(
+            usage
+                .get("input_tokens")
+                .or_else(|| usage.get("prompt_tokens"))
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
+        ),
+    );
+    anthropic_usage.insert(
+        "output_tokens".to_string(),
+        Value::from(
+            usage
+                .get("output_tokens")
+                .or_else(|| usage.get("completion_tokens"))
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
+        ),
+    );
+    if let Some(value) = cache_read_tokens {
+        anthropic_usage.insert("cache_read_input_tokens".to_string(), Value::from(value));
+    }
+    if let Some(value) = cache_creation_tokens {
+        anthropic_usage.insert(
+            "cache_creation_input_tokens".to_string(),
+            Value::from(value),
+        );
+    }
+
     json!({
         "id": body.get("id").and_then(Value::as_str).map(|id| id.replace("resp_", "msg_")).unwrap_or_else(|| "msg_generated".to_string()),
         "type": "message",
@@ -634,11 +716,7 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
         "content": content,
         "stop_reason": stop_reason,
         "stop_sequence": Value::Null,
-        "usage": {
-            "input_tokens": usage.get("input_tokens").or_else(|| usage.get("prompt_tokens")).and_then(Value::as_i64).unwrap_or(0),
-            "output_tokens": usage.get("output_tokens").or_else(|| usage.get("completion_tokens")).and_then(Value::as_i64).unwrap_or(0),
-            "cache_read_input_tokens": usage.get("cached_tokens").and_then(Value::as_i64)
-        },
+        "usage": anthropic_usage,
         "metadata": metadata
     })
 }
@@ -688,6 +766,16 @@ pub fn anthropic_response_to_openai_chat(body: &Value, model: &str) -> Value {
         message.insert("tool_calls".to_string(), Value::Array(tool_calls));
     }
 
+    let cache_read_tokens = usage
+        .get("cache_read_input_tokens")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let cache_creation_tokens = usage
+        .get("cache_creation_input_tokens")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let cached_tokens = cache_read_tokens + cache_creation_tokens;
+
     json!({
         "id": body.get("id").and_then(Value::as_str).map(|id| id.replace("msg_", "chatcmpl_")).unwrap_or_else(|| "chatcmpl_generated".to_string()),
         "object": "chat.completion",
@@ -702,7 +790,7 @@ pub fn anthropic_response_to_openai_chat(body: &Value, model: &str) -> Value {
             "prompt_tokens": usage.get("input_tokens").and_then(Value::as_i64).unwrap_or(0),
             "completion_tokens": usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
             "total_tokens": usage.get("input_tokens").and_then(Value::as_i64).unwrap_or(0) + usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
-            "cached_tokens": usage.get("cache_read_input_tokens").and_then(Value::as_i64)
+            "cached_tokens": if cached_tokens > 0 { Some(cached_tokens) } else { None }
         }
     })
 }
@@ -743,6 +831,16 @@ pub fn anthropic_response_to_openai_response(body: &Value, model: &str) -> Value
     }
 
     let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
+    let cache_read_tokens = usage
+        .get("cache_read_input_tokens")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let cache_creation_tokens = usage
+        .get("cache_creation_input_tokens")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let cached_tokens = cache_read_tokens + cache_creation_tokens;
+
     json!({
         "id": body.get("id").and_then(Value::as_str).map(|id| id.replace("msg_", "resp_")).unwrap_or_else(|| "resp_generated".to_string()),
         "object": "response",
@@ -768,7 +866,7 @@ pub fn anthropic_response_to_openai_response(body: &Value, model: &str) -> Value
             "total_tokens": usage.get("input_tokens").and_then(Value::as_i64).unwrap_or(0) + usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
             "prompt_tokens": usage.get("input_tokens").and_then(Value::as_i64).unwrap_or(0),
             "completion_tokens": usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
-            "cached_tokens": usage.get("cache_read_input_tokens").and_then(Value::as_i64)
+            "cached_tokens": if cached_tokens > 0 { Some(cached_tokens) } else { None }
         },
         "stop_reason": body.get("stop_reason").cloned().unwrap_or(Value::Null),
         "stop_sequence": body.get("stop_sequence").cloned().unwrap_or(Value::Null)
@@ -824,5 +922,69 @@ mod tests {
             converted.get("metadata"),
             Some(&json!({ "user_id": "u-2" }))
         );
+    }
+
+    #[test]
+    fn openai_chat_response_to_anthropic_preserves_cache_breakdown() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "id": "chatcmpl_123",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": { "role": "assistant", "content": "hello" }
+                }],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "cache_read_tokens": 4,
+                    "cache_creation_tokens": 2
+                }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(converted["usage"]["cache_read_input_tokens"], 4);
+        assert_eq!(converted["usage"]["cache_creation_input_tokens"], 2);
+    }
+
+    #[test]
+    fn anthropic_response_to_openai_chat_sums_cache_read_and_creation() {
+        let converted = anthropic_response_to_openai_chat(
+            &json!({
+                "id": "msg_123",
+                "content": [{ "type": "text", "text": "hello" }],
+                "stop_reason": "end_turn",
+                "usage": {
+                    "input_tokens": 11,
+                    "output_tokens": 7,
+                    "cache_read_input_tokens": 3,
+                    "cache_creation_input_tokens": 2
+                }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(converted["usage"]["cached_tokens"], 5);
+    }
+
+    #[test]
+    fn anthropic_response_to_openai_response_sums_cache_read_and_creation() {
+        let converted = anthropic_response_to_openai_response(
+            &json!({
+                "id": "msg_123",
+                "content": [{ "type": "text", "text": "hello" }],
+                "stop_reason": "end_turn",
+                "usage": {
+                    "input_tokens": 11,
+                    "output_tokens": 7,
+                    "cache_read_input_tokens": 3,
+                    "cache_creation_input_tokens": 2
+                }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(converted["usage"]["cached_tokens"], 5);
     }
 }

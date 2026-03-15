@@ -93,6 +93,28 @@ impl UsageState {
             cache_creation_tokens: self.cache_creation_tokens,
         }
     }
+
+    fn anthropic_usage_value(&self) -> Value {
+        let mut usage = json!({
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens
+        });
+        if let Some(map) = usage.as_object_mut() {
+            if self.cache_read_tokens > 0 {
+                map.insert(
+                    "cache_read_input_tokens".to_string(),
+                    Value::from(self.cache_read_tokens),
+                );
+            }
+            if self.cache_creation_tokens > 0 {
+                map.insert(
+                    "cache_creation_input_tokens".to_string(),
+                    Value::from(self.cache_creation_tokens),
+                );
+            }
+        }
+        usage
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1198,11 +1220,7 @@ impl CrossProtocolStreamTransformer {
                     "stop_reason": resolve_anthropic_stop_reason(self.stop_reason.as_deref()),
                     "stop_sequence": Value::Null
                 },
-                "usage": {
-                    "input_tokens": self.usage.input_tokens,
-                    "output_tokens": self.usage.output_tokens,
-                    "cache_read_input_tokens": self.usage.cached_tokens
-                }
+                "usage": self.usage.anthropic_usage_value()
             }),
         ));
         out.push(anthropic_event(
@@ -1435,7 +1453,7 @@ mod tests {
         let chunks = transformer.push(
             "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_123\"}}\n\n\
              data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n\
-             data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":10,\"output_tokens\":4,\"cached_tokens\":2}}}\n\n",
+             data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":10,\"output_tokens\":4,\"cache_read_tokens\":2,\"cache_creation_tokens\":1}}}\n\n",
         );
         let joined = chunks.join("");
 
@@ -1447,6 +1465,7 @@ mod tests {
         assert!(joined.contains("\"input_tokens\":10"));
         assert!(joined.contains("\"output_tokens\":4"));
         assert!(joined.contains("\"cache_read_input_tokens\":2"));
+        assert!(joined.contains("\"cache_creation_input_tokens\":1"));
         assert!(joined.contains("event: message_stop"));
     }
 
