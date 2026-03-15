@@ -105,6 +105,31 @@ fn copy_if_present(source: &HeaderMap, target: &mut HeaderMap, key: &str) {
     }
 }
 
+fn should_forward_client_header(name: &HeaderName) -> bool {
+    !matches!(
+        name.as_str(),
+        "host"
+            | "connection"
+            | "authorization"
+            | "x-api-key"
+            | "content-length"
+            | "content-type"
+            | "accept"
+            | "accept-encoding"
+            | "cookie"
+            | "referer"
+            | "transfer-encoding"
+            | "keep-alive"
+            | "upgrade"
+            | "proxy-connection"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "upgrade-insecure-requests"
+    )
+}
+
 fn build_headers(
     provider: &ProviderConfig,
     protocol: ProviderProtocol,
@@ -121,6 +146,12 @@ fn build_headers(
 
     for (name, value) in passthrough_headers {
         headers.insert(name.clone(), value.clone());
+    }
+
+    for (name, value) in incoming_headers {
+        if should_forward_client_header(name) {
+            headers.insert(name.clone(), value.clone());
+        }
     }
 
     match protocol {
@@ -215,7 +246,8 @@ pub async fn forward_request(
 
 #[cfg(test)]
 mod tests {
-    use super::{ProviderProtocol, apply_query_string, resolve_endpoint};
+    use super::{ProviderConfig, ProviderProtocol, apply_query_string, build_headers, resolve_endpoint};
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
     #[test]
     fn apply_query_string_appends_to_plain_url() {
@@ -255,6 +287,112 @@ mod tests {
             ),
             "http://localhost/v1/chat/completions"
         );
+    }
+
+    #[test]
+    fn anthropic_headers_preserve_claude_client_identity_headers() {
+        let provider = ProviderConfig {
+            id: "anthropic".to_string(),
+            provider_type: Some("anthropic".to_string()),
+            api_key: Some("provider-secret".to_string()),
+            base_url: "https://example.com".to_string(),
+            ..ProviderConfig::default()
+        };
+        let mut incoming = HeaderMap::new();
+        incoming.insert(
+            HeaderName::from_static("user-agent"),
+            HeaderValue::from_static("claude-cli/1.0.0"),
+        );
+        incoming.insert(
+            HeaderName::from_static("x-app"),
+            HeaderValue::from_static("claude-code"),
+        );
+        incoming.insert(
+            HeaderName::from_static("anthropic-beta"),
+            HeaderValue::from_static("fine-grained-tool-streaming-2025-05-14"),
+        );
+        incoming.insert(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_static("Bearer caller-key"),
+        );
+
+        let headers = build_headers(
+            &provider,
+            ProviderProtocol::AnthropicMessages,
+            &incoming,
+            &HeaderMap::new(),
+            true,
+        );
+
+        assert_eq!(
+            headers.get("user-agent").and_then(|value| value.to_str().ok()),
+            Some("claude-cli/1.0.0")
+        );
+        assert_eq!(
+            headers.get("x-app").and_then(|value| value.to_str().ok()),
+            Some("claude-code")
+        );
+        assert_eq!(
+            headers
+                .get("anthropic-beta")
+                .and_then(|value| value.to_str().ok()),
+            Some("fine-grained-tool-streaming-2025-05-14")
+        );
+        assert!(headers.get("authorization").is_none());
+        assert_eq!(
+            headers.get("x-api-key").and_then(|value| value.to_str().ok()),
+            Some("provider-secret")
+        );
+    }
+
+    #[test]
+    fn openai_headers_preserve_client_identity_headers_without_leaking_gateway_auth() {
+        let provider = ProviderConfig {
+            id: "openai".to_string(),
+            provider_type: Some("openai".to_string()),
+            api_key: Some("provider-secret".to_string()),
+            base_url: "https://example.com".to_string(),
+            ..ProviderConfig::default()
+        };
+        let mut incoming = HeaderMap::new();
+        incoming.insert(
+            HeaderName::from_static("user-agent"),
+            HeaderValue::from_static("claude-cli/1.0.0"),
+        );
+        incoming.insert(
+            HeaderName::from_static("x-app"),
+            HeaderValue::from_static("claude-code"),
+        );
+        incoming.insert(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_static("Bearer caller-key"),
+        );
+        incoming.insert(
+            HeaderName::from_static("x-api-key"),
+            HeaderValue::from_static("gateway-key"),
+        );
+
+        let headers = build_headers(
+            &provider,
+            ProviderProtocol::OpenAiChatCompletions,
+            &incoming,
+            &HeaderMap::new(),
+            true,
+        );
+
+        assert_eq!(
+            headers.get("user-agent").and_then(|value| value.to_str().ok()),
+            Some("claude-cli/1.0.0")
+        );
+        assert_eq!(
+            headers.get("x-app").and_then(|value| value.to_str().ok()),
+            Some("claude-code")
+        );
+        assert_eq!(
+            headers.get("authorization").and_then(|value| value.to_str().ok()),
+            Some("Bearer provider-secret")
+        );
+        assert!(headers.get("x-api-key").is_none());
     }
 
     #[test]
