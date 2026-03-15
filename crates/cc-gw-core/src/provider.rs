@@ -9,7 +9,7 @@ use crate::config::ProviderConfig;
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderProtocol {
     AnthropicMessages,
     OpenAiChatCompletions,
@@ -26,34 +26,50 @@ pub struct ProxyRequest {
     pub query: Option<String>,
 }
 
+fn ends_with_version_segment(path: &str) -> bool {
+    path.rsplit('/')
+        .next()
+        .and_then(|segment| segment.strip_prefix('v'))
+        .is_some_and(|suffix| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()))
+}
+
 fn normalize_url(base_url: &str, default_path: &str) -> String {
     let base = base_url.trim_end_matches('/');
     if base.ends_with(default_path) {
         return base.to_string();
     }
 
-    if base.ends_with("/v1") && default_path.starts_with("v1/") {
-        return format!("{base}/{}", &default_path[3..]);
+    if let Some(path_without_v1) = default_path.strip_prefix("v1/") {
+        if base.ends_with(path_without_v1) {
+            return base.to_string();
+        }
+
+        if ends_with_version_segment(base) {
+            return format!("{base}/{path_without_v1}");
+        }
     }
 
     format!("{base}/{default_path}")
 }
 
 fn resolve_endpoint(base_url: &str, protocol: ProviderProtocol) -> String {
+    let base = base_url.trim_end_matches('/');
     match protocol {
         ProviderProtocol::AnthropicMessages => {
-            if base_url.trim_end_matches('/').ends_with("/messages") {
-                base_url.trim_end_matches('/').to_string()
-            } else if base_url.trim_end_matches('/').ends_with("/anthropic") {
-                format!("{}/v1/messages", base_url.trim_end_matches('/'))
-            } else if base_url.trim_end_matches('/').ends_with("/anthropic/v1") {
-                format!("{}/messages", base_url.trim_end_matches('/'))
+            if base.ends_with("/messages") {
+                base.to_string()
+            } else if ends_with_version_segment(base) {
+                format!("{base}/messages")
+            } else if base.ends_with("/anthropic") {
+                format!("{base}/v1/messages")
+            } else if base.ends_with("/anthropic/v1") {
+                format!("{base}/messages")
             } else {
-                normalize_url(base_url, "v1/messages")
+                normalize_url(base, "v1/messages")
             }
         }
-        ProviderProtocol::OpenAiChatCompletions => normalize_url(base_url, "v1/chat/completions"),
-        ProviderProtocol::OpenAiResponses => normalize_url(base_url, "v1/responses"),
+        ProviderProtocol::OpenAiChatCompletions => normalize_url(base, "v1/chat/completions"),
+        ProviderProtocol::OpenAiResponses => normalize_url(base, "v1/responses"),
     }
 }
 
@@ -199,7 +215,7 @@ pub async fn forward_request(
 
 #[cfg(test)]
 mod tests {
-    use super::apply_query_string;
+    use super::{ProviderProtocol, apply_query_string, resolve_endpoint};
 
     #[test]
     fn apply_query_string_appends_to_plain_url() {
@@ -238,6 +254,36 @@ mod tests {
                 Some("?")
             ),
             "http://localhost/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn openai_endpoint_uses_existing_version_prefix_without_adding_v1() {
+        assert_eq!(
+            resolve_endpoint(
+                "http://localhost/v4",
+                ProviderProtocol::OpenAiChatCompletions
+            ),
+            "http://localhost/v4/chat/completions"
+        );
+    }
+
+    #[test]
+    fn openai_endpoint_preserves_full_chat_completions_path() {
+        assert_eq!(
+            resolve_endpoint(
+                "http://localhost/v4/chat/completions",
+                ProviderProtocol::OpenAiChatCompletions
+            ),
+            "http://localhost/v4/chat/completions"
+        );
+    }
+
+    #[test]
+    fn anthropic_endpoint_uses_existing_version_prefix_without_adding_v1() {
+        assert_eq!(
+            resolve_endpoint("http://localhost/v4", ProviderProtocol::AnthropicMessages),
+            "http://localhost/v4/messages"
         );
     }
 }

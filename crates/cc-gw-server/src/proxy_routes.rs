@@ -253,6 +253,157 @@ fn extract_thinking(body: &Value) -> bool {
     }
 }
 
+fn provider_type_name(provider: &cc_gw_core::config::ProviderConfig) -> &str {
+    provider.provider_type.as_deref().unwrap_or("openai")
+}
+
+fn provider_supports_tools(provider_type: &str) -> bool {
+    provider_type != "custom"
+}
+
+fn provider_supports_metadata(provider_type: &str) -> bool {
+    provider_type != "custom"
+}
+
+fn remove_top_level_key(body: &mut Value, key: &str) {
+    if let Some(object) = body.as_object_mut() {
+        object.remove(key);
+    }
+}
+
+fn append_text_with_spacing(target: &mut String, text: &str) {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    if !target.is_empty() {
+        target.push_str("\n\n");
+    }
+    target.push_str(trimmed);
+}
+
+fn stringify_value(value: &Value) -> String {
+    match value {
+        Value::Null => String::new(),
+        Value::String(text) => text.clone(),
+        _ => serde_json::to_string(value).unwrap_or_default(),
+    }
+}
+
+fn summarize_tool_messages_for_custom_provider(body: &mut Value) {
+    let Some(messages) = body.get("messages").and_then(Value::as_array).cloned() else {
+        return;
+    };
+
+    let mut next_messages = Vec::with_capacity(messages.len());
+    for message in messages {
+        let Some(object) = message.as_object() else {
+            next_messages.push(message);
+            continue;
+        };
+        let role = object.get("role").and_then(Value::as_str).unwrap_or("");
+        let mut next = object.clone();
+
+        match role {
+            "tool" => {
+                let mut content = String::new();
+                if let Some(name) = object.get("name").and_then(Value::as_str) {
+                    append_text_with_spacing(&mut content, name);
+                }
+                if let Some(tool_output) = object.get("content") {
+                    append_text_with_spacing(&mut content, &stringify_value(tool_output));
+                }
+                next_messages.push(json!({
+                    "role": "user",
+                    "content": content
+                }));
+            }
+            "assistant" => {
+                let mut content = object
+                    .get("content")
+                    .map(stringify_value)
+                    .unwrap_or_default();
+                for tool_call in object
+                    .get("tool_calls")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    let name = tool_call
+                        .get("function")
+                        .and_then(|value| value.get("name"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("tool");
+                    let args = tool_call
+                        .get("function")
+                        .and_then(|value| value.get("arguments"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("{}");
+                    let summary = format!("Requested tool {name}\n{args}");
+                    append_text_with_spacing(&mut content, &summary);
+                }
+                next.remove("tool_calls");
+                next.insert("content".to_string(), Value::String(content));
+                next_messages.push(Value::Object(next));
+            }
+            _ => next_messages.push(Value::Object(next)),
+        }
+    }
+
+    if let Some(object) = body.as_object_mut() {
+        object.insert("messages".to_string(), Value::Array(next_messages));
+    }
+}
+
+fn downgrade_openai_chat_body_for_custom_provider(body: &mut Value) {
+    remove_top_level_key(body, "tools");
+    remove_top_level_key(body, "tool_choice");
+    remove_top_level_key(body, "metadata");
+    summarize_tool_messages_for_custom_provider(body);
+}
+
+fn build_request_body_for_target(
+    original_body: &Value,
+    request_protocol: ProviderProtocol,
+    target_protocol: ProviderProtocol,
+    provider_type: &str,
+) -> Value {
+    let mut converted = match (request_protocol, target_protocol) {
+        (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions) => {
+            anthropic_request_to_openai_chat(original_body)
+        }
+        (ProviderProtocol::OpenAiChatCompletions, ProviderProtocol::AnthropicMessages) => {
+            openai_chat_request_to_anthropic(original_body)
+        }
+        (ProviderProtocol::OpenAiResponses, ProviderProtocol::AnthropicMessages) => {
+            openai_responses_request_to_anthropic(original_body)
+        }
+        _ => original_body.clone(),
+    };
+
+    if !provider_supports_metadata(provider_type) {
+        remove_top_level_key(&mut converted, "metadata");
+    }
+
+    if request_protocol == ProviderProtocol::AnthropicMessages
+        && target_protocol == ProviderProtocol::OpenAiChatCompletions
+        && !provider_supports_tools(provider_type)
+    {
+        downgrade_openai_chat_body_for_custom_provider(&mut converted);
+    }
+
+    converted
+}
+
+fn retry_body_without_metadata_or_tool_choice(body: &Value) -> Option<Value> {
+    let mut retry = body.clone();
+    let before = serde_json::to_string(&retry).ok()?;
+    remove_top_level_key(&mut retry, "metadata");
+    remove_top_level_key(&mut retry, "tool_choice");
+    let after = serde_json::to_string(&retry).ok()?;
+    if before == after { None } else { Some(retry) }
+}
+
 pub(super) async fn proxy_standard_request(
     state: AppState,
     headers: HeaderMap,
@@ -327,8 +478,8 @@ pub(super) async fn proxy_standard_request(
         let prompt = serde_json::to_string(&body).ok();
         let _ = upsert_request_payload(&state.paths.db_path, log_id, prompt.as_deref(), None);
     }
-    let provider_is_anthropic =
-        matches!(target.provider.provider_type.as_deref(), Some("anthropic"));
+    let provider_type = provider_type_name(&target.provider);
+    let provider_is_anthropic = provider_type == "anthropic";
     let target_protocol = if provider_is_anthropic {
         ProviderProtocol::AnthropicMessages
     } else {
@@ -339,18 +490,8 @@ pub(super) async fn proxy_standard_request(
         }
     };
 
-    let converted_request_body = match (protocol, target_protocol) {
-        (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions) => {
-            anthropic_request_to_openai_chat(&body)
-        }
-        (ProviderProtocol::OpenAiChatCompletions, ProviderProtocol::AnthropicMessages) => {
-            openai_chat_request_to_anthropic(&body)
-        }
-        (ProviderProtocol::OpenAiResponses, ProviderProtocol::AnthropicMessages) => {
-            openai_responses_request_to_anthropic(&body)
-        }
-        _ => body.clone(),
-    };
+    let converted_request_body =
+        build_request_body_for_target(&body, protocol, target_protocol, provider_type);
 
     let cross_protocol = !matches!(
         (protocol, target_protocol),
@@ -366,15 +507,16 @@ pub(super) async fn proxy_standard_request(
         )
     );
 
+    let target_model_id = target.model_id.clone();
     let proxy_result = forward_request(
         &state.http_client,
         &target.provider,
         target_protocol,
         ProxyRequest {
-            model: target.model_id,
-            body: converted_request_body,
+            model: target_model_id.clone(),
+            body: converted_request_body.clone(),
             stream,
-            incoming_headers: headers,
+            incoming_headers: headers.clone(),
             passthrough_headers: HeaderMap::new(),
             query: None,
         },
@@ -382,7 +524,35 @@ pub(super) async fn proxy_standard_request(
     .await;
 
     match proxy_result {
-        Ok(response) => {
+        Ok(mut response) => {
+            if protocol == ProviderProtocol::AnthropicMessages
+                && target_protocol == ProviderProtocol::OpenAiChatCompletions
+                && response.status().as_u16() >= 400
+            {
+                if let Some(retry_body) =
+                    retry_body_without_metadata_or_tool_choice(&converted_request_body)
+                {
+                    if let Ok(retry_response) = forward_request(
+                        &state.http_client,
+                        &target.provider,
+                        target_protocol,
+                        ProxyRequest {
+                            model: target_model_id.clone(),
+                            body: retry_body,
+                            stream,
+                            incoming_headers: headers.clone(),
+                            passthrough_headers: HeaderMap::new(),
+                            query: None,
+                        },
+                    )
+                    .await
+                    {
+                        if retry_response.status().as_u16() < 400 {
+                            response = retry_response;
+                        }
+                    }
+                }
+            }
             let streaming_log_context = request_log_id.map(|log_id| StreamingLogContext {
                 db_path: state.paths.db_path.clone(),
                 log_id,

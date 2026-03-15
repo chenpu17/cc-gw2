@@ -1,6 +1,7 @@
 use super::*;
-use axum::extract::Query;
+use axum::extract::{Json as AxumJson, Query};
 use std::fs as stdfs;
+use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
@@ -117,6 +118,13 @@ async fn mock_anthropic_stream() -> Response {
              data: {\"type\":\"message_stop\"}\n\n",
         ))
         .expect("build anthropic stream response")
+}
+
+fn record_payload(recorder: &Arc<Mutex<Vec<Value>>>, payload: &Value) {
+    recorder
+        .lock()
+        .expect("lock recorder")
+        .push(payload.clone());
 }
 
 async fn spawn_test_gateway(
@@ -973,6 +981,208 @@ async fn api_status_reports_live_and_recent_client_activity() {
             .get("uniqueClientSessionsLastHour")
             .and_then(Value::as_u64),
         Some(2)
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_to_openai_retry_drops_metadata_and_tool_choice() {
+    let attempts = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let attempts_for_route = Arc::clone(&attempts);
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let attempts = Arc::clone(&attempts_for_route);
+            async move {
+                record_payload(&attempts, &payload);
+                if payload.get("metadata").is_some() || payload.get("tool_choice").is_some() {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({ "error": "unsupported metadata/tool_choice" })),
+                    )
+                        .into_response()
+                } else {
+                    Json(json!({
+                        "choices": [{
+                            "message": { "content": "retry-ok" }
+                        }],
+                        "usage": {
+                            "prompt_tokens": 4,
+                            "completion_tokens": 2
+                        }
+                    }))
+                    .into_response()
+                }
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "retry-openai".to_string(),
+        label: "Retry OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("retry-openai:gpt-test".to_string());
+    if let Some(anthropic) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic.defaults.completion = Some("retry-openai:gpt-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-retry").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 128,
+            "metadata": { "user_id": "user-1" },
+            "tool_choice": { "type": "tool", "name": "lookup" },
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": "hello" }]
+            }]
+        }))
+        .send()
+        .await
+        .expect("send anthropic request")
+        .json()
+        .await
+        .expect("decode anthropic response");
+
+    assert_eq!(
+        response
+            .get("content")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("text"))
+            .and_then(Value::as_str),
+        Some("retry-ok")
+    );
+
+    let recorded = attempts.lock().expect("lock attempts");
+    assert_eq!(recorded.len(), 2);
+    assert!(recorded[0].get("metadata").is_some());
+    assert!(recorded[0].get("tool_choice").is_some());
+    assert!(recorded[1].get("metadata").is_none());
+    assert!(recorded[1].get("tool_choice").is_none());
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_to_custom_provider_strips_tooling_and_metadata() {
+    let attempts = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let attempts_for_route = Arc::clone(&attempts);
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let attempts = Arc::clone(&attempts_for_route);
+            async move {
+                record_payload(&attempts, &payload);
+                Json(json!({
+                    "choices": [{
+                        "message": { "content": "custom-ok" }
+                    }],
+                    "usage": {
+                        "prompt_tokens": 8,
+                        "completion_tokens": 3
+                    }
+                }))
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "custom-openai".to_string(),
+        label: "Custom OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("custom".to_string()),
+        default_model: Some("custom-model".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "custom-model".to_string(),
+            label: Some("Custom Model".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("custom-openai:custom-model".to_string());
+    if let Some(anthropic) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic.defaults.completion = Some("custom-openai:custom-model".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-custom-provider").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 128,
+            "metadata": { "user_id": "user-2" },
+            "tools": [{
+                "name": "lookup",
+                "description": "Lookup data",
+                "input_schema": { "type": "object", "properties": {} }
+            }],
+            "tool_choice": { "type": "tool", "name": "lookup" },
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{
+                        "type": "tool_use",
+                        "id": "toolu_1",
+                        "name": "lookup",
+                        "input": { "q": "weather" }
+                    }]
+                },
+                {
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_1",
+                        "content": [{ "type": "text", "text": "sunny" }]
+                    }]
+                }
+            ]
+        }))
+        .send()
+        .await
+        .expect("send anthropic request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let recorded = attempts.lock().expect("lock attempts");
+    assert_eq!(recorded.len(), 1);
+    let forwarded = &recorded[0];
+    assert!(forwarded.get("metadata").is_none());
+    assert!(forwarded.get("tools").is_none());
+    assert!(forwarded.get("tool_choice").is_none());
+    assert!(
+        forwarded
+            .get("messages")
+            .and_then(Value::as_array)
+            .is_some_and(|messages| {
+                messages.iter().all(|message| {
+                    message.get("role").and_then(Value::as_str) != Some("tool")
+                        && message.get("tool_calls").is_none()
+                })
+            })
     );
 
     gateway_handle.abort();
