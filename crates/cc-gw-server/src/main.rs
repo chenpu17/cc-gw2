@@ -489,6 +489,9 @@ enum CustomRouteMatch {
 
 fn match_custom_route(config: &GatewayConfig, path: &str) -> Option<CustomRouteMatch> {
     for endpoint in &config.custom_endpoints {
+        if endpoint.enabled == Some(false) {
+            continue;
+        }
         for item in custom_endpoint_effective_paths(endpoint) {
             let base = normalize_path(&item.path);
             match item.protocol.as_str() {

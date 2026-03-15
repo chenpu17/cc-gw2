@@ -286,6 +286,7 @@ pub(super) async fn proxy_standard_request(
     let target = match resolve_route(
         &config,
         endpoint,
+        protocol,
         &body,
         requested_model,
         extract_thinking(&body),

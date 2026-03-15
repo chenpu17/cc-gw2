@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use anyhow::{Result, bail};
 
-use crate::config::{EndpointRoutingConfig, GatewayConfig, ProviderConfig};
+use crate::{
+    config::{CustomEndpointConfig, EndpointRoutingConfig, GatewayConfig, ProviderConfig},
+    provider::ProviderProtocol,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum GatewayEndpoint<'a> {
@@ -153,14 +156,32 @@ fn resolve_by_identifier(
     None
 }
 
+fn default_endpoint_key(protocol: ProviderProtocol) -> &'static str {
+    match protocol {
+        ProviderProtocol::AnthropicMessages => "anthropic",
+        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => "openai",
+    }
+}
+
+fn find_custom_endpoint<'a>(
+    config: &'a GatewayConfig,
+    id: &str,
+) -> Option<&'a CustomEndpointConfig> {
+    config.custom_endpoints.iter().find(|endpoint| endpoint.id == id)
+}
+
 fn endpoint_routing<'a>(
     config: &'a GatewayConfig,
     endpoint: GatewayEndpoint<'_>,
+    protocol: ProviderProtocol,
 ) -> Option<&'a EndpointRoutingConfig> {
     match endpoint {
         GatewayEndpoint::Anthropic => config.endpoint_routing.get("anthropic"),
         GatewayEndpoint::OpenAi => config.endpoint_routing.get("openai"),
-        GatewayEndpoint::Custom(id) => config.endpoint_routing.get(id),
+        GatewayEndpoint::Custom(id) => find_custom_endpoint(config, id)
+            .and_then(|endpoint| endpoint.routing.as_ref())
+            .or_else(|| config.endpoint_routing.get(id))
+            .or_else(|| config.endpoint_routing.get(default_endpoint_key(protocol))),
     }
 }
 
@@ -182,6 +203,7 @@ fn estimate_token_budget(request_body: &serde_json::Value) -> usize {
 pub fn resolve_route(
     config: &GatewayConfig,
     endpoint: GatewayEndpoint<'_>,
+    protocol: ProviderProtocol,
     request_body: &serde_json::Value,
     requested_model: Option<&str>,
     thinking: bool,
@@ -191,8 +213,7 @@ pub fn resolve_route(
         bail!("未配置任何模型提供商，请先在 Web UI 中添加 Provider。");
     }
 
-    let endpoint_config = endpoint_routing(config, endpoint)
-        .or_else(|| config.endpoint_routing.get("anthropic"))
+    let endpoint_config = endpoint_routing(config, endpoint, protocol)
         .ok_or_else(|| anyhow::anyhow!("未找到端点路由配置"))?;
 
     if let Some(mapped_identifier) =
@@ -261,4 +282,100 @@ pub fn resolve_route(
     }
 
     bail!("未找到匹配模型，请在请求中指定模型或在配置中启用回退策略。")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{
+        CustomEndpointConfig, DefaultsConfig, EndpointPathConfig, ProviderModelConfig,
+    };
+    use serde_json::json;
+
+    fn provider(id: &str, model: &str) -> ProviderConfig {
+        ProviderConfig {
+            id: id.to_string(),
+            label: id.to_string(),
+            base_url: format!("https://{id}.example.com"),
+            default_model: Some(model.to_string()),
+            models: vec![ProviderModelConfig {
+                id: model.to_string(),
+                label: None,
+            }],
+            provider_type: Some("openai".to_string()),
+            ..ProviderConfig::default()
+        }
+    }
+
+    #[test]
+    fn custom_endpoint_uses_its_own_routing_before_global_defaults() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "glm-4.7"), provider("beta", "glm-5")];
+        config.endpoint_routing.get_mut("openai").unwrap().defaults.completion =
+            Some("alpha:glm-4.7".to_string());
+        config.custom_endpoints.push(CustomEndpointConfig {
+            id: "team".to_string(),
+            label: "Team".to_string(),
+            enabled: Some(true),
+            paths: vec![EndpointPathConfig {
+                path: "/team".to_string(),
+                protocol: "openai-chat".to_string(),
+            }],
+            routing: Some(EndpointRoutingConfig {
+                defaults: DefaultsConfig {
+                    completion: Some("beta:glm-5".to_string()),
+                    ..DefaultsConfig::default()
+                },
+                model_routes: HashMap::new(),
+                validation: None,
+            }),
+            ..CustomEndpointConfig::default()
+        });
+
+        let route = resolve_route(
+            &config,
+            GatewayEndpoint::Custom("team"),
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            None,
+            false,
+        )
+        .expect("resolve custom route");
+
+        assert_eq!(route.provider_id, "beta");
+        assert_eq!(route.model_id, "glm-5");
+    }
+
+    #[test]
+    fn custom_openai_endpoint_falls_back_to_openai_defaults() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("anthropic-default", "claude-x"), provider("openai-default", "glm-5")];
+        config.endpoint_routing.get_mut("anthropic").unwrap().defaults.completion =
+            Some("anthropic-default:claude-x".to_string());
+        config.endpoint_routing.get_mut("openai").unwrap().defaults.completion =
+            Some("openai-default:glm-5".to_string());
+        config.custom_endpoints.push(CustomEndpointConfig {
+            id: "one".to_string(),
+            label: "One".to_string(),
+            enabled: Some(true),
+            paths: vec![EndpointPathConfig {
+                path: "/one".to_string(),
+                protocol: "openai-chat".to_string(),
+            }],
+            ..CustomEndpointConfig::default()
+        });
+
+        let route = resolve_route(
+            &config,
+            GatewayEndpoint::Custom("one"),
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            None,
+            false,
+        )
+        .expect("resolve openai fallback route");
+
+        assert_eq!(route.provider_id, "openai-default");
+        assert_eq!(route.model_id, "glm-5");
+    }
 }

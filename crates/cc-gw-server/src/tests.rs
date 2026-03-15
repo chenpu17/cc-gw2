@@ -588,6 +588,71 @@ async fn custom_endpoint_and_api_key_restrictions_work_end_to_end() {
 }
 
 #[tokio::test]
+async fn disabled_custom_endpoint_is_not_exposed() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            Json(json!({
+                "choices": [{
+                    "message": { "content": "should-not-reach" }
+                }]
+            }))
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    if let Some(openai) = config.endpoint_routing.get_mut("openai") {
+        openai.defaults.completion = Some("gpt-test".to_string());
+    }
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "disabled-custom-endpoint").await;
+    let client = reqwest::Client::new();
+
+    let create_endpoint = client
+        .post(format!("http://{gateway_addr}/api/custom-endpoints"))
+        .json(&json!({
+            "id": "disabled-team",
+            "label": "Disabled Team",
+            "path": "/disabled-team",
+            "protocol": "openai-chat",
+            "enabled": false
+        }))
+        .send()
+        .await
+        .expect("create disabled endpoint");
+    assert_eq!(create_endpoint.status(), StatusCode::OK);
+
+    let response = client
+        .post(format!("http://{gateway_addr}/disabled-team/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-test",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("request disabled endpoint");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn api_key_admin_reveal_and_stats_work_end_to_end() {
     let upstream = Router::new().route(
         "/v1/chat/completions",
