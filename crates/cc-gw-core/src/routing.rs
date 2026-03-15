@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-
 use anyhow::{Result, bail};
 
 use crate::{
-    config::{CustomEndpointConfig, EndpointRoutingConfig, GatewayConfig, ProviderConfig},
+    config::{
+        CustomEndpointConfig, EndpointRoutingConfig, GatewayConfig, ModelRouteMap, ProviderConfig,
+    },
     provider::ProviderProtocol,
 };
 
@@ -69,10 +69,7 @@ fn wildcard_matches(pattern: &str, value: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn find_mapped_identifier(
-    model_id: Option<&str>,
-    routes: &HashMap<String, String>,
-) -> Option<String> {
+fn find_mapped_identifier(model_id: Option<&str>, routes: &ModelRouteMap) -> Option<String> {
     let model_id = model_id?.trim();
     if model_id.is_empty() {
         return None;
@@ -167,7 +164,10 @@ fn find_custom_endpoint<'a>(
     config: &'a GatewayConfig,
     id: &str,
 ) -> Option<&'a CustomEndpointConfig> {
-    config.custom_endpoints.iter().find(|endpoint| endpoint.id == id)
+    config
+        .custom_endpoints
+        .iter()
+        .find(|endpoint| endpoint.id == id)
 }
 
 fn endpoint_routing<'a>(
@@ -311,8 +311,12 @@ mod tests {
     fn custom_endpoint_uses_its_own_routing_before_global_defaults() {
         let mut config = GatewayConfig::default();
         config.providers = vec![provider("alpha", "glm-4.7"), provider("beta", "glm-5")];
-        config.endpoint_routing.get_mut("openai").unwrap().defaults.completion =
-            Some("alpha:glm-4.7".to_string());
+        config
+            .endpoint_routing
+            .get_mut("openai")
+            .unwrap()
+            .defaults
+            .completion = Some("alpha:glm-4.7".to_string());
         config.custom_endpoints.push(CustomEndpointConfig {
             id: "team".to_string(),
             label: "Team".to_string(),
@@ -326,7 +330,7 @@ mod tests {
                     completion: Some("beta:glm-5".to_string()),
                     ..DefaultsConfig::default()
                 },
-                model_routes: HashMap::new(),
+                model_routes: Default::default(),
                 validation: None,
             }),
             ..CustomEndpointConfig::default()
@@ -349,11 +353,22 @@ mod tests {
     #[test]
     fn custom_openai_endpoint_falls_back_to_openai_defaults() {
         let mut config = GatewayConfig::default();
-        config.providers = vec![provider("anthropic-default", "claude-x"), provider("openai-default", "glm-5")];
-        config.endpoint_routing.get_mut("anthropic").unwrap().defaults.completion =
-            Some("anthropic-default:claude-x".to_string());
-        config.endpoint_routing.get_mut("openai").unwrap().defaults.completion =
-            Some("openai-default:glm-5".to_string());
+        config.providers = vec![
+            provider("anthropic-default", "claude-x"),
+            provider("openai-default", "glm-5"),
+        ];
+        config
+            .endpoint_routing
+            .get_mut("anthropic")
+            .unwrap()
+            .defaults
+            .completion = Some("anthropic-default:claude-x".to_string());
+        config
+            .endpoint_routing
+            .get_mut("openai")
+            .unwrap()
+            .defaults
+            .completion = Some("openai-default:glm-5".to_string());
         config.custom_endpoints.push(CustomEndpointConfig {
             id: "one".to_string(),
             label: "One".to_string(),
@@ -377,5 +392,31 @@ mod tests {
 
         assert_eq!(route.provider_id, "openai-default");
         assert_eq!(route.model_id, "glm-5");
+    }
+
+    #[test]
+    fn wildcard_routes_keep_configured_order_when_specificity_ties() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "gpt-4o"), provider("beta", "gpt-4o")];
+        let anthropic = config.endpoint_routing.get_mut("anthropic").unwrap();
+        anthropic
+            .model_routes
+            .insert("gpt-4*".to_string(), "alpha:gpt-4o".to_string());
+        anthropic
+            .model_routes
+            .insert("gpt-*o".to_string(), "beta:gpt-4o".to_string());
+
+        let route = resolve_route(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "messages": [] }),
+            Some("gpt-4o"),
+            false,
+        )
+        .expect("resolve wildcard route");
+
+        assert_eq!(route.provider_id, "alpha");
+        assert_eq!(route.model_id, "gpt-4o");
     }
 }

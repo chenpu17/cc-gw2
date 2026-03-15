@@ -32,7 +32,10 @@ pub(super) async fn api_status(
 ) -> Json<StatusResponse> {
     let config = config_snapshot(&state);
     let last_hour = chrono::Utc::now().timestamp_millis() - 60 * 60 * 1000;
-    let endpoint = query.endpoint.as_deref().filter(|value| !value.trim().is_empty());
+    let endpoint = query
+        .endpoint
+        .as_deref()
+        .filter(|value| !value.trim().is_empty());
     let recent_activity =
         get_recent_client_activity(&state.paths.db_path, last_hour, endpoint).unwrap_or_default();
     let active_requests = if let Some(endpoint) = endpoint {
@@ -618,7 +621,7 @@ pub(super) async fn api_routing_presets_create(
                 if endpoint == "anthropic" {
                     config.model_routes.clone()
                 } else {
-                    HashMap::new()
+                    Default::default()
                 }
             });
         current_presets.push(RoutingPreset {
@@ -729,7 +732,7 @@ pub(super) async fn api_routing_presets_apply(
             .entry(endpoint.clone())
             .or_insert_with(|| EndpointRoutingConfig {
                 defaults: config.defaults.clone(),
-                model_routes: HashMap::new(),
+                model_routes: Default::default(),
                 validation: None,
             });
         routing.model_routes = preset.model_routes.clone();
@@ -780,7 +783,7 @@ pub(super) async fn api_routing_presets_apply(
             .clone()
             .unwrap_or(EndpointRoutingConfig {
                 defaults,
-                model_routes: HashMap::new(),
+                model_routes: Default::default(),
                 validation: None,
             });
         routing.model_routes = preset.model_routes;

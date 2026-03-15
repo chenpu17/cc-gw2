@@ -2,7 +2,7 @@ use super::*;
 use axum::extract::Query;
 use std::fs as stdfs;
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 fn test_paths(label: &str) -> GatewayPaths {
     let root = std::env::temp_dir().join(format!(
@@ -22,7 +22,11 @@ fn test_paths(label: &str) -> GatewayPaths {
     }
 }
 
-fn build_test_state(config: GatewayConfig, paths: GatewayPaths, ui_root: Option<PathBuf>) -> AppState {
+fn build_test_state(
+    config: GatewayConfig,
+    paths: GatewayPaths,
+    ui_root: Option<PathBuf>,
+) -> AppState {
     AppState {
         config: Arc::new(RwLock::new(config)),
         paths: Arc::new(paths),
@@ -44,9 +48,12 @@ async fn spawn_router(app: Router) -> (SocketAddr, JoinHandle<()>) {
         .expect("bind listener");
     let addr = listener.local_addr().expect("listener addr");
     let handle = tokio::spawn(async move {
-        axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-            .await
-            .expect("serve router");
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
+        .expect("serve router");
     });
     (addr, handle)
 }
@@ -637,7 +644,9 @@ async fn disabled_custom_endpoint_is_not_exposed() {
     assert_eq!(create_endpoint.status(), StatusCode::OK);
 
     let response = client
-        .post(format!("http://{gateway_addr}/disabled-team/v1/chat/completions"))
+        .post(format!(
+            "http://{gateway_addr}/disabled-team/v1/chat/completions"
+        ))
         .json(&json!({
             "model": "gpt-test",
             "messages": [{ "role": "user", "content": "hello" }]
@@ -885,9 +894,7 @@ async fn api_status_reports_live_and_recent_client_activity() {
         .await
         .expect("decode live status");
     assert_eq!(
-        live_status
-            .get("activeRequests")
-            .and_then(Value::as_u64),
+        live_status.get("activeRequests").and_then(Value::as_u64),
         Some(1)
     );
     assert_eq!(
@@ -940,9 +947,7 @@ async fn api_status_reports_live_and_recent_client_activity() {
         .await
         .expect("decode settled status");
     assert_eq!(
-        settled_status
-            .get("activeRequests")
-            .and_then(Value::as_u64),
+        settled_status.get("activeRequests").and_then(Value::as_u64),
         Some(0)
     );
     assert_eq!(

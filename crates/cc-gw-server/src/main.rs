@@ -268,8 +268,11 @@ async fn main() -> Result<()> {
         tasks.spawn(async move {
             info!("http listening on http://{}", addr);
             let listener = TcpListener::bind(addr).await?;
-            axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-                .await?;
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await?;
             Result::<()>::Ok(())
         });
     }
@@ -647,10 +650,7 @@ fn normalize_forwarded_ip(value: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
-fn extract_client_ip(
-    headers: &HeaderMap,
-    connect_info: Option<SocketAddr>,
-) -> Option<String> {
+fn extract_client_ip(headers: &HeaderMap, connect_info: Option<SocketAddr>) -> Option<String> {
     header_value(headers, "x-forwarded-for")
         .as_deref()
         .and_then(normalize_forwarded_ip)

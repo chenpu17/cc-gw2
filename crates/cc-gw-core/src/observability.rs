@@ -875,11 +875,27 @@ mod tests {
 
         let now = chrono::Utc::now().timestamp_millis();
         for (session_id, source_ip, timestamp) in [
-            (Some("session-a".to_string()), Some("10.0.0.1".to_string()), now),
-            (Some("session-a".to_string()), Some("10.0.0.1".to_string()), now - 1000),
-            (Some("session-b".to_string()), Some("10.0.0.2".to_string()), now - 2000),
+            (
+                Some("session-a".to_string()),
+                Some("10.0.0.1".to_string()),
+                now,
+            ),
+            (
+                Some("session-a".to_string()),
+                Some("10.0.0.1".to_string()),
+                now - 1000,
+            ),
+            (
+                Some("session-b".to_string()),
+                Some("10.0.0.2".to_string()),
+                now - 2000,
+            ),
             (None, Some("10.0.0.3".to_string()), now - 3000),
-            (Some("stale-session".to_string()), Some("10.0.0.9".to_string()), now - 2 * 60 * 60 * 1000),
+            (
+                Some("stale-session".to_string()),
+                Some("10.0.0.9".to_string()),
+                now - 2 * 60 * 60 * 1000,
+            ),
         ] {
             insert_request_log(
                 &db_path,

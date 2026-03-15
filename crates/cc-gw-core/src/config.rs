@@ -4,6 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_HOST: &str = "127.0.0.1";
@@ -30,9 +31,11 @@ pub struct ProviderModelConfig {
 #[serde(default, rename_all = "camelCase")]
 pub struct RoutingPreset {
     pub name: String,
-    pub model_routes: HashMap<String, String>,
+    pub model_routes: ModelRouteMap,
     pub created_at: i64,
 }
+
+pub type ModelRouteMap = IndexMap<String, String>;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -126,7 +129,7 @@ impl Default for EndpointValidationConfig {
 #[serde(default, rename_all = "camelCase")]
 pub struct EndpointRoutingConfig {
     pub defaults: DefaultsConfig,
-    pub model_routes: HashMap<String, String>,
+    pub model_routes: ModelRouteMap,
     pub validation: Option<EndpointValidationConfig>,
 }
 
@@ -134,7 +137,7 @@ impl Default for EndpointRoutingConfig {
     fn default() -> Self {
         Self {
             defaults: DefaultsConfig::default(),
-            model_routes: HashMap::new(),
+            model_routes: Default::default(),
             validation: None,
         }
     }
@@ -214,7 +217,7 @@ pub struct GatewayConfig {
     pub enable_routing_fallback: Option<bool>,
     pub log_retention_days: Option<u32>,
     pub log_export_timeout_seconds: Option<u32>,
-    pub model_routes: HashMap<String, String>,
+    pub model_routes: ModelRouteMap,
     pub endpoint_routing: HashMap<String, EndpointRoutingConfig>,
     pub custom_endpoints: Vec<CustomEndpointConfig>,
     pub routing_presets: HashMap<String, Vec<RoutingPreset>>,
@@ -236,7 +239,7 @@ impl Default for GatewayConfig {
             "anthropic".to_string(),
             EndpointRoutingConfig {
                 defaults: defaults.clone(),
-                model_routes: HashMap::new(),
+                model_routes: Default::default(),
                 validation: None,
             },
         );
@@ -244,7 +247,7 @@ impl Default for GatewayConfig {
             "openai".to_string(),
             EndpointRoutingConfig {
                 defaults: defaults.clone(),
-                model_routes: HashMap::new(),
+                model_routes: Default::default(),
                 validation: None,
             },
         );
@@ -259,7 +262,7 @@ impl Default for GatewayConfig {
             enable_routing_fallback: Some(false),
             log_retention_days: Some(30),
             log_export_timeout_seconds: None,
-            model_routes: HashMap::new(),
+            model_routes: Default::default(),
             endpoint_routing,
             custom_endpoints: Vec::new(),
             routing_presets: HashMap::new(),
