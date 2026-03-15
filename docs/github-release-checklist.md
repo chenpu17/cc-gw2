@@ -63,8 +63,8 @@ pnpm run sync:native-versions
 确认版本号一致后打 tag：
 
 ```bash
-git tag v0.8.0-alpha.5
-git push origin v0.8.0-alpha.5
+git tag v0.8.0-alpha.6
+git push origin v0.8.0-alpha.6
 ```
 
 `release.yml` 会按下面顺序执行：
@@ -77,7 +77,7 @@ git push origin v0.8.0-alpha.5
 dist-tag 规则：
 
 - `0.8.0` -> `latest`
-- `0.8.0-alpha.5` -> `alpha`
+- `0.8.0-alpha.6` -> `alpha`
 - `0.8.0-beta.1` -> `beta`
 - `0.8.0-rc.0` -> `rc`
 
