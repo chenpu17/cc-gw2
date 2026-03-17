@@ -246,7 +246,9 @@ pub async fn forward_request(
 
 #[cfg(test)]
 mod tests {
-    use super::{ProviderConfig, ProviderProtocol, apply_query_string, build_headers, resolve_endpoint};
+    use super::{
+        ProviderConfig, ProviderProtocol, apply_query_string, build_headers, resolve_endpoint,
+    };
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
     #[test]
@@ -325,7 +327,9 @@ mod tests {
         );
 
         assert_eq!(
-            headers.get("user-agent").and_then(|value| value.to_str().ok()),
+            headers
+                .get("user-agent")
+                .and_then(|value| value.to_str().ok()),
             Some("claude-cli/1.0.0")
         );
         assert_eq!(
@@ -340,7 +344,9 @@ mod tests {
         );
         assert!(headers.get("authorization").is_none());
         assert_eq!(
-            headers.get("x-api-key").and_then(|value| value.to_str().ok()),
+            headers
+                .get("x-api-key")
+                .and_then(|value| value.to_str().ok()),
             Some("provider-secret")
         );
     }
@@ -381,7 +387,9 @@ mod tests {
         );
 
         assert_eq!(
-            headers.get("user-agent").and_then(|value| value.to_str().ok()),
+            headers
+                .get("user-agent")
+                .and_then(|value| value.to_str().ok()),
             Some("claude-cli/1.0.0")
         );
         assert_eq!(
@@ -389,7 +397,9 @@ mod tests {
             Some("claude-code")
         );
         assert_eq!(
-            headers.get("authorization").and_then(|value| value.to_str().ok()),
+            headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
             Some("Bearer provider-secret")
         );
         assert!(headers.get("x-api-key").is_none());

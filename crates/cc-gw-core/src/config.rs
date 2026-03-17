@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_HOST: &str = "127.0.0.1";
 pub const DEFAULT_PORT: u16 = 4100;
 pub const DEFAULT_HTTPS_PORT: u16 = 4443;
+pub const DEFAULT_BODY_LIMIT: u64 = 10 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct GatewayPaths {
@@ -272,7 +273,7 @@ impl Default for GatewayConfig {
             log_level: Some("info".to_string()),
             request_logging: Some(true),
             response_logging: Some(true),
-            body_limit: Some(10 * 1024 * 1024),
+            body_limit: Some(DEFAULT_BODY_LIMIT),
             web_auth: Some(WebAuthConfig::default()),
         }
     }

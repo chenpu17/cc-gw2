@@ -127,6 +127,16 @@ fn record_payload(recorder: &Arc<Mutex<Vec<Value>>>, payload: &Value) {
         .push(payload.clone());
 }
 
+fn exact_json_body(total_size: usize) -> String {
+    let prefix = "{\"model\":\"x\",\"input\":\"";
+    let suffix = "\"}";
+    assert!(total_size > prefix.len() + suffix.len());
+    format!(
+        "{prefix}{}{suffix}",
+        "a".repeat(total_size - prefix.len() - suffix.len())
+    )
+}
+
 async fn spawn_test_gateway(
     config: GatewayConfig,
     label: &str,
@@ -322,6 +332,102 @@ async fn openai_responses_stream_from_anthropic_provider_emits_richer_events() {
 
     gateway_handle.abort();
     upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn standard_proxy_routes_accept_payloads_larger_than_two_mib() {
+    let config = GatewayConfig::default();
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "standard-body-limit").await;
+    let client = reqwest::Client::new();
+    let payload = exact_json_body(2 * 1024 * 1024 + 1);
+
+    for path in [
+        "/openai/v1/responses",
+        "/openai/v1/chat/completions",
+        "/v1/messages",
+    ] {
+        let response = client
+            .post(format!("http://{gateway_addr}{path}"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(payload.clone())
+            .send()
+            .await
+            .expect("send large standard request");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+        let text = response.text().await.expect("read standard response");
+        assert!(
+            text.contains("未配置任何模型提供商"),
+            "unexpected response for {path}: {text}"
+        );
+    }
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn custom_proxy_routes_accept_payloads_larger_than_two_mib() {
+    let mut config = GatewayConfig::default();
+    config.custom_endpoints = vec![cc_gw_core::config::CustomEndpointConfig {
+        id: "team".to_string(),
+        label: "Team".to_string(),
+        path: Some("/team".to_string()),
+        protocol: Some("openai-responses".to_string()),
+        enabled: Some(true),
+        ..cc_gw_core::config::CustomEndpointConfig::default()
+    }];
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "custom-body-limit").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/team/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(exact_json_body(2 * 1024 * 1024 + 1))
+        .send()
+        .await
+        .expect("send large custom request");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let text = response.text().await.expect("read custom response");
+    assert!(text.contains("未配置任何模型提供商"));
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn configured_body_limit_rejects_requests_over_boundary() {
+    let mut config = GatewayConfig::default();
+    config.body_limit = Some(1024 * 1024);
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "configured-body-limit").await;
+    let client = reqwest::Client::new();
+
+    let within_limit = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(exact_json_body(1024 * 1024))
+        .send()
+        .await
+        .expect("send boundary request");
+    assert_eq!(within_limit.status(), StatusCode::BAD_REQUEST);
+
+    let over_limit = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(exact_json_body(1024 * 1024 + 1))
+        .send()
+        .await
+        .expect("send oversized request");
+    assert_eq!(over_limit.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(
+        over_limit.text().await.expect("read oversized response"),
+        "Failed to buffer the request body: length limit exceeded"
+    );
+
+    gateway_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
 }
 

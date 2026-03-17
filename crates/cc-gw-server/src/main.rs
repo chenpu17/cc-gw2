@@ -10,10 +10,9 @@ use anyhow::{Context, Result, anyhow};
 use async_stream::stream;
 use axum::{
     Json, Router,
-    body::Body,
-    body::Bytes,
+    body::{Body, Bytes, to_bytes},
     extract::{ConnectInfo, Path as AxumPath, Query, Request, State},
-    http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, patch, post},
@@ -27,8 +26,8 @@ use cc_gw_core::{
         reveal_api_key, update_api_key_settings,
     },
     config::{
-        CustomEndpointConfig, EndpointPathConfig, EndpointRoutingConfig, GatewayConfig,
-        GatewayPaths, RoutingPreset, load_or_init_config, save_config,
+        CustomEndpointConfig, DEFAULT_BODY_LIMIT, EndpointPathConfig, EndpointRoutingConfig,
+        GatewayConfig, GatewayPaths, RoutingPreset, load_or_init_config, save_config,
     },
     convert::{
         anthropic_request_to_openai_chat, anthropic_response_to_openai_chat,
@@ -441,6 +440,41 @@ fn replace_config(state: &AppState, config: GatewayConfig) -> Result<()> {
     Ok(())
 }
 
+fn effective_body_limit(config: &GatewayConfig) -> usize {
+    usize::try_from(config.body_limit.unwrap_or(DEFAULT_BODY_LIMIT).max(1)).unwrap_or(usize::MAX)
+}
+
+async fn read_request_body_with_limit(state: &AppState, body: Body) -> Result<Bytes, Response> {
+    let limit = effective_body_limit(&config_snapshot(state));
+    to_bytes(body, limit).await.map_err(|error| {
+        let message = error.to_string();
+        if message.contains("length limit exceeded") {
+            (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "Failed to buffer the request body: length limit exceeded",
+            )
+                .into_response()
+        } else {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": format!("failed to read request body: {message}") })),
+            )
+                .into_response()
+        }
+    })
+}
+
+async fn read_json_request(state: &AppState, body: Body) -> Result<Value, Response> {
+    let body = read_request_body_with_limit(state, body).await?;
+    serde_json::from_slice(&body).map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": format!("invalid JSON body: {error}") })),
+        )
+            .into_response()
+    })
+}
+
 fn normalize_path(path: &str) -> String {
     let trimmed = path.trim();
     if trimmed.starts_with('/') {
@@ -547,11 +581,11 @@ fn match_custom_route(config: &GatewayConfig, path: &str) -> Option<CustomRouteM
 async fn dynamic_fallback(
     State(state): State<AppState>,
     ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
+    request: Request,
 ) -> Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let headers = request.headers().clone();
     let config = config_snapshot(&state);
     let Some(route_match) = match_custom_route(&config, uri.path()) else {
         return (StatusCode::NOT_FOUND, "not found").into_response();
@@ -572,15 +606,9 @@ async fn dynamic_fallback(
             if let Err(response) = authorize_request(&state, &headers, &endpoint_id) {
                 return response;
             }
-            let payload: Value = match serde_json::from_slice(&body) {
+            let payload = match read_json_request(&state, request.into_body()).await {
                 Ok(value) => value,
-                Err(error) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({ "error": format!("invalid JSON body: {error}") })),
-                    )
-                        .into_response();
-                }
+                Err(response) => return response,
             };
             fn walk(value: &Value) -> usize {
                 match value {
@@ -597,16 +625,6 @@ async fn dynamic_fallback(
         (Method::POST, CustomRouteMatch::AnthropicMessages(endpoint_id))
         | (Method::POST, CustomRouteMatch::OpenAiChat(endpoint_id))
         | (Method::POST, CustomRouteMatch::OpenAiResponses(endpoint_id)) => {
-            let payload: Value = match serde_json::from_slice(&body) {
-                Ok(value) => value,
-                Err(error) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({ "error": format!("invalid JSON body: {error}") })),
-                    )
-                        .into_response();
-                }
-            };
             let gateway_endpoint = GatewayEndpoint::Custom(endpoint_id.as_str());
             let protocol = if uri.path().ends_with("/v1/messages")
                 || uri.path().ends_with("/v1/v1/messages")
@@ -617,9 +635,19 @@ async fn dynamic_fallback(
             } else {
                 ProviderProtocol::OpenAiResponses
             };
+            let api_key_context =
+                match authorize_request_with_context(&state, &headers, &endpoint_id) {
+                    Ok(context) => context,
+                    Err(response) => return response,
+                };
+            let payload = match read_json_request(&state, request.into_body()).await {
+                Ok(value) => value,
+                Err(response) => return response,
+            };
             let source_ip = extract_client_ip(&headers, Some(connect_info));
             proxy_routes::proxy_standard_request(
                 state,
+                api_key_context,
                 headers,
                 source_ip,
                 payload,

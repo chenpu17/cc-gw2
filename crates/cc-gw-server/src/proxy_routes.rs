@@ -165,12 +165,16 @@ pub(super) async fn openai_models(State(state): State<AppState>, headers: Header
 
 pub(super) async fn anthropic_count_tokens(
     State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(body): Json<Value>,
+    request: Request,
 ) -> Response {
+    let headers = request.headers().clone();
     if let Err(response) = authorize_request(&state, &headers, "anthropic") {
         return response;
     }
+    let body = match read_json_request(&state, request.into_body()).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
 
     fn walk(value: &Value) -> usize {
         match value {
@@ -189,12 +193,21 @@ pub(super) async fn anthropic_count_tokens(
 pub(super) async fn anthropic_messages(
     State(state): State<AppState>,
     ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(body): Json<Value>,
+    request: Request,
 ) -> Response {
+    let headers = request.headers().clone();
+    let api_key_context = match authorize_request_with_context(&state, &headers, "anthropic") {
+        Ok(context) => context,
+        Err(response) => return response,
+    };
+    let body = match read_json_request(&state, request.into_body()).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
     let source_ip = extract_client_ip(&headers, Some(connect_info));
     proxy_standard_request(
         state,
+        api_key_context,
         headers,
         source_ip,
         body,
@@ -207,12 +220,21 @@ pub(super) async fn anthropic_messages(
 pub(super) async fn openai_chat_completions(
     State(state): State<AppState>,
     ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(body): Json<Value>,
+    request: Request,
 ) -> Response {
+    let headers = request.headers().clone();
+    let api_key_context = match authorize_request_with_context(&state, &headers, "openai") {
+        Ok(context) => context,
+        Err(response) => return response,
+    };
+    let body = match read_json_request(&state, request.into_body()).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
     let source_ip = extract_client_ip(&headers, Some(connect_info));
     proxy_standard_request(
         state,
+        api_key_context,
         headers,
         source_ip,
         body,
@@ -225,12 +247,21 @@ pub(super) async fn openai_chat_completions(
 pub(super) async fn openai_responses(
     State(state): State<AppState>,
     ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(body): Json<Value>,
+    request: Request,
 ) -> Response {
+    let headers = request.headers().clone();
+    let api_key_context = match authorize_request_with_context(&state, &headers, "openai") {
+        Ok(context) => context,
+        Err(response) => return response,
+    };
+    let body = match read_json_request(&state, request.into_body()).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
     let source_ip = extract_client_ip(&headers, Some(connect_info));
     proxy_standard_request(
         state,
+        api_key_context,
         headers,
         source_ip,
         body,
@@ -406,6 +437,7 @@ fn retry_body_without_metadata_or_tool_choice(body: &Value) -> Option<Value> {
 
 pub(super) async fn proxy_standard_request(
     state: AppState,
+    api_key_context: cc_gw_core::api_keys::ResolvedApiKey,
     headers: HeaderMap,
     source_ip: Option<String>,
     body: Value,
@@ -422,10 +454,6 @@ pub(super) async fn proxy_standard_request(
         source_ip.clone(),
         session_id.clone(),
     );
-    let api_key_context = match authorize_request_with_context(&state, &headers, &endpoint_id) {
-        Ok(context) => context,
-        Err(response) => return response,
-    };
     let encrypted_api_key_value = if api_key_context.provided_key.is_empty() {
         None
     } else {
