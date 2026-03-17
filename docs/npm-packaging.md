@@ -98,7 +98,7 @@ pnpm smoke:cli
 
 测试版发布规则：
 
-- 如果根包版本号是 `0.8.0-alpha.6`、`0.8.0-beta.1`、`0.8.0-rc.0` 这种 prerelease，发布脚本会自动把 dist-tag 设为 `alpha`、`beta`、`rc`
+- 如果根包版本号是 `0.8.0-alpha.9`、`0.8.0-beta.1`、`0.8.0-rc.0` 这种 prerelease，发布脚本会自动把 dist-tag 设为 `alpha`、`beta`、`rc`
 - 稳定版如 `0.8.0` 才会默认发布到 `latest`
 - 如需手工覆盖，可设置 `NPM_DIST_TAG=next`
 
@@ -123,8 +123,8 @@ pnpm publish:packed -- --dir artifacts --dry-run
 ```bash
 pnpm pack:dry-run
 pnpm --dir packages/native/darwin-arm64 pack --pack-destination ../../../.pack/native
-npm install -g ./.pack/native/chenpu17-cc-gw-darwin-arm64-0.8.0-alpha.6.tgz
-npm install -g ./.pack/chenpu17-cc-gw-0.8.0-alpha.6.tgz
+npm install -g ./.pack/native/chenpu17-cc-gw-darwin-arm64-0.8.0-alpha.9.tgz
+npm install -g ./.pack/chenpu17-cc-gw-0.8.0-alpha.9.tgz
 ```
 
 ## CI
@@ -142,6 +142,6 @@ npm install -g ./.pack/chenpu17-cc-gw-0.8.0-alpha.6.tgz
 - `build-root-package` 打包根 npm 包
 - `build-native-packages` 矩阵构建四个平台 native 包
 - `publish-npm` 先发布 native 子包，再发布根包
-- 默认根据根包版本号推导 npm dist-tag；如 `0.8.0-alpha.6` 会发布到 `alpha`，不会覆盖 `latest`
+- 默认根据根包版本号推导 npm dist-tag；如 `0.8.0-alpha.9` 会发布到 `alpha`，不会覆盖 `latest`
 
 另外，`prepack` 会自动触发 `pnpm run build:package`，只打包 CLI 与 Web 资源；native 二进制由独立平台包承载。
