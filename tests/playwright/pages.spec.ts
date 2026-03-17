@@ -51,10 +51,11 @@ test('theme and language switchers open menus', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
 
   await page.getByTestId('theme-switcher-trigger').click({ force: true })
-  await expect(page.getByRole('menuitem').first()).toBeVisible()
-  await page.keyboard.press('Escape')
-
-  await expect(page.getByTestId('theme-switcher-trigger')).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('menuitem', { name: '亮色' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '跟随系统' })).toBeVisible()
+  await page.getByTestId('theme-switcher-trigger').click({ force: true })
+  await expect(page.getByRole('menuitem', { name: '亮色' })).not.toBeVisible()
   await page.getByTestId('language-switcher-trigger').click({ force: true })
-  await expect(page.getByRole('menuitem').first()).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '中文' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'English' })).toBeVisible()
 })
