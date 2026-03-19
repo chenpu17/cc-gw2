@@ -1,13 +1,15 @@
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Info, LifeBuoy, RefreshCw, Sparkles } from 'lucide-react'
+import { Info, LifeBuoy, RefreshCw, ServerCog, Sparkles } from 'lucide-react'
+import { PageHeader } from '@/components/PageHeader'
+import { PageSection } from '@/components/PageSection'
+import { PageLoadingState, PageState } from '@/components/PageState'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import type { ApiError } from '@/services/api'
-import { PageHeader } from '@/components/PageHeader'
-import { PageSection } from '@/components/PageSection'
-import { Button } from '@/components/ui/button'
+import { queryKeys } from '@/services/queryKeys'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import packageJson from '../../../../package.json' assert { type: 'json' }
 
@@ -28,41 +30,14 @@ interface InfoGridItem {
   hint?: ReactNode
 }
 
-function InfoGrid({ items }: { items: InfoGridItem[] }) {
-  if (items.length === 0) {
-    return null
-  }
-  return (
-    <dl className="grid gap-4 sm:grid-cols-2">
-      {items.map((item) => (
-        <Card key={item.label} className="surface-1">
-          <CardContent className="pt-4">
-            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {item.label}
-            </dt>
-            <dd className="mt-1 text-sm font-semibold">
-              {item.value}
-            </dd>
-            {item.hint && (
-              <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p>
-            )}
-          </CardContent>
-        </Card>
-      ))}
-    </dl>
-  )
-}
-
 export default function AboutPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
 
   const statusQuery = useApiQuery<StatusResponse, ApiError>(
-    ['status', 'gateway'],
+    queryKeys.status.gateway(),
     { url: '/api/status', method: 'GET' },
-    {
-      staleTime: 60_000
-    }
+    { staleTime: 60_000 }
   )
 
   useEffect(() => {
@@ -73,112 +48,104 @@ export default function AboutPage() {
         variant: 'error'
       })
     }
-  }, [statusQuery.isError, statusQuery.error, pushToast, t])
+  }, [pushToast, statusQuery.error, statusQuery.isError, t])
 
   const appVersion = (packageJson as { version?: string }).version ?? '0.0.0'
-
-  const buildInfo = useMemo(() => {
-    const env = import.meta.env
-    const buildTime = env.VITE_BUILD_TIME ?? '-'
-    return {
-      buildTime
-    }
-  }, [])
+  const buildTime = import.meta.env.VITE_BUILD_TIME ?? '-'
 
   const infoItems = useMemo<InfoGridItem[]>(
     () => [
-      {
-        label: t('about.app.labels.name'),
-        value: <span className="font-mono">cc-gw</span>
-      },
-      {
-        label: t('about.app.labels.version'),
-        value: <span className="font-mono text-primary">v{appVersion}</span>
-      },
-      {
-        label: t('about.app.labels.buildTime'),
-        value: buildInfo.buildTime,
-        hint: t('about.app.hint.buildTime')
-      },
-      {
-        label: t('about.app.labels.runtime'),
-        value: <span className="font-mono">{statusQuery.data?.runtime ?? 'rust'}</span>
-      },
-      {
-        label: t('about.app.labels.backendVersion'),
-        value: <span className="font-mono">{statusQuery.data?.backendVersion ?? '-'}</span>
-      }
+      { label: t('about.app.labels.name'), value: <span className="font-mono">cc-gw</span> },
+      { label: t('about.app.labels.version'), value: <span className="font-mono text-primary">v{appVersion}</span> },
+      { label: t('about.app.labels.buildTime'), value: buildTime, hint: t('about.app.hint.buildTime') },
+      { label: t('about.app.labels.runtime'), value: <span className="font-mono">{statusQuery.data?.runtime ?? 'rust'}</span> },
+      { label: t('about.app.labels.backendVersion'), value: <span className="font-mono">{statusQuery.data?.backendVersion ?? '-'}</span> }
     ],
-    [appVersion, buildInfo.buildTime, statusQuery.data?.backendVersion, statusQuery.data?.runtime, t]
+    [appVersion, buildTime, statusQuery.data?.backendVersion, statusQuery.data?.runtime, t]
   )
 
   const runtimeItems = useMemo<InfoGridItem[]>(() => {
     if (!statusQuery.data) {
       return []
     }
+
     return [
-      {
-        label: t('about.status.labels.host'),
-        value: statusQuery.data.host ?? '127.0.0.1'
-      },
-      {
-        label: t('about.status.labels.port'),
-        value: statusQuery.data.port.toLocaleString()
-      },
-      {
-        label: t('about.status.labels.providers'),
-        value: statusQuery.data.providers.toLocaleString()
-      },
+      { label: t('about.status.labels.host'), value: statusQuery.data.host ?? '127.0.0.1' },
+      { label: t('about.status.labels.port'), value: statusQuery.data.port.toLocaleString() },
+      { label: t('about.status.labels.providers'), value: statusQuery.data.providers.toLocaleString() },
       {
         label: t('about.status.labels.active'),
         value: (statusQuery.data.activeRequests ?? 0).toLocaleString(),
         hint: t('about.status.hint.active')
       },
-      {
-        label: t('about.status.labels.platform'),
-        value: statusQuery.data.platform ?? '-'
-      },
-      {
-        label: t('about.status.labels.pid'),
-        value: statusQuery.data.pid?.toLocaleString() ?? '-'
-      }
+      { label: t('about.status.labels.platform'), value: statusQuery.data.platform ?? '-' },
+      { label: t('about.status.labels.pid'), value: statusQuery.data.pid?.toLocaleString() ?? '-' }
     ]
   }, [statusQuery.data, t])
 
-  const handleCheckUpdates = () => {
-    pushToast({
-      title: t('about.toast.updatesPlanned'),
-      variant: 'info'
-    })
-  }
-
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <PageHeader
         icon={<Info className="h-5 w-5" aria-hidden="true" />}
         title={t('about.title')}
         description={t('about.description')}
         badge={`v${appVersion}`}
+        eyebrow="Runtime"
+        breadcrumb="Gateway / About"
+        helper={t('about.support.description')}
         actions={
-          <Button onClick={handleCheckUpdates}>
-            <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
-            {t('about.support.actions.checkUpdates')}
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+            <div className="rounded-2xl border border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+              manual refresh only
+            </div>
+            <Button onClick={() => pushToast({ title: t('about.toast.updatesPlanned'), variant: 'info' })} className="w-full sm:w-auto">
+              <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
+              {t('about.support.actions.checkUpdates')}
+            </Button>
+          </div>
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">{statusQuery.data?.runtime ?? 'rust'}</Badge>
-        <Badge variant="outline">{statusQuery.data?.platform ?? '-'}</Badge>
-        <Badge variant="secondary">{t('about.status.labels.providers')}: {statusQuery.data?.providers?.toLocaleString() ?? '-'}</Badge>
-        <Badge variant="secondary">{t('about.status.labels.active')}: {(statusQuery.data?.activeRequests ?? 0).toLocaleString()}</Badge>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
+        <Card className="overflow-hidden border-[rgba(24,16,13,0.08)] bg-[radial-gradient(circle_at_top_left,rgba(225,93,73,0.15),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.12),transparent_34%),linear-gradient(135deg,rgba(255,249,245,0.98),rgba(255,255,255,0.94))] shadow-[0_24px_60px_-36px_rgba(225,93,73,0.26)]">
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                <ServerCog className="h-3.5 w-3.5" aria-hidden="true" />
+                Runtime snapshot
+              </div>
+              <div className="space-y-2">
+                <p className="text-3xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-50">
+                  {statusQuery.data?.host ?? '127.0.0.1'}:{statusQuery.data?.port ?? '-'}
+                </p>
+                <p className="text-sm text-muted-foreground">{t('about.description')}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{statusQuery.data?.runtime ?? 'rust'}</Badge>
+                <Badge variant="outline">{statusQuery.data?.platform ?? '-'}</Badge>
+                <Badge variant="secondary">{t('about.status.labels.providers')}: {statusQuery.data?.providers?.toLocaleString() ?? '-'}</Badge>
+                <Badge variant="secondary">{t('about.status.labels.active')}: {(statusQuery.data?.activeRequests ?? 0).toLocaleString()}</Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden border-white/10 bg-[linear-gradient(160deg,rgba(18,18,18,0.98),rgba(37,26,21,0.98))] text-slate-50 shadow-[0_24px_60px_-36px_rgba(17,12,11,0.65)]">
+          <CardContent className="pt-6">
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Build</p>
+              <p className="font-mono text-lg text-white">v{appVersion}</p>
+              <p className="text-sm text-slate-300">{buildTime}</p>
+              <div className="rounded-[1rem] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                {t('about.support.tip')}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <PageSection
-          title={t('about.app.title')}
-          description={t('about.app.subtitle')}
-        >
+        <PageSection title={t('about.app.title')} description={t('about.app.subtitle')}>
           <InfoGrid items={infoItems} />
         </PageSection>
 
@@ -186,29 +153,37 @@ export default function AboutPage() {
           title={t('about.status.title')}
           description={t('about.status.subtitle')}
           actions={
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => statusQuery.refetch()}
-              disabled={statusQuery.isFetching}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${statusQuery.isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
+            <Button variant="outline" size="sm" onClick={() => void statusQuery.refetch()} disabled={statusQuery.isFetching}>
+              <RefreshCw className={cnSpin(statusQuery.isFetching)} aria-hidden="true" />
               {statusQuery.isFetching ? t('common.actions.refreshing') : t('common.actions.refresh')}
             </Button>
           }
         >
           {statusQuery.isLoading ? (
-            <div className="flex h-32 flex-col items-center justify-center gap-2 text-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <p className="text-sm text-muted-foreground">{t('about.status.loading')}</p>
-            </div>
+            <PageLoadingState compact label={t('about.status.loading')} />
+          ) : statusQuery.isError ? (
+            <PageState
+              compact
+              tone="danger"
+              icon={<ServerCog className="h-5 w-5" aria-hidden="true" />}
+              title={t('common.status.error')}
+              description={statusQuery.error?.message ?? t('common.unknownError')}
+              action={(
+                <Button variant="outline" size="sm" onClick={() => void statusQuery.refetch()}>
+                  {t('common.actions.refresh')}
+                </Button>
+              )}
+            />
           ) : runtimeItems.length > 0 ? (
             <InfoGrid items={runtimeItems} />
           ) : (
-            <div className="flex h-32 flex-col items-center justify-center gap-1 rounded-[1.25rem] border border-dashed border-border/70 bg-background/45 p-6 text-center">
-              <p className="text-sm font-medium">{t('about.status.empty')}</p>
-              <p className="text-xs text-muted-foreground">{t('common.actions.refresh')}</p>
-            </div>
+            <PageState
+              compact
+              tone="primary"
+              icon={<ServerCog className="h-5 w-5" aria-hidden="true" />}
+              title={t('about.status.empty')}
+              description={t('common.actions.refresh')}
+            />
           )}
         </PageSection>
       </div>
@@ -217,24 +192,20 @@ export default function AboutPage() {
         title={t('about.support.title')}
         description={
           <span className="space-y-1">
-            <span className="block text-sm font-medium text-primary">
-              {t('about.support.subtitle')}
-            </span>
+            <span className="block text-sm font-medium text-primary">{t('about.support.subtitle')}</span>
             <span>{t('about.support.description')}</span>
           </span>
         }
       >
-        <Card className="surface-1">
-          <CardContent className="flex flex-col gap-4 pt-4">
-            <div className="flex flex-wrap items-start gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]">
+        <Card className="border-white/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,250,252,0.86))] shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <CardContent className="flex flex-col gap-4 pt-5 md:flex-row md:items-start md:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <LifeBuoy className="h-5 w-5" aria-hidden="true" />
               </div>
-              <p className="flex-1 text-sm text-muted-foreground">
-                {t('about.support.tip')}
-              </p>
+              <p className="max-w-2xl text-sm text-muted-foreground">{t('about.support.tip')}</p>
             </div>
-            <code className="inline-flex self-start rounded-xl border border-border/70 bg-background/70 px-3 py-1.5 text-xs font-medium">
+            <code className="inline-flex self-start rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-xs font-medium">
               ~/.cc-gw/config.json
             </code>
           </CardContent>
@@ -242,4 +213,28 @@ export default function AboutPage() {
       </PageSection>
     </div>
   )
+}
+
+function InfoGrid({ items }: { items: InfoGridItem[] }) {
+  if (items.length === 0) {
+    return null
+  }
+
+  return (
+    <dl className="grid gap-4 sm:grid-cols-2">
+      {items.map((item) => (
+        <Card key={item.label} className="border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(252,249,245,0.88))] shadow-[0_1px_2px_rgba(17,12,11,0.04)]">
+          <CardContent className="pt-5">
+            <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{item.label}</dt>
+            <dd className="mt-2 text-sm font-semibold text-slate-950 dark:text-slate-50">{item.value}</dd>
+            {item.hint ? <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p> : null}
+          </CardContent>
+        </Card>
+      ))}
+    </dl>
+  )
+}
+
+function cnSpin(spinning: boolean) {
+  return `mr-2 h-4 w-4${spinning ? ' animate-spin' : ''}`
 }

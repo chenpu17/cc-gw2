@@ -1,4 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo } from 'react'
+import { usePersistentState } from '@/hooks/usePersistentState'
+import { storageKeys } from '@/services/storageKeys'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -7,8 +9,6 @@ interface ThemeContextValue {
   resolved: 'light' | 'dark'
   setMode: (mode: ThemeMode) => void
 }
-
-const STORAGE_KEY = 'cc-gw-theme'
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined)
 
@@ -30,11 +30,14 @@ function applyTheme(mode: 'light' | 'dark') {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>(() => {
-    if (typeof window === 'undefined') return 'system'
-    const stored = window.localStorage.getItem(STORAGE_KEY)
-    return stored === 'light' || stored === 'dark' || stored === 'system' ? (stored as ThemeMode) : 'system'
-  })
+  const [mode, setMode] = usePersistentState<ThemeMode>(
+    storageKeys.themeMode,
+    'system',
+    {
+      serialize: (value) => value,
+      deserialize: (raw) => (raw === 'light' || raw === 'dark' || raw === 'system' ? raw : 'system')
+    }
+  )
 
   const resolved = useMemo(() => (typeof window !== 'undefined' ? resolvePreferred(mode) : 'light'), [mode])
 
@@ -53,8 +56,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === 'undefined') return
     applyTheme(resolved)
-    window.localStorage.setItem(STORAGE_KEY, mode)
-  }, [mode, resolved])
+  }, [resolved])
 
   const value = useMemo<ThemeContextValue>(
     () => ({

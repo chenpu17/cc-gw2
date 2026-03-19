@@ -81,11 +81,12 @@ export default function HelpPage(): JSX.Element {
         eyebrow="Guided Setup"
         breadcrumb="Gateway / Help"
         helper={t('help.helper')}
+        badge={`${sections.length} guides`}
       />
 
-      <Card className="surface-1">
+      <Card className="surface-1 border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(246,248,255,0.96),rgba(255,255,255,0.94))]">
         <CardContent className="flex items-start gap-4 pt-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(37,99,235,0.16),rgba(14,165,233,0.08))] text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]">
             <Info className="h-5 w-5" aria-hidden="true" />
           </div>
           <p className="text-sm text-muted-foreground">
@@ -99,7 +100,7 @@ export default function HelpPage(): JSX.Element {
           <a
             key={path.id}
             href={`#help-${path.id}`}
-            className="rounded-[1.35rem] border border-white/50 bg-card/88 px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_36px_-24px_rgba(15,23,42,0.3)]"
+            className="rounded-[1.35rem] border border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(246,248,255,0.92))] px-4 py-4 shadow-[0_1px_2px_rgba(17,12,11,0.04),0_18px_36px_-30px_rgba(37,99,235,0.16)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_-28px_rgba(37,99,235,0.22)]"
           >
             <p className="text-sm font-semibold">{path.title}</p>
             <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{path.subtitle}</p>
@@ -108,20 +109,17 @@ export default function HelpPage(): JSX.Element {
       </div>
 
       <div className="space-y-6">
-        {/* Basic configuration */}
         <div id="help-configuration">
           <PageSection eyebrow="01" title={sections[0].title}>
             <StepList items={sections[0].items} />
           </PageSection>
         </div>
 
-        {/* Client configuration header */}
         <div className="space-y-1 text-center">
           <h2 className="text-xl font-semibold">{t('help.clientConfig.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('help.clientConfig.subtitle')}</p>
         </div>
 
-        {/* Claude Code and Codex configuration */}
         <div className="grid gap-6 lg:grid-cols-2">
           <div id="help-claude">
             <PageSection eyebrow="02" title={sections[1].title}>
@@ -154,7 +152,6 @@ export default function HelpPage(): JSX.Element {
           </div>
         </div>
 
-        {/* Usage guide and tips */}
         <div className="mt-8">
           <div className="mb-6 space-y-1 text-center">
             <h2 className="text-lg font-semibold">{t('help.advancedGuide.title')}</h2>
@@ -186,7 +183,7 @@ function StepList({ items }: { items: string[] }) {
       {items.map((item, index) => (
         <li
           key={`${index}-${item}`}
-          className="flex gap-3 rounded-[1.2rem] border border-white/50 bg-card/82 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
+          className="flex gap-3 rounded-[1.2rem] border border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(246,248,255,0.88))] p-3 shadow-[0_1px_2px_rgba(17,12,11,0.03)]"
         >
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-primary text-xs font-medium text-primary-foreground">
             {index + 1}

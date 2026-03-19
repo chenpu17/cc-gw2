@@ -147,10 +147,26 @@ pnpm exec playwright install --with-deps chromium
 pnpm test:e2e:web
 ```
 
+如果只想跑分层回归，可直接用：
+
+```bash
+pnpm test:e2e:web:core
+pnpm test:e2e:web:hardening
+pnpm test:e2e:web:visual
+```
+
+如需刷新页面级截图基线：
+
+```bash
+pnpm test:e2e:web:update-snapshots
+```
+
 当前仓库已具备：
 
 - Web UI 构建通过
 - Web Playwright E2E 通过
+- 页面级视觉截图基线回归
+- 低频危险路径 E2E
 - CLI smoke 流程可单独执行
 - GitHub Actions CI 与 release workflow 已落地
 

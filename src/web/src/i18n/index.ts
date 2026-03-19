@@ -1,5 +1,6 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { storageKeys } from '@/services/storageKeys'
 
 const resources = {
   zh: {
@@ -65,7 +66,9 @@ const resources = {
         },
         status: {
           success: '成功',
-          error: '失败'
+          error: '失败',
+          enabled: '已启用',
+          disabled: '已禁用'
         },
         notifications: {
           featureInProgress: '功能开发中，敬请期待。'
@@ -605,6 +608,46 @@ const resources = {
       modelManagement: {
         title: '模型与路由管理',
         description: '统一维护模型提供商配置、模型路由映射与自定义端点。',
+        header: {
+          providersHelper: '先维护 Provider 供应池，再为内置端点和自定义端点配置路由规则。',
+          routingHelper: '当前工作区正在编辑「{{name}}」的路由规则，保持单工作区上下文以减少切换混淆。'
+        },
+        overview: {
+          synced: '工作区已同步',
+          unsavedCount: '未保存 {{count}}',
+          providersStat: 'Providers',
+          providersStatHint: '已接入的上游供应池',
+          routeWorkspacesStat: '路由工作区',
+          routeWorkspacesStatHint: '内置端点 + 自定义端点',
+          customEndpointsStat: '自定义端点',
+          customEndpointsStatHint: '额外暴露的接入入口',
+          activeWorkspace: '当前工作区',
+          activeWorkspaceProvider: 'Provider 清单',
+          activeWorkspaceRouting: '路由编辑区',
+          providerAndSystem: '资源与内置路由',
+          providerPoolTag: 'Provider 池',
+          systemEndpointTag: '内置端点',
+          customEndpoints: '自定义端点',
+          customEndpointsHint: '自定义端点保留紧凑横向卡片，便于快速切换、编辑和删除。',
+          headerWithCustom: '优先在此处切换和维护自定义端点，避免主工作区被多列布局挤压。',
+          headerWithoutCustom: '先配置提供商与内置路由，需要时再补充自定义端点。',
+          endpointEnabled: '已启用',
+          endpointDisabled: '已停用',
+          endpointProtocols: '{{count}} 条协议路径',
+          endpointNoProtocol: '尚未配置协议路径',
+          endpointMorePaths: '另有 {{count}} 条路径',
+          endpointManagedExternally: '该端点不可删除，仅可调整配置。',
+          routesEditorHint: '源模型 -> 目标 provider:model',
+          suggestionHint: '一键补充该端点常见的源模型写法，减少手工录入。',
+          resourceCardTitle: 'Provider 供应池',
+          resourceCardDescription: 'Provider 只表示上游模型资源与鉴权配置，不直接决定外部请求入口。',
+          entryCardTitle: 'Endpoint 入口层',
+          entryCardDescription: 'Anthropic、OpenAI 与自定义端点才是网关对外暴露的入口；路由与模板都按 endpoint 作用域管理。'
+        },
+        providersSemantics: {
+          title: '先维护 Provider 资源池，再维护 Endpoint 路由',
+          description: '这里配置的是上游供应商、认证方式和模型清单；真正对客户端暴露的仍是内置端点与自定义端点。'
+        },
         tabs: {
           providers: '模型提供商',
           providersDesc: '配置上游模型提供商以及认证信息。',
@@ -771,6 +814,7 @@ const resources = {
         overview: {
           title: '当前运行概览',
           description: '先确认当前监听方式、访问保护和配置文件位置，再进入具体调优。',
+          unsavedCount: '待保存 {{count}} 项',
           cards: {
             protocols: '协议入口',
             security: '控制台访问',
@@ -875,6 +919,10 @@ const resources = {
           retention: '日志保留天数需为 1-365 之间的数字',
           logExportTimeout: '日志导出超时需在 5-600 秒之间',
           bodyLimit: '请求体大小需在 1-2048 MB 之间',
+          protocolRequired: '至少需要启用 HTTP 或 HTTPS 协议',
+          httpPort: 'HTTP 端口必须在 1-65535 之间',
+          httpsPort: 'HTTPS 端口必须在 1-65535 之间',
+          httpsCertificate: 'HTTPS 已启用但缺少证书路径，请手动配置受信任的证书',
           routePair: '请填写完整的来源模型与目标模型配置。',
           routeDuplicate: '模型 {{model}} 已存在映射，请勿重复配置。'
         },
@@ -915,8 +963,11 @@ const resources = {
           softLabel: '轻度操作',
           softTitle: '清理过期日志',
           softDescription: '仅删除超过保留天数的历史日志，适合日常维护。',
+          confirmTitle: '清理历史日志',
+          confirmDescription: '该操作会删除超过保留天数的历史日志，但不会影响当前较新的记录。',
           hardLabel: '高风险操作',
           hardTitle: '彻底清空日志',
+          clearAllTitle: '彻底清空日志',
           clearAll: '彻底清空',
           clearingAll: '清空中...',
           confirmCleanup: '该操作会删除超过保留天数的历史日志，但不会影响当前较新的记录。',
@@ -1158,8 +1209,10 @@ const resources = {
           disabled: '已禁用'
         },
         summary: {
+          totalCount: '密钥 {{count}}',
           wildcard: '通配符密钥：{{count}}',
-          restricted: '受限密钥：{{count}}'
+          restricted: '受限密钥：{{count}}',
+          unrestricted: '不限制端点：{{count}}'
         },
         toast: {
           keyCreated: 'API 密钥创建成功',
@@ -1302,7 +1355,9 @@ const resources = {
         },
         status: {
           success: 'Success',
-          error: 'Error'
+          error: 'Error',
+          enabled: 'Enabled',
+          disabled: 'Disabled'
         },
         notifications: {
           featureInProgress: 'Feature under development. Stay tuned!'
@@ -1842,6 +1897,46 @@ const resources = {
       modelManagement: {
         title: 'Models & Routing',
         description: 'Configure providers, routing rules, and custom endpoints.',
+        header: {
+          providersHelper: 'Maintain the provider pool first, then define routing for built-in and custom endpoints.',
+          routingHelper: 'You are editing routing rules for "{{name}}" in a single focused workspace.'
+        },
+        overview: {
+          synced: 'Workspace synced',
+          unsavedCount: '{{count}} unsaved',
+          providersStat: 'Providers',
+          providersStatHint: 'Connected upstream supply pool',
+          routeWorkspacesStat: 'Route workspaces',
+          routeWorkspacesStatHint: 'System + custom endpoints',
+          customEndpointsStat: 'Custom endpoints',
+          customEndpointsStatHint: 'Additional public entry points',
+          activeWorkspace: 'Active workspace',
+          activeWorkspaceProvider: 'Provider inventory',
+          activeWorkspaceRouting: 'Routing editor',
+          providerAndSystem: 'Resources & system routing',
+          providerPoolTag: 'Provider pool',
+          systemEndpointTag: 'System endpoint',
+          customEndpoints: 'Custom endpoints',
+          customEndpointsHint: 'Keep custom endpoints in a compact horizontal strip so they remain easy to switch, edit, and remove.',
+          headerWithCustom: 'Switch and maintain custom endpoints here to avoid squeezing the main workspace into a multi-column layout.',
+          headerWithoutCustom: 'Set up providers and built-in routing first, then add custom endpoints when needed.',
+          endpointEnabled: 'Enabled',
+          endpointDisabled: 'Disabled',
+          endpointProtocols: '{{count}} protocol paths',
+          endpointNoProtocol: 'No protocol path configured',
+          endpointMorePaths: '{{count}} more paths',
+          endpointManagedExternally: 'This endpoint cannot be removed from the UI.',
+          routesEditorHint: 'Source model -> target provider:model',
+          suggestionHint: 'Seed common source model names for this endpoint with one click.',
+          resourceCardTitle: 'Provider supply pool',
+          resourceCardDescription: 'Providers represent upstream model resources and authentication only; they are not public gateway entry points by themselves.',
+          entryCardTitle: 'Endpoint entry layer',
+          entryCardDescription: 'Anthropic, OpenAI, and custom endpoints are the actual public gateway entries. Routing rules and presets are scoped per endpoint.'
+        },
+        providersSemantics: {
+          title: 'Maintain the provider pool first, then endpoint routing',
+          description: 'This workspace defines upstream vendors, auth, and model inventory. Public traffic still enters through built-in or custom endpoints.'
+        },
         tabs: {
           providers: 'Providers',
           providersDesc: 'Manage upstream providers and authentication.',
@@ -2008,6 +2103,7 @@ const resources = {
         overview: {
           title: 'Current snapshot',
           description: 'Confirm listening protocols, console protection, and config location before editing deeper settings.',
+          unsavedCount: '{{count}} pending',
           cards: {
             protocols: 'Protocols',
             security: 'Console access',
@@ -2112,6 +2208,10 @@ const resources = {
           retention: 'Retention days must be between 1 and 365',
           logExportTimeout: 'Log export timeout must be between 5 and 600 seconds',
           bodyLimit: 'Request body limit must be between 1 and 2048 MB',
+          protocolRequired: 'Enable at least HTTP or HTTPS.',
+          httpPort: 'HTTP port must be between 1 and 65535',
+          httpsPort: 'HTTPS port must be between 1 and 65535',
+          httpsCertificate: 'HTTPS is enabled but certificate paths are missing.',
           routePair: 'Fill both the source and target models.',
           routeDuplicate: 'A route for {{model}} already exists.'
         },
@@ -2152,8 +2252,11 @@ const resources = {
           softLabel: 'Routine action',
           softTitle: 'Clean up expired logs',
           softDescription: 'Deletes only logs older than the retention window. Suitable for normal maintenance.',
+          confirmTitle: 'Clean up logs',
+          confirmDescription: 'This deletes only logs older than the configured retention window and keeps recent records intact.',
           hardLabel: 'High-risk action',
           hardTitle: 'Clear all logs',
+          clearAllTitle: 'Clear all logs',
           clearAll: 'Clear everything',
           clearingAll: 'Clearing…',
           confirmCleanup: 'This deletes only logs older than the configured retention window and keeps recent records intact.',
@@ -2330,8 +2433,10 @@ const resources = {
           disabled: 'Disabled'
         },
         summary: {
+          totalCount: '{{count}} keys',
           wildcard: 'Wildcard keys: {{count}}',
-          restricted: 'Restricted keys: {{count}}'
+          restricted: 'Restricted keys: {{count}}',
+          unrestricted: 'Unrestricted keys: {{count}}'
         },
         toast: {
           keyCreated: 'API key created successfully',
@@ -2464,15 +2569,40 @@ const resources = {
   }
 }
 
+function resolveInitialLanguage(): 'zh' | 'en' {
+  if (typeof window === 'undefined') {
+    return 'zh'
+  }
+
+  const stored = window.localStorage.getItem(storageKeys.language)
+  if (stored === 'zh' || stored === 'en') {
+    return stored
+  }
+
+  return 'zh'
+}
+
+function persistLanguage(language: string) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const normalized = language.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+  window.localStorage.setItem(storageKeys.language, normalized)
+}
+
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
     resources,
-    lng: 'zh',
+    lng: resolveInitialLanguage(),
     fallbackLng: 'en',
     interpolation: {
       escapeValue: false
     }
   })
+
+  i18n.on('languageChanged', persistLanguage)
+  persistLanguage(i18n.language)
 }
 
 export default i18n

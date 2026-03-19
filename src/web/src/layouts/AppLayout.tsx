@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, BarChart3, Cog, FileText, Key, Layers, LifeBuoy, Menu, Settings, X } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
+import { getActiveNavigationRoute, navigationRoutes } from '@/app/routes'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { cn } from '@/lib/utils'
@@ -9,49 +10,48 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/providers/AuthProvider'
 
-const navItems = [
-  { to: '/', icon: BarChart3, labelKey: 'nav.dashboard', descriptionKey: 'dashboard.description' },
-  { to: '/logs', icon: FileText, labelKey: 'nav.logs', descriptionKey: 'logs.description' },
-  { to: '/models', icon: Layers, labelKey: 'nav.models', descriptionKey: 'modelManagement.description' },
-  { to: '/events', icon: AlertTriangle, labelKey: 'nav.events', descriptionKey: 'events.description' },
-  { to: '/api-keys', icon: Key, labelKey: 'nav.apiKeys', descriptionKey: 'apiKeys.description' },
-  { to: '/settings', icon: Settings, labelKey: 'nav.settings', descriptionKey: 'settings.description' },
-  { to: '/help', icon: LifeBuoy, labelKey: 'nav.help', descriptionKey: 'help.intro' },
-  { to: '/about', icon: Cog, labelKey: 'nav.about', descriptionKey: 'about.description' }
-]
+function isNavigationItemActive(pathname: string, item: (typeof navigationRoutes)[number]) {
+  const matchPaths = item.nav.matchPaths ?? [item.path]
+
+  return matchPaths.some((matchPath) => {
+    if (matchPath === '/') {
+      return pathname === '/'
+    }
+
+    return pathname.startsWith(matchPath)
+  })
+}
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation()
+  const location = useLocation()
 
   return (
     <nav className="flex h-full flex-col gap-1" aria-label={t('app.title')}>
-      {navItems.map((item) => {
-        const Icon = item.icon
+      {navigationRoutes.map((item) => {
+        const Icon = item.nav.icon
+        const isActive = isNavigationItemActive(location.pathname, item)
         return (
           <NavLink
-            key={item.to}
-            to={item.to}
+            key={item.path}
+            to={item.path}
             onClick={onNavigate}
-            className={({ isActive }) =>
-              cn(
-                'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]'
-                  : 'text-muted-foreground hover:bg-background/80 hover:text-foreground'
-              )
-            }
-            end={item.to === '/'}
-            title={t(item.labelKey)}
-          >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-primary" />
-                )}
-                <Icon className={cn('h-4 w-4 transition-colors', isActive ? 'text-primary' : '')} aria-hidden="true" />
-                <span>{t(item.labelKey)}</span>
-              </>
+            className={cn(
+              'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+              isActive
+                ? 'bg-white/[0.08] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
+                : 'text-white/45 hover:bg-white/[0.05] hover:text-white'
             )}
+            end={item.path === '/'}
+            title={t(item.nav.labelKey)}
+          >
+            <>
+              {isActive && (
+                <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
+              )}
+              <Icon className={cn('h-4 w-4 transition-colors', isActive ? 'text-primary' : 'text-white/55')} aria-hidden="true" />
+              <span>{t(item.nav.labelKey)}</span>
+            </>
           </NavLink>
         )
       })}
@@ -61,40 +61,38 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 
 function SidebarNavCompact({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation()
+  const location = useLocation()
 
   return (
     <TooltipProvider delayDuration={0}>
       <nav className="flex h-full flex-col gap-1" aria-label={t('app.title')}>
-        {navItems.map((item) => {
-          const Icon = item.icon
+        {navigationRoutes.map((item) => {
+          const Icon = item.nav.icon
+          const isActive = isNavigationItemActive(location.pathname, item)
           return (
-            <Tooltip key={item.to}>
+            <Tooltip key={item.path}>
               <TooltipTrigger asChild>
                 <NavLink
-                  to={item.to}
+                  to={item.path}
                   onClick={onNavigate}
-                  className={({ isActive }) =>
-                    cn(
-                      'group relative flex items-center justify-center rounded-lg p-2.5 transition-all duration-200',
-                      isActive
-                        ? 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]'
-                        : 'text-muted-foreground hover:bg-background/80 hover:text-foreground'
-                    )
-                  }
-                  end={item.to === '/'}
-                >
-                  {({ isActive }) => (
-                    <>
-                      {isActive && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-primary" />
-                      )}
-                      <Icon className={cn('h-5 w-5', isActive ? 'text-primary' : '')} aria-hidden="true" />
-                    </>
+                  className={cn(
+                    'group relative flex items-center justify-center rounded-lg p-2.5 transition-all duration-200',
+                    isActive
+                      ? 'bg-white/[0.08] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
+                      : 'text-white/45 hover:bg-white/[0.05] hover:text-white'
                   )}
+                  end={item.path === '/'}
+                >
+                  <>
+                    {isActive && (
+                      <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
+                    )}
+                    <Icon className={cn('h-5 w-5', isActive ? 'text-primary' : 'text-white/55')} aria-hidden="true" />
+                  </>
                 </NavLink>
               </TooltipTrigger>
               <TooltipContent side="right">
-                {t(item.labelKey)}
+                {t(item.nav.labelKey)}
               </TooltipContent>
             </Tooltip>
           )
@@ -116,14 +114,11 @@ export function AppLayout() {
   }, [location.pathname])
 
   const activeItem = useMemo(() => {
-    if (location.pathname === '/') {
-      return navItems[0]
-    }
-    return navItems.find((item) => item.to !== '/' && location.pathname.startsWith(item.to)) ?? navItems[0]
+    return getActiveNavigationRoute(location.pathname)
   }, [location.pathname])
 
-  const activeTitle = t(activeItem.labelKey)
-  const activeDescription = t(activeItem.descriptionKey)
+  const activeTitle = t(activeItem.nav.labelKey)
+  const activeDescription = t(activeItem.nav.descriptionKey)
   const appTitle = t('app.title')
 
   const handleLogout = async () => {
@@ -137,7 +132,7 @@ export function AppLayout() {
   }
 
   return (
-    <div className="app-shell relative flex min-h-screen bg-background">
+    <div className="app-shell relative flex min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(225,93,73,0.12),transparent_24%),radial-gradient(circle_at_top_right,rgba(217,169,64,0.08),transparent_20%),linear-gradient(180deg,rgba(247,244,239,1),rgba(242,238,233,0.95))]">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-4 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
@@ -146,9 +141,9 @@ export function AppLayout() {
       </a>
 
       {/* Desktop Sidebar - Compact */}
-      <aside className="hidden w-16 flex-col border-r border-white/40 bg-card/72 backdrop-blur-xl xl:hidden lg:flex">
-        <div className="flex h-16 items-center justify-center border-b border-white/40">
-          <div className="flex h-10 w-10 items-center justify-center rounded-[1.1rem] bg-gradient-to-br from-primary via-primary to-sky-400 text-xs font-bold text-primary-foreground shadow-[0_12px_28px_-18px_rgba(59,130,246,0.8)]">
+      <aside className="hidden w-16 flex-col border-r border-white/10 bg-[#111111] text-white xl:hidden lg:flex">
+        <div className="flex h-16 items-center justify-center border-b border-white/10">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[1.1rem] bg-gradient-to-br from-primary via-primary to-[#f29a7f] text-xs font-bold text-primary-foreground shadow-[0_18px_32px_-22px_rgba(225,93,73,0.75)]">
             GW
           </div>
         </div>
@@ -158,23 +153,23 @@ export function AppLayout() {
       </aside>
 
       {/* Desktop Sidebar - Full */}
-      <aside className="hidden w-64 flex-col border-r border-white/40 bg-card/72 backdrop-blur-xl xl:flex">
-        <div className="flex h-20 items-center gap-3 border-b border-white/40 px-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-[1.1rem] bg-gradient-to-br from-primary via-primary to-sky-400 text-xs font-bold text-primary-foreground shadow-[0_12px_28px_-18px_rgba(59,130,246,0.8)]">
+      <aside className="hidden w-64 flex-col border-r border-white/10 bg-[#111111] text-white xl:flex">
+        <div className="flex h-20 items-center gap-3 border-b border-white/10 px-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[1.1rem] bg-gradient-to-br from-primary via-primary to-[#f29a7f] text-xs font-bold text-primary-foreground shadow-[0_18px_32px_-22px_rgba(225,93,73,0.75)]">
             GW
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-foreground">{t('app.title')}</p>
-            <p className="text-xs text-muted-foreground">{t('app.consoleSubtitle')}</p>
+            <p className="font-semibold text-white">{t('app.title')}</p>
+            <p className="text-xs text-white/45">{t('app.consoleSubtitle')}</p>
           </div>
         </div>
-        <div className="border-b border-white/40 px-5 py-4">
-          <div className="rounded-[1.2rem] border border-white/50 bg-background/75 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        <div className="border-b border-white/10 px-5 py-4">
+          <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.04] px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.12)]">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/45">
               {t('app.environmentLabel')}
             </p>
-            <div className="mt-2 flex items-center gap-2 text-sm font-medium">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            <div className="mt-2 flex items-center gap-2 text-sm font-medium text-white">
+              <span className="h-2 w-2 rounded-full bg-primary" />
               {t('app.online')}
             </div>
           </div>
@@ -186,7 +181,7 @@ export function AppLayout() {
 
       <div className="flex flex-1 flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between gap-4 border-b border-white/40 bg-background/78 px-4 backdrop-blur-xl lg:px-6">
+        <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between gap-4 border-b border-black/5 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(249,246,242,0.88))] px-4 backdrop-blur-xl lg:px-6">
           <div className="flex items-center gap-3 lg:hidden">
             <Button
               variant="ghost"
@@ -216,7 +211,7 @@ export function AppLayout() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="hidden rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 lg:inline-flex">
+            <span className="hidden rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary lg:inline-flex">
               {t('app.online')}
             </span>
             {authEnabled && username && (
@@ -261,12 +256,12 @@ export function AppLayout() {
           />
           <div
             id="mobile-nav"
-            className="fixed inset-y-0 left-0 w-72 border-r border-white/40 bg-card/95 p-6 shadow-lg backdrop-blur-xl animate-in slide-in-from-left"
+            className="fixed inset-y-0 left-0 w-72 border-r border-white/10 bg-[#111111] p-6 text-white shadow-lg backdrop-blur-xl animate-in slide-in-from-left"
           >
             <div className="mb-6 flex items-center justify-between">
               <div>
-                <p className="font-semibold">{t('app.title')}</p>
-                <p className="text-xs text-muted-foreground">{t('app.consoleSubtitle')}</p>
+                <p className="font-semibold text-white">{t('app.title')}</p>
+                <p className="text-xs text-white/45">{t('app.consoleSubtitle')}</p>
               </div>
               <Button
                 variant="ghost"

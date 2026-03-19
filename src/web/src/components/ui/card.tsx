@@ -15,7 +15,7 @@ const cardVariants = cva(
         outline: 'border-border/80 bg-background/80 shadow-none',
         ghost: 'border-transparent bg-transparent shadow-none',
         interactive:
-          'cursor-pointer shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-24px_rgba(15,23,42,0.26)] hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-[0_18px_42px_-26px_rgba(59,130,246,0.28)]',
+          'cursor-pointer shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-24px_rgba(15,23,42,0.26)] hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-[0_18px_42px_-26px_rgba(225,93,73,0.26)]',
       },
     },
     defaultVariants: {

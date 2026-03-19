@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery, UseQueryOptions, UseQueryResult } from '@tanstack/react-query'
 import { AxiosRequestConfig } from 'axios'
-import { apiClient, toApiError } from '@/services/api'
+import { requestJson, toApiError } from '@/services/api'
 
 export function useApiQuery<TData = unknown, TError = Error>(
   key: readonly unknown[],
@@ -13,8 +13,7 @@ export function useApiQuery<TData = unknown, TError = Error>(
     ...options,
     queryFn: async () => {
       try {
-        const response = await apiClient.request<TData>(request)
-        return response.data
+        return await requestJson<TData>(request)
       } catch (error) {
         throw (toApiError(error) as unknown as TError)
       }

@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { apiClient, toApiError } from '@/services/api'
+import { authApi } from '@/services/auth'
 import type { AuthLoginResponse, AuthLogoutResponse, AuthSessionResponse } from '@/types/auth'
 
 interface AuthState {
@@ -36,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     updateState((prev) => ({ ...prev, loading: true, error: null }))
     try {
-      const { data } = await apiClient.get<AuthSessionResponse>('/auth/session')
+      const data = await authApi.session()
       updateState(() => ({
         loading: false,
         authEnabled: Boolean(data.authEnabled),
@@ -60,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (username: string, password: string) => {
       updateState((prev) => ({ ...prev, loading: true, error: null }))
       try {
-        await apiClient.post<AuthLoginResponse>('/auth/login', { username, password })
+        await authApi.login(username, password)
         await refresh()
       } catch (error) {
         const apiError = toApiError(error)
@@ -79,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     updateState((prev) => ({ ...prev, loading: true }))
     try {
-      await apiClient.post<AuthLogoutResponse>('/auth/logout')
+      await authApi.logout()
     } catch (error) {
       // Ignore logout failures but still refresh session status
       const apiError = toApiError(error)

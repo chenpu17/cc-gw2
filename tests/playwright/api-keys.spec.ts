@@ -54,7 +54,21 @@ async function pollForLog(request: any, baseUrl: string, apiKeyId: number) {
   throw new Error('log entry not found in time')
 }
 
-test('api key web ui can create a key and the key is reflected in logs', async ({ page, request }) => {
+async function pollForKeyDeletion(request: any, baseUrl: string, apiKeyId: number) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const response = await request.get(`${baseUrl}/api/keys`)
+    expect(response.status()).toBe(200)
+    const keys = await response.json()
+    if (!keys.find((item: any) => item.id === apiKeyId)) {
+      return
+    }
+    await delay(250)
+  }
+
+  throw new Error('api key not deleted in time')
+}
+
+test('api key web ui covers create, reveal, restrict, toggle, analytics, and delete flows', async ({ page, request }) => {
   const baseUrl = harness.baseUrl()
   await disableWildcard(request, baseUrl)
 
@@ -75,6 +89,8 @@ test('api key web ui can create a key and the key is reflected in logs', async (
   await expect(keyValueNode).toBeVisible()
   const apiKeyValue = (await keyValueNode.textContent())?.trim()
   expect(apiKeyValue).toBeTruthy()
+  await createdDialog.getByRole('button', { name: '复制' }).click()
+  await expect(page.getByText('密钥已复制到剪贴板')).toBeVisible()
 
   const createResponse = await request.get(`${baseUrl}/api/keys`)
   expect(createResponse.status()).toBe(200)
@@ -104,7 +120,50 @@ test('api key web ui can create a key and the key is reflected in logs', async (
   expect(logEntry.api_key_name).toBe('Playwright Test Key')
 
   await createdDialog.getByRole('button', { name: '关闭' }).click()
-  await page.getByRole('link', { name: '请求日志' }).click()
+
+  const createdKeyCard = page.locator(
+    'xpath=//h3[normalize-space()="Playwright Test Key"]/ancestor::div[contains(@class,"backdrop-blur")][1]'
+  )
+
+  await createdKeyCard.getByRole('button', { name: '显示完整密钥' }).click()
+  await expect(createdKeyCard.getByRole('button', { name: '隐藏密钥' })).toBeVisible()
+  await createdKeyCard.getByRole('button', { name: '复制' }).click()
+  await expect(page.getByText('密钥已复制到剪贴板')).toBeVisible()
+  await createdKeyCard.getByRole('button', { name: '隐藏密钥' }).click()
+  await expect(createdKeyCard.getByRole('button', { name: '显示完整密钥' })).toBeVisible()
+
+  await createdKeyCard.getByRole('button', { name: '编辑端点权限' }).click()
+  const editDialog = page.getByRole('dialog', { name: '编辑端点权限' })
+  await expect(editDialog).toBeVisible()
+  await editDialog.getByRole('checkbox', { name: /Anthropic \(anthropic\)/ }).check()
+  await editDialog.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByText('API 密钥已更新').first()).toBeVisible()
+  await expect(createdKeyCard.getByText('已限制端点')).toBeVisible()
+  await expect(createdKeyCard.getByText(/^anthropic$/).first()).toBeVisible()
+
+  await createdKeyCard.getByRole('button', { name: '禁用', exact: true }).click()
+  await expect(page.getByText('API 密钥已更新').first()).toBeVisible()
+  await expect(createdKeyCard.getByText(/^已禁用$/).first()).toBeVisible()
+
+  await createdKeyCard.getByRole('button', { name: '启用', exact: true }).click()
+  await expect(page.getByText('API 密钥已更新').first()).toBeVisible()
+  await expect(createdKeyCard.getByText(/^已启用$/).first()).toBeVisible()
+
+  await page.getByRole('button', { name: '近 30 天' }).click()
+  await expect(page.getByText('展示最近 30 天的密钥调用情况')).toBeVisible()
+
+  await createdKeyCard.getByRole('button', { name: '删除' }).last().click()
+  const deleteDialog = page.getByRole('dialog', { name: '删除 API 密钥' })
+  await expect(deleteDialog).toBeVisible()
+  await deleteDialog.getByRole('button', { name: '删除' }).click()
+  await pollForKeyDeletion(request, baseUrl, created.id)
+
+  const finalKeysResponse = await request.get(`${baseUrl}/api/keys`)
+  expect(finalKeysResponse.status()).toBe(200)
+  const finalKeys = await finalKeysResponse.json()
+  expect(finalKeys.find((item: any) => item.id === created.id)).toBeFalsy()
+
+  await page.goto(`${baseUrl}/ui/logs`)
   await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
   await expect(page.getByText('Playwright Test Key')).toBeVisible()
 })

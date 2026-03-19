@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Languages } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { storageKeys } from '@/services/storageKeys'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +18,12 @@ export function LanguageSwitcher() {
   const { i18n, t } = useTranslation()
   const currentLang = i18n.language.startsWith('zh') ? 'zh' : 'en'
   const currentLanguage = languages.find(lang => lang.code === currentLang)
+  const handleLanguageChange = (code: 'zh' | 'en') => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(storageKeys.language, code)
+    }
+    void i18n.changeLanguage(code)
+  }
 
   return (
     <DropdownMenu>
@@ -35,7 +42,7 @@ export function LanguageSwitcher() {
         {languages.map((lang) => (
           <DropdownMenuItem
             key={lang.code}
-            onClick={() => i18n.changeLanguage(lang.code)}
+            onClick={() => handleLanguageChange(lang.code)}
             className={lang.code === currentLang ? 'bg-accent' : ''}
           >
             {lang.nativeName}

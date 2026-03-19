@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react'
 import {
+  AppDialogBody,
+  AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader
+} from '@/components/DialogShell'
+import {
   Dialog,
-  DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -36,21 +39,23 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <AppDialogContent className="max-w-md">
+        <AppDialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}
-        </DialogHeader>
-        {children ? <div className="text-sm text-muted-foreground">{children}</div> : null}
-        <DialogFooter>
+        </AppDialogHeader>
+        <AppDialogBody className="space-y-4">
+          {children ? <div className="text-sm text-muted-foreground">{children}</div> : null}
+        </AppDialogBody>
+        <AppDialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             {cancelLabel}
           </Button>
           <Button variant={confirmVariant} onClick={() => void onConfirm()} disabled={loading}>
             {confirmLabel}
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </AppDialogFooter>
+      </AppDialogContent>
     </Dialog>
   )
 }

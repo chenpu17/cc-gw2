@@ -24,9 +24,26 @@ pnpm exec playwright install --with-deps chromium
 ```bash
 cargo test
 pnpm build
-pnpm test:e2e:web
+pnpm test:e2e:web:core
+pnpm test:e2e:web:hardening
+pnpm test:e2e:web:visual
 pnpm smoke:cli
 pnpm pack:dry-run
+```
+
+当前本地最新核验记录（2026-03-19）：
+
+- `pnpm smoke:cli` 通过
+- `pnpm pack:dry-run` 通过
+- 根包 dry-run 产物：`.pack/chenpu17-cc-gw-0.8.0-alpha.10.tgz`
+- 根包 tarball 大小：`466942 bytes`
+- 已确认根包包含 `src/cli/dist`、`src/web/dist`、`README.md`、`LICENSE`
+
+如本轮修改涉及页面结构、主题或信息层级，再额外执行：
+
+```bash
+pnpm test:e2e:web:update-snapshots
+git diff -- tests/playwright/visual.spec.ts-snapshots
 ```
 
 ## 3. 初始化 Git 仓库
@@ -88,3 +105,5 @@ dist-tag 规则：
 - 用 macOS arm64、Linux x64、Linux arm64、Windows x64（npm 包名 `win32-x64`）分别验证安装
 - 验证 `npm install -g @chenpu17/cc-gw` 后 `cc-gw start --foreground` 可直接启动
 - 验证旧 `~/.cc-gw` 配置和 SQLite 数据可直接复用
+- 验证 `/ui` 下核心页、截图基线页、HTTPS 配置保存、Help 复制、About 手动刷新无回退
+- 验证根包 tgz 解包后仍包含 `src/cli/dist/index.js` 与 `src/web/dist/index.html`

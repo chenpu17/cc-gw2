@@ -89,12 +89,19 @@ pnpm smoke:cli
 - `cargo test`
 - `pnpm build`
 - `pnpm exec playwright install chromium`（首次本地运行时）
-- `pnpm test:e2e:web`
+- `pnpm test:e2e:web:core`
+- `pnpm test:e2e:web:hardening`
+- `pnpm test:e2e:web:visual`
 - `pnpm smoke:cli`
 - `pnpm pack:dry-run`
 - 根包内容包含 `src/cli/dist`、`src/web/dist`
 - 平台 native 包内容包含 `bin/cc-gw-server`
 - 目标平台二进制名称与 CLI 解析规则一致
+
+如果页面视觉有调整，还应确认：
+
+- `pnpm test:e2e:web:update-snapshots`
+- `tests/playwright/visual.spec.ts-snapshots/*` 已按预期更新
 
 测试版发布规则：
 
@@ -126,6 +133,23 @@ pnpm --dir packages/native/darwin-arm64 pack --pack-destination ../../../.pack/n
 npm install -g ./.pack/native/chenpu17-cc-gw-darwin-arm64-0.8.0-alpha.10.tgz
 npm install -g ./.pack/chenpu17-cc-gw-0.8.0-alpha.10.tgz
 ```
+
+## Latest Dry Run Snapshot
+
+2026-03-19 本地已再次验证：
+
+- `pnpm smoke:cli`：通过
+- `pnpm pack:dry-run`：通过
+- 产物：`.pack/chenpu17-cc-gw-0.8.0-alpha.10.tgz`
+- 大小：`466942 bytes`
+
+已抽查根包内容：
+
+- `package/src/cli/dist/index.js`
+- `package/src/web/dist/index.html`
+- `package/src/web/dist/assets/*`
+- `package/README.md`
+- `package/LICENSE`
 
 ## CI
 

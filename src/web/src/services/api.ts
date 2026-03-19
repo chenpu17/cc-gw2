@@ -1,4 +1,5 @@
 import axios, { AxiosHeaders } from 'axios'
+import type { AxiosRequestConfig, AxiosResponse } from 'axios'
 import type {
   CustomEndpointsResponse,
   CreateEndpointRequest,
@@ -59,32 +60,40 @@ export function toApiError(error: unknown): ApiError {
   }
 }
 
+export async function requestJson<TData>(request: AxiosRequestConfig): Promise<TData> {
+  const response = await apiClient.request<TData>(request)
+  return response.data
+}
+
+export async function unwrapResponse<TData>(request: Promise<AxiosResponse<TData>>): Promise<TData> {
+  const response = await request
+  return response.data
+}
+
 // Custom Endpoints API
 export const customEndpointsApi = {
   list: async (): Promise<CustomEndpointsResponse> => {
-    const response = await apiClient.get<CustomEndpointsResponse>('/api/custom-endpoints')
-    return response.data
+    return unwrapResponse(apiClient.get<CustomEndpointsResponse>('/api/custom-endpoints'))
   },
 
   create: async (data: CreateEndpointRequest): Promise<EndpointResponse> => {
-    const response = await apiClient.post<EndpointResponse>('/api/custom-endpoints', data)
-    return response.data
+    return unwrapResponse(apiClient.post<EndpointResponse>('/api/custom-endpoints', data))
   },
 
   update: async (id: string, data: UpdateEndpointRequest): Promise<EndpointResponse> => {
-    const response = await apiClient.put<EndpointResponse>(`/api/custom-endpoints/${id}`, data)
-    return response.data
+    return unwrapResponse(apiClient.put<EndpointResponse>(`/api/custom-endpoints/${id}`, data))
   },
 
   delete: async (id: string): Promise<{ success: boolean }> => {
-    const response = await apiClient.delete<{ success: boolean }>(`/api/custom-endpoints/${id}`)
-    return response.data
+    return unwrapResponse(apiClient.delete<{ success: boolean }>(`/api/custom-endpoints/${id}`))
   }
 }
 
 export const eventsApi = {
   list: async (params?: { limit?: number; cursor?: number; level?: string; type?: string }): Promise<EventsResponse> => {
-    const response = await apiClient.get<EventsResponse>('/api/events', {
+    return requestJson<EventsResponse>({
+      url: '/api/events',
+      method: 'GET',
       params: {
         limit: params?.limit,
         cursor: params?.cursor,
@@ -92,6 +101,5 @@ export const eventsApi = {
         type: params?.type
       }
     })
-    return response.data
   }
 }

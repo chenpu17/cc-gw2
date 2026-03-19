@@ -4,33 +4,33 @@
 
 @layer base {
   :root {
-    /* Material-inspired light theme */
-    --background: 210 20% 98%;
-    --foreground: 220 18% 18%;
+    /* Warm operator-console light theme */
+    --background: 45 20% 96%;
+    --foreground: 12 8% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 220 18% 18%;
+    --card-foreground: 12 8% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 18% 18%;
-    --primary: 217 91% 60%;
+    --popover-foreground: 12 8% 11%;
+    --primary: 7 72% 54%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 20% 95%;
-    --secondary-foreground: 220 18% 18%;
-    --muted: 220 18% 95%;
-    --muted-foreground: 220 9% 42%;
-    --accent: 217 70% 95%;
-    --accent-foreground: 217 91% 42%;
+    --secondary: 30 22% 93%;
+    --secondary-foreground: 12 8% 11%;
+    --muted: 30 18% 92%;
+    --muted-foreground: 20 6% 38%;
+    --accent: 12 60% 95%;
+    --accent-foreground: 7 65% 40%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 16% 89%;
-    --input: 220 16% 89%;
-    --ring: 217 91% 60%;
+    --border: 24 18% 86%;
+    --input: 24 18% 86%;
+    --ring: 7 72% 54%;
     --radius: 1rem;
 
-    --chart-1: 217 91% 60%;
-    --chart-2: 188 88% 40%;
-    --chart-3: 34 94% 55%;
-    --chart-4: 262 83% 62%;
-    --chart-5: 142 71% 45%;
+    --chart-1: 7 72% 54%;
+    --chart-2: 209 69% 40%;
+    --chart-3: 41 90% 48%;
+    --chart-4: 258 50% 54%;
+    --chart-5: 142 45% 38%;
 
     /* 扩展颜色变量 */
     --success: 142 71% 45%;
@@ -49,31 +49,30 @@
 
   .dark,
   [data-theme="dark"] {
-    /* Material-inspired dark theme */
-    --background: 222 28% 8%;
-    --foreground: 210 20% 92%;
-    --card: 222 22% 11%;
-    --card-foreground: 210 20% 92%;
-    --popover: 222 22% 11%;
-    --popover-foreground: 210 20% 92%;
-    --primary: 214 90% 68%;
+    --background: 20 10% 8%;
+    --foreground: 30 16% 92%;
+    --card: 18 10% 10%;
+    --card-foreground: 30 16% 92%;
+    --popover: 18 10% 10%;
+    --popover-foreground: 30 16% 92%;
+    --primary: 7 78% 61%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 222 16% 16%;
-    --secondary-foreground: 210 20% 92%;
-    --muted: 222 14% 15%;
-    --muted-foreground: 217 10% 68%;
-    --accent: 217 35% 19%;
-    --accent-foreground: 214 90% 76%;
+    --secondary: 20 7% 16%;
+    --secondary-foreground: 30 16% 92%;
+    --muted: 20 7% 15%;
+    --muted-foreground: 28 9% 66%;
+    --accent: 10 22% 18%;
+    --accent-foreground: 8 72% 72%;
     --destructive: 0 63% 31%;
     --destructive-foreground: 0 0% 100%;
-    --border: 222 15% 20%;
-    --input: 222 15% 20%;
-    --ring: 214 90% 68%;
-    --chart-1: 214 90% 68%;
-    --chart-2: 188 82% 52%;
-    --chart-3: 34 94% 62%;
-    --chart-4: 262 83% 70%;
-    --chart-5: 142 71% 52%;
+    --border: 20 8% 20%;
+    --input: 20 8% 20%;
+    --ring: 7 78% 61%;
+    --chart-1: 7 78% 61%;
+    --chart-2: 199 74% 56%;
+    --chart-3: 41 92% 58%;
+    --chart-4: 258 62% 70%;
+    --chart-5: 142 48% 50%;
 
     /* 扩展颜色变量 */
     --success: 142 71% 50%;
@@ -108,10 +107,11 @@
   body {
     @apply bg-background text-foreground;
     background-image:
-      radial-gradient(circle at top left, hsl(var(--primary) / 0.10), transparent 24rem),
-      radial-gradient(circle at top right, hsl(var(--chart-2) / 0.08), transparent 22rem),
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.12), transparent 22rem),
+      radial-gradient(circle at top right, hsl(var(--chart-3) / 0.08), transparent 20rem),
+      radial-gradient(circle at bottom right, hsl(var(--chart-2) / 0.06), transparent 18rem),
       linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
-    font-family: "Google Sans", "Roboto", "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+    font-family: "IBM Plex Sans", "Inter", "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -124,8 +124,8 @@
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 10% 12%, hsl(var(--primary) / 0.06), transparent 20rem),
-    radial-gradient(circle at 90% 8%, hsl(var(--chart-2) / 0.06), transparent 20rem);
+    radial-gradient(circle at 10% 12%, hsl(var(--primary) / 0.07), transparent 18rem),
+    radial-gradient(circle at 90% 8%, hsl(var(--chart-3) / 0.05), transparent 18rem);
   z-index: 0;
 }
 
@@ -336,17 +336,17 @@ html {
 
 @layer utilities {
   .surface-1 {
-    @apply border border-white/50 bg-card/90 backdrop-blur;
+    @apply border bg-card/95 backdrop-blur;
     box-shadow:
       0 1px 2px rgb(15 23 42 / 0.04),
-      0 8px 24px -18px rgb(15 23 42 / 0.22);
+      0 18px 36px -28px rgb(17 12 11 / 0.22);
   }
 
   .surface-2 {
-    @apply border border-white/50 bg-background/85 backdrop-blur;
+    @apply border bg-background/88 backdrop-blur;
     box-shadow:
       0 1px 2px rgb(15 23 42 / 0.04),
-      0 14px 32px -24px rgb(15 23 42 / 0.24);
+      0 20px 40px -30px rgb(17 12 11 / 0.24);
   }
 }
 

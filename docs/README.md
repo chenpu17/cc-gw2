@@ -8,10 +8,16 @@
   - 本地目录结构、SQLite 表设计和兼容迁移策略
 - [api-compatibility.md](./api-compatibility.md)
   - 对外 HTTP 接口、别名路径和当前兼容范围
+- [frontend-redesign-requirements.md](./frontend-redesign-requirements.md)
+  - 当前前端功能盘点、前后端耦合点和重设计基线
 - [npm-packaging.md](./npm-packaging.md)
   - npm 包结构、平台二进制分发和 CLI 解析顺序
 - [github-release-checklist.md](./github-release-checklist.md)
   - GitHub 上传、CI/Release 配置和正式发版前检查项
+- [frontend-redesign-final-audit.md](./frontend-redesign-final-audit.md)
+  - 当前 WebUI 重构后的功能、视觉与回归审计结果
+- [frontend-redesign-implementation-map.md](./frontend-redesign-implementation-map.md)
+  - Pencil 画板、页面实现入口与 Playwright 回归入口
 
 如果后续继续补文档，优先遵守这条规则：
 

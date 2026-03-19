@@ -26,7 +26,7 @@ test('unauthenticated users are redirected to login and can sign in/out', async 
   await page.goto(`${harness.baseUrl()}/ui/logs`)
 
   await expect(page).toHaveURL(/\/ui\/login$/)
-  await expect(page.getByText('登录 cc-gw 控制台')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '登录 cc-gw 控制台' })).toBeVisible()
 
   await page.getByLabel('用户名').fill(credentials.username)
   await page.getByLabel('密码').fill(credentials.password)
@@ -38,7 +38,7 @@ test('unauthenticated users are redirected to login and can sign in/out', async 
 
   await page.getByRole('button', { name: '退出登录' }).click()
   await expect(page).toHaveURL(/\/ui\/login$/)
-  await expect(page.getByText('登录 cc-gw 控制台')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '登录 cc-gw 控制台' })).toBeVisible()
 })
 
 test('login rejects invalid credentials', async ({ page }) => {
