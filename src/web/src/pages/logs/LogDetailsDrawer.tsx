@@ -265,18 +265,20 @@ export function LogDetailsDrawer({
 
 function DetailStatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border bg-secondary px-3 py-3">
+    <div className="min-w-0 rounded-lg border border-border bg-secondary px-3 py-3">
       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-2 text-sm font-semibold">{value}</p>
+      <p className="mt-2 break-all text-sm font-semibold leading-6">{value}</p>
     </div>
   )
 }
 
 function DetailItem({ label, value }: { label: string; value: string | number | null }) {
   return (
-    <div>
+    <div className="min-w-0 space-y-1">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="font-medium">{value ?? '-'}</dd>
+      <dd className="min-w-0 break-all whitespace-pre-wrap text-sm font-medium leading-6 text-foreground">
+        {value ?? '-'}
+      </dd>
     </div>
   )
 }
