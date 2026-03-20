@@ -84,9 +84,9 @@ export default function HelpPage(): JSX.Element {
         badge={`${sections.length} guides`}
       />
 
-      <Card className="surface-1 border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(246,248,255,0.96),rgba(255,255,255,0.94))]">
+      <Card>
         <CardContent className="flex items-start gap-4 pt-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(37,99,235,0.16),rgba(14,165,233,0.08))] text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-primary">
             <Info className="h-5 w-5" aria-hidden="true" />
           </div>
           <p className="text-sm text-muted-foreground">
@@ -100,7 +100,7 @@ export default function HelpPage(): JSX.Element {
           <a
             key={path.id}
             href={`#help-${path.id}`}
-            className="rounded-[1.35rem] border border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(246,248,255,0.92))] px-4 py-4 shadow-[0_1px_2px_rgba(17,12,11,0.04),0_18px_36px_-30px_rgba(37,99,235,0.16)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_-28px_rgba(37,99,235,0.22)]"
+            className="rounded-lg border border-border bg-card px-4 py-4 transition hover:bg-accent/50"
           >
             <p className="text-sm font-semibold">{path.title}</p>
             <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{path.subtitle}</p>
@@ -123,7 +123,7 @@ export default function HelpPage(): JSX.Element {
         <div className="grid gap-6 lg:grid-cols-2">
           <div id="help-claude">
             <PageSection eyebrow="02" title={sections[1].title}>
-              <div className="mb-4 flex items-center gap-3 rounded-xl bg-primary/5 p-4">
+              <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-secondary p-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
                   <Code className="h-4 w-4" />
                 </div>
@@ -138,8 +138,8 @@ export default function HelpPage(): JSX.Element {
 
           <div id="help-codex">
             <PageSection eyebrow="03" title={sections[2].title}>
-              <div className="mb-4 flex items-center gap-3 rounded-xl bg-emerald-500/5 p-4 dark:bg-emerald-500/10">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-white">
+              <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-secondary p-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white">
                   <Terminal className="h-4 w-4" />
                 </div>
                 <div>
@@ -183,7 +183,7 @@ function StepList({ items }: { items: string[] }) {
       {items.map((item, index) => (
         <li
           key={`${index}-${item}`}
-          className="flex gap-3 rounded-[1.2rem] border border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(246,248,255,0.88))] p-3 shadow-[0_1px_2px_rgba(17,12,11,0.03)]"
+          className="flex gap-3 rounded-lg border border-border bg-card p-3"
         >
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-primary text-xs font-medium text-primary-foreground">
             {index + 1}
@@ -231,7 +231,7 @@ function StepContent({ content }: { content: string }) {
                     {t('common.actions.copy')}
                   </Button>
                 </div>
-                <pre className="overflow-x-auto rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
+                <pre className="overflow-x-auto rounded-lg border border-border bg-secondary p-3 text-xs">
                   <code>{code}</code>
                 </pre>
               </div>
@@ -274,7 +274,7 @@ function FaqList({ items }: { items: Array<{ q: string; a: string }> }) {
   return (
     <dl className="flex flex-col gap-3">
       {items.map((item) => (
-        <Card key={item.q} className="surface-1">
+        <Card key={item.q}>
           <CardContent className="pt-4">
             <dt className="text-sm font-medium">{item.q}</dt>
             <dd className="mt-2 text-sm text-muted-foreground">
@@ -348,7 +348,7 @@ function FaqAnswer({ content }: { content: string }) {
                     {t('common.actions.copy')}
                   </Button>
                 </div>
-                <pre className="overflow-x-auto rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
+                <pre className="overflow-x-auto rounded-lg border border-border bg-secondary p-3 text-xs">
                   <code>{code}</code>
                 </pre>
               </div>

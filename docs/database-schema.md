@@ -82,18 +82,23 @@
 
 用途：
 
-- 存储请求和响应 payload
+- 存储单条请求生命周期里的 payload 视图
 
 核心字段：
 
 - `request_id`
-- `prompt`
-- `response`
+- `client_request`
+- `upstream_request`
+- `upstream_response`
+- `client_response`
 
 说明：
 
 - 与 `request_logs` 一对一关联
-- `prompt`、`response` 以压缩后的 `BLOB` 存储
+- 四个 payload 字段都以压缩后的 `BLOB` 存储
+- 历史数据里的 `prompt`、`response` 仍兼容读取，并回填为 `client_request`、`client_response`
+- 没有协议改写时通常只会出现 `client_request` 与 `client_response`
+- 发生协议改写时，同一条日志可以同时保存 4 个独立 payload 区块
 - `request_logs` 删除时，payload 会级联删除
 
 ## 3.3 `daily_metrics`

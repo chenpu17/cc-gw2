@@ -44,7 +44,7 @@ export function LogsPageActions({
   return (
     <div className="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-center">
       <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:w-auto xl:flex-nowrap">
-        <div className="flex w-full items-center gap-1 overflow-x-auto rounded-full border border-border/70 bg-background/80 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.03)] sm:w-auto">
+        <div className="flex w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-secondary p-1 sm:w-auto">
           <button
             type="button"
             onClick={() => onSetDensity('comfortable')}
@@ -77,7 +77,7 @@ export function LogsPageActions({
               {t('logs.actions.columns')}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-64 rounded-[1.2rem] border-white/60 p-3">
+          <PopoverContent align="end" className="w-64 p-3">
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold">{t('logs.actions.columns')}</p>
@@ -121,7 +121,7 @@ export function LogsPageActions({
 
         <Button onClick={onExport} disabled={exporting} className="w-full sm:w-auto">
           <Download className="mr-2 h-4 w-4" />
-          {exporting ? t('common.actions.loading') : t('logs.actions.export')}
+          {exporting ? t('logs.actions.exporting') : t('logs.actions.export')}
         </Button>
       </div>
 

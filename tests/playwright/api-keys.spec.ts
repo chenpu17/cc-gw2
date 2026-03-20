@@ -122,7 +122,7 @@ test('api key web ui covers create, reveal, restrict, toggle, analytics, and del
   await createdDialog.getByRole('button', { name: '关闭' }).click()
 
   const createdKeyCard = page.locator(
-    'xpath=//h3[normalize-space()="Playwright Test Key"]/ancestor::div[contains(@class,"backdrop-blur")][1]'
+    'xpath=//h3[normalize-space()="Playwright Test Key"]/ancestor::div[@data-testid="api-key-card"][1]'
   )
 
   await createdKeyCard.getByRole('button', { name: '显示完整密钥' }).click()

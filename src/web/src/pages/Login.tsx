@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { LockKeyhole, ShieldCheck, Sparkles } from 'lucide-react'
+import { LockKeyhole, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Loader } from '@/components/Loader'
@@ -60,8 +60,8 @@ export default function LoginPage() {
 
   if (loading) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(225,93,73,0.2),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.14),transparent_28%),linear-gradient(160deg,rgba(247,244,239,1),rgba(255,251,247,0.96))] px-4 py-10">
-        <Card className="w-full max-w-md border-[rgba(24,16,13,0.08)] bg-white/88 shadow-[0_28px_70px_-40px_rgba(17,12,11,0.32)] backdrop-blur-xl">
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <Card className="w-full max-w-md">
           <CardContent className="flex min-h-[320px] items-center justify-center">
             <Loader />
           </CardContent>
@@ -75,47 +75,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(225,93,73,0.22),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.14),transparent_28%),linear-gradient(160deg,rgba(247,244,239,1),rgba(255,251,247,0.96))] px-4 py-10">
-      <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.2),transparent_36%,rgba(225,93,73,0.05))]" aria-hidden="true" />
-      <div className="relative mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(420px,0.85fr)]">
-        <div className="space-y-4 lg:hidden">
-          <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/75 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary shadow-[0_10px_24px_-20px_rgba(225,93,73,0.35)]">
-            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-            Secure gateway control
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-50">
-              {t('login.title')}
-            </h1>
-            <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
-              {t('login.description')}
-            </p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <FeatureCard
-              icon={<ShieldCheck className="h-5 w-5" aria-hidden="true" />}
-              title={t('login.hint')}
-              description={t('about.support.tip')}
-            />
-            <FeatureCard
-              icon={<LockKeyhole className="h-5 w-5" aria-hidden="true" />}
-              title="Session protected"
-              description={t('help.note')}
-            />
-          </div>
-        </div>
-
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+      <div className="mx-auto grid w-full max-w-5xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(400px,0.8fr)]">
         <div className="hidden lg:block">
-          <div className="max-w-2xl space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/75 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary shadow-[0_10px_24px_-20px_rgba(225,93,73,0.35)]">
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              Secure gateway control
+          <div className="max-w-lg space-y-6">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-accent px-3 py-1 text-xs font-semibold text-primary">
+              Secure Gateway Control
             </div>
             <div className="space-y-3">
-              <h1 className="text-5xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-50">
+              <h1 className="text-4xl font-semibold tracking-tight text-foreground">
                 {t('login.title')}
               </h1>
-              <p className="max-w-xl text-base leading-7 text-slate-600 dark:text-slate-300">
+              <p className="max-w-md text-base leading-7 text-muted-foreground">
                 {t('login.description')}
               </p>
             </div>
@@ -134,13 +105,13 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <Card className="w-full overflow-hidden border-[rgba(24,16,13,0.08)] bg-white/90 shadow-[0_30px_80px_-42px_rgba(17,12,11,0.38)] backdrop-blur-xl">
+        <Card className="w-full">
           <CardHeader className="pb-4 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-[1.35rem] bg-[linear-gradient(135deg,rgba(225,93,73,1),rgba(244,131,102,0.92),rgba(217,169,64,0.88))] text-lg font-bold text-white shadow-[0_20px_45px_-24px_rgba(225,93,73,0.65)]">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
               GW
             </div>
-            <CardTitle className="text-2xl tracking-[-0.02em]">{t('login.title')}</CardTitle>
-            <CardDescription className="text-sm leading-6">{t('login.description')}</CardDescription>
+            <CardTitle className="text-xl">{t('login.title')}</CardTitle>
+            <CardDescription>{t('login.description')}</CardDescription>
           </CardHeader>
 
           <CardContent>
@@ -169,7 +140,7 @@ export default function LoginPage() {
               </div>
 
               {formError || error ? (
-                <div className="rounded-[1rem] border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                   {formError || error}
                 </div>
               ) : null}
@@ -181,7 +152,7 @@ export default function LoginPage() {
           </CardContent>
 
           <CardFooter className="justify-center pt-2">
-            <p className="text-center text-xs leading-6 text-muted-foreground">{t('login.hint')}</p>
+            <p className="text-center text-xs text-muted-foreground">{t('login.hint')}</p>
           </CardFooter>
         </Card>
       </div>
@@ -191,10 +162,10 @@ export default function LoginPage() {
 
 function FeatureCard({ description, icon, title }: { description: string; icon: ReactNode; title: string }) {
   return (
-    <div className="rounded-[1.35rem] border border-white/60 bg-white/72 px-5 py-5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.25)] backdrop-blur">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">{icon}</div>
-      <p className="mt-4 text-sm font-semibold text-slate-950 dark:text-slate-50">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+    <div className="rounded-lg border border-border bg-card px-4 py-4">
+      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">{icon}</div>
+      <p className="mt-3 text-sm font-semibold text-foreground">{title}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
     </div>
   )
 }

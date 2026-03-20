@@ -38,7 +38,7 @@ export default function SettingsPage() {
         actions={
           state.config ? (
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              <div className="rounded-2xl border border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+              <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
                 {state.protocolChangesPending ? t('settings.protocol.restartWarning') : t('common.status.success')}
               </div>
               <Button variant="outline" onClick={state.handleReset} disabled={state.saving || !state.isConfigDirty} className="w-full sm:w-auto">

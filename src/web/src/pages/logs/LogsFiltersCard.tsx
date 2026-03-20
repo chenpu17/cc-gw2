@@ -72,7 +72,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
   } = props
 
   return (
-    <Card className="sticky top-20 z-20 overflow-hidden border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(252,249,245,0.92))] backdrop-blur">
+    <Card data-testid="logs-filters-card" className="overflow-hidden">
       <CardContent className="pt-4">
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -113,7 +113,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
           </div>
 
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="flex min-h-[52px] items-center rounded-[1.15rem] border border-border/70 bg-background/72 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+            <div className="flex min-h-[52px] items-center rounded-lg border border-border bg-secondary px-3 py-2">
               {activeFilters.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-2">
                   {activeFilters.map((f) => (
@@ -137,14 +137,14 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[360px]">
-              <SummaryChip label={t('common.filters.activeCount', { count: activeFilters.length })} value={activeFilters.length.toString()} accent="blue" />
-              <SummaryChip label={t('logs.filters.apiKey')} value={selectedApiKeys.length.toString()} accent="emerald" />
-              <SummaryChip label={t('logs.filters.provider')} value={providerFilter === 'all' ? t('common.noData') : '1'} accent="amber" />
-              <SummaryChip label={t('logs.filters.endpoint')} value={endpointFilter === 'all' ? t('common.noData') : '1'} accent="rose" />
+              <SummaryChip label={t('common.filters.activeCount', { count: activeFilters.length })} value={activeFilters.length.toString()} />
+              <SummaryChip label={t('logs.filters.apiKey')} value={selectedApiKeys.length.toString()} />
+              <SummaryChip label={t('logs.filters.provider')} value={providerFilter === 'all' ? t('common.noData') : '1'} />
+              <SummaryChip label={t('logs.filters.endpoint')} value={endpointFilter === 'all' ? t('common.noData') : '1'} />
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 rounded-[1.15rem] border border-border/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.88),rgba(252,249,245,0.82))] p-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary p-2">
             {(['all', 'errors', 'today', 'anthropic', 'openai'] as QuickView[]).map((view) => (
               <Button
                 key={view}
@@ -152,7 +152,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
                 size="sm"
                 className={cn(
                   'rounded-full border-transparent',
-                  activeQuickView === view && view === 'all' && 'bg-[#121212] text-white hover:bg-[#121212]/90',
+                  activeQuickView === view && view === 'all' && 'bg-foreground text-background hover:bg-foreground/90',
                   activeQuickView === view && view === 'errors' && 'bg-rose-500 text-white hover:bg-rose-500/90',
                   activeQuickView === view && view === 'today' && 'bg-emerald-500 text-white hover:bg-emerald-500/90',
                   activeQuickView === view && (view === 'anthropic' || view === 'openai') && 'bg-amber-500 text-white hover:bg-amber-500/90'
@@ -165,11 +165,11 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
           </div>
         </div>
         {filtersExpanded && (
-          <div className="mt-4 grid gap-4 rounded-[1.3rem] border border-white/60 bg-background/72 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] md:grid-cols-2 xl:grid-cols-4 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="mt-4 grid gap-4 rounded-lg border border-border bg-secondary p-4 md:grid-cols-2 xl:grid-cols-4 animate-in fade-in slide-in-from-top-2 duration-200">
             <div className="space-y-2">
               <Label>{t('logs.filters.provider')}</Label>
               <Select value={providerFilter} onValueChange={setProviderFilter}>
-                <SelectTrigger className="bg-background/90">
+                <SelectTrigger >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -186,7 +186,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             <div className="space-y-2">
               <Label>{t('logs.filters.endpoint')}</Label>
               <Select value={endpointFilter} onValueChange={setEndpointFilter}>
-                <SelectTrigger className="bg-background/90">
+                <SelectTrigger >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -216,14 +216,14 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
                 value={modelFilter}
                 onChange={(e) => setModelFilter(e.target.value)}
                 placeholder={t('logs.filters.modelPlaceholder')}
-                className="bg-background/90"
+                
               />
             </div>
 
             <div className="space-y-2">
               <Label>{t('logs.filters.status')}</Label>
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-                <SelectTrigger className="bg-background/90">
+                <SelectTrigger >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -236,12 +236,12 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
 
             <div className="space-y-2">
               <Label>{t('logs.filters.startDate')}</Label>
-              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-background/90" />
+              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}  />
             </div>
 
             <div className="space-y-2">
               <Label>{t('logs.filters.endDate')}</Label>
-              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-background/90" />
+              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}  />
             </div>
           </div>
         )}
@@ -251,25 +251,17 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
 }
 
 function SummaryChip({
-  accent,
   label,
   value
 }: {
-  accent: 'amber' | 'blue' | 'emerald' | 'rose'
+  accent?: string
   label: string
   value: string
 }) {
-  const accentClassName = {
-    blue: 'border-blue-200 bg-blue-50/80 text-blue-700',
-    emerald: 'border-emerald-200 bg-emerald-50/80 text-emerald-700',
-    amber: 'border-amber-200 bg-amber-50/80 text-amber-700',
-    rose: 'border-rose-200 bg-rose-50/80 text-rose-700'
-  }[accent]
-
   return (
-    <div className={cn('rounded-[1rem] border px-3 py-2', accentClassName)}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-80">{label}</p>
-      <p className="mt-1 text-sm font-semibold">{value}</p>
+    <div className="rounded-lg border border-border bg-card px-3 py-2">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
   )
 }

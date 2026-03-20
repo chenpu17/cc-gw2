@@ -105,7 +105,7 @@ export default function EventsPage() {
         badge={events.length > 0 ? `${events.length} events` : undefined}
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <div className="rounded-2xl border border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+            <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
               {cursor ? t('events.actions.older') : t('events.actions.newest')}
             </div>
             <Button variant="outline" size="sm" onClick={() => void eventsQuery.refetch()} disabled={isRefreshing} className="w-full sm:w-auto">
@@ -122,7 +122,7 @@ export default function EventsPage() {
         <SummaryCard icon={<Siren className="h-4 w-4" aria-hidden="true" />} title={t('events.levels.error')} value={errorCount.toLocaleString()} tone="rose" />
       </div>
 
-      <Card className="sticky top-20 z-20 border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(252,249,245,0.9))] shadow-[0_18px_44px_-34px_rgba(17,12,11,0.22)]">
+      <Card data-testid="events-filters-card" className="overflow-hidden">
         <CardContent className="pt-5">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -264,20 +264,20 @@ function SummaryCard({
   tone: 'emerald' | 'amber' | 'rose'
   value: string
 }) {
-  const toneClass = {
-    emerald: 'bg-[linear-gradient(135deg,rgba(5,150,105,0.14),rgba(16,185,129,0.05),rgba(255,255,255,0.92))] text-emerald-700 dark:text-emerald-300',
-    amber: 'bg-[linear-gradient(135deg,rgba(234,88,12,0.14),rgba(245,158,11,0.05),rgba(255,255,255,0.92))] text-amber-700 dark:text-amber-300',
-    rose: 'bg-[linear-gradient(135deg,rgba(225,29,72,0.14),rgba(244,63,94,0.05),rgba(255,255,255,0.92))] text-rose-700 dark:text-rose-300'
+  const iconClass = {
+    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
+    amber: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
+    rose: 'bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400'
   }[tone]
 
   return (
-    <Card className={cn('overflow-hidden border-white/55 shadow-[0_1px_2px_rgba(15,23,42,0.04)]', toneClass)}>
+    <Card>
       <CardContent className="flex items-center justify-between gap-3 pt-5">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{title}</p>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">{value}</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+          <p className="mt-2 text-3xl font-bold tracking-tight text-foreground">{value}</p>
         </div>
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/70">{icon}</div>
+        <div className={cn('flex h-11 w-11 items-center justify-center rounded-xl', iconClass)}>{icon}</div>
       </CardContent>
     </Card>
   )
@@ -294,7 +294,7 @@ function EventCard({ event }: { event: GatewayEvent }) {
         : 'border-l-emerald-500'
 
   return (
-    <Card className={cn('overflow-hidden border-l-4 border-white/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,250,252,0.84))]', borderClass)}>
+    <Card className={cn('overflow-hidden border-l-4', borderClass)}>
       <CardContent className="space-y-4 pt-5">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2">
@@ -326,9 +326,9 @@ function EventCard({ event }: { event: GatewayEvent }) {
         </div>
 
         {event.details ? (
-          <details className="rounded-[1rem] border border-border/70 bg-background/65 p-3 text-sm">
+          <details className="rounded-lg border border-border bg-secondary p-3 text-sm">
             <summary className="cursor-pointer text-sm font-medium text-primary">{t('events.details')}</summary>
-            <pre className="mt-3 overflow-x-auto rounded-[1rem] border border-border/70 bg-background/85 p-3 text-xs leading-6">
+            <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-card p-3 text-xs leading-6">
               {JSON.stringify(event.details, null, 2)}
             </pre>
           </details>
@@ -344,7 +344,7 @@ function EventMeta({ label, value, wide = false }: { label: string; value: strin
   }
 
   return (
-    <div className={cn('rounded-[1rem] border border-border/60 bg-background/70 px-3 py-3', wide && 'sm:col-span-2 xl:col-span-2')}>
+    <div className={cn('rounded-lg border border-border bg-secondary px-3 py-3', wide && 'sm:col-span-2 xl:col-span-2')}>
       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
       <p className="mt-1 break-all text-sm text-foreground">{value}</p>
     </div>

@@ -23,7 +23,7 @@ export function AppDialogHeader({
   return (
     <div
       className={cn(
-        'border-b border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.82))] px-6 py-5',
+        'border-b border-border bg-secondary px-6 py-5',
         className
       )}
     >
@@ -48,7 +48,7 @@ export function AppDialogFooter({
   className
 }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <DialogFooter className={cn('border-t border-border/70 bg-background/80 px-6 py-4', className)}>
+    <DialogFooter className={cn('border-t border-border bg-secondary px-6 py-4', className)}>
       {children}
     </DialogFooter>
   )

@@ -33,7 +33,7 @@ export default function ModelManagementPage() {
         badge={dirtyCount > 0 ? t('modelManagement.overview.unsavedCount', { count: dirtyCount }) : undefined}
         actions={(
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <div className="rounded-2xl border border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+            <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
               {t('modelManagement.tabs.providers')}
               {' · '}
               {state.providerCount}

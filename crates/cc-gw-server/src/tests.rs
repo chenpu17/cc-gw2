@@ -336,6 +336,317 @@ async fn openai_responses_stream_from_anthropic_provider_emits_richer_events() {
 }
 
 #[tokio::test]
+async fn streaming_logs_store_materialized_response_instead_of_raw_sse_chunks() {
+    let upstream = Router::new().route("/v1/messages", post(mock_anthropic_stream));
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "responses-stream-logs").await;
+    let client = reqwest::Client::new();
+
+    let _body = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "stream": true,
+                "input": "hello"
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send streaming responses request")
+        .text()
+        .await
+        .expect("read streaming responses response");
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let log_id = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("id"))
+        .and_then(Value::as_i64)
+        .expect("stream log id");
+
+    let detail: Value = client
+        .get(format!("http://{gateway_addr}/api/logs/{log_id}"))
+        .send()
+        .await
+        .expect("request log detail")
+        .json()
+        .await
+        .expect("decode log detail");
+    let response_payload = detail
+        .get("payload")
+        .and_then(|payload| payload.get("client_response"))
+        .and_then(Value::as_str)
+        .expect("response payload");
+    assert!(!response_payload.contains("data:"));
+    assert!(!response_payload.contains("response.output_text.delta"));
+
+    let response_payload_json: Value =
+        serde_json::from_str(response_payload).expect("materialized response payload");
+    assert_eq!(
+        response_payload_json
+            .get("object")
+            .and_then(Value::as_str),
+        Some("response")
+    );
+    assert_eq!(
+        response_payload_json
+            .get("output_text")
+            .and_then(Value::as_str),
+        Some("hello")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn cross_protocol_logs_capture_four_payload_blocks_on_one_record() {
+    let upstream = Router::new().route("/v1/messages", post(mock_anthropic_test));
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "cross-protocol-payloads").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "model": "claude-test",
+            "input": "hello"
+        }))
+        .send()
+        .await
+        .expect("send non-stream responses request")
+        .json()
+        .await
+        .expect("decode non-stream responses response");
+    assert_eq!(response.get("object").and_then(Value::as_str), Some("response"));
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let log_id = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("id"))
+        .and_then(Value::as_i64)
+        .expect("cross protocol log id");
+
+    let detail: Value = client
+        .get(format!("http://{gateway_addr}/api/logs/{log_id}"))
+        .send()
+        .await
+        .expect("request log detail")
+        .json()
+        .await
+        .expect("decode log detail");
+    let payload = detail.get("payload").expect("payload object");
+
+    let client_request = payload
+        .get("client_request")
+        .and_then(Value::as_str)
+        .expect("client request payload");
+    let upstream_request = payload
+        .get("upstream_request")
+        .and_then(Value::as_str)
+        .expect("upstream request payload");
+    let upstream_response = payload
+        .get("upstream_response")
+        .and_then(Value::as_str)
+        .expect("upstream response payload");
+    let client_response = payload
+        .get("client_response")
+        .and_then(Value::as_str)
+        .expect("client response payload");
+
+    assert_ne!(client_request, upstream_request);
+    assert_ne!(upstream_response, client_response);
+
+    let client_request_json: Value =
+        serde_json::from_str(client_request).expect("decode client request");
+    let upstream_request_json: Value =
+        serde_json::from_str(upstream_request).expect("decode upstream request");
+    let upstream_response_json: Value =
+        serde_json::from_str(upstream_response).expect("decode upstream response");
+    let client_response_json: Value =
+        serde_json::from_str(client_response).expect("decode client response");
+
+    assert_eq!(
+        client_request_json.get("input").and_then(Value::as_str),
+        Some("hello")
+    );
+    assert!(upstream_request_json.get("messages").is_some());
+    assert_eq!(
+        upstream_response_json
+            .get("content")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("text"))
+            .and_then(Value::as_str),
+        Some("anthropic query=")
+    );
+    assert_eq!(
+        client_response_json.get("object").and_then(Value::as_str),
+        Some("response")
+    );
+    assert_eq!(
+        client_response_json
+            .get("output_text")
+            .and_then(Value::as_str),
+        Some("anthropic query=")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn logs_export_archive_includes_four_payload_fields() {
+    let upstream = Router::new().route("/v1/messages", post(mock_anthropic_test));
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "logs-export-payloads").await;
+    let client = reqwest::Client::new();
+
+    let _: Value = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "model": "claude-test",
+            "input": "hello"
+        }))
+        .send()
+        .await
+        .expect("send request")
+        .json()
+        .await
+        .expect("decode response");
+
+    let archive_bytes = client
+        .post(format!("http://{gateway_addr}/api/logs/export"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "limit": 10
+        }))
+        .send()
+        .await
+        .expect("export logs")
+        .bytes()
+        .await
+        .expect("read archive bytes");
+
+    let cursor = std::io::Cursor::new(archive_bytes.to_vec());
+    let mut archive = zip::ZipArchive::new(cursor).expect("open zip archive");
+    let mut logs_file = archive.by_name("logs.json").expect("find logs.json");
+    let mut logs_json = String::new();
+    std::io::Read::read_to_string(&mut logs_file, &mut logs_json).expect("read logs.json");
+
+    let exported: Value = serde_json::from_str(&logs_json).expect("decode logs.json");
+    let records = exported
+        .get("records")
+        .and_then(Value::as_array)
+        .expect("records array");
+    let payload = records
+        .first()
+        .and_then(|record| record.get("payload"))
+        .expect("payload object");
+
+    assert!(payload.get("client_request").is_some());
+    assert!(payload.get("upstream_request").is_some());
+    assert!(payload.get("upstream_response").is_some());
+    assert!(payload.get("client_response").is_some());
+    assert_eq!(
+        records
+            .first()
+            .and_then(|record| record.get("api_key_value"))
+            .unwrap_or(&Value::Null),
+        &Value::Null
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn standard_proxy_routes_accept_payloads_larger_than_two_mib() {
     let config = GatewayConfig::default();
     let (home_dir, gateway_addr, gateway_handle) =

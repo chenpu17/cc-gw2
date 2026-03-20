@@ -26,19 +26,16 @@ export function ApiKeysQuickStartSection() {
           icon={<Key className="h-4 w-4" aria-hidden="true" />}
           title={t('apiKeys.quickStart.create.title')}
           description={t('apiKeys.quickStart.create.description')}
-          tone="info"
         />
         <QuickStartCard
           icon={<Shield className="h-4 w-4" aria-hidden="true" />}
           title={t('apiKeys.quickStart.restrict.title')}
           description={t('apiKeys.quickStart.restrict.description')}
-          tone="warning"
         />
         <QuickStartCard
           icon={<EyeOff className="h-4 w-4" aria-hidden="true" />}
           title={t('apiKeys.quickStart.wildcard.title')}
           description={t('apiKeys.quickStart.wildcard.description')}
-          tone="danger"
         />
       </div>
     </PageSection>
@@ -74,7 +71,7 @@ export function ApiKeysAnalyticsSection({
       title={t('apiKeys.analytics.title')}
       description={t('apiKeys.analytics.description', { days: rangeDays })}
       actions={
-        <div className="flex w-full items-center gap-1 overflow-x-auto rounded-full border border-border/70 bg-background/80 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.03)] sm:w-auto">
+        <div className="flex w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-secondary p-1 sm:w-auto">
           {RANGE_OPTIONS.map((option) => {
             const active = rangeDays === option.value
             return (
@@ -85,7 +82,7 @@ export function ApiKeysAnalyticsSection({
                 className={cn(
                   'inline-flex h-8 shrink-0 items-center rounded-full px-3.5 text-xs font-medium transition-all',
                   active
-                    ? 'bg-primary text-primary-foreground shadow-[0_8px_18px_-14px_rgba(59,130,246,0.7)]'
+                    ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
                 )}
               >
@@ -98,9 +95,9 @@ export function ApiKeysAnalyticsSection({
     >
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <MetricCard label={t('apiKeys.analytics.cards.total')} value={totalKeysValue} tone="blue" />
-          <MetricCard label={t('apiKeys.analytics.cards.enabled')} value={enabledKeysValue} tone="emerald" />
-          <MetricCard label={t('apiKeys.analytics.cards.active', { days: rangeDays })} value={activeKeysValue} tone="rose" />
+          <MetricCard label={t('apiKeys.analytics.cards.total')} value={totalKeysValue} />
+          <MetricCard label={t('apiKeys.analytics.cards.enabled')} value={enabledKeysValue} />
+          <MetricCard label={t('apiKeys.analytics.cards.active', { days: rangeDays })} value={activeKeysValue} />
         </div>
         <div className="grid gap-6 lg:grid-cols-2">
           <AnalyticsChartCard
@@ -187,29 +184,26 @@ export function ApiKeysInventorySection({
             label={t('apiKeys.list.title')}
             value={`${filteredKeys.length}/${keys.length}`}
             helper={t('apiKeys.filters.searchPlaceholder')}
-            tone="blue"
           />
           <InventoryStatCard
             label={t('apiKeys.summary.wildcard', { count: wildcardCount })}
             value={String(wildcardCount)}
             helper={t('apiKeys.wildcardHint')}
-            tone="rose"
           />
           <InventoryStatCard
             label={t('apiKeys.summary.restricted', { count: restrictedCount })}
             value={String(restrictedCount)}
             helper={t('apiKeys.summary.unrestricted', { count: unrestrictedCount })}
-            tone="emerald"
           />
         </div>
 
-        <div className="grid gap-3 rounded-2xl border border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(252,249,245,0.88))] p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)] xl:grid-cols-[minmax(0,1fr)_180px_auto]">
+        <div className="grid gap-3 rounded-lg border border-border bg-secondary p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)] xl:grid-cols-[minmax(0,1fr)_180px_auto]">
           <Input
             value={search}
             onChange={(event) => onFilterChange(event.target.value)}
             placeholder={t('apiKeys.filters.searchPlaceholder')}
           />
-          <div className="flex items-center gap-1 overflow-x-auto rounded-full border border-border/70 bg-background/80 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+          <div className="flex items-center gap-1 overflow-x-auto rounded-full border border-border bg-secondary p-1">
             {(['all', 'enabled', 'disabled'] as const).map((value) => (
               <button
                 key={value}
@@ -218,7 +212,7 @@ export function ApiKeysInventorySection({
                 className={cn(
                   'inline-flex h-8 shrink-0 items-center rounded-full px-3.5 text-xs font-medium transition-all',
                   statusFilter === value
-                    ? 'bg-primary text-primary-foreground shadow-[0_8px_18px_-14px_rgba(59,130,246,0.7)]'
+                    ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
                 )}
               >
@@ -227,17 +221,17 @@ export function ApiKeysInventorySection({
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:col-span-2 xl:col-span-1">
-            <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300">{t('apiKeys.summary.wildcard', { count: wildcardCount })}</Badge>
-            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">{t('apiKeys.summary.restricted', { count: restrictedCount })}</Badge>
+            <Badge variant="secondary">{t('apiKeys.summary.wildcard', { count: wildcardCount })}</Badge>
+            <Badge variant="secondary">{t('apiKeys.summary.restricted', { count: restrictedCount })}</Badge>
           </div>
         </div>
 
         {keys.length === 0 ? (
-          <div className="flex h-32 items-center justify-center rounded-[1.25rem] border border-dashed border-border/70 bg-background/45">
+          <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border">
             <p className="text-sm text-muted-foreground">{t('apiKeys.list.empty')}</p>
           </div>
         ) : filteredKeys.length === 0 ? (
-          <div className="flex h-32 items-center justify-center rounded-[1.25rem] border border-dashed border-border/70 bg-background/45">
+          <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border">
             <p className="text-sm text-muted-foreground">{t('apiKeys.list.emptyFiltered')}</p>
           </div>
         ) : (
@@ -265,37 +259,14 @@ export function ApiKeysInventorySection({
   )
 }
 
-function QuickStartCard({
-  description,
-  icon,
-  tone = 'default',
-  title
-}: {
-  description: string
-  icon: ReactNode
-  tone?: 'default' | 'danger' | 'info' | 'warning'
-  title: string
-}) {
-  const toneClassName = {
-    default: 'border-[rgba(24,16,13,0.08)] bg-white/90',
-    info: 'border-blue-200/80 bg-blue-50/75 text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100',
-    warning: 'border-amber-200/80 bg-amber-50/75 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100',
-    danger: 'border-rose-200/80 bg-rose-50/75 text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-100'
-  }[tone]
-  const iconClassName = {
-    default: 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(225,93,73,0.12)]',
-    info: 'bg-blue-500/10 text-blue-700 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.12)] dark:text-blue-300',
-    warning: 'bg-amber-500/10 text-amber-700 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.14)] dark:text-amber-300',
-    danger: 'bg-rose-500/10 text-rose-700 shadow-[inset_0_0_0_1px_rgba(244,63,94,0.14)] dark:text-rose-300'
-  }[tone]
-
+function QuickStartCard({ description, icon, title }: { description: string; icon: ReactNode; title: string }) {
   return (
-    <div className={cn('rounded-[1.25rem] border p-4 shadow-[0_1px_2px_rgba(17,12,11,0.03)]', toneClassName)}>
-      <div className={cn('flex h-9 w-9 items-center justify-center rounded-2xl', iconClassName)}>
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
         {icon}
       </div>
-      <p className="mt-4 text-sm font-semibold">{title}</p>
-      <p className="mt-2 text-sm text-muted-foreground dark:text-current/75">{description}</p>
+      <p className="mt-3 text-sm font-semibold text-foreground">{title}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
     </div>
   )
 }
@@ -332,14 +303,8 @@ function ApiKeyCard({
     : (keySummary.allowedEndpoints?.length ?? 0) > 0
       ? 'restricted'
       : 'unrestricted'
-  const toneClassName = {
-    wildcard: 'border-rose-300/70 bg-rose-50/55 dark:border-rose-700/70 dark:bg-rose-950/20',
-    restricted: 'border-blue-300/60 bg-blue-50/55 dark:border-blue-700/70 dark:bg-blue-950/20',
-    unrestricted: 'border-emerald-300/60 bg-emerald-50/55 dark:border-emerald-700/70 dark:bg-emerald-950/20'
-  }[accessMode]
-
-  return (
-    <Card className={cn('backdrop-blur', toneClassName)}>
+    return (
+    <Card data-testid="api-key-card">
       <CardContent className="space-y-4 pt-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-3">
@@ -385,7 +350,7 @@ function ApiKeyCard({
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <code className="block max-w-full break-all rounded-xl border border-border/70 bg-background/70 px-3 py-1.5 font-mono text-sm">
+              <code className="block max-w-full break-all rounded-lg border border-border bg-secondary px-3 py-1.5 font-mono text-sm">
                 {keySummary.isWildcard
                   ? t('apiKeys.wildcard')
                   : revealedValue ?? keySummary.maskedKey ?? '********'}
@@ -442,7 +407,7 @@ function ApiKeyCard({
               <p className="whitespace-pre-wrap text-sm text-muted-foreground">{keySummary.description}</p>
             ) : null}
             {!keySummary.isWildcard ? (
-              <div className="rounded-[1rem] border border-border/60 bg-background/65 px-3 py-2 text-xs text-muted-foreground">
+              <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
                 {(keySummary.allowedEndpoints?.length ?? 0) > 0
                   ? `${t('apiKeys.allowedEndpoints')}: ${keySummary.allowedEndpoints?.join(', ')}`
                   : t('apiKeys.allEndpoints')}
@@ -499,62 +464,30 @@ function ApiKeyCard({
   )
 }
 
-function MetricCard({
-  label,
-  value,
-  tone = 'blue'
-}: {
-  label: string
-  value: string
-  tone?: 'amber' | 'blue' | 'emerald' | 'rose'
-}) {
-  const toneClassName = {
-    blue: 'border-blue-200 bg-blue-50/70 dark:border-blue-800 dark:bg-blue-950/40',
-    emerald: 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-950/40',
-    amber: 'border-amber-200 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/40',
-    rose: 'border-rose-200 bg-rose-50/70 dark:border-rose-800 dark:bg-rose-950/40'
-  }[tone]
-
+function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <Card className={cn('surface-1', toneClassName)}>
+    <Card>
       <CardContent className="pt-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className="mt-2 text-2xl font-semibold">{value}</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="mt-2 text-2xl font-semibold text-foreground">{value}</p>
       </CardContent>
     </Card>
   )
 }
 
-function InventoryStatCard({
-  helper,
-  label,
-  tone,
-  value
-}: {
-  helper: string
-  label: string
-  tone: 'amber' | 'blue' | 'emerald' | 'rose'
-  value: string
-}) {
-  const toneClassName = {
-    blue: 'border-blue-200 bg-blue-50/70 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200',
-    emerald: 'border-emerald-200 bg-emerald-50/70 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200',
-    amber: 'border-amber-200 bg-amber-50/70 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
-    rose: 'border-rose-200 bg-rose-50/70 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200'
-  }[tone]
-
+function InventoryStatCard({ helper, label, value }: { helper: string; label: string; value: string }) {
   return (
-    <div className={cn('rounded-[1.2rem] border px-4 py-3', toneClassName)}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-80">{label}</p>
-      <p className="mt-2 text-lg font-semibold">{value}</p>
-      <p className="mt-1 text-xs opacity-80">{helper}</p>
+    <div className="rounded-lg border border-border bg-card px-4 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-foreground">{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
     </div>
   )
 }
 
 function KeyMetaChip({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2">
+    <div className="rounded-lg border border-border bg-secondary px-3 py-2">
       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
       <p className="mt-1 truncate text-sm font-medium">{value}</p>
     </div>
@@ -577,7 +510,7 @@ function AnalyticsChartCard({
   const { t } = useTranslation()
 
   return (
-    <Card className="surface-1">
+    <Card>
       <CardContent className="space-y-4 pt-4">
         <h3 className="text-base font-semibold">{title}</h3>
         {loading ? (
@@ -585,7 +518,7 @@ function AnalyticsChartCard({
             <span className="text-sm text-muted-foreground">{t('common.loadingShort')}</span>
           </div>
         ) : empty ? (
-          <div className="flex h-[280px] items-center justify-center rounded-[1.25rem] border border-dashed border-border/70 bg-background/45">
+          <div className="flex h-[280px] items-center justify-center rounded-lg border border-dashed border-border">
             <span className="text-sm text-muted-foreground">{emptyText}</span>
           </div>
         ) : (

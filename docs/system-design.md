@@ -201,7 +201,7 @@ CLI 查找二进制的顺序：
 SQLite 主要承担以下职责：
 
 - API Key 元数据与密文
-- 请求日志和请求/响应 payload
+- 请求日志和四方向 payload 视图
 - 事件记录
 - 每日统计和模型统计
 - API Key 使用统计
@@ -222,12 +222,15 @@ SQLite 主要承担以下职责：
   - 观察上游 SSE，提取 usage、结束原因、耗时、payload 统计信息
 - `CrossProtocolStreamTransformer`
   - 在 Anthropic / OpenAI 协议之间做增量事件转换
+- `materialize_stream_response`
+  - 在日志落盘前把流式 chunk 整理为完整离线响应对象，避免把原始 SSE 片段直接写入 payload
 
 设计目标：
 
 - 尽量保持前端和客户端对流式事件的消费方式不变
 - 即便上游协议不同，也能对外暴露近似旧版本的事件流
 - 在不阻塞转发的前提下补齐日志和统计信息
+- 让日志详情和导出结果优先展示可离线重放的完整响应，而不是原始流式 chunk
 
 ## 9. 安全边界
 

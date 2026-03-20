@@ -26,10 +26,10 @@ export function PageHeader({
   className
 }: PageHeaderProps) {
   return (
-    <div className={cn('flex flex-col gap-5 rounded-[1.6rem] border border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(255,249,245,0.98),rgba(255,255,255,0.96))] p-5 shadow-[0_1px_2px_rgba(17,12,11,0.04),0_20px_40px_-34px_rgba(225,93,73,0.2)] sm:flex-row sm:items-start sm:justify-between', className)}>
+    <div className={cn('flex flex-col gap-5 rounded-lg border border-border bg-card p-5 sm:flex-row sm:items-start sm:justify-between', className)}>
       <div className="flex flex-1 flex-wrap items-start gap-4">
         {icon && (
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(225,93,73,0.16)]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
             {icon}
           </div>
         )}
@@ -53,7 +53,7 @@ export function PageHeader({
             </p>
           )}
           {helper && (
-            <div className="rounded-2xl border border-[rgba(24,16,13,0.08)] bg-[rgba(255,255,255,0.9)] px-3.5 py-2 text-xs text-muted-foreground">
+            <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
               {helper}
             </div>
           )}

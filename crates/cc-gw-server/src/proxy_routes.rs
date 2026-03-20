@@ -460,6 +460,12 @@ pub(super) async fn proxy_standard_request(
         encrypt_secret(&state.paths.home_dir, &api_key_context.provided_key).ok()
     };
     let config = config_snapshot(&state);
+    let request_payload_storage = request_payload_storage_enabled(&config);
+    let client_request_payload = if request_payload_storage {
+        serde_json::to_string(&body).ok()
+    } else {
+        None
+    };
 
     let requested_model = extract_requested_model(&body);
     let target = match resolve_route(
@@ -502,10 +508,6 @@ pub(super) async fn proxy_standard_request(
         },
     )
     .ok();
-    if let (Some(log_id), true) = (request_log_id, request_payload_storage_enabled(&config)) {
-        let prompt = serde_json::to_string(&body).ok();
-        let _ = upsert_request_payload(&state.paths.db_path, log_id, prompt.as_deref(), None);
-    }
     let provider_type = provider_type_name(&target.provider);
     let provider_is_anthropic = provider_type == "anthropic";
     let target_protocol = if provider_is_anthropic {
@@ -520,6 +522,22 @@ pub(super) async fn proxy_standard_request(
 
     let converted_request_body =
         build_request_body_for_target(&body, protocol, target_protocol, provider_type);
+    let upstream_request_payload = if request_payload_storage && converted_request_body != body {
+        serde_json::to_string(&converted_request_body).ok()
+    } else {
+        None
+    };
+    if let (Some(log_id), true) = (request_log_id, request_payload_storage) {
+        let _ = upsert_request_payload(
+            &state.paths.db_path,
+            log_id,
+            &LogPayloadUpdate {
+                client_request: client_request_payload.as_deref(),
+                upstream_request: upstream_request_payload.as_deref(),
+                ..LogPayloadUpdate::default()
+            },
+        );
+    }
 
     let cross_protocol = !matches!(
         (protocol, target_protocol),
@@ -610,7 +628,7 @@ pub(super) async fn proxy_standard_request(
             } else if cross_protocol {
                 let status_code = response.status().as_u16() as i64;
                 let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
-                let (result, usage, response_payload) = into_converted_response(
+                let (result, usage, upstream_response_payload, client_response_payload) = into_converted_response(
                     response,
                     protocol,
                     target_protocol,
@@ -640,8 +658,13 @@ pub(super) async fn proxy_standard_request(
                         let _ = upsert_request_payload(
                             &state.paths.db_path,
                             log_id,
-                            None,
-                            response_payload.as_deref(),
+                            &LogPayloadUpdate {
+                                upstream_response: upstream_response_payload
+                                    .as_deref()
+                                    .filter(|payload| Some(*payload) != client_response_payload.as_deref()),
+                                client_response: client_response_payload.as_deref(),
+                                ..LogPayloadUpdate::default()
+                            },
                         );
                     }
                 }
@@ -674,8 +697,10 @@ pub(super) async fn proxy_standard_request(
                         let _ = upsert_request_payload(
                             &state.paths.db_path,
                             log_id,
-                            None,
-                            response_payload.as_deref(),
+                            &LogPayloadUpdate {
+                                client_response: response_payload.as_deref(),
+                                ..LogPayloadUpdate::default()
+                            },
                         );
                     }
                 }
@@ -735,15 +760,49 @@ async fn into_converted_response(
     request_protocol: ProviderProtocol,
     target_protocol: ProviderProtocol,
     requested_model: &str,
-) -> (Response, UsageStats, Option<String>) {
+) -> (Response, UsageStats, Option<String>, Option<String>) {
     let status = response.status();
     if !status.is_success() {
-        return into_proxy_response(response, false).await;
+        let (result, usage, response_payload) = into_proxy_response(response, true).await;
+        return (result, usage, None, response_payload);
     }
 
-    let payload: Value = match response.json().await {
+    let body_bytes = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            let client_payload = serde_json::to_string(&json!({
+                "error": {
+                    "message": format!("failed to read upstream response: {error}")
+                }
+            }))
+            .ok();
+            return (
+                (
+                    StatusCode::BAD_GATEWAY,
+                    Json(json!({
+                        "error": {
+                            "message": format!("failed to read upstream response: {error}")
+                        }
+                    })),
+                )
+                    .into_response(),
+                UsageStats::default(),
+                None,
+                client_payload,
+            );
+        }
+    };
+    let upstream_payload = Some(String::from_utf8_lossy(&body_bytes).to_string());
+
+    let payload: Value = match serde_json::from_slice(&body_bytes) {
         Ok(payload) => payload,
         Err(error) => {
+            let client_payload = serde_json::to_string(&json!({
+                "error": {
+                    "message": format!("failed to decode upstream JSON: {error}")
+                }
+            }))
+            .ok();
             return (
                 (
                     StatusCode::BAD_GATEWAY,
@@ -755,7 +814,8 @@ async fn into_converted_response(
                 )
                     .into_response(),
                 UsageStats::default(),
-                None,
+                upstream_payload,
+                client_payload,
             );
         }
     };
@@ -787,7 +847,7 @@ async fn into_converted_response(
     };
 
     let response_payload = serde_json::to_string(&converted).ok();
-    (Json(converted).into_response(), usage, response_payload)
+    (Json(converted).into_response(), usage, upstream_payload, response_payload)
 }
 
 async fn into_streaming_converted_response(
@@ -807,9 +867,12 @@ async fn into_streaming_converted_response(
         let (result, usage, response_payload) = into_proxy_response(response, true).await;
         finalize_stream_logging(
             log_context,
+            target_protocol,
             status.as_u16() as i64,
             latency_ms,
             usage,
+            None,
+            None,
             None,
             response_payload,
         );
@@ -835,6 +898,7 @@ async fn into_streaming_converted_response(
 
     let stream = stream! {
         let _activity_guard = activity_guard;
+        let mut captured_upstream_response = String::new();
         let mut captured_response = String::new();
         loop {
             match upstream.try_next().await {
@@ -843,6 +907,9 @@ async fn into_streaming_converted_response(
                     let observation = observer.push(&text);
                     if first_token_at.is_none() && observation.saw_first_token {
                         first_token_at = Some(chrono::Utc::now().timestamp_millis());
+                    }
+                    if capture_response {
+                        captured_upstream_response.push_str(&text);
                     }
                     for transformed in transformer.push(&text) {
                         if capture_response {
@@ -877,10 +944,13 @@ async fn into_streaming_converted_response(
         });
         finalize_stream_logging(
             log_context,
+            request_protocol,
             status_code,
             latency_ms,
             usage,
             ttft_ms,
+            if capture_response { Some(target_protocol) } else { None },
+            if capture_response { Some(captured_upstream_response) } else { None },
             if capture_response { Some(captured_response) } else { None },
         );
     };
@@ -978,9 +1048,12 @@ async fn into_streaming_proxy_response(
         let (result, usage, response_payload) = into_proxy_response(response, true).await;
         finalize_stream_logging(
             log_context,
+            protocol,
             status.as_u16() as i64,
             latency_ms,
             usage,
+            None,
+            None,
             None,
             response_payload,
         );
@@ -1032,10 +1105,13 @@ async fn into_streaming_proxy_response(
         });
         finalize_stream_logging(
             log_context,
+            protocol,
             status_code,
             latency_ms,
             usage,
             ttft_ms,
+            None,
+            None,
             if capture_response { Some(captured_response) } else { None },
         );
     };
@@ -1124,11 +1200,14 @@ fn compute_tpot_ms(total_latency_ms: i64, output_tokens: i64, ttft_ms: Option<i6
 
 fn finalize_stream_logging(
     log_context: Option<StreamingLogContext>,
+    client_response_protocol: ProviderProtocol,
     status_code: i64,
     latency_ms: i64,
     usage: UsageStats,
     ttft_ms: Option<i64>,
-    response_payload: Option<String>,
+    upstream_response_protocol: Option<ProviderProtocol>,
+    upstream_response_payload: Option<String>,
+    client_response_payload: Option<String>,
 ) {
     let Some(context) = log_context else {
         return;
@@ -1150,11 +1229,24 @@ fn finalize_stream_logging(
     let _ = increment_daily_metrics(&context.db_path, &context.endpoint_id, latency_ms, &usage);
     let _ = record_api_key_usage(&context.db_path, context.api_key_id, &usage);
     if context.store_response_payload {
+        let client_response_payload = client_response_payload
+            .map(|payload| {
+                materialize_stream_response(client_response_protocol, &payload).unwrap_or(payload)
+            });
+        let upstream_response_payload = upstream_response_payload
+            .zip(upstream_response_protocol)
+            .map(|(payload, protocol)| {
+                materialize_stream_response(protocol, &payload).unwrap_or(payload)
+            })
+            .filter(|payload| Some(payload.as_str()) != client_response_payload.as_deref());
         let _ = upsert_request_payload(
             &context.db_path,
             context.log_id,
-            None,
-            response_payload.as_deref(),
+            &LogPayloadUpdate {
+                upstream_response: upstream_response_payload.as_deref(),
+                client_response: client_response_payload.as_deref(),
+                ..LogPayloadUpdate::default()
+            },
         );
     }
 }

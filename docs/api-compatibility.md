@@ -60,6 +60,21 @@
 | `/api/stats/api-keys/overview` | `GET` | 已兼容 | API Key 总览统计 |
 | `/api/stats/api-keys/usage` | `GET` | 已兼容 | API Key 使用排名 |
 
+日志接口补充说明：
+
+- `GET /api/logs/{id}` 返回单条日志详情，`payload` 采用四字段结构：
+  - `client_request`
+  - `upstream_request`
+  - `upstream_response`
+  - `client_response`
+- 如果没有发生协议改写，通常只会有 `client_request` 和 `client_response`
+- 如果发生协议改写，同一条日志会保留 4 个独立 payload 视图，而不是拆成 4 条日志
+- 历史数据库中的 `prompt` / `response` 仍兼容读取，并映射到 `client_request` / `client_response`
+- `POST /api/logs/export` 返回 ZIP 文件，当前压缩包内包含一个 `logs.json`
+- `logs.json` 顶层字段为 `exportedAt`、`count`、`limit`、`records`
+- `records[*].payload` 与日志详情接口使用同一套四字段结构
+- 导出结果中的 `api_key_value` 会被置空，另附带 `api_key_value_available` 和 `api_key_value_masked`
+
 ## 4. API Key 管理接口
 
 | 路径 | 方法 | 状态 | 说明 |

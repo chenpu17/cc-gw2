@@ -115,6 +115,17 @@ impl UsageState {
         }
         usage
     }
+
+    fn openai_usage_value(&self) -> Value {
+        json!({
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.input_tokens + self.output_tokens,
+            "prompt_tokens": self.input_tokens,
+            "completion_tokens": self.output_tokens,
+            "cached_tokens": self.cached_tokens
+        })
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1402,9 +1413,411 @@ fn infer_openai_responses_stop_reason(event: &Value) -> Option<&'static str> {
     }
 }
 
+pub fn materialize_stream_response(protocol: ProviderProtocol, sse_stream: &str) -> Option<String> {
+    let normalized = sse_stream.replace("\r\n", "\n");
+    match protocol {
+        ProviderProtocol::AnthropicMessages => materialize_anthropic_stream(&normalized),
+        ProviderProtocol::OpenAiChatCompletions => materialize_openai_chat_stream(&normalized),
+        ProviderProtocol::OpenAiResponses => materialize_openai_responses_stream(&normalized),
+    }
+}
+
+fn sse_data_events(sse_stream: &str) -> Vec<Value> {
+    let mut events = Vec::new();
+    for block in sse_stream.split("\n\n") {
+        if block.trim().is_empty() {
+            continue;
+        }
+
+        let mut data_lines = Vec::new();
+        for line in block.lines() {
+            let trimmed = line.trim_end_matches('\r');
+            if let Some(rest) = trimmed.strip_prefix("data:") {
+                data_lines.push(rest.trim().to_string());
+            }
+        }
+
+        let data = data_lines.join("\n");
+        if data.is_empty() || data == "[DONE]" {
+            continue;
+        }
+
+        if let Ok(event) = serde_json::from_str::<Value>(&data) {
+            events.push(event);
+        }
+    }
+    events
+}
+
+fn materialize_anthropic_stream(sse_stream: &str) -> Option<String> {
+    let events = sse_data_events(sse_stream);
+    if events.is_empty() {
+        return None;
+    }
+
+    let mut id = None::<String>;
+    let mut model = None::<String>;
+    let mut content_blocks = BTreeMap::<usize, Value>::new();
+    let mut tool_inputs = BTreeMap::<usize, String>::new();
+    let mut stop_reason = Value::Null;
+    let mut stop_sequence = Value::Null;
+    let mut usage = UsageState::default();
+
+    for event in events {
+        match event.get("type").and_then(Value::as_str).unwrap_or("") {
+            "message_start" => {
+                if let Some(message) = event.get("message") {
+                    id = message
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string)
+                        .or(id);
+                    model = message
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string)
+                        .or(model);
+                    usage.update_from_anthropic(message.get("usage"));
+                }
+            }
+            "content_block_start" => {
+                let index = event.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
+                if let Some(content_block) = event.get("content_block") {
+                    match content_block.get("type").and_then(Value::as_str).unwrap_or("") {
+                        "text" => {
+                            content_blocks.insert(index, json!({ "type": "text", "text": "" }));
+                        }
+                        "tool_use" => {
+                            content_blocks.insert(
+                                index,
+                                json!({
+                                    "type": "tool_use",
+                                    "id": content_block.get("id").cloned().unwrap_or(Value::Null),
+                                    "name": content_block.get("name").cloned().unwrap_or(Value::Null),
+                                    "input": {}
+                                }),
+                            );
+                            tool_inputs.entry(index).or_default();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "content_block_delta" => {
+                let index = event.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let delta = event.get("delta").cloned().unwrap_or_else(|| json!({}));
+                match delta.get("type").and_then(Value::as_str).unwrap_or("") {
+                    "text_delta" => {
+                        let text = delta.get("text").and_then(Value::as_str).unwrap_or("");
+                        let block = content_blocks
+                            .entry(index)
+                            .or_insert_with(|| json!({ "type": "text", "text": "" }));
+                        let mut next = block
+                            .get("text")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        next.push_str(text);
+                        block["text"] = Value::String(next);
+                    }
+                    "input_json_delta" => {
+                        let partial = delta
+                            .get("partial_json")
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        tool_inputs.entry(index).or_default().push_str(partial);
+                    }
+                    _ => {}
+                }
+            }
+            "message_delta" => {
+                if let Some(delta) = event.get("delta") {
+                    stop_reason = delta.get("stop_reason").cloned().unwrap_or(Value::Null);
+                    stop_sequence = delta.get("stop_sequence").cloned().unwrap_or(Value::Null);
+                }
+                usage.update_from_anthropic(
+                    event
+                        .get("usage")
+                        .or_else(|| event.get("delta").and_then(|value| value.get("usage"))),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    for (index, raw_input) in tool_inputs {
+        if let Some(block) = content_blocks.get_mut(&index) {
+            block["input"] = serde_json::from_str::<Value>(&raw_input)
+                .unwrap_or_else(|_| Value::String(raw_input));
+        }
+    }
+
+    serde_json::to_string(&json!({
+        "id": id.unwrap_or_else(|| format!("msg_{}", nanoid_like())),
+        "type": "message",
+        "role": "assistant",
+        "model": model.unwrap_or_else(|| "unknown-model".to_string()),
+        "content": content_blocks.into_values().collect::<Vec<_>>(),
+        "stop_reason": stop_reason,
+        "stop_sequence": stop_sequence,
+        "usage": usage.anthropic_usage_value()
+    }))
+    .ok()
+}
+
+fn materialize_openai_chat_stream(sse_stream: &str) -> Option<String> {
+    let events = sse_data_events(sse_stream);
+    if events.is_empty() {
+        return None;
+    }
+
+    let mut id = None::<String>;
+    let mut created = None::<i64>;
+    let mut model = None::<String>;
+    let mut content = String::new();
+    let mut reasoning_content = String::new();
+    let mut finish_reason = Value::Null;
+    let mut usage = UsageState::default();
+    let mut tool_calls = BTreeMap::<usize, Value>::new();
+
+    for event in events {
+        id = event
+            .get("id")
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .or(id);
+        created = event.get("created").and_then(Value::as_i64).or(created);
+        model = event
+            .get("model")
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .or(model);
+        usage.update_from_openai(event.get("usage"));
+
+        let Some(choice) = event
+            .get("choices")
+            .and_then(Value::as_array)
+            .and_then(|choices| choices.first())
+        else {
+            continue;
+        };
+
+        if let Some(reason) = choice.get("finish_reason") {
+            finish_reason = reason.clone();
+        }
+
+        let delta = choice.get("delta").cloned().unwrap_or_else(|| json!({}));
+        if let Some(text) = delta.get("content").and_then(Value::as_str) {
+            content.push_str(text);
+        }
+        if let Some(text) = delta.get("reasoning_content").and_then(Value::as_str) {
+            reasoning_content.push_str(text);
+        }
+        if let Some(delta_tool_calls) = delta.get("tool_calls").and_then(Value::as_array) {
+            for tool_call in delta_tool_calls {
+                let index = tool_call.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let entry = tool_calls.entry(index).or_insert_with(|| {
+                    json!({
+                        "id": Value::Null,
+                        "type": "function",
+                        "function": { "name": "", "arguments": "" }
+                    })
+                });
+
+                if let Some(value) = tool_call.get("id") {
+                    entry["id"] = value.clone();
+                }
+                if let Some(name) = tool_call
+                    .get("function")
+                    .and_then(|function| function.get("name"))
+                    .and_then(Value::as_str)
+                {
+                    entry["function"]["name"] = Value::String(name.to_string());
+                }
+                if let Some(arguments) = tool_call
+                    .get("function")
+                    .and_then(|function| function.get("arguments"))
+                    .and_then(Value::as_str)
+                {
+                    let mut next = entry["function"]["arguments"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string();
+                    next.push_str(arguments);
+                    entry["function"]["arguments"] = Value::String(next);
+                }
+            }
+        }
+    }
+
+    let mut message = json!({ "role": "assistant" });
+    if !content.is_empty() {
+        message["content"] = Value::String(content);
+    } else if !tool_calls.is_empty() {
+        message["content"] = Value::Null;
+    }
+    if !reasoning_content.is_empty() {
+        message["reasoning_content"] = Value::String(reasoning_content);
+    }
+    if !tool_calls.is_empty() {
+        message["tool_calls"] = Value::Array(tool_calls.into_values().collect());
+    }
+
+    serde_json::to_string(&json!({
+        "id": id.unwrap_or_else(|| format!("chatcmpl_{}", nanoid_like())),
+        "object": "chat.completion",
+        "created": created.unwrap_or_else(|| chrono::Utc::now().timestamp()),
+        "model": model.unwrap_or_else(|| "unknown-model".to_string()),
+        "choices": [{
+            "index": 0,
+            "message": message,
+            "finish_reason": finish_reason
+        }],
+        "usage": usage.openai_usage_value()
+    }))
+    .ok()
+}
+
+fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
+    let events = sse_data_events(sse_stream);
+    if events.is_empty() {
+        return None;
+    }
+
+    let mut response = None::<Value>;
+    let mut id = None::<String>;
+    let mut created = None::<i64>;
+    let mut model = None::<String>;
+    let mut status = None::<String>;
+    let mut output_text = String::new();
+    let mut usage = UsageState::default();
+    let mut tool_calls = BTreeMap::<String, Value>::new();
+
+    for event in events {
+        let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
+        usage.update_from_openai(
+            event
+                .get("usage")
+                .or_else(|| event.get("response").and_then(|value| value.get("usage"))),
+        );
+
+        if let Some(response_value) = event.get("response") {
+            id = response_value
+                .get("id")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+                .or(id);
+            created = response_value.get("created").and_then(Value::as_i64).or(created);
+            model = response_value
+                .get("model")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+                .or(model);
+            status = response_value
+                .get("status")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+                .or(status);
+        }
+
+        match event_type {
+            "response.output_text.delta" => {
+                if let Some(delta) = event.get("delta").and_then(Value::as_str) {
+                    output_text.push_str(delta);
+                }
+            }
+            "response.output_item.added" => {
+                if let Some(item) = event.get("item") {
+                    if item.get("type").and_then(Value::as_str) == Some("function_call") {
+                        let item_id = item
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .unwrap_or("call")
+                            .to_string();
+                        tool_calls.insert(
+                            item_id.clone(),
+                            json!({
+                                "id": item.get("id").cloned().unwrap_or(Value::String(item_id.clone())),
+                                "type": "function_call",
+                                "call_id": item.get("call_id").cloned().unwrap_or(Value::String(item_id)),
+                                "name": item.get("name").cloned().unwrap_or(Value::String("tool".to_string())),
+                                "arguments": item.get("arguments").cloned().unwrap_or(Value::String(String::new()))
+                            }),
+                        );
+                    }
+                }
+            }
+            "response.function_call_arguments.delta" => {
+                let item_id = event.get("item_id").and_then(Value::as_str).unwrap_or("call");
+                let delta = event.get("delta").and_then(Value::as_str).unwrap_or("");
+                let entry = tool_calls.entry(item_id.to_string()).or_insert_with(|| {
+                    json!({
+                        "id": item_id,
+                        "type": "function_call",
+                        "call_id": item_id,
+                        "name": "tool",
+                        "arguments": ""
+                    })
+                });
+                let mut next = entry
+                    .get("arguments")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                next.push_str(delta);
+                entry["arguments"] = Value::String(next);
+            }
+            "response.completed" | "response.done" => {
+                response = event.get("response").cloned().or(response);
+                if let Some(value) = event.get("output_text").and_then(Value::as_str) {
+                    output_text = value.to_string();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(mut response) = response {
+        if response.get("output_text").is_none() && !output_text.is_empty() {
+            response["output_text"] = Value::String(output_text);
+        }
+        return serde_json::to_string(&response).ok();
+    }
+
+    let mut content = Vec::new();
+    if !output_text.is_empty() {
+        content.push(json!({
+            "type": "output_text",
+            "text": output_text
+        }));
+    }
+    content.extend(tool_calls.into_values());
+
+    serde_json::to_string(&json!({
+        "id": id.unwrap_or_else(|| format!("resp_{}", nanoid_like())),
+        "object": "response",
+        "created": created.unwrap_or_else(|| chrono::Utc::now().timestamp()),
+        "model": model.unwrap_or_else(|| "unknown-model".to_string()),
+        "status": status.unwrap_or_else(|| "completed".to_string()),
+        "output": [{
+            "id": "out_1",
+            "type": "output_message",
+            "role": "assistant",
+            "content": content
+        }],
+        "usage": usage.openai_usage_value(),
+        "output_text": if output_text.is_empty() {
+            Value::Null
+        } else {
+            Value::String(output_text)
+        }
+    }))
+    .ok()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CrossProtocolStreamTransformer, SseStreamObserver};
+    use super::{CrossProtocolStreamTransformer, SseStreamObserver, materialize_stream_response};
     use crate::provider::ProviderProtocol;
 
     #[test]
@@ -1567,5 +1980,46 @@ mod tests {
         assert!(joined.contains("\"status\":\"requires_action\""));
         assert!(joined.contains("\"type\":\"tool_use\""));
         assert!(joined.contains("\"name\":\"weather\""));
+    }
+
+    #[test]
+    fn materialize_anthropic_stream_returns_offline_message() {
+        let payload = materialize_stream_response(
+            ProviderProtocol::AnthropicMessages,
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-test\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n\
+             event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":11,\"output_tokens\":2,\"cache_read_input_tokens\":1}}\n\n\
+             event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        )
+        .expect("materialized payload");
+
+        assert!(payload.contains("\"type\":\"message\""));
+        assert!(payload.contains("\"text\":\"hello\""));
+        assert!(payload.contains("\"stop_reason\":\"end_turn\""));
+        assert!(!payload.contains("event:"));
+        assert!(!payload.contains("data:"));
+    }
+
+    #[test]
+    fn materialize_openai_responses_stream_returns_offline_response() {
+        let payload = materialize_stream_response(
+            ProviderProtocol::OpenAiResponses,
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_123\",\"object\":\"response\",\"created\":1,\"status\":\"in_progress\",\"model\":\"test-model\"}}\n\n\
+             data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n\
+             data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_123\",\"object\":\"response\",\"created\":1,\"model\":\"test-model\",\"status\":\"completed\",\"output\":[{\"id\":\"out_1\",\"type\":\"output_message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\"}]}],\"usage\":{\"input_tokens\":10,\"output_tokens\":4}}}\n\n\
+             data: [DONE]\n\n",
+        )
+        .expect("materialized payload");
+
+        assert!(payload.contains("\"object\":\"response\""));
+        assert!(payload.contains("\"text\":\"hello\""));
+        assert!(!payload.contains("response.output_text.delta"));
+        assert!(!payload.contains("data:"));
     }
 }

@@ -29,47 +29,6 @@ import type { LogRecord } from '@/types/logs'
 import { cn } from '@/lib/utils'
 import { formatLatencyValue, type DailyMetric, type ModelUsageMetric, type OverviewStats, type ServiceStatus } from './types'
 
-type StatCardColor = 'blue' | 'emerald' | 'amber' | 'violet' | 'rose' | 'cyan'
-
-const statTone: Record<StatCardColor, { gradient: string; iconBg: string; iconColor: string; accent: string }> = {
-  blue: {
-    gradient: 'bg-[linear-gradient(135deg,rgba(37,99,235,0.12),rgba(14,165,233,0.04),rgba(255,255,255,0.94))]',
-    iconBg: 'bg-blue-500/14',
-    iconColor: 'text-blue-700 dark:text-blue-300',
-    accent: 'from-blue-500/20'
-  },
-  emerald: {
-    gradient: 'bg-[linear-gradient(135deg,rgba(5,150,105,0.12),rgba(16,185,129,0.04),rgba(255,255,255,0.94))]',
-    iconBg: 'bg-emerald-500/14',
-    iconColor: 'text-emerald-700 dark:text-emerald-300',
-    accent: 'from-emerald-500/20'
-  },
-  amber: {
-    gradient: 'bg-[linear-gradient(135deg,rgba(234,88,12,0.15),rgba(245,158,11,0.05),rgba(255,250,242,0.96))]',
-    iconBg: 'bg-amber-500/14',
-    iconColor: 'text-amber-700 dark:text-amber-300',
-    accent: 'from-amber-500/20'
-  },
-  violet: {
-    gradient: 'bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(168,85,247,0.04),rgba(255,255,255,0.94))]',
-    iconBg: 'bg-violet-500/14',
-    iconColor: 'text-violet-700 dark:text-violet-300',
-    accent: 'from-violet-500/20'
-  },
-  rose: {
-    gradient: 'bg-[linear-gradient(135deg,rgba(225,93,73,0.16),rgba(244,63,94,0.04),rgba(255,248,245,0.96))]',
-    iconBg: 'bg-rose-500/14',
-    iconColor: 'text-rose-700 dark:text-rose-300',
-    accent: 'from-rose-500/20'
-  },
-  cyan: {
-    gradient: 'bg-[linear-gradient(135deg,rgba(8,145,178,0.12),rgba(34,211,238,0.04),rgba(255,255,255,0.94))]',
-    iconBg: 'bg-cyan-500/14',
-    iconColor: 'text-cyan-700 dark:text-cyan-300',
-    accent: 'from-cyan-500/20'
-  }
-}
-
 export function DashboardLoading() {
   return (
     <div className="flex flex-col gap-6">
@@ -83,7 +42,7 @@ export function DashboardLoading() {
           <ChartSkeleton key={index} />
         ))}
       </div>
-      <div className="rounded-[1.25rem] border border-border/70 bg-background/55">
+      <div className="rounded-lg border border-border">
         <table className="w-full">
           <tbody>
             {Array.from({ length: 5 }).map((_, index) => (
@@ -113,65 +72,53 @@ export function DashboardSpotlight({
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
-      <Card className="overflow-hidden border-[rgba(24,16,13,0.08)] bg-[radial-gradient(circle_at_top_left,rgba(225,93,73,0.16),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.12),transparent_34%),linear-gradient(135deg,rgba(255,249,245,0.98),rgba(255,255,255,0.94))] shadow-[0_24px_60px_-36px_rgba(225,93,73,0.28)]">
+      <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary shadow-[0_10px_24px_-20px_rgba(225,93,73,0.35)]">
+            <div className="max-w-2xl space-y-3">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-accent px-3 py-1 text-xs font-semibold text-primary">
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                Live gateway cockpit
+                Live Gateway
               </div>
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-50">
+              <div className="space-y-1">
+                <h2 className="text-xl font-semibold text-foreground">
                   {selectedEndpointLabel}
                 </h2>
-                <p className="max-w-xl text-sm leading-6 text-muted-foreground">
+                <p className="max-w-xl text-sm text-muted-foreground">
                   {t('dashboard.description')}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                <Badge variant="outline" className="border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success-bg))] text-[hsl(var(--success)/1)]">
                   {t('dashboard.status.listeningLabel')}
                 </Badge>
                 <Badge variant="secondary">{selectedEndpointLabel}</Badge>
                 <Badge variant="outline">{t('dashboard.labels.todayRequests')}: {todayRequests.toLocaleString()}</Badge>
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[360px] lg:max-w-[420px] lg:flex-1">
-              <SpotlightMetric
-                icon={<Gauge className="h-4 w-4" aria-hidden="true" />}
-                label={t('dashboard.labels.activeRequests')}
-                value={(status?.activeRequests ?? 0).toLocaleString()}
-              />
-              <SpotlightMetric
-                icon={<Database className="h-4 w-4" aria-hidden="true" />}
-                label={t('dashboard.labels.database')}
-                value={dbSizeDisplay}
-              />
-              <SpotlightMetric
-                icon={<MemoryStick className="h-4 w-4" aria-hidden="true" />}
-                label={t('dashboard.labels.memory')}
-                value={memoryDisplay}
-              />
+            <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[320px] lg:flex-1">
+              <SpotlightMetric icon={<Gauge className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.activeRequests')} value={(status?.activeRequests ?? 0).toLocaleString()} />
+              <SpotlightMetric icon={<Database className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.database')} value={dbSizeDisplay} />
+              <SpotlightMetric icon={<MemoryStick className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.memory')} value={memoryDisplay} />
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden border-white/10 bg-[linear-gradient(160deg,rgba(18,18,18,0.98),rgba(37,26,21,0.98))] text-slate-50 shadow-[0_24px_60px_-36px_rgba(17,12,11,0.65)]">
+      <Card>
         <CardContent className="pt-6">
-          <div className="space-y-5">
+          <div className="space-y-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Gateway runtime</p>
-              <p className="mt-2 text-2xl font-semibold tracking-[-0.03em]">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Gateway runtime</p>
+              <p className="mt-1.5 text-xl font-semibold text-foreground">
                 {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <DarkMetric label={t('dashboard.labels.providers')} value={(status?.providers ?? 0).toLocaleString()} />
-              <DarkMetric label={t('dashboard.labels.activeClientAddresses')} value={(status?.activeClientAddresses ?? 0).toLocaleString()} />
-              <DarkMetric label={t('dashboard.labels.activeClientSessions')} value={(status?.activeClientSessions ?? 0).toLocaleString()} />
-              <DarkMetric label={t('dashboard.labels.uniqueClientSessionsLastHour')} value={(status?.uniqueClientSessionsLastHour ?? 0).toLocaleString()} />
+              <InfoMetric label={t('dashboard.labels.providers')} value={(status?.providers ?? 0).toLocaleString()} />
+              <InfoMetric label={t('dashboard.labels.activeClientAddresses')} value={(status?.activeClientAddresses ?? 0).toLocaleString()} />
+              <InfoMetric label={t('dashboard.labels.activeClientSessions')} value={(status?.activeClientSessions ?? 0).toLocaleString()} />
+              <InfoMetric label={t('dashboard.labels.uniqueClientSessionsLastHour')} value={(status?.uniqueClientSessionsLastHour ?? 0).toLocaleString()} />
             </div>
           </div>
         </CardContent>
@@ -185,12 +132,12 @@ export function DashboardStatsGrid({ overview }: { overview?: OverviewStats }) {
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      <StatCard icon={<Activity className="h-5 w-5" />} title={t('dashboard.cards.todayRequests')} value={overview?.today.requests ?? 0} suffix={t('common.units.request')} color="blue" />
-      <StatCard icon={<TrendingUp className="h-5 w-5" />} title={t('dashboard.cards.todayInput')} value={overview?.today.inputTokens ?? 0} suffix={t('common.units.token')} color="emerald" />
-      <StatCard icon={<Zap className="h-5 w-5" />} title={t('dashboard.cards.todayCacheRead')} value={overview?.today.cacheReadTokens ?? 0} suffix={t('common.units.token')} color="violet" />
-      <StatCard icon={<Sparkles className="h-5 w-5" />} title={t('dashboard.cards.todayCacheCreation')} value={overview?.today.cacheCreationTokens ?? 0} suffix={t('common.units.token')} color="rose" />
-      <StatCard icon={<BarChart3 className="h-5 w-5" />} title={t('dashboard.cards.todayOutput')} value={overview?.today.outputTokens ?? 0} suffix={t('common.units.token')} color="amber" />
-      <StatCard icon={<Timer className="h-5 w-5" />} title={t('dashboard.cards.avgLatency')} value={overview?.today.avgLatencyMs ?? 0} suffix={t('common.units.ms')} color="cyan" />
+      <StatCard icon={<Activity className="h-5 w-5" />} title={t('dashboard.cards.todayRequests')} value={overview?.today.requests ?? 0} suffix={t('common.units.request')} iconClass="bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400" />
+      <StatCard icon={<TrendingUp className="h-5 w-5" />} title={t('dashboard.cards.todayInput')} value={overview?.today.inputTokens ?? 0} suffix={t('common.units.token')} iconClass="bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400" />
+      <StatCard icon={<Zap className="h-5 w-5" />} title={t('dashboard.cards.todayCacheRead')} value={overview?.today.cacheReadTokens ?? 0} suffix={t('common.units.token')} iconClass="bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400" />
+      <StatCard icon={<Sparkles className="h-5 w-5" />} title={t('dashboard.cards.todayCacheCreation')} value={overview?.today.cacheCreationTokens ?? 0} suffix={t('common.units.token')} iconClass="bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400" />
+      <StatCard icon={<BarChart3 className="h-5 w-5" />} title={t('dashboard.cards.todayOutput')} value={overview?.today.outputTokens ?? 0} suffix={t('common.units.token')} iconClass="bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400" />
+      <StatCard icon={<Timer className="h-5 w-5" />} title={t('dashboard.cards.avgLatency')} value={overview?.today.avgLatencyMs ?? 0} suffix={t('common.units.ms')} iconClass="bg-cyan-50 text-cyan-600 dark:bg-cyan-950 dark:text-cyan-400" />
     </div>
   )
 }
@@ -289,7 +236,7 @@ export function ModelMetricsTable({ models, loading }: { models: ModelUsageMetri
       ) : models.length === 0 ? (
         <PageState compact icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />} title={t('dashboard.modelTable.empty')} />
       ) : (
-        <div className="overflow-auto rounded-[1.2rem] border border-border/70 bg-background/70">
+        <div className="overflow-auto rounded-lg border border-border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -336,7 +283,7 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
         records.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{records.length}</Badge>
-            <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+            <Badge variant="outline" className="border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success-bg))] text-[hsl(var(--success)/1)]">
               {t('common.status.success')}: {successCount}
             </Badge>
             <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive">
@@ -351,7 +298,7 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
       ) : records.length === 0 ? (
         <PageState compact icon={<Activity className="h-5 w-5" aria-hidden="true" />} title={t('dashboard.recent.empty')} />
       ) : (
-        <div className="overflow-auto rounded-[1.2rem] border border-border/70 bg-background/70">
+        <div className="overflow-auto rounded-lg border border-border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -415,51 +362,48 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
 
 function SpotlightMetric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-[1.25rem] border border-white/55 bg-white/75 px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">{icon}</span>
+    <div className="rounded-lg border border-border bg-secondary px-4 py-3">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary">{icon}</span>
         {label}
       </div>
-      <p className="mt-3 text-xl font-semibold tracking-[-0.02em]">{value}</p>
+      <p className="mt-2 text-lg font-semibold text-foreground">{value}</p>
     </div>
   )
 }
 
-function DarkMetric({ label, value }: { label: string; value: string }) {
+function InfoMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[1.15rem] border border-white/10 bg-white/5 px-4 py-3 backdrop-blur">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-white">{value}</p>
+    <div className="rounded-lg border border-border bg-secondary px-3 py-2.5">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
   )
 }
 
 function StatCard({
-  color = 'blue',
   icon,
+  iconClass,
   suffix,
   title,
   value
 }: {
-  color?: StatCardColor
   icon?: ReactNode
+  iconClass?: string
   suffix?: string
   title: string
   value: number
 }) {
-  const tone = statTone[color]
-
   return (
-    <Card variant="interactive" className={cn('overflow-hidden border-white/55', tone.gradient)}>
-      <CardContent className="relative pt-5">
-        <div className={cn('absolute inset-x-0 top-0 h-16 bg-gradient-to-r to-transparent opacity-70', tone.accent)} />
-        <div className="relative flex items-center justify-between gap-3">
-          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{title}</span>
-          {icon ? <div className={cn('flex h-10 w-10 items-center justify-center rounded-xl', tone.iconBg, tone.iconColor)}>{icon}</div> : null}
+    <Card>
+      <CardContent className="pt-5">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-medium text-muted-foreground">{title}</p>
+          {icon ? <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg', iconClass)}>{icon}</div> : null}
         </div>
-        <p className="relative mt-4 text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">
+        <p className="mt-3 text-2xl font-bold text-foreground">
           {value.toLocaleString()}
-          {suffix ? <span className="ml-1.5 text-sm font-medium text-muted-foreground">{suffix}</span> : null}
+          {suffix ? <span className="ml-1.5 text-sm font-normal text-muted-foreground">{suffix}</span> : null}
         </p>
       </CardContent>
     </Card>
@@ -468,11 +412,13 @@ function StatCard({
 
 function InsightCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-[1.3rem] border border-white/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,250,252,0.86))] px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-2 line-clamp-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-    </div>
+    <Card>
+      <CardContent className="pt-4">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="mt-2 line-clamp-1 text-sm font-semibold text-foreground">{value}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -494,11 +440,11 @@ function ChartCard({
   const { t } = useTranslation()
 
   return (
-    <Card className="overflow-hidden border-white/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.84))] shadow-[0_1px_2px_rgba(15,23,42,0.04),0_20px_40px_-32px_rgba(59,130,246,0.16)]">
+    <Card>
       <CardContent className="space-y-4 pt-5">
         <div>
-          <p className="text-base font-semibold">{title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
         </div>
         {loading ? (
           <PageLoadingState compact className="min-h-[320px]" label={t('common.loadingShort')} />

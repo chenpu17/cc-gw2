@@ -19,8 +19,6 @@ export interface FormState {
   storeRequestPayloads: boolean
   storeResponsePayloads: boolean
   logLevel: LogLevel
-  requestLogging: boolean
-  responseLogging: boolean
   bodyLimitMb: string
   enableRoutingFallback: boolean
   httpEnabled: boolean
@@ -78,8 +76,6 @@ export function deriveFormState(config: GatewayConfig): FormState {
     storeRequestPayloads: deriveStoreFlag(config.storeRequestPayloads),
     storeResponsePayloads: deriveStoreFlag(config.storeResponsePayloads),
     logLevel: (config.logLevel as LogLevel) ?? 'info',
-    requestLogging: config.requestLogging !== false,
-    responseLogging: config.responseLogging ?? config.requestLogging !== false,
     bodyLimitMb: (() => {
       const raw = config.bodyLimit
       if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {

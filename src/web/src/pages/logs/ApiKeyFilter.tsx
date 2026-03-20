@@ -73,7 +73,7 @@ export function ApiKeyFilter({
         disabled={disabled || apiKeys.length === 0}
         title={t('logs.filters.apiKeyHint')}
         className={cn(
-          'flex h-11 w-full items-center justify-between rounded-2xl border border-border/80 bg-background/85 px-4 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.03)] ring-offset-background transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring/30 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+          'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
           selected.length > 0 && 'border-primary',
           open && 'ring-2 ring-ring ring-offset-2'
         )}
@@ -99,8 +99,8 @@ export function ApiKeyFilter({
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-[1.2rem] border border-white/60 bg-popover/95 p-2 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.45)] backdrop-blur">
-          <div className="flex items-center justify-between rounded-xl bg-background/70 px-3 py-2 text-xs">
+        <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-md border bg-popover p-2 shadow-md">
+          <div className="flex items-center justify-between rounded-md bg-secondary px-3 py-2 text-xs">
             <span>{summaryText}</span>
             <button
               type="button"

@@ -398,16 +398,16 @@ export function ProviderDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div className="flex-1 bg-background/80 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
       <aside
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="provider-drawer-title"
         aria-describedby="provider-drawer-desc"
-        className="flex h-full w-full max-w-5xl flex-col border-l border-white/50 bg-background/96 shadow-[0_24px_80px_-32px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/96"
+        className="flex h-full w-full max-w-5xl flex-col border-l border-border bg-background shadow-lg"
       >
-        <header className="border-b border-border/70 bg-background/70 px-6 py-5 dark:border-slate-800">
+        <header className="border-b border-border bg-secondary px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-2">
               <div className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-primary">
@@ -426,7 +426,7 @@ export function ProviderDrawer({
               type="button"
               ref={closeButtonRef}
               onClick={onClose}
-              className="rounded-full border border-border/80 bg-background/85 px-4 py-2 text-sm transition hover:border-primary/20 hover:bg-primary/5"
+              className="rounded-full border border-border bg-card px-4 py-2 text-sm transition hover:border-primary/20 hover:bg-accent/50"
             >
               {t('common.actions.close')}
             </button>
@@ -436,7 +436,7 @@ export function ProviderDrawer({
             {providerSummaryItems.map((item) => (
               <div
                 key={item.label}
-                className="rounded-[1.2rem] border border-white/50 bg-card/88 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
+                className="rounded-lg border border-border bg-card px-4 py-3"
               >
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   {item.label}
@@ -469,7 +469,7 @@ export function ProviderDrawer({
                         'rounded-2xl border px-4 py-3 text-left transition',
                         active
                           ? 'border-primary bg-primary/10 text-primary shadow-sm'
-                          : 'border-white/50 bg-card/88 text-foreground hover:border-primary/20 hover:bg-primary/5'
+                          : 'border-border bg-card text-foreground hover:border-primary/20 hover:bg-accent/50'
                       )}
                     >
                       <div className="text-sm font-semibold">{option.label}</div>
@@ -491,7 +491,7 @@ export function ProviderDrawer({
                 <button
                   type="button"
                   onClick={() => setShowAdvanced((prev) => !prev)}
-                  className="rounded-full border border-border/80 bg-background/85 px-3 py-1.5 text-xs transition hover:border-primary/20 hover:bg-primary/5"
+                  className="rounded-full border border-border bg-card px-3 py-1.5 text-xs transition hover:border-primary/20 hover:bg-accent/50"
                 >
                   {showAdvanced
                     ? t('providers.drawer.fields.hideAdvanced')
@@ -508,7 +508,7 @@ export function ProviderDrawer({
                     onChange={(event) => handleProviderIdChange(event.target.value)}
                     disabled={!isCreate}
                     placeholder={t('providers.drawer.fields.idPlaceholder')}
-                    className="h-11 rounded-2xl border border-border/80 bg-background/85 px-4 py-2 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-all duration-200 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-muted/60 disabled:text-muted-foreground"
+                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                     aria-invalid={Boolean(errors.id)}
                   />
                   {errors.id ? <span className="text-xs text-red-500">{errors.id}</span> : null}
@@ -519,7 +519,7 @@ export function ProviderDrawer({
                     value={form.label}
                     onChange={(event) => handleInputChange('label')(event.target.value)}
                     placeholder={t('providers.drawer.fields.labelPlaceholder')}
-                    className="h-11 rounded-2xl border border-border/80 bg-background/85 px-4 py-2 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-all duration-200 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-muted/60 disabled:text-muted-foreground"
+                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                   />
                 </label>
               </div>
@@ -530,7 +530,7 @@ export function ProviderDrawer({
                   value={form.baseUrl}
                   onChange={(event) => handleInputChange('baseUrl')(event.target.value)}
                   placeholder={t('providers.drawer.fields.baseUrlPlaceholder')}
-                  className="h-11 rounded-2xl border border-border/80 bg-background/85 px-4 py-2 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-all duration-200 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-muted/60 disabled:text-muted-foreground"
+                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                   aria-invalid={Boolean(errors.baseUrl)}
                 />
                 {errors.baseUrl ? <span className="text-xs text-red-500">{errors.baseUrl}</span> : null}
@@ -549,11 +549,11 @@ export function ProviderDrawer({
                   value={form.apiKey}
                   onChange={(event) => handleInputChange('apiKey')(event.target.value)}
                   placeholder={t('providers.drawer.fields.apiKeyPlaceholder')}
-                  className="h-11 rounded-2xl border border-border/80 bg-background/85 px-4 py-2 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-all duration-200 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-muted/60 disabled:text-muted-foreground"
+                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                 />
               </label>
 
-              <fieldset className="grid gap-2 rounded-[1.3rem] border border-white/50 bg-card/88 p-4 text-xs shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+              <fieldset className="grid gap-2 rounded-lg border border-border bg-card p-4 text-xs">
                 <legend className="px-1 text-muted-foreground">
                   {t('providers.drawer.fields.authMode')}
                 </legend>
@@ -605,7 +605,7 @@ export function ProviderDrawer({
                 <button
                   type="button"
                   onClick={handleAddModel}
-                  className="rounded-full border border-border/80 bg-background/85 px-3 py-1.5 text-xs transition hover:border-primary/20 hover:bg-primary/5"
+                  className="rounded-full border border-border bg-card px-3 py-1.5 text-xs transition hover:border-primary/20 hover:bg-accent/50"
                 >
                   {t('providers.drawer.fields.addModel')}
                 </button>
@@ -617,7 +617,7 @@ export function ProviderDrawer({
                 {form.models.map((model, index) => (
                   <div
                     key={model._key}
-                    className="rounded-[1.3rem] border border-white/50 bg-card/88 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
+                    className="rounded-lg border border-border bg-card p-4"
                   >
                     <div className="grid gap-4 md:grid-cols-2">
                       <label className="flex flex-col gap-2 text-sm">
@@ -626,7 +626,7 @@ export function ProviderDrawer({
                           value={model.id}
                           onChange={(event) => handleModelIdChange(index, event.target.value)}
                           placeholder={t('providers.drawer.fields.modelIdPlaceholder')}
-                          className="h-11 rounded-2xl border border-border/80 bg-background/85 px-4 py-2 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-all duration-200 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-muted/60 disabled:text-muted-foreground"
+                          className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                         />
                       </label>
                       {showAdvanced ? (
@@ -636,14 +636,14 @@ export function ProviderDrawer({
                             value={model.label ?? ''}
                             onChange={(event) => handleModelChange(index, { label: event.target.value })}
                             placeholder={t('providers.drawer.fields.modelLabelPlaceholder')}
-                            className="h-11 rounded-2xl border border-border/80 bg-background/85 px-4 py-2 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-all duration-200 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-muted/60 disabled:text-muted-foreground"
+                            className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                           />
                         </label>
                       ) : null}
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-                      <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                      <label className="flex items-center gap-2 text-muted-foreground">
                         <input
                           type="radio"
                           name="defaultModel"
@@ -667,7 +667,7 @@ export function ProviderDrawer({
                 ))}
 
                 {form.models.length === 0 ? (
-                  <div className="rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 p-5 shadow-sm dark:border-amber-600/60 dark:from-amber-900/20 dark:to-yellow-900/20">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-5 dark:border-amber-700/50 dark:bg-amber-900/20">
                     <div className="space-y-2">
                       <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
                         {t('providers.drawer.noModelsTitle')}
@@ -675,11 +675,11 @@ export function ProviderDrawer({
                       <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-300">
                         {t('providers.drawer.noModelsHint', { providerId: form.id || 'provider-id' })}
                       </p>
-                      <div className="rounded-md bg-amber-100/80 p-2.5 dark:bg-amber-800/40">
-                        <p className="mb-1.5 text-xs font-medium text-amber-900 dark:text-amber-200">
+                      <div className="rounded-md border border-border bg-secondary p-2.5">
+                        <p className="mb-1.5 text-xs font-medium text-foreground">
                           {t('providers.drawer.routeExample')}
                         </p>
-                        <code className="block rounded-xl bg-white/90 px-2.5 py-1.5 font-mono text-xs text-amber-900 shadow-[0_1px_2px_rgba(15,23,42,0.06)] dark:bg-slate-900 dark:text-amber-100">
+                        <code className="block rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground">
                           &quot;claude-*&quot;: &quot;{(form.id || 'provider-id').trim() || 'provider-id'}:*&quot;
                         </code>
                       </div>
@@ -696,9 +696,9 @@ export function ProviderDrawer({
             </section>
           </div>
 
-          <aside className="hidden border-l border-border/70 bg-background/55 px-5 py-5 xl:block">
+          <aside className="hidden border-l border-border bg-secondary px-5 py-5 xl:block">
             <div className="sticky top-0 space-y-5">
-              <div className="rounded-[1.3rem] border border-white/50 bg-card/92 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+              <div className="rounded-lg border border-border bg-card p-4">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   {t('providers.drawer.formSummary')}
                 </p>
@@ -713,7 +713,7 @@ export function ProviderDrawer({
                 </div>
               </div>
 
-              <div className="rounded-[1.3rem] border border-white/50 bg-card/92 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+              <div className="rounded-lg border border-border bg-card p-4">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   {t('providers.drawer.sections.checklist')}
                 </p>
@@ -725,7 +725,7 @@ export function ProviderDrawer({
               </div>
 
               {showAdvanced && (
-                <div className="rounded-[1.3rem] border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
+                <div className="rounded-lg border border-primary/20 bg-accent p-4 text-sm text-foreground">
                   <p className="font-medium text-primary">{t('providers.drawer.hints.advancedTitle')}</p>
                   <p className="mt-2 text-xs text-muted-foreground">
                     {t('providers.drawer.hints.advancedBody')}
@@ -736,7 +736,7 @@ export function ProviderDrawer({
           </aside>
         </div>
 
-        <footer className="flex items-center justify-between gap-3 border-t border-border/70 bg-background/70 px-6 py-4 text-sm">
+        <footer className="flex items-center justify-between gap-3 border-t border-border bg-secondary px-6 py-4 text-sm">
           <div className="flex flex-col text-xs text-red-500" aria-live="polite">
             {submitError ? <span>{submitError}</span> : null}
           </div>
@@ -744,7 +744,7 @@ export function ProviderDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full border border-border/80 bg-background/85 px-4 py-2 transition hover:border-primary/20 hover:bg-primary/5"
+              className="rounded-full border border-border bg-card px-4 py-2 transition hover:border-primary/20 hover:bg-accent/50"
               disabled={submitting}
             >
               {t('common.actions.cancel')}

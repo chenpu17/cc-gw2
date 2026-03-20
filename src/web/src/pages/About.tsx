@@ -95,7 +95,7 @@ export default function AboutPage() {
         helper={t('about.support.description')}
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <div className="rounded-2xl border border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+            <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
               manual refresh only
             </div>
             <Button onClick={() => pushToast({ title: t('about.toast.updatesPlanned'), variant: 'info' })} className="w-full sm:w-auto">
@@ -107,15 +107,15 @@ export default function AboutPage() {
       />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
-        <Card className="overflow-hidden border-[rgba(24,16,13,0.08)] bg-[radial-gradient(circle_at_top_left,rgba(225,93,73,0.15),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.12),transparent_34%),linear-gradient(135deg,rgba(255,249,245,0.98),rgba(255,255,255,0.94))] shadow-[0_24px_60px_-36px_rgba(225,93,73,0.26)]">
+        <Card className="overflow-hidden">
           <CardContent className="pt-6">
             <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-accent px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">
                 <ServerCog className="h-3.5 w-3.5" aria-hidden="true" />
                 Runtime snapshot
               </div>
               <div className="space-y-2">
-                <p className="text-3xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-50">
+                <p className="text-3xl font-semibold tracking-tight text-foreground">
                   {statusQuery.data?.host ?? '127.0.0.1'}:{statusQuery.data?.port ?? '-'}
                 </p>
                 <p className="text-sm text-muted-foreground">{t('about.description')}</p>
@@ -130,13 +130,13 @@ export default function AboutPage() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-white/10 bg-[linear-gradient(160deg,rgba(18,18,18,0.98),rgba(37,26,21,0.98))] text-slate-50 shadow-[0_24px_60px_-36px_rgba(17,12,11,0.65)]">
+        <Card className="overflow-hidden">
           <CardContent className="pt-6">
             <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Build</p>
-              <p className="font-mono text-lg text-white">v{appVersion}</p>
-              <p className="text-sm text-slate-300">{buildTime}</p>
-              <div className="rounded-[1rem] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Build</p>
+              <p className="font-mono text-lg text-primary">v{appVersion}</p>
+              <p className="text-sm text-muted-foreground">{buildTime}</p>
+              <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-sm text-muted-foreground">
                 {t('about.support.tip')}
               </div>
             </div>
@@ -197,7 +197,7 @@ export default function AboutPage() {
           </span>
         }
       >
-        <Card className="border-white/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,250,252,0.86))] shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <Card>
           <CardContent className="flex flex-col gap-4 pt-5 md:flex-row md:items-start md:justify-between">
             <div className="flex items-start gap-4">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -205,7 +205,7 @@ export default function AboutPage() {
               </div>
               <p className="max-w-2xl text-sm text-muted-foreground">{t('about.support.tip')}</p>
             </div>
-            <code className="inline-flex self-start rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-xs font-medium">
+            <code className="inline-flex self-start rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-medium">
               ~/.cc-gw/config.json
             </code>
           </CardContent>
@@ -223,10 +223,10 @@ function InfoGrid({ items }: { items: InfoGridItem[] }) {
   return (
     <dl className="grid gap-4 sm:grid-cols-2">
       {items.map((item) => (
-        <Card key={item.label} className="border-[rgba(24,16,13,0.08)] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(252,249,245,0.88))] shadow-[0_1px_2px_rgba(17,12,11,0.04)]">
+        <Card key={item.label}>
           <CardContent className="pt-5">
             <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{item.label}</dt>
-            <dd className="mt-2 text-sm font-semibold text-slate-950 dark:text-slate-50">{item.value}</dd>
+            <dd className="mt-2 text-sm font-semibold text-foreground">{item.value}</dd>
             {item.hint ? <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p> : null}
           </CardContent>
         </Card>

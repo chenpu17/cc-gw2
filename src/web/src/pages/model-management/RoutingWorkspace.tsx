@@ -97,7 +97,7 @@ export function RoutingWorkspace({
   const existingSources = new Set(routes.map((entry) => entry.source.trim()).filter(Boolean))
 
   return (
-    <Card className="surface-1">
+    <Card>
       <CardContent className="space-y-6 pt-6">
         <SectionIntro
           eyebrow="Routing Workspace"
@@ -130,18 +130,18 @@ export function RoutingWorkspace({
           />
         </div>
 
-        <div className="rounded-[1.2rem] border border-border/70 bg-background/55 px-4 py-3 text-xs text-muted-foreground">
+        <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">
           {t('settings.routing.wildcardHint')}
         </div>
 
         {anthropicProtocol ? (
-          <div className="rounded-[1.25rem] border border-blue-200 bg-blue-50/75 p-4 dark:border-blue-800 dark:bg-blue-950">
+          <div className="rounded-lg border border-primary/20 bg-accent p-4">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
-                <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                <p className="text-sm font-medium text-primary">
                   {t('modelManagement.claudeValidation.title')}
                 </p>
-                <p className="text-xs text-blue-700 dark:text-blue-300">
+                <p className="text-xs text-primary/80">
                   {t('modelManagement.claudeValidation.description')}
                 </p>
               </div>
@@ -163,7 +163,7 @@ export function RoutingWorkspace({
 
         {routeError ? <p className="text-sm text-destructive">{routeError}</p> : null}
 
-        <div className="space-y-3 rounded-[1.35rem] border border-border/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.7),rgba(248,250,252,0.82))] p-4">
+        <div className="space-y-3 rounded-lg border border-border bg-secondary p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -172,13 +172,13 @@ export function RoutingWorkspace({
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{t('modelManagement.overview.routesEditorHint')}</p>
             </div>
-            <div className="self-start rounded-xl border border-border/60 bg-background/80 px-3 py-2 text-[11px] text-muted-foreground">
+            <div className="self-start rounded-lg border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground">
               {endpointLabel} workspace
             </div>
           </div>
 
           {routes.length === 0 ? (
-            <div className="rounded-[1.25rem] border border-dashed border-border/70 bg-background/45 p-12 text-center text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
               <p className="font-medium">{t('settings.routing.empty')}</p>
               <p className="mt-2 text-xs">{t('modelManagement.emptyRoutesHint')}</p>
             </div>
@@ -191,7 +191,7 @@ export function RoutingWorkspace({
                 <span />
               </div>
               {routes.map((entry, index) => (
-                <div key={entry.id} className="rounded-[1rem] border border-border/60 bg-background/80 p-3">
+                <div key={entry.id} className="rounded-lg border border-border bg-card p-3">
                   <div className="mb-3 flex items-center justify-between md:hidden">
                     <Badge variant="outline" className="text-[11px]">
                       #{index + 1}
@@ -249,7 +249,7 @@ export function RoutingWorkspace({
           )}
         </div>
 
-        <div className="space-y-3 rounded-[1.25rem] border border-border/70 bg-background/55 p-4">
+        <div className="space-y-3 rounded-lg border border-border bg-secondary p-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <Label className="text-sm font-semibold text-foreground">{t('settings.routing.suggested')}</Label>
@@ -276,7 +276,7 @@ export function RoutingWorkspace({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 rounded-[1.25rem] border border-white/50 bg-card/82 p-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <p className="text-sm font-medium">{t('modelManagement.actions.footerTitle')}</p>
             <p className="text-xs text-muted-foreground">
@@ -325,26 +325,18 @@ export function RoutingWorkspace({
 function RoutingWorkspaceStat({
   helper,
   label,
-  tone,
   value
 }: {
   helper: string
   label: string
-  tone: 'amber' | 'blue' | 'emerald' | 'rose'
+  tone?: string
   value: string
 }) {
-  const toneClassName = {
-    blue: 'border-blue-200 bg-blue-50/70 text-blue-700',
-    emerald: 'border-emerald-200 bg-emerald-50/70 text-emerald-700',
-    amber: 'border-amber-200 bg-amber-50/70 text-amber-700',
-    rose: 'border-rose-200 bg-rose-50/70 text-rose-700'
-  }[tone]
-
   return (
-    <div className={cn('rounded-[1.15rem] border px-4 py-3', toneClassName)}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-80">{label}</p>
-      <p className="mt-2 truncate text-base font-semibold">{value}</p>
-      <p className="mt-1 text-xs opacity-80">{helper}</p>
+    <div className="rounded-lg border border-border bg-card px-4 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-2 truncate text-base font-semibold text-foreground">{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
     </div>
   )
 }
@@ -379,7 +371,7 @@ function RoutingPresetsSection({
   const { t } = useTranslation()
 
   return (
-    <div className="rounded-[1.25rem] border border-dashed border-border/70 bg-background/45">
+    <div className="rounded-lg border border-dashed border-border bg-card">
       <button
         type="button"
         className="flex w-full items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-primary/5"
@@ -422,7 +414,7 @@ function RoutingPresetsSection({
                   return (
                     <div
                       key={preset.name}
-                      className="flex flex-col gap-3 rounded-[1.15rem] border border-white/50 bg-card/88 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)] sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-3 rounded-lg border border-border bg-secondary px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <Tooltip>
                         <TooltipTrigger asChild>

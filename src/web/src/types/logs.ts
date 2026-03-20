@@ -24,8 +24,10 @@ export interface LogRecord {
 }
 
 export interface LogPayload {
-  prompt: string | null
-  response: string | null
+  client_request: string | null
+  upstream_request: string | null
+  upstream_response: string | null
+  client_response: string | null
 }
 
 export interface LogDetail extends LogRecord {

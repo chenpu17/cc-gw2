@@ -299,9 +299,12 @@
 - TTFT / TPOT / latency
 - API Key 信息
 - 脱敏后的 API Key 原值展示
-- 请求 payload
-- 响应 payload
-- 支持复制请求/响应载荷
+- 客户端请求 payload
+- 上游请求 payload
+- 上游响应 payload
+- 客户端响应 payload
+- 在未发生协议改写时可退化为 2 个 payload 区块；发生协议改写时应支持 4 个独立区块
+- 支持复制各个 payload 区块内容
 
 ### 查询与浏览体验
 
@@ -741,8 +744,6 @@ API Key 支持限制到：
 - log level
 - store request payloads
 - store response payloads
-- request logging
-- response logging
 - enable routing fallback
 
 ### B. Protocol

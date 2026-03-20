@@ -38,7 +38,7 @@ use cc_gw_core::{
     events::{RecordEventInput, list_events, record_event},
     models::build_models_response,
     observability::{
-        LogQuery, RequestLogInput, RequestLogUpdate, UsageStats, cleanup_logs_before,
+        LogPayloadUpdate, LogQuery, RequestLogInput, RequestLogUpdate, UsageStats, cleanup_logs_before,
         clear_all_logs, compact_database, export_logs, finalize_request_log, get_daily_metrics,
         get_database_info, get_log_detail, get_metrics_overview, get_model_usage_metrics,
         get_recent_client_activity, increment_daily_metrics, insert_request_log, query_logs,
@@ -47,7 +47,7 @@ use cc_gw_core::{
     provider::{ProviderProtocol, ProxyRequest, forward_request},
     routing::{GatewayEndpoint, resolve_route},
     storage::initialize_database,
-    stream::{CrossProtocolStreamTransformer, SseStreamObserver},
+    stream::{CrossProtocolStreamTransformer, SseStreamObserver, materialize_stream_response},
     ui::resolve_web_dist,
 };
 use futures_util::TryStreamExt;

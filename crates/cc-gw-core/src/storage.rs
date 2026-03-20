@@ -86,6 +86,8 @@ mod tests {
         let conn = Connection::open(&db_path).expect("open migrated db");
         let request_log_columns =
             table_columns(&conn, "request_logs").expect("request log columns");
+        let request_payload_columns =
+            table_columns(&conn, "request_payloads").expect("request payload columns");
         for column in [
             "session_id",
             "source_ip",
@@ -104,6 +106,19 @@ mod tests {
             assert!(
                 request_log_columns.iter().any(|(name, _)| name == column),
                 "missing migrated column {column}"
+            );
+        }
+        for column in [
+            "prompt",
+            "response",
+            "client_request",
+            "upstream_request",
+            "upstream_response",
+            "client_response",
+        ] {
+            assert!(
+                request_payload_columns.iter().any(|(name, _)| name == column),
+                "missing migrated payload column {column}"
             );
         }
 
@@ -276,6 +291,10 @@ pub fn initialize_database(path: &Path) -> Result<()> {
           request_id INTEGER PRIMARY KEY,
           prompt BLOB,
           response BLOB,
+          client_request BLOB,
+          upstream_request BLOB,
+          upstream_response BLOB,
+          client_response BLOB,
           FOREIGN KEY(request_id) REFERENCES request_logs(id) ON DELETE CASCADE
         );
 
@@ -376,6 +395,10 @@ pub fn initialize_database(path: &Path) -> Result<()> {
     maybe_add_column(&conn, "request_logs", "api_key_value", "TEXT")?;
     maybe_add_column(&conn, "request_payloads", "prompt", "BLOB")?;
     maybe_add_column(&conn, "request_payloads", "response", "BLOB")?;
+    maybe_add_column(&conn, "request_payloads", "client_request", "BLOB")?;
+    maybe_add_column(&conn, "request_payloads", "upstream_request", "BLOB")?;
+    maybe_add_column(&conn, "request_payloads", "upstream_response", "BLOB")?;
+    maybe_add_column(&conn, "request_payloads", "client_response", "BLOB")?;
     maybe_add_column(&conn, "api_keys", "description", "TEXT")?;
     maybe_add_column(&conn, "api_keys", "key_ciphertext", "TEXT")?;
     maybe_add_column(&conn, "api_keys", "key_prefix", "TEXT")?;

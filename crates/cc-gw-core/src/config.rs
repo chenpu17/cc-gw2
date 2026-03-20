@@ -226,7 +226,9 @@ pub struct GatewayConfig {
     pub store_response_payloads: Option<bool>,
     pub store_payloads: Option<bool>,
     pub log_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub request_logging: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub response_logging: Option<bool>,
     pub body_limit: Option<u64>,
     pub web_auth: Option<WebAuthConfig>,
@@ -271,8 +273,8 @@ impl Default for GatewayConfig {
             store_response_payloads: Some(true),
             store_payloads: None,
             log_level: Some("info".to_string()),
-            request_logging: Some(true),
-            response_logging: Some(true),
+            request_logging: None,
+            response_logging: None,
             body_limit: Some(DEFAULT_BODY_LIMIT),
             web_auth: Some(WebAuthConfig::default()),
         }
@@ -476,6 +478,20 @@ mod tests {
         let parsed: GatewayConfig = serde_json::from_str(&raw).expect("parse saved config");
         assert_eq!(parsed.log_level.as_deref(), Some("info"));
         assert!(!raw.contains("very-very-long-legacy-value"));
+
+        let _ = fs::remove_dir_all(paths.home_dir);
+    }
+
+    #[test]
+    fn save_config_omits_legacy_request_and_response_logging_flags() {
+        let paths = test_paths("omit-legacy-logging-flags");
+        let config = GatewayConfig::default();
+
+        save_config(&paths, &config).expect("save config");
+
+        let raw = fs::read_to_string(&paths.config_path).expect("read saved config");
+        assert!(!raw.contains("requestLogging"));
+        assert!(!raw.contains("responseLogging"));
 
         let _ = fs::remove_dir_all(paths.home_dir);
     }

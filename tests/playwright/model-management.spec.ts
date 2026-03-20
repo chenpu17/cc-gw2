@@ -66,7 +66,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   expect(createdProvider.baseUrl).toBe(providerBaseUrl)
 
   const providerCard = page.locator(
-    `xpath=//h3[normalize-space()="${providerId}"]/ancestor::div[contains(@class,"surface-1")][1]`
+    `xpath=//h3[normalize-space()="${providerId}"]/ancestor::div[@data-testid="provider-card"][1]`
   )
   await expect(providerCard.getByRole('button', { name: '测试连接' })).toBeVisible()
   await providerCard.getByRole('button', { name: '测试连接' }).click()
@@ -167,7 +167,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
 
   await page.getByRole('button', { name: /模型提供商/ }).click()
   const updatedProviderCard = page.locator(
-    'xpath=//h3[normalize-space()="Playwright Provider Updated"]/ancestor::div[contains(@class,"surface-1")][1]'
+    'xpath=//h3[normalize-space()="Playwright Provider Updated"]/ancestor::div[@data-testid="provider-card"][1]'
   )
   await updatedProviderCard.getByRole('button', { name: '删除' }).click()
   const deleteProviderDialog = page.getByRole('dialog', { name: '删除' })
@@ -199,7 +199,7 @@ test('model management supports provider edit, delete, route reset, and preset d
   await drawer.getByRole('button', { name: '保存' }).click()
 
   const providerCard = page.locator(
-    `xpath=//h3[normalize-space()="${providerId}"]/ancestor::div[contains(@class,"surface-1")][1]`
+    `xpath=//h3[normalize-space()="${providerId}"]/ancestor::div[@data-testid="provider-card"][1]`
   )
   await providerCard.getByRole('button', { name: '编辑' }).click()
   const editDrawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
@@ -208,7 +208,7 @@ test('model management supports provider edit, delete, route reset, and preset d
   await expect(page.getByText(`已更新 Provider：${providerId}-edited`)).toBeVisible()
 
   const editedProviderCard = page.locator(
-    `xpath=//h3[normalize-space()="${providerId}-edited"]/ancestor::div[contains(@class,"surface-1")][1]`
+    `xpath=//h3[normalize-space()="${providerId}-edited"]/ancestor::div[@data-testid="provider-card"][1]`
   )
   await editedProviderCard.getByRole('button', { name: '测试连接' }).click()
 

@@ -214,8 +214,6 @@ async function ensureConfigTemplate(port?: string): Promise<boolean> {
       logRetentionDays: 30,
       modelRoutes: {},
       logLevel: 'info',
-      requestLogging: true,
-      responseLogging: true,
       bodyLimit: 10 * 1024 * 1024,
       webAuth: {
         enabled: false,

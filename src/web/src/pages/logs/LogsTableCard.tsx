@@ -59,9 +59,9 @@ export function LogsTableCard(props: LogsTableCardProps) {
   } = props
 
   return (
-    <Card className="overflow-hidden border-[rgba(24,16,13,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(252,249,245,0.92))]">
+    <Card className="overflow-hidden">
       <CardContent className="p-0">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-[linear-gradient(135deg,rgba(225,93,73,0.05),rgba(217,169,64,0.03),rgba(255,255,255,0.76))] px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-secondary px-4 py-3">
           <div className="space-y-1">
             <p className="text-sm font-semibold">{t('logs.title')}</p>
             <p className="text-xs text-muted-foreground">
@@ -69,7 +69,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge className="border-transparent bg-[#121212] text-white hover:bg-[#121212]">Wide Table</Badge>
+            <Badge variant="secondary">Wide Table</Badge>
             <Badge variant="outline">{rowDensity === 'compact' ? t('logs.table.density.compact') : t('logs.table.density.comfortable')}</Badge>
             {showScrollHint ? (
               <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">Scroll for more</Badge>

@@ -67,11 +67,11 @@ export function PresetDiffDialog({
         </AppDialogHeader>
         <AppDialogBody>
           {!hasChanges ? (
-            <p className="rounded-[1.2rem] border border-border/70 bg-background/60 py-8 text-center text-sm text-muted-foreground">
+            <p className="rounded-lg border border-border bg-secondary py-8 text-center text-sm text-muted-foreground">
               {t('modelManagement.presets.diffEmpty')}
             </p>
           ) : (
-            <div className="max-h-80 space-y-2 rounded-[1.2rem] border border-border/70 bg-background/45 p-3 text-sm">
+            <div className="max-h-80 space-y-2 rounded-lg border border-border bg-secondary p-3 text-sm">
               {added.map(([source, target]) => (
                 <div
                   key={`add-${source}`}

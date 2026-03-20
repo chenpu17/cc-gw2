@@ -70,8 +70,18 @@ pub struct LogListResult {
 
 #[derive(Debug, Serialize)]
 pub struct LogPayload {
-    pub prompt: Option<String>,
-    pub response: Option<String>,
+    pub client_request: Option<String>,
+    pub upstream_request: Option<String>,
+    pub upstream_response: Option<String>,
+    pub client_response: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LogPayloadUpdate<'a> {
+    pub client_request: Option<&'a str>,
+    pub upstream_request: Option<&'a str>,
+    pub upstream_response: Option<&'a str>,
+    pub client_response: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -272,25 +282,36 @@ pub fn finalize_request_log(db_path: &Path, id: i64, update: &RequestLogUpdate) 
     Ok(())
 }
 
-pub fn upsert_request_payload(
-    db_path: &Path,
-    request_id: i64,
-    prompt: Option<&str>,
-    response: Option<&str>,
-) -> Result<()> {
-    if prompt.is_none() && response.is_none() {
+pub fn upsert_request_payload(db_path: &Path, request_id: i64, payload: &LogPayloadUpdate<'_>) -> Result<()> {
+    if payload.client_request.is_none()
+        && payload.upstream_request.is_none()
+        && payload.upstream_response.is_none()
+        && payload.client_response.is_none()
+    {
         return Ok(());
     }
     let conn = open_db(db_path)?;
-    let prompt_blob = prompt.map(compress_payload).transpose()?;
-    let response_blob = response.map(compress_payload).transpose()?;
+    let client_request_blob = payload.client_request.map(compress_payload).transpose()?;
+    let upstream_request_blob = payload.upstream_request.map(compress_payload).transpose()?;
+    let upstream_response_blob = payload.upstream_response.map(compress_payload).transpose()?;
+    let client_response_blob = payload.client_response.map(compress_payload).transpose()?;
     conn.execute(
-        "INSERT INTO request_payloads (request_id, prompt, response)
-         VALUES (?1, ?2, ?3)
+        "INSERT INTO request_payloads (
+           request_id, client_request, upstream_request, upstream_response, client_response
+         )
+         VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT(request_id) DO UPDATE SET
-           prompt = COALESCE(excluded.prompt, request_payloads.prompt),
-           response = COALESCE(excluded.response, request_payloads.response)",
-        params![request_id, prompt_blob, response_blob],
+           client_request = COALESCE(excluded.client_request, request_payloads.client_request),
+           upstream_request = COALESCE(excluded.upstream_request, request_payloads.upstream_request),
+           upstream_response = COALESCE(excluded.upstream_response, request_payloads.upstream_response),
+           client_response = COALESCE(excluded.client_response, request_payloads.client_response)",
+        params![
+            request_id,
+            client_request_blob,
+            upstream_request_blob,
+            upstream_response_blob,
+            client_response_blob
+        ],
     )?;
     Ok(())
 }
@@ -435,6 +456,36 @@ fn bind_strings<'a>(
     Ok(items)
 }
 
+fn build_log_payload(
+    legacy_prompt: Option<Vec<u8>>,
+    legacy_response: Option<Vec<u8>>,
+    client_request: Option<Vec<u8>>,
+    upstream_request: Option<Vec<u8>>,
+    upstream_response: Option<Vec<u8>>,
+    client_response: Option<Vec<u8>>,
+) -> Option<LogPayload> {
+    let client_request = decompress_payload(client_request).or_else(|| decompress_payload(legacy_prompt));
+    let client_response =
+        decompress_payload(client_response).or_else(|| decompress_payload(legacy_response));
+    let upstream_request = decompress_payload(upstream_request);
+    let upstream_response = decompress_payload(upstream_response);
+
+    if client_request.is_none()
+        && upstream_request.is_none()
+        && upstream_response.is_none()
+        && client_response.is_none()
+    {
+        None
+    } else {
+        Some(LogPayload {
+            client_request,
+            upstream_request,
+            upstream_response,
+            client_response,
+        })
+    }
+}
+
 pub fn query_logs(db_path: &Path, query: &LogQuery) -> Result<LogListResult> {
     let conn = open_db(db_path)?;
     let limit = query.limit.clamp(1, 200);
@@ -505,17 +556,25 @@ pub fn get_log_detail(db_path: &Path, id: i64) -> Result<Option<LogDetail>> {
     };
     let payload = conn
         .query_row(
-            "SELECT prompt, response FROM request_payloads WHERE request_id = ?1",
+            "SELECT prompt, response, client_request, upstream_request, upstream_response, client_response
+             FROM request_payloads WHERE request_id = ?1",
             params![id],
             |row| {
-                Ok(LogPayload {
-                    prompt: decompress_payload(row.get::<_, Option<Vec<u8>>>(0)?),
-                    response: decompress_payload(row.get::<_, Option<Vec<u8>>>(1)?),
-                })
+                Ok(build_log_payload(
+                    row.get::<_, Option<Vec<u8>>>(0)?,
+                    row.get::<_, Option<Vec<u8>>>(1)?,
+                    row.get::<_, Option<Vec<u8>>>(2)?,
+                    row.get::<_, Option<Vec<u8>>>(3)?,
+                    row.get::<_, Option<Vec<u8>>>(4)?,
+                    row.get::<_, Option<Vec<u8>>>(5)?,
+                ))
             },
         )
         .optional()?;
-    Ok(Some(LogDetail { record, payload }))
+    Ok(Some(LogDetail {
+        record,
+        payload: payload.flatten(),
+    }))
 }
 
 pub fn export_logs(db_path: &Path, query: &LogQuery) -> Result<Vec<ExportLogRecord>> {
@@ -527,7 +586,7 @@ pub fn export_logs(db_path: &Path, query: &LogQuery) -> Result<Vec<ExportLogReco
                 l.stream, l.latency_ms, l.status_code, l.input_tokens, l.output_tokens,
                 l.cached_tokens, l.cache_read_tokens, l.cache_creation_tokens, l.ttft_ms, l.tpot_ms,
                 l.error, l.api_key_id, l.api_key_name, l.api_key_value,
-                p.prompt, p.response
+                p.prompt, p.response, p.client_request, p.upstream_request, p.upstream_response, p.client_response
          FROM request_logs l
          LEFT JOIN request_payloads p ON p.request_id = l.id
          {where_clause}
@@ -566,15 +625,14 @@ pub fn export_logs(db_path: &Path, query: &LogQuery) -> Result<Vec<ExportLogReco
                 api_key_name: row.get(19)?,
                 api_key_value: row.get(20)?,
             },
-            payload: {
-                let prompt = decompress_payload(row.get::<_, Option<Vec<u8>>>(21)?);
-                let response = decompress_payload(row.get::<_, Option<Vec<u8>>>(22)?);
-                if prompt.is_none() && response.is_none() {
-                    None
-                } else {
-                    Some(LogPayload { prompt, response })
-                }
-            },
+            payload: build_log_payload(
+                row.get::<_, Option<Vec<u8>>>(21)?,
+                row.get::<_, Option<Vec<u8>>>(22)?,
+                row.get::<_, Option<Vec<u8>>>(23)?,
+                row.get::<_, Option<Vec<u8>>>(24)?,
+                row.get::<_, Option<Vec<u8>>>(25)?,
+                row.get::<_, Option<Vec<u8>>>(26)?,
+            ),
         })
     })?;
     let mut items = Vec::new();
@@ -971,6 +1029,63 @@ mod tests {
         assert_eq!(overview.today.cache_read_tokens, 7);
         assert_eq!(overview.today.cache_creation_tokens, 3);
         assert_eq!(overview.today.avg_latency_ms, 100);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn log_detail_falls_back_to_legacy_prompt_and_response_payloads() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-legacy-payload-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let request_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                session_id: Some("legacy-session".to_string()),
+                source_ip: Some("127.0.0.1".to_string()),
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "mock-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert request log");
+
+        let conn = open_db(&db_path).expect("open db");
+        conn.execute(
+            "INSERT INTO request_payloads (request_id, prompt, response) VALUES (?1, ?2, ?3)",
+            params![
+                request_id,
+                compress_payload("{\"legacy\":\"request\"}").expect("compress legacy request"),
+                compress_payload("{\"legacy\":\"response\"}").expect("compress legacy response")
+            ],
+        )
+        .expect("insert legacy payload row");
+
+        let detail = get_log_detail(&db_path, request_id)
+            .expect("get log detail")
+            .expect("detail exists");
+        let payload = detail.payload.expect("payload exists");
+        assert_eq!(
+            payload.client_request.as_deref(),
+            Some("{\"legacy\":\"request\"}")
+        );
+        assert_eq!(
+            payload.client_response.as_deref(),
+            Some("{\"legacy\":\"response\"}")
+        );
+        assert_eq!(payload.upstream_request, None);
+        assert_eq!(payload.upstream_response, None);
 
         let _ = std::fs::remove_dir_all(root);
     }

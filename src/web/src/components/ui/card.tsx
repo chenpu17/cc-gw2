@@ -4,18 +4,18 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const cardVariants = cva(
-  'rounded-[1.35rem] border border-white/60 bg-card/92 text-card-foreground backdrop-blur transition-all duration-200',
+  'rounded-lg border border-border bg-card text-card-foreground transition-all duration-200',
   {
     variants: {
       variant: {
         default:
-          'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-24px_rgba(15,23,42,0.26)] hover:shadow-[0_12px_36px_-24px_rgba(15,23,42,0.3)]',
+          'shadow-sm',
         elevated:
-          'shadow-[0_1px_2px_rgba(15,23,42,0.05),0_18px_48px_-28px_rgba(15,23,42,0.34)] hover:shadow-[0_18px_52px_-28px_rgba(15,23,42,0.38)]',
-        outline: 'border-border/80 bg-background/80 shadow-none',
+          'shadow-md',
+        outline: 'border-border bg-background shadow-none',
         ghost: 'border-transparent bg-transparent shadow-none',
         interactive:
-          'cursor-pointer shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-24px_rgba(15,23,42,0.26)] hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-[0_18px_42px_-26px_rgba(225,93,73,0.26)]',
+          'cursor-pointer shadow-sm hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md',
       },
     },
     defaultVariants: {

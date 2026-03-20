@@ -51,7 +51,7 @@ export function ProvidersWorkspace({
   const { t } = useTranslation()
 
   return (
-    <Card className="surface-1">
+    <Card>
       <CardContent className="space-y-6 pt-6">
         <SectionIntro
           eyebrow="Model Access"
@@ -94,12 +94,12 @@ export function ProvidersWorkspace({
           />
         </div>
 
-        <div className="rounded-[1.2rem] border border-blue-200/80 bg-blue-50/75 px-4 py-3 text-sm text-blue-900">
+        <div className="rounded-lg border border-border bg-accent px-4 py-3 text-sm text-primary">
           <p className="font-medium">{t('modelManagement.providersSemantics.title')}</p>
-          <p className="mt-1 leading-6 text-blue-800/90">{t('modelManagement.providersSemantics.description')}</p>
+          <p className="mt-1 leading-6 text-primary/80">{t('modelManagement.providersSemantics.description')}</p>
         </div>
 
-        <div className="grid gap-3 rounded-[1.35rem] border border-border/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.7),rgba(248,250,252,0.82))] p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_220px_auto]">
+        <div className="grid gap-3 rounded-lg border border-border bg-secondary p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_220px_auto]">
           <div className="space-y-2">
             <Label className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
               {t('providers.filters.searchPlaceholder')}
@@ -143,22 +143,22 @@ export function ProvidersWorkspace({
         </div>
 
         {configPending ? (
-          <div className="flex min-h-[200px] items-center justify-center rounded-[1.25rem] border border-border/70 bg-background/45 text-sm text-muted-foreground">
+          <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-border bg-secondary text-sm text-muted-foreground">
             {t('common.loading')}
           </div>
         ) : providersLength === 0 ? (
-          <div className="rounded-[1.25rem] border border-dashed border-border/70 bg-background/45 p-12 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
             <p className="font-medium">{t('providers.emptyState')}</p>
             <p className="mt-2 text-xs">{t('providers.emptyStateSub', { default: '点击上方按钮添加您的第一个提供商' })}</p>
           </div>
         ) : filteredProviders.length === 0 ? (
-          <div className="rounded-[1.25rem] border border-dashed border-border/70 bg-background/45 p-12 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
             <p className="font-medium">{t('providers.emptyFiltered')}</p>
           </div>
         ) : (
           <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">
             {filteredProviders.map((provider) => (
-              <Card key={provider.id} className="surface-1 flex flex-col overflow-hidden border-border/70">
+              <Card key={provider.id} className="flex flex-col overflow-hidden" data-testid="provider-card">
                 <CardContent className="flex flex-1 flex-col gap-4 pt-6">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-1">
@@ -167,7 +167,7 @@ export function ProvidersWorkspace({
                         {provider.type ? <TypeBadge type={provider.type} /> : null}
                       </div>
                       <p className="text-xs text-muted-foreground">ID: {provider.id}</p>
-                      <code className="block max-w-full break-all rounded-xl border border-border/70 bg-background/70 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+                      <code className="block max-w-full break-all rounded-lg border border-border bg-secondary px-2.5 py-1.5 text-[11px] text-muted-foreground">
                         {provider.baseUrl}
                       </code>
                     </div>
@@ -217,7 +217,7 @@ export function ProvidersWorkspace({
                     />
                   </div>
 
-                  <div className="space-y-2 rounded-[1.1rem] border border-border/70 bg-background/55 p-3">
+                  <div className="space-y-2 rounded-lg border border-border bg-secondary p-3">
                     <Label className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t('providers.card.modelsTitle')}</Label>
                     {provider.models && provider.models.length > 0 ? (
                       <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
@@ -232,7 +232,7 @@ export function ProvidersWorkspace({
                     )}
                   </div>
 
-                  <div className="mt-auto grid gap-2 border-t border-border/70 pt-4 sm:grid-cols-3">
+                  <div className="mt-auto grid gap-2 border-t border-border pt-4 sm:grid-cols-3">
                     <Button variant="default" size="sm" onClick={() => onOpenEdit(provider)} className="w-full">
                       {t('providers.actions.edit')}
                     </Button>
@@ -262,32 +262,25 @@ export function ProvidersWorkspace({
 function ProviderWorkspaceStat({
   helper,
   label,
-  tone,
   value
 }: {
   helper: string
   label: string
-  tone: 'amber' | 'blue' | 'emerald'
+  tone?: string
   value: string
 }) {
-  const toneClassName = {
-    blue: 'border-blue-200 bg-blue-50/70 text-blue-700',
-    emerald: 'border-emerald-200 bg-emerald-50/70 text-emerald-700',
-    amber: 'border-amber-200 bg-amber-50/70 text-amber-700'
-  }[tone]
-
   return (
-    <div className={cn('rounded-[1.15rem] border px-4 py-3', toneClassName)}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-80">{label}</p>
-      <p className="mt-2 text-base font-semibold">{value}</p>
-      <p className="mt-1 text-xs opacity-80">{helper}</p>
+    <div className="rounded-lg border border-border bg-card px-4 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-2 text-base font-semibold text-foreground">{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
     </div>
   )
 }
 
 function ProviderMetaCard({ label, value, truncate }: { label: string; value: string; truncate?: boolean }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-background/80 px-3 py-3">
+    <div className="rounded-lg border border-border bg-secondary px-3 py-2">
       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
       <p className={cn('mt-1 text-sm font-medium', truncate && 'truncate')}>{value}</p>
     </div>

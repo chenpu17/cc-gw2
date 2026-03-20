@@ -91,8 +91,6 @@ export interface GatewayConfig {
   storeResponsePayloads?: boolean
   storePayloads?: boolean
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
-  requestLogging?: boolean
-  responseLogging?: boolean
   bodyLimit?: number
   webAuth?: WebAuthConfig
 }

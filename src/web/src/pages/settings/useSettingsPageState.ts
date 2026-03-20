@@ -99,8 +99,6 @@ export function useSettingsPageState() {
     storeRequestPayloads: true,
     storeResponsePayloads: true,
     logLevel: 'info',
-    requestLogging: true,
-    responseLogging: true,
     bodyLimitMb: '10',
     enableRoutingFallback: false,
     httpEnabled: true,
@@ -329,11 +327,11 @@ export function useSettingsPageState() {
         storeRequestPayloads: form.storeRequestPayloads,
         storeResponsePayloads: form.storeResponsePayloads,
         logLevel: form.logLevel,
-        requestLogging: form.requestLogging,
-        responseLogging: form.responseLogging,
         bodyLimit: Math.max(1, Math.floor(bodyLimitValue * 1024 * 1024)),
         enableRoutingFallback: form.enableRoutingFallback
       }
+      delete (nextConfig as GatewayConfig & { requestLogging?: boolean }).requestLogging
+      delete (nextConfig as GatewayConfig & { responseLogging?: boolean }).responseLogging
 
       const payload = { ...nextConfig } as GatewayConfig & { webAuth?: never }
       delete payload.webAuth

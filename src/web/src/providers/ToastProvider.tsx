@@ -60,15 +60,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={toast.id}
             role="alert"
-            className={`rounded-md border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-800 ${
+            className={`rounded-md border border-border bg-card p-4 text-card-foreground shadow-lg ${
               toast.dismissing
                 ? 'animate-toast-out'
                 : 'animate-toast-in'
             } ${
               toast.variant === 'error'
-                ? 'border-red-200 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-900/40 dark:text-red-200'
+                ? 'border-destructive/20 bg-destructive/10 text-destructive'
                 : toast.variant === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+                ? 'border-[hsl(var(--success)/0.2)] bg-[hsl(var(--success-bg))] text-[hsl(var(--success)/1)]'
                 : ''
             }`}
           >
@@ -80,7 +80,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 aria-label="Dismiss"
-                className="text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                className="text-sm text-muted-foreground hover:text-foreground"
                 onClick={() => toast.id && dismissToast(toast.id)}
               >
                 ×

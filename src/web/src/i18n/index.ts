@@ -20,7 +20,11 @@ const resources = {
         apiKeys: 'API 密钥',
         settings: '设置',
         help: '使用指南',
-        about: '关于'
+        about: '关于',
+        group: {
+          overview: '概览',
+          admin: '管理'
+        }
       },
       language: {
         zh: '简体中文',
@@ -258,7 +262,7 @@ const resources = {
           visibleCount: '已显示 {{count}} 列',
           manualRefresh: '手动刷新',
           refreshing: '刷新中...',
-          export: '导出日志',
+          export: '导出 ZIP 日志',
           exporting: '导出中...',
           detail: '详情'
         },
@@ -318,7 +322,7 @@ const resources = {
           },
           exportSuccess: {
             title: '导出完成',
-            desc: '压缩日志文件已开始下载。'
+            desc: 'ZIP 压缩包已开始下载，包内包含 `logs.json`。'
           },
           exportError: {
             title: '导出失败',
@@ -360,8 +364,13 @@ const resources = {
             stream: 'Stream：{{value}}'
           },
           payload: {
-            request: '请求体',
-            response: '响应体',
+            title: 'Payloads',
+            helperWithUpstream: '客户端与上游链路内容已分开展示。',
+            helperClientOnly: '当前请求未发生额外链路改写，仅展示客户端侧内容。',
+            clientRequest: '客户端请求体',
+            upstreamRequest: '上游请求体',
+            upstreamResponse: '上游响应体',
+            clientResponse: '客户端响应体',
             emptyRequest: '暂无请求内容',
             emptyResponse: '暂无响应内容'
           },
@@ -839,9 +848,9 @@ const resources = {
           bodyLimitHint: '默认 10 MB；如 Claude Code 的 /compact 遇到 413，可适当调大。',
           defaults: '默认模型配置',
           storeRequestPayloads: '保存请求内容',
-          storeRequestPayloadsHint: '开启后会在日志数据库中保留完整请求原文，便于排查；如含敏感信息可关闭。',
+          storeRequestPayloadsHint: '开启后会在日志数据库中保留客户端请求；如发生协议转换，也会额外保存发往上游的请求体。',
           storeResponsePayloads: '保存响应内容',
-          storeResponsePayloadsHint: '开启后会记录模型返回的数据（含流式片段）；关闭可降低磁盘与隐私风险。',
+          storeResponsePayloadsHint: '开启后会保留客户端响应；如发生协议转换，也会保存上游原始响应。流式响应会整理为完整消息而不是 chunk 片段。',
           logLevel: '日志级别',
           logLevelOption: {
             fatal: '致命 (fatal)',
@@ -851,10 +860,6 @@ const resources = {
             debug: '调试 (debug)',
             trace: '跟踪 (trace)'
           },
-          requestLogging: '输出访问日志',
-          requestLoggingHint: '控制是否在终端打印“incoming request …”日志，方便观察访问来源。',
-          responseLogging: '输出响应日志',
-          responseLoggingHint: '控制是否输出“request completed …”日志（含状态码与耗时），关闭后终端更安静。',
           enableRoutingFallback: '启用模型回退策略',
           enableRoutingFallbackHint: '无匹配模型时自动落到首个可用模型。默认关闭，建议仅在明确需要时开启。'
         },
@@ -1017,7 +1022,7 @@ const resources = {
             title: '📊 日常使用指南',
             items: [
               '📈 **仪表盘监控**：实时查看请求量、Token 使用量、缓存命中率和响应时间（TTFT/TPOT）等关键指标',
-              '📋 **日志分析**：使用"请求日志"页面筛选和分析请求记录，支持按 Provider、模型、状态、时间范围等多维度过滤',
+              '📋 **日志分析**：使用"请求日志"页面筛选和分析请求记录；详情抽屉会按客户端/上游链路分开展示 payload 区块，便于定位协议改写问题',
               '🔄 **模型路由管理**：在"模型管理 → 路由配置"中设置模型映射规则，实现不同模型的智能路由',
               '🎛️ **系统配置**：在"设置"页面中调整日志保留策略、数据存储设置和运行参数',
               '🔐 **安全配置**：启用 Web UI 登录保护，设置用户名密码，确保管理接口安全'
@@ -1030,8 +1035,8 @@ const resources = {
               '🔌 **自定义接入点**：创建额外的 API 端点以支持不同的协议和独立路由配置。在"模型管理"页面可以创建和管理自定义接入点。\n\n**主要特性**：\n• 只需配置基础路径（如 `/my-endpoint`），系统会根据协议自动注册完整 API 路径\n• 支持 Anthropic 和 OpenAI 协议（Chat Completions / Responses API）\n• 每个端点可配置独立的模型路由规则\n• 一个端点可注册多个路径，支持多种协议\n\n**示例配置**：\n```json\n{\n  "id": "claude-api",\n  "label": "Claude 专用接入点",\n  "path": "/claude",\n  "protocol": "anthropic"\n}\n```\n配置后，客户端通过 `http://127.0.0.1:4100/claude/v1/messages` 访问（路径自动扩展）。',
               '🗃️ **数据备份**：定期备份 ~/.cc-gw/ 目录（包含配置、日志和数据库）',
               '🧹 **日志清理**：根据需要调整日志保留天数，或使用"日志清理"功能手动清理',
-              '🔍 **问题排查**：开启"保存请求/响应内容"以便调试客户端兼容性问题',
-              '⚡ **性能优化**：关闭不必要的访问日志可降低终端输出，提升服务性能',
+              '🔍 **问题排查**：开启"保存请求内容 / 保存响应内容"后，可在日志详情里复制客户端与上游 payload，用于调试兼容性问题',
+              '⚡ **性能优化**：如无需排障，可关闭 payload 存储以减少磁盘占用与敏感数据落盘风险',
               '🎯 **模型切换**：使用路由模板功能，实现不同 Provider 方案的一键切换',
               '📊 **监控告警**：结合 Dashboard 数据设置自定义监控，及时发现异常'
             ]
@@ -1309,7 +1314,11 @@ const resources = {
         apiKeys: 'API Keys',
         settings: 'Settings',
         help: 'Help',
-        about: 'About'
+        about: 'About',
+        group: {
+          overview: 'Overview',
+          admin: 'Admin'
+        }
       },
       language: {
         zh: 'Simplified Chinese',
@@ -1547,7 +1556,7 @@ const resources = {
           visibleCount: '{{count}} columns visible',
           manualRefresh: 'Manual refresh',
           refreshing: 'Refreshing...',
-          export: 'Export logs',
+          export: 'Export ZIP',
           exporting: 'Exporting...',
           detail: 'Detail'
         },
@@ -1611,7 +1620,7 @@ const resources = {
           },
           exportSuccess: {
             title: 'Export ready',
-            desc: 'A compressed log archive is downloading now.'
+            desc: 'The ZIP archive is downloading now and contains `logs.json`.'
           },
           exportError: {
             title: 'Export failed',
@@ -1649,8 +1658,13 @@ const resources = {
             stream: 'Stream: {{value}}'
           },
           payload: {
-            request: 'Request body',
-            response: 'Response body',
+            title: 'Payloads',
+            helperWithUpstream: 'Client and upstream payloads are shown separately.',
+            helperClientOnly: 'No upstream rewrite was recorded, so only client-side payloads are shown.',
+            clientRequest: 'Client request',
+            upstreamRequest: 'Upstream request',
+            upstreamResponse: 'Upstream response',
+            clientResponse: 'Client response',
             emptyRequest: 'No request content',
             emptyResponse: 'No response content'
           },
@@ -2128,9 +2142,9 @@ const resources = {
           bodyLimitHint: 'Default is 10 MB. Increase this value if Claude Code /compact returns 413 errors.',
           defaults: 'Default models',
           storeRequestPayloads: 'Store request bodies',
-          storeRequestPayloadsHint: 'Keep the full prompt for debugging; disable if payloads are sensitive.',
+          storeRequestPayloadsHint: 'Persist the client request body, and also the rewritten upstream request when protocol conversion happens.',
           storeResponsePayloads: 'Store response bodies',
-          storeResponsePayloadsHint: 'Persist the full model output (including streaming chunks). Disable to reduce disk usage.',
+          storeResponsePayloadsHint: 'Persist the client response body and, when applicable, the upstream response. Streamed responses are materialized into a complete offline message instead of raw chunks.',
           logLevel: 'Log level',
           logLevelOption: {
             fatal: 'Fatal',
@@ -2140,10 +2154,6 @@ const resources = {
             debug: 'Debug',
             trace: 'Trace'
           },
-          requestLogging: 'Emit request logs',
-          requestLoggingHint: 'Controls the “incoming request …” lines printed to the console. Helpful for tracing traffic.',
-          responseLogging: 'Emit response logs',
-          responseLoggingHint: 'Controls the “request completed …” entries (status + latency). Disable for quieter output.',
           enableRoutingFallback: 'Enable routing fallback',
           enableRoutingFallbackHint: 'Automatically fall back to the first available model when no mapping matches. Disabled by default; enable only if you need legacy behavior.'
         },
@@ -2306,9 +2316,9 @@ const resources = {
             title: '4. Daily Usage',
             items: [
               'Use the dashboard to keep an eye on request volume, token usage, cache hits, and TTFT/TPOT trends.',
-              '“Request Logs” provides rich filters plus full payload replay for debugging client/provider compatibility issues.',
+              '“Request Logs” provides rich filters plus separated client/upstream payload blocks, which makes protocol-rewrite debugging much easier.',
               '“Model Management” lets you switch defaults or update mappings without redeploying IDE extensions or automation scripts.',
-              '“Settings” controls log retention, payload storage, and log verbosity to suit your operations.'
+              '“Settings” controls log retention, payload storage, and runtime parameters to suit your operations.'
             ]
           },
           tips: {
@@ -2316,8 +2326,8 @@ const resources = {
             items: [
               'Use **direnv** to manage environment variables — create a .envrc file for automatic configuration loading.',
               '🔌 **Custom Endpoints**: Create additional API endpoints with different protocols and independent routing. Manage them in the "Model Management" page.\n\n**Key Features**:\n• Configure only the base path (e.g., `/my-endpoint`), the system automatically registers full API paths based on protocol\n• Support for Anthropic and OpenAI protocols (Chat Completions / Responses API)\n• Each endpoint can have independent model routing rules\n• One endpoint can register multiple paths with different protocols\n\n**Example Configuration**:\n```json\n{\n  "id": "claude-api",\n  "label": "Claude Dedicated Endpoint",\n  "path": "/claude",\n  "protocol": "anthropic"\n}\n```\nAfter configuration, clients access via `http://127.0.0.1:4100/claude/v1/messages` (path auto-expansion).',
-              'Enable "Store request/response bodies" to copy raw payloads from the log drawer when troubleshooting.',
-              'Turn off request or response logs individually to keep the console quiet while preserving metrics and database records.',
+              'Enable "Store request bodies" / "Store response bodies" to inspect and copy client-side and upstream payloads from the log drawer when troubleshooting.',
+              'If you do not need payload-level troubleshooting, turn off payload storage to reduce local disk usage and privacy exposure.',
               'Use **routing presets** to save common routing configurations and quickly switch between different provider setups.',
               'If you edit ~/.cc-gw/config.json manually, refresh the Settings page or restart cc-gw so the UI reflects the latest configuration.'
             ]

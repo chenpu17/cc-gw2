@@ -13,15 +13,15 @@ interface PageStateProps {
 }
 
 const toneClasses: Record<NonNullable<PageStateProps['tone']>, string> = {
-  default: 'border-border/70 bg-background/55',
-  primary: 'border-primary/15 bg-[linear-gradient(135deg,rgba(225,93,73,0.1),rgba(217,169,64,0.05),rgba(255,255,255,0.84))]',
-  danger: 'border-destructive/20 bg-[linear-gradient(135deg,rgba(239,68,68,0.08),rgba(248,113,113,0.04),rgba(255,255,255,0.82))]'
+  default: 'border-border bg-secondary',
+  primary: 'border-primary/15 bg-accent',
+  danger: 'border-destructive/20 bg-destructive/10'
 }
 
 const iconToneClasses: Record<NonNullable<PageStateProps['tone']>, string> = {
-  default: 'bg-background/80 text-primary shadow-[0_14px_32px_-24px_rgba(225,93,73,0.42)]',
-  primary: 'bg-primary/10 text-primary shadow-[0_14px_32px_-24px_rgba(225,93,73,0.42)]',
-  danger: 'bg-destructive/10 text-destructive shadow-[0_14px_32px_-24px_rgba(239,68,68,0.45)]'
+  default: 'bg-secondary text-primary',
+  primary: 'bg-primary/10 text-primary',
+  danger: 'bg-destructive/10 text-destructive'
 }
 
 export function PageState({
@@ -36,7 +36,7 @@ export function PageState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center rounded-[1.35rem] border border-dashed px-6 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]',
+        'flex flex-col items-center justify-center rounded-lg border border-dashed px-6 text-center',
         compact ? 'min-h-[180px] py-8' : 'min-h-[260px] py-12',
         toneClasses[tone],
         className

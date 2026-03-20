@@ -45,6 +45,43 @@ export function LogDetailsDrawer({
     providerLabelMap
   })
 
+  const payloadSections = record
+    ? [
+        {
+          key: 'client-request',
+          title: t('logs.detail.payload.clientRequest'),
+          value: record.payload?.client_request ?? null,
+          emptyLabel: t('logs.detail.payload.emptyRequest'),
+          copyToast: 'logs.detail.copy.requestSuccess'
+        },
+        ...(record.payload?.upstream_request
+          ? [{
+              key: 'upstream-request',
+              title: t('logs.detail.payload.upstreamRequest'),
+              value: record.payload.upstream_request,
+              emptyLabel: t('logs.detail.payload.emptyRequest'),
+              copyToast: 'logs.detail.copy.requestSuccess'
+            }]
+          : []),
+        ...(record.payload?.upstream_response
+          ? [{
+              key: 'upstream-response',
+              title: t('logs.detail.payload.upstreamResponse'),
+              value: record.payload.upstream_response,
+              emptyLabel: t('logs.detail.payload.emptyResponse'),
+              copyToast: 'logs.detail.copy.responseSuccess'
+            }]
+          : []),
+        {
+          key: 'client-response',
+          title: t('logs.detail.payload.clientResponse'),
+          value: record.payload?.client_response ?? null,
+          emptyLabel: t('logs.detail.payload.emptyResponse'),
+          copyToast: 'logs.detail.copy.responseSuccess'
+        }
+      ]
+    : []
+
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
       <AppDialogContent className="w-[min(96vw,1200px)] max-w-[1200px]">
@@ -80,13 +117,13 @@ export function LogDetailsDrawer({
             />
           ) : (
             <div className="space-y-6 text-sm">
-              <section className="space-y-4 rounded-[1.35rem] border border-white/50 bg-card/80 p-5">
+              <section className="space-y-4 rounded-lg border border-border bg-card p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       {t('logs.detail.infoSection')}
                     </h3>
-                    <div className="flex flex-wrap items-center gap-2 rounded-[1.1rem] border border-border/70 bg-background/70 p-3 text-xs shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary p-3 text-xs">
                       <span className="font-medium">
                         {t('logs.detail.summary.route', {
                           from: record.client_model ?? t('logs.detail.info.noRequestedModel'),
@@ -151,7 +188,7 @@ export function LogDetailsDrawer({
               </section>
 
               <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                <section className="space-y-3 rounded-[1.35rem] border border-white/50 bg-card/80 p-5">
+                <section className="space-y-3 rounded-lg border border-border bg-card p-5">
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t('logs.detail.apiKey.title')}
                   </h3>
@@ -180,7 +217,7 @@ export function LogDetailsDrawer({
                       value={apiKeyMeta?.lastUsedAt ? new Date(apiKeyMeta.lastUsedAt).toLocaleString() : t('common.noData')}
                     />
                   </dl>
-                  <div className="rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
+                  <div className="rounded-lg border border-border bg-secondary p-3 text-xs">
                     <p className="font-medium">{t('logs.detail.apiKey.rawMasked')}</p>
                     <p className="mt-1 break-all font-mono">
                       {record.api_key_value_available
@@ -193,38 +230,29 @@ export function LogDetailsDrawer({
                   </div>
                 </section>
 
-                <section className="space-y-4 rounded-[1.35rem] border border-white/50 bg-card/80 p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                <section className="space-y-4 rounded-lg border border-border bg-card p-5">
+                  <div className="space-y-1">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t('logs.detail.payload.request')}
+                      {t('logs.detail.payload.title')}
                     </h3>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleCopy(t('logs.detail.payload.request'), record.payload?.prompt, 'logs.detail.copy.requestSuccess')}
-                    >
-                      {t('common.actions.copy')}
-                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      {record.payload?.upstream_request || record.payload?.upstream_response
+                        ? t('logs.detail.payload.helperWithUpstream')
+                        : t('logs.detail.payload.helperClientOnly')}
+                    </p>
                   </div>
-                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
-                    {formatPayloadDisplay(record.payload?.prompt, t('logs.detail.payload.emptyRequest'))}
-                  </pre>
-
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t('logs.detail.payload.response')}
-                    </h3>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleCopy(t('logs.detail.payload.response'), record.payload?.response, 'logs.detail.copy.responseSuccess')}
-                    >
-                      {t('common.actions.copy')}
-                    </Button>
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    {payloadSections.map((section) => (
+                      <PayloadPanel
+                        key={section.key}
+                        title={section.title}
+                        value={section.value}
+                        emptyLabel={section.emptyLabel}
+                        onCopy={() => handleCopy(section.title, section.value, section.copyToast)}
+                        t={t}
+                      />
+                    ))}
                   </div>
-                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-[1rem] border border-border/70 bg-background/70 p-3 text-xs">
-                    {formatPayloadDisplay(record.payload?.response, t('logs.detail.payload.emptyResponse'))}
-                  </pre>
                 </section>
               </div>
             </div>
@@ -237,7 +265,7 @@ export function LogDetailsDrawer({
 
 function DetailStatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-3">
+    <div className="rounded-lg border border-border bg-secondary px-3 py-3">
       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
       <p className="mt-2 text-sm font-semibold">{value}</p>
     </div>
@@ -249,6 +277,36 @@ function DetailItem({ label, value }: { label: string; value: string | number | 
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="font-medium">{value ?? '-'}</dd>
+    </div>
+  )
+}
+
+function PayloadPanel({
+  emptyLabel,
+  onCopy,
+  title,
+  value,
+  t
+}: {
+  emptyLabel: string
+  onCopy: () => void
+  title: string
+  value: string | null
+  t: (key: string) => string
+}) {
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-secondary/40 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </h4>
+        <Button variant="outline" size="sm" onClick={onCopy}>
+          {t('common.actions.copy')}
+        </Button>
+      </div>
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-secondary p-3 text-xs">
+        {formatPayloadDisplay(value, emptyLabel)}
+      </pre>
     </div>
   )
 }

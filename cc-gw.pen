@@ -4796,29 +4796,7 @@
       "clip": true,
       "width": 1440,
       "height": 1024,
-      "fill": {
-        "type": "gradient",
-        "gradientType": "linear",
-        "enabled": true,
-        "rotation": 135,
-        "size": {
-          "height": 1
-        },
-        "colors": [
-          {
-            "color": "#ECF6FF",
-            "position": 0
-          },
-          {
-            "color": "#FFF3E2",
-            "position": 0.52
-          },
-          {
-            "color": "#F1EDFF",
-            "position": 1
-          }
-        ]
-      },
+      "fill": "#F8F9FA",
       "children": [
         {
           "id": "eTOvb",
@@ -4828,40 +4806,16 @@
           "name": "sidebar",
           "x": 0,
           "y": 0,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 180,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FFFFFF",
-                "position": 0
-              },
-              {
-                "color": "#EEF6FF",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#FFFFFF",
           "stroke": {
             "align": "inside",
             "thickness": 1,
-            "fill": "#D4E5FF"
+            "fill": "#DADCE0"
           },
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#9FBEFF22",
-            "offset": {
-              "x": 10,
-              "y": 0
-            },
-            "blur": 26,
-            "spread": -18
+            "color": "#00000000"
           },
           "descendants": {
             "nm75J": {
@@ -4944,7 +4898,7 @@
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#8AA9FF"
+                    "fill": "#C5D8FC"
                   },
                   "effect": {
                     "type": "shadow",
@@ -4968,7 +4922,8 @@
                     "edTIG": {
                       "iconFontName": "gauge",
                       "x": 184,
-                      "y": 12
+                      "y": 12,
+                      "fill": "#1a73e8"
                     }
                   }
                 },
@@ -5090,7 +5045,8 @@
             },
             "xqIDC": {
               "x": 208,
-              "y": 24
+              "y": 24,
+              "fill": "#1a73e8"
             }
           }
         },
@@ -5100,29 +5056,7 @@
           "name": "main",
           "width": "fill_container",
           "height": "fill_container",
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FCFEFF",
-                "position": 0
-              },
-              {
-                "color": "#F7FBFF",
-                "position": 0.6
-              },
-              {
-                "color": "#FFF9F2",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#F8F9FA",
           "layout": "vertical",
           "gap": 24,
           "padding": 32,
@@ -5132,45 +5066,21 @@
               "id": "9XqNZ",
               "name": "header",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#E5F1FF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#FFF0DD",
-                    "position": 0.56
-                  },
-                  {
-                    "color": "#F2EBFF",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 24,
+              "fill": "#FFFFFF",
+              "cornerRadius": 12,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D8E3FF"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#B4C6FF3C",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 20
-                },
-                "blur": 44,
-                "spread": -26
+                  "y": 1
+                }
               },
               "padding": [
                 20,
@@ -5258,7 +5168,7 @@
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#CADBFF"
+                        "fill": "#dadce0"
                       },
                       "height": "fit_content",
                       "x": 0,
@@ -5281,45 +5191,21 @@
               "id": "T7GkD",
               "name": "filters",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFFFFF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#F7FAFF",
-                    "position": 0.72
-                  },
-                  {
-                    "color": "#FFF6EC",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 20,
+              "fill": "#FFFFFF",
+              "cornerRadius": 12,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#DCE8FA"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#B6CCF629",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 16
-                },
-                "blur": 34,
-                "spread": -24
+                  "y": 1
+                }
               },
               "gap": 16,
               "padding": [
@@ -5339,7 +5225,12 @@
                   "descendants": {
                     "w9KWi": {
                       "width": "fill_container",
-                      "height": "fit_content"
+                      "height": "fit_content",
+                      "fill": {
+                        "type": "color",
+                        "color": "#FFFFFF",
+                        "enabled": false
+                      }
                     },
                     "yBLtW": {
                       "content": "Endpoint",
@@ -5348,7 +5239,8 @@
                     "J2yno": {
                       "width": "fill_container",
                       "height": "fit_content",
-                      "y": 26
+                      "y": 26,
+                      "fill": "#E8F0FE"
                     },
                     "8mNGM": {
                       "content": "All endpoints",
@@ -5374,7 +5266,12 @@
                   "descendants": {
                     "w9KWi": {
                       "width": "fill_container",
-                      "height": "fit_content"
+                      "height": "fit_content",
+                      "fill": {
+                        "type": "color",
+                        "color": "#FFFFFF",
+                        "enabled": false
+                      }
                     },
                     "yBLtW": {
                       "content": "Window",
@@ -5383,7 +5280,8 @@
                     "J2yno": {
                       "width": "fill_container",
                       "height": "fit_content",
-                      "y": 26
+                      "y": 26,
+                      "fill": "#E8F0FE"
                     },
                     "8mNGM": {
                       "content": "Last 14 days",
@@ -5413,7 +5311,8 @@
                     },
                     "sYa8v": {
                       "x": 16,
-                      "y": 4
+                      "y": 4,
+                      "fill": "#FFFFFF"
                     },
                     "8doiY": {
                       "content": "Auto refresh every 30s",
@@ -5439,40 +5338,20 @@
                   "height": "fit_content",
                   "x": 0,
                   "y": 0,
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#E4F1FF",
-                        "position": 0
-                      },
-                      {
-                        "color": "#CFE3FF",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#B8D1FF"
+                    "fill": "#DADCE0"
                   },
                   "effect": {
                     "type": "shadow",
                     "shadowType": "outer",
-                    "color": "#7FAEFF66",
+                    "color": "#1A73E814",
                     "offset": {
                       "x": 0,
-                      "y": 20
-                    },
-                    "blur": 42,
-                    "spread": -24
+                      "y": 2
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -5558,40 +5437,20 @@
                   "height": "fit_content",
                   "x": 284,
                   "y": 0,
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#ECFFF4",
-                        "position": 0
-                      },
-                      {
-                        "color": "#CEF6DE",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#BFE8CC"
+                    "fill": "#DADCE0"
                   },
                   "effect": {
                     "type": "shadow",
                     "shadowType": "outer",
-                    "color": "#74D89A5F",
+                    "color": "#34A85314",
                     "offset": {
                       "x": 0,
-                      "y": 20
-                    },
-                    "blur": 42,
-                    "spread": -24
+                      "y": 2
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -5677,40 +5536,20 @@
                   "height": "fit_content",
                   "x": 568,
                   "y": 0,
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#FFF7E8",
-                        "position": 0
-                      },
-                      {
-                        "color": "#FFDFA8",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#FFD08A"
+                    "fill": "#DADCE0"
                   },
                   "effect": {
                     "type": "shadow",
                     "shadowType": "outer",
-                    "color": "#FFBF5B66",
+                    "color": "#FBBC0414",
                     "offset": {
                       "x": 0,
-                      "y": 20
-                    },
-                    "blur": 42,
-                    "spread": -24
+                      "y": 2
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -5796,40 +5635,20 @@
                   "height": "fit_content",
                   "x": 852,
                   "y": 0,
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#F3F5FF",
-                        "position": 0
-                      },
-                      {
-                        "color": "#DDDFFF",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#C9D2FF"
+                    "fill": "#DADCE0"
                   },
                   "effect": {
                     "type": "shadow",
                     "shadowType": "outer",
-                    "color": "#9BA9FF62",
+                    "color": "#EA433514",
                     "offset": {
                       "x": 0,
-                      "y": 20
-                    },
-                    "blur": 42,
-                    "spread": -24
+                      "y": 2
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -5924,44 +5743,20 @@
                   "x": 0,
                   "y": 0,
                   "height": "fit_content",
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#FFFFFF",
-                        "position": 0
-                      },
-                      {
-                        "color": "#EEF6FF",
-                        "position": 0.56
-                      },
-                      {
-                        "color": "#F4ECFF",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#D6E6FF"
+                    "fill": "#DADCE0"
                   },
                   "effect": {
                     "type": "shadow",
                     "shadowType": "outer",
-                    "color": "#A7C2FF44",
+                    "color": "#0000001A",
                     "offset": {
                       "x": 0,
-                      "y": 24
-                    },
-                    "blur": 48,
-                    "spread": -28
+                      "y": 1
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -6144,44 +5939,20 @@
                   "x": 760,
                   "y": 0,
                   "height": "fit_content",
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#FFFDF8",
-                        "position": 0
-                      },
-                      {
-                        "color": "#FFF1D6",
-                        "position": 0.6
-                      },
-                      {
-                        "color": "#FFE6C0",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#F2D4A2"
+                    "fill": "#DADCE0"
                   },
                   "effect": {
                     "type": "shadow",
                     "shadowType": "outer",
-                    "color": "#F0BF6E44",
+                    "color": "#0000001A",
                     "offset": {
                       "x": 0,
-                      "y": 24
-                    },
-                    "blur": 48,
-                    "spread": -28
+                      "y": 1
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -6333,7 +6104,7 @@
                           "stroke": {
                             "align": "inside",
                             "thickness": 1,
-                            "fill": "#CADBFF"
+                            "fill": "#dadce0"
                           },
                           "effect": {
                             "type": "shadow",
@@ -6377,40 +6148,20 @@
               "x": 32,
               "y": 821,
               "height": "fit_content",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#F9FBFF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#EEF4FF",
-                    "position": 1
-                  }
-                ]
-              },
+              "fill": "#FFFFFF",
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D8E4FF"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#AFC8FF3D",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 18
-                },
-                "blur": 38,
-                "spread": -24
+                  "y": 1
+                }
               },
               "descendants": {
                 "SaWqo": {
@@ -6658,29 +6409,7 @@
       "clip": true,
       "width": 1440,
       "height": 1024,
-      "fill": {
-        "type": "gradient",
-        "gradientType": "linear",
-        "enabled": true,
-        "rotation": 135,
-        "size": {
-          "height": 1
-        },
-        "colors": [
-          {
-            "color": "#EEF7FF",
-            "position": 0
-          },
-          {
-            "color": "#FFF4E7",
-            "position": 0.55
-          },
-          {
-            "color": "#F6EEFF",
-            "position": 1
-          }
-        ]
-      },
+      "fill": "#F8F9FA",
       "children": [
         {
           "id": "prtuP",
@@ -6691,40 +6420,16 @@
           "x": 0,
           "y": 0,
           "width": 256,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 180,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FFFFFF",
-                "position": 0
-              },
-              {
-                "color": "#F3F8FF",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#FFFFFF",
           "stroke": {
             "align": "inside",
             "thickness": 1,
-            "fill": "#D4E5FF"
+            "fill": "#DADCE0"
           },
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#9FBEFF22",
-            "offset": {
-              "x": 10,
-              "y": 0
-            },
-            "blur": 26,
-            "spread": -18
+            "color": "#00000000"
           },
           "descendants": {
             "nm75J": {
@@ -6823,7 +6528,7 @@
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#8AA9FF"
+                    "fill": "#C5D8FC"
                   },
                   "effect": {
                     "type": "shadow",
@@ -6847,7 +6552,8 @@
                     "edTIG": {
                       "iconFontName": "list",
                       "x": 184,
-                      "y": 12
+                      "y": 12,
+                      "fill": "#1a73e8"
                     }
                   }
                 },
@@ -6946,7 +6652,8 @@
             },
             "xqIDC": {
               "x": 208,
-              "y": 24
+              "y": 24,
+              "fill": "#1a73e8"
             }
           }
         },
@@ -6956,29 +6663,7 @@
           "name": "main",
           "width": 1191,
           "height": 1032,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FCFDFF",
-                "position": 0
-              },
-              {
-                "color": "#F5FAFF",
-                "position": 0.6
-              },
-              {
-                "color": "#FFF8EF",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#F8F9FA",
           "layout": "vertical",
           "gap": 20,
           "padding": 32,
@@ -6988,45 +6673,21 @@
               "id": "stwQ6",
               "name": "header",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#E7F2FF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#FFEEDD",
-                    "position": 0.55
-                  },
-                  {
-                    "color": "#F1ECFF",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 24,
+              "fill": "#FFFFFF",
+              "cornerRadius": 12,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D8E4FF"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#B8C7FF38",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 20
-                },
-                "blur": 44,
-                "spread": -26
+                  "y": 1
+                }
               },
               "padding": [
                 20,
@@ -7104,7 +6765,7 @@
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#CADBFF"
+                        "fill": "#dadce0"
                       },
                       "effect": {
                         "type": "shadow",
@@ -7171,7 +6832,8 @@
                           "y": 10
                         },
                         "zF167": {
-                          "iconFontName": "download"
+                          "iconFontName": "download",
+                          "fill": "#FFFFFF"
                         },
                         "FT3cO": {
                           "content": "Export ZIP",
@@ -7207,45 +6869,21 @@
               "id": "Mbsvm",
               "name": "filters",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFFFFF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#F8FBFF",
-                    "position": 0.7
-                  },
-                  {
-                    "color": "#FFF5EC",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 20,
+              "fill": "#FFFFFF",
+              "cornerRadius": 12,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#DCE8FA"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#B6CCF629",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 16
-                },
-                "blur": 34,
-                "spread": -24
+                  "y": 1
+                }
               },
               "gap": 16,
               "padding": [
@@ -7264,7 +6902,12 @@
                   "descendants": {
                     "w9KWi": {
                       "width": "fill_container",
-                      "height": "fit_content"
+                      "height": "fit_content",
+                      "fill": {
+                        "type": "color",
+                        "color": "#FFFFFF",
+                        "enabled": false
+                      }
                     },
                     "yBLtW": {
                       "content": "Provider",
@@ -7273,7 +6916,8 @@
                     "J2yno": {
                       "width": "fill_container",
                       "height": "fit_content",
-                      "y": 26
+                      "y": 26,
+                      "fill": "#E8F0FE"
                     },
                     "8mNGM": {
                       "content": "All providers",
@@ -7298,7 +6942,12 @@
                   "descendants": {
                     "w9KWi": {
                       "width": "fill_container",
-                      "height": "fit_content"
+                      "height": "fit_content",
+                      "fill": {
+                        "type": "color",
+                        "color": "#FFFFFF",
+                        "enabled": false
+                      }
                     },
                     "yBLtW": {
                       "content": "Endpoint",
@@ -7307,7 +6956,8 @@
                     "J2yno": {
                       "width": "fill_container",
                       "height": "fit_content",
-                      "y": 26
+                      "y": 26,
+                      "fill": "#E8F0FE"
                     },
                     "8mNGM": {
                       "content": "All endpoints",
@@ -7332,7 +6982,12 @@
                   "descendants": {
                     "w9KWi": {
                       "width": "fill_container",
-                      "height": "fit_content"
+                      "height": "fit_content",
+                      "fill": {
+                        "type": "color",
+                        "color": "#FFFFFF",
+                        "enabled": false
+                      }
                     },
                     "yBLtW": {
                       "content": "Status",
@@ -7341,7 +6996,8 @@
                     "J2yno": {
                       "width": "fill_container",
                       "height": "fit_content",
-                      "y": 26
+                      "y": 26,
+                      "fill": "#E8F0FE"
                     },
                     "8mNGM": {
                       "content": "Success + Error",
@@ -7366,7 +7022,12 @@
                   "descendants": {
                     "FAr9l": {
                       "width": "fill_container",
-                      "height": "fit_content"
+                      "height": "fit_content",
+                      "fill": {
+                        "type": "color",
+                        "color": "#FFFFFF",
+                        "enabled": false
+                      }
                     },
                     "EVJFg": {
                       "content": "Search",
@@ -7375,7 +7036,8 @@
                     "FcSY0": {
                       "width": "fill_container",
                       "height": "fit_content",
-                      "y": 26
+                      "y": 26,
+                      "fill": "#E8F0FE"
                     },
                     "SdDrF": {
                       "content": "api key / model / session",
@@ -7392,45 +7054,21 @@
               "id": "gb3G4",
               "name": "quickViews",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#EEF5FF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#F4EEFF",
-                    "position": 0.52
-                  },
-                  {
-                    "color": "#FFF1E1",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 999,
+              "fill": "#FFFFFF",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D9E6FF"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#BBC8FF34",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 18
-                },
-                "blur": 34,
-                "spread": -22
+                  "y": 1
+                }
               },
               "gap": 12,
               "padding": [
@@ -7462,6 +7100,7 @@
                   "x": 91,
                   "y": 10,
                   "height": "fit_content",
+                  "fill": "#FFFFFF",
                   "descendants": {
                     "lsCeq": {
                       "content": "Errors"
@@ -7476,6 +7115,7 @@
                   "x": 191,
                   "y": 10,
                   "height": "fit_content",
+                  "fill": "#FFFFFF",
                   "descendants": {
                     "lsCeq": {
                       "content": "Today"
@@ -7490,6 +7130,7 @@
                   "x": 292,
                   "y": 10,
                   "height": "fit_content",
+                  "fill": "#FFFFFF",
                   "descendants": {
                     "lsCeq": {
                       "content": "Anthropic"
@@ -7504,6 +7145,7 @@
                   "x": 417,
                   "y": 10,
                   "height": "fit_content",
+                  "fill": "#FFFFFF",
                   "descendants": {
                     "lsCeq": {
                       "content": "OpenAI"
@@ -7528,40 +7170,20 @@
                   "name": "listCard",
                   "x": 0,
                   "y": 0,
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#FFFFFF",
-                        "position": 0
-                      },
-                      {
-                        "color": "#F6FAFF",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#D7E5FF"
+                    "fill": "#DADCE0"
                   },
                   "effect": {
                     "type": "shadow",
                     "shadowType": "outer",
-                    "color": "#A7C8FF33",
+                    "color": "#0000001A",
                     "offset": {
                       "x": 0,
-                      "y": 22
-                    },
-                    "blur": 42,
-                    "spread": -28
+                      "y": 1
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -7658,7 +7280,7 @@
                           "stroke": {
                             "align": "inside",
                             "thickness": 1,
-                            "fill": "#D8E6FF"
+                            "fill": "#dadce0"
                           },
                           "effect": {
                             "type": "shadow",
@@ -7844,7 +7466,7 @@
                                   "type": "text",
                                   "id": "VIOq8",
                                   "name": "cRHead",
-                                  "fill": "#616167",
+                                  "fill": "#5f6368",
                                   "textGrowth": "fixed-width",
                                   "width": 50,
                                   "content": "Cache R",
@@ -7857,7 +7479,7 @@
                                   "type": "text",
                                   "id": "SWd8Q",
                                   "name": "cWHead",
-                                  "fill": "#616167",
+                                  "fill": "#5f6368",
                                   "textGrowth": "fixed-width",
                                   "width": 50,
                                   "content": "Cache W",
@@ -7908,7 +7530,7 @@
                                   "type": "text",
                                   "id": "1Howk",
                                   "name": "tpotHead",
-                                  "fill": "#616167",
+                                  "fill": "#5f6368",
                                   "textGrowth": "fixed-width",
                                   "width": 44,
                                   "content": "TPOT",
@@ -7959,7 +7581,7 @@
                                   "type": "text",
                                   "id": "GQckC",
                                   "name": "errHead",
-                                  "fill": "#616167",
+                                  "fill": "#5f6368",
                                   "textGrowth": "fixed-width",
                                   "width": 92,
                                   "content": "Error",
@@ -8144,7 +7766,7 @@
                                   "type": "text",
                                   "id": "yvFg5",
                                   "name": "r1cr",
-                                  "fill": "#2A2933",
+                                  "fill": "#202124",
                                   "textGrowth": "fixed-width",
                                   "width": 50,
                                   "content": "0.8k",
@@ -8157,7 +7779,7 @@
                                   "type": "text",
                                   "id": "jyyKU",
                                   "name": "r1cw",
-                                  "fill": "#2A2933",
+                                  "fill": "#202124",
                                   "textGrowth": "fixed-width",
                                   "width": 50,
                                   "content": "0.3k",
@@ -8208,7 +7830,7 @@
                                   "type": "text",
                                   "id": "o777I",
                                   "name": "r1tp",
-                                  "fill": "#2A2933",
+                                  "fill": "#202124",
                                   "textGrowth": "fixed-width",
                                   "width": 44,
                                   "content": "14",
@@ -8259,7 +7881,7 @@
                                   "type": "text",
                                   "id": "QudTk",
                                   "name": "r1er",
-                                  "fill": "#616167",
+                                  "fill": "#5f6368",
                                   "textGrowth": "fixed-width",
                                   "width": 92,
                                   "content": "-",
@@ -8296,7 +7918,7 @@
                                   "stroke": {
                                     "align": "inside",
                                     "thickness": 1,
-                                    "fill": "#C8DAFF"
+                                    "fill": "#dadce0"
                                   },
                                   "padding": [
                                     6,
@@ -8308,7 +7930,7 @@
                                     {
                                       "type": "text",
                                       "id": "DBGhp",
-                                      "fill": "#5749F4",
+                                      "fill": "#1a73e8",
                                       "content": "详情",
                                       "lineHeight": 1.3,
                                       "fontFamily": "Inter",
@@ -8474,7 +8096,7 @@
                                   "type": "text",
                                   "id": "NLKfo",
                                   "name": "r2cr",
-                                  "fill": "#2A2933",
+                                  "fill": "#202124",
                                   "textGrowth": "fixed-width",
                                   "width": 50,
                                   "content": "0",
@@ -8487,7 +8109,7 @@
                                   "type": "text",
                                   "id": "f6LsK",
                                   "name": "r2cw",
-                                  "fill": "#2A2933",
+                                  "fill": "#202124",
                                   "textGrowth": "fixed-width",
                                   "width": 50,
                                   "content": "0.2k",
@@ -8538,7 +8160,7 @@
                                   "type": "text",
                                   "id": "t5MnL",
                                   "name": "r2tp",
-                                  "fill": "#2A2933",
+                                  "fill": "#202124",
                                   "textGrowth": "fixed-width",
                                   "width": 44,
                                   "content": "9",
@@ -8589,7 +8211,7 @@
                                   "type": "text",
                                   "id": "N2Ym2",
                                   "name": "r2er",
-                                  "fill": "#616167",
+                                  "fill": "#5f6368",
                                   "textGrowth": "fixed-width",
                                   "width": 92,
                                   "content": "-",
@@ -8626,7 +8248,7 @@
                                   "stroke": {
                                     "align": "inside",
                                     "thickness": 1,
-                                    "fill": "#C8DAFF"
+                                    "fill": "#dadce0"
                                   },
                                   "padding": [
                                     6,
@@ -8638,7 +8260,7 @@
                                     {
                                       "type": "text",
                                       "id": "xXvxh",
-                                      "fill": "#5749F4",
+                                      "fill": "#1a73e8",
                                       "content": "详情",
                                       "lineHeight": 1.3,
                                       "fontFamily": "Inter",
@@ -8804,7 +8426,7 @@
                                   "type": "text",
                                   "id": "TVRZs",
                                   "name": "r3cr",
-                                  "fill": "#2A2933",
+                                  "fill": "#202124",
                                   "textGrowth": "fixed-width",
                                   "width": 50,
                                   "content": "0",
@@ -8817,7 +8439,7 @@
                                   "type": "text",
                                   "id": "w1vRK",
                                   "name": "r3cw",
-                                  "fill": "#2A2933",
+                                  "fill": "#202124",
                                   "textGrowth": "fixed-width",
                                   "width": 50,
                                   "content": "0",
@@ -8868,7 +8490,7 @@
                                   "type": "text",
                                   "id": "Lmdmm",
                                   "name": "r3tp",
-                                  "fill": "#616167",
+                                  "fill": "#5f6368",
                                   "textGrowth": "fixed-width",
                                   "width": 44,
                                   "content": "-",
@@ -8919,7 +8541,7 @@
                                   "type": "text",
                                   "id": "LOsnF",
                                   "name": "r3er",
-                                  "fill": "#CC3314",
+                                  "fill": "#ea4335",
                                   "textGrowth": "fixed-width",
                                   "width": 92,
                                   "content": "quota exceeded",
@@ -8956,7 +8578,7 @@
                                   "stroke": {
                                     "align": "inside",
                                     "thickness": 1,
-                                    "fill": "#F0D1BE"
+                                    "fill": "#dadce0"
                                   },
                                   "padding": [
                                     6,
@@ -8968,7 +8590,7 @@
                                     {
                                       "type": "text",
                                       "id": "TFGo5",
-                                      "fill": "#CC3314",
+                                      "fill": "#ea4335",
                                       "content": "详情",
                                       "lineHeight": 1.3,
                                       "fontFamily": "Inter",
@@ -9009,29 +8631,7 @@
       "clip": true,
       "width": 1440,
       "height": 1024,
-      "fill": {
-        "type": "gradient",
-        "gradientType": "linear",
-        "enabled": true,
-        "rotation": 135,
-        "size": {
-          "height": 1
-        },
-        "colors": [
-          {
-            "color": "#EDF7FF",
-            "position": 0
-          },
-          {
-            "color": "#F3FBF5",
-            "position": 0.5
-          },
-          {
-            "color": "#FFF3E5",
-            "position": 1
-          }
-        ]
-      },
+      "fill": "#F8F9FA",
       "children": [
         {
           "id": "eamvs",
@@ -9041,40 +8641,16 @@
           "name": "sidebar",
           "x": 0,
           "y": 0,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 180,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FFFFFF",
-                "position": 0
-              },
-              {
-                "color": "#EEF5FF",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#FFFFFF",
           "stroke": {
             "align": "inside",
             "thickness": 1,
-            "fill": "#D4E5FF"
+            "fill": "#DADCE0"
           },
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#9FBEFF22",
-            "offset": {
-              "x": 10,
-              "y": 0
-            },
-            "blur": 26,
-            "spread": -18
+            "color": "#00000000"
           },
           "descendants": {
             "nm75J": {
@@ -9169,40 +8745,16 @@
                   "width": "fill_container",
                   "x": 16,
                   "y": 153,
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#6E63FF",
-                        "position": 0
-                      },
-                      {
-                        "color": "#4E8DFF",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#E8F0FE",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#8AA9FF"
+                    "fill": "#C5D8FC"
                   },
                   "effect": {
                     "type": "shadow",
                     "shadowType": "outer",
-                    "color": "#7C8FFF4A",
-                    "offset": {
-                      "x": 0,
-                      "y": 12
-                    },
-                    "blur": 26,
-                    "spread": -16
+                    "color": "#00000000"
                   },
                   "height": "fit_content",
                   "descendants": {
@@ -9215,7 +8767,8 @@
                     "edTIG": {
                       "iconFontName": "git-compare-arrows",
                       "x": 184,
-                      "y": 12
+                      "y": 12,
+                      "fill": "#1a73e8"
                     }
                   }
                 },
@@ -9296,7 +8849,8 @@
             },
             "xqIDC": {
               "x": 208,
-              "y": 24
+              "y": 24,
+              "fill": "#1a73e8"
             }
           }
         },
@@ -9306,29 +8860,7 @@
           "name": "main",
           "width": "fill_container",
           "height": "fill_container",
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FCFEFF",
-                "position": 0
-              },
-              {
-                "color": "#F5FAFF",
-                "position": 0.55
-              },
-              {
-                "color": "#FFF8EF",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#F8F9FA",
           "layout": "vertical",
           "gap": 20,
           "padding": 32,
@@ -9338,45 +8870,21 @@
               "id": "Zfzkk",
               "name": "header",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#E6F3FF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#ECFBF3",
-                    "position": 0.5
-                  },
-                  {
-                    "color": "#FFEEDD",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 24,
+              "fill": "#FFFFFF",
+              "cornerRadius": 12,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D7E5F8"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#AFCBFF39",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 20
-                },
-                "blur": 44,
-                "spread": -26
+                  "y": 1
+                }
               },
               "padding": [
                 20,
@@ -9470,7 +8978,8 @@
                           "y": 10
                         },
                         "zF167": {
-                          "iconFontName": "plus"
+                          "iconFontName": "plus",
+                          "fill": "#FFFFFF"
                         },
                         "FT3cO": {
                           "content": "Add Endpoint",
@@ -9488,45 +8997,21 @@
               "id": "LuBV6",
               "name": "tabsSection",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFFFFF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#F2F7FF",
-                    "position": 0.54
-                  },
-                  {
-                    "color": "#FFF4E7",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 24,
+              "fill": "#FFFFFF",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#DCE7FA"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#B5C8FF32",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 22
-                },
-                "blur": 40,
-                "spread": -24
+                  "y": 1
+                }
               },
               "layout": "vertical",
               "gap": 14,
@@ -9547,30 +9032,17 @@
                       "id": "hvJNC",
                       "name": "providersTab",
                       "width": "fill_container",
-                      "fill": {
-                        "type": "gradient",
-                        "gradientType": "linear",
-                        "enabled": true,
-                        "rotation": 135,
-                        "size": {
-                          "height": 1
-                        },
-                        "colors": [
-                          {
-                            "color": "#EAF3FF",
-                            "position": 0
-                          },
-                          {
-                            "color": "#D7E9FF",
-                            "position": 1
-                          }
-                        ]
-                      },
-                      "cornerRadius": 22,
+                      "fill": "#E8F0FE",
+                      "cornerRadius": 8,
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#A8C8FF"
+                        "fill": "#C5D8FC"
+                      },
+                      "effect": {
+                        "type": "shadow",
+                        "shadowType": "outer",
+                        "color": "#00000000"
                       },
                       "layout": "vertical",
                       "gap": 8,
@@ -9579,7 +9051,7 @@
                         {
                           "type": "text",
                           "id": "XNsX8",
-                          "fill": "#1D4ED8",
+                          "fill": "#1a73e8",
                           "content": "Providers",
                           "lineHeight": 1.3,
                           "fontFamily": "Inter",
@@ -9589,7 +9061,7 @@
                         {
                           "type": "text",
                           "id": "dtrIG",
-                          "fill": "#4B5563",
+                          "fill": "#5f6368",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
                           "content": "Provider 目录、搜索筛选、测试与编辑动作",
@@ -9605,30 +9077,17 @@
                       "id": "9YlLq",
                       "name": "anthropicTab",
                       "width": "fill_container",
-                      "fill": {
-                        "type": "gradient",
-                        "gradientType": "linear",
-                        "enabled": true,
-                        "rotation": 135,
-                        "size": {
-                          "height": 1
-                        },
-                        "colors": [
-                          {
-                            "color": "#FFF9F0",
-                            "position": 0
-                          },
-                          {
-                            "color": "#FDE7BF",
-                            "position": 1
-                          }
-                        ]
-                      },
-                      "cornerRadius": 22,
+                      "fill": "#FFFFFF",
+                      "cornerRadius": 8,
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#F0CA7A"
+                        "fill": "#DADCE0"
+                      },
+                      "effect": {
+                        "type": "shadow",
+                        "shadowType": "outer",
+                        "color": "#00000000"
                       },
                       "layout": "vertical",
                       "gap": 8,
@@ -9637,7 +9096,7 @@
                         {
                           "type": "text",
                           "id": "xwR1Y",
-                          "fill": "#2A2933",
+                          "fill": "#202124",
                           "content": "Anthropic",
                           "lineHeight": 1.3,
                           "fontFamily": "Inter",
@@ -9647,7 +9106,7 @@
                         {
                           "type": "text",
                           "id": "fwgIg",
-                          "fill": "#616167",
+                          "fill": "#5f6368",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
                           "content": "Claude 协议路由、validation、preset 与保存脏状态",
@@ -9663,30 +9122,17 @@
                       "id": "uyEoD",
                       "name": "openaiTab",
                       "width": "fill_container",
-                      "fill": {
-                        "type": "gradient",
-                        "gradientType": "linear",
-                        "enabled": true,
-                        "rotation": 135,
-                        "size": {
-                          "height": 1
-                        },
-                        "colors": [
-                          {
-                            "color": "#EFFCF6",
-                            "position": 0
-                          },
-                          {
-                            "color": "#D8F6E7",
-                            "position": 1
-                          }
-                        ]
-                      },
-                      "cornerRadius": 22,
+                      "fill": "#FFFFFF",
+                      "cornerRadius": 8,
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#B4E6C8"
+                        "fill": "#DADCE0"
+                      },
+                      "effect": {
+                        "type": "shadow",
+                        "shadowType": "outer",
+                        "color": "#00000000"
                       },
                       "layout": "vertical",
                       "gap": 8,
@@ -9695,7 +9141,7 @@
                         {
                           "type": "text",
                           "id": "Nyzs6",
-                          "fill": "#2A2933",
+                          "fill": "#202124",
                           "content": "OpenAI",
                           "lineHeight": 1.3,
                           "fontFamily": "Inter",
@@ -9705,7 +9151,7 @@
                         {
                           "type": "text",
                           "id": "XqdgO",
-                          "fill": "#616167",
+                          "fill": "#5f6368",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
                           "content": "OpenAI / Responses 兼容路由与建议模型入口",
@@ -9737,7 +9183,7 @@
                         {
                           "type": "text",
                           "id": "qtQbd",
-                          "fill": "#2A2933",
+                          "fill": "#202124",
                           "content": "Custom Endpoints",
                           "lineHeight": 1.3,
                           "fontFamily": "Inter",
@@ -9747,7 +9193,7 @@
                         {
                           "type": "text",
                           "id": "TCfTu",
-                          "fill": "#616167",
+                          "fill": "#5f6368",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
                           "content": "点击后切换下方唯一工作区，支持多路径协议组合。",
@@ -9763,30 +9209,17 @@
                       "id": "wjAZz",
                       "name": "chip1",
                       "width": 190,
-                      "fill": {
-                        "type": "gradient",
-                        "gradientType": "linear",
-                        "enabled": true,
-                        "rotation": 135,
-                        "size": {
-                          "height": 1
-                        },
-                        "colors": [
-                          {
-                            "color": "#F7F0FF",
-                            "position": 0
-                          },
-                          {
-                            "color": "#EEDFFF",
-                            "position": 1
-                          }
-                        ]
-                      },
-                      "cornerRadius": 20,
+                      "fill": "#F1F3F4",
+                      "cornerRadius": 8,
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#D2B4FF"
+                        "fill": "#DADCE0"
+                      },
+                      "effect": {
+                        "type": "shadow",
+                        "shadowType": "outer",
+                        "color": "#00000000"
                       },
                       "layout": "vertical",
                       "gap": 6,
@@ -9795,7 +9228,7 @@
                         {
                           "type": "text",
                           "id": "pNTNk",
-                          "fill": "#2A2933",
+                          "fill": "#202124",
                           "content": "/studio/chat",
                           "lineHeight": 1.4,
                           "fontFamily": "Inter",
@@ -9805,7 +9238,7 @@
                         {
                           "type": "text",
                           "id": "ScjrM",
-                          "fill": "#616167",
+                          "fill": "#5f6368",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
                           "content": "openai-auto · multi-path endpoint",
@@ -9821,30 +9254,17 @@
                       "id": "6AR7w",
                       "name": "chip2",
                       "width": 190,
-                      "fill": {
-                        "type": "gradient",
-                        "gradientType": "linear",
-                        "enabled": true,
-                        "rotation": 135,
-                        "size": {
-                          "height": 1
-                        },
-                        "colors": [
-                          {
-                            "color": "#F0FAFF",
-                            "position": 0
-                          },
-                          {
-                            "color": "#D7F1FF",
-                            "position": 1
-                          }
-                        ]
-                      },
-                      "cornerRadius": 20,
+                      "fill": "#F1F3F4",
+                      "cornerRadius": 8,
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#A9DDF6"
+                        "fill": "#DADCE0"
+                      },
+                      "effect": {
+                        "type": "shadow",
+                        "shadowType": "outer",
+                        "color": "#00000000"
                       },
                       "layout": "vertical",
                       "gap": 6,
@@ -9853,7 +9273,7 @@
                         {
                           "type": "text",
                           "id": "iJ3Me",
-                          "fill": "#2A2933",
+                          "fill": "#202124",
                           "content": "code-review",
                           "lineHeight": 1.4,
                           "fontFamily": "Inter",
@@ -9863,7 +9283,7 @@
                         {
                           "type": "text",
                           "id": "Q4rZs",
-                          "fill": "#616167",
+                          "fill": "#5f6368",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
                           "content": "anthropic · validation capable",
@@ -9879,30 +9299,17 @@
                       "id": "13efA",
                       "name": "chip3",
                       "width": 190,
-                      "fill": {
-                        "type": "gradient",
-                        "gradientType": "linear",
-                        "enabled": true,
-                        "rotation": 135,
-                        "size": {
-                          "height": 1
-                        },
-                        "colors": [
-                          {
-                            "color": "#FFF7F2",
-                            "position": 0
-                          },
-                          {
-                            "color": "#FFE4D6",
-                            "position": 1
-                          }
-                        ]
-                      },
-                      "cornerRadius": 20,
+                      "fill": "#F1F3F4",
+                      "cornerRadius": 8,
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#F4C6B0"
+                        "fill": "#DADCE0"
+                      },
+                      "effect": {
+                        "type": "shadow",
+                        "shadowType": "outer",
+                        "color": "#00000000"
                       },
                       "layout": "vertical",
                       "gap": 6,
@@ -9911,7 +9318,7 @@
                         {
                           "type": "text",
                           "id": "uF84f",
-                          "fill": "#2A2933",
+                          "fill": "#202124",
                           "content": "/agents/messages",
                           "lineHeight": 1.4,
                           "fontFamily": "Inter",
@@ -9921,7 +9328,7 @@
                         {
                           "type": "text",
                           "id": "IzkRo",
-                          "fill": "#616167",
+                          "fill": "#5f6368",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
                           "content": "openai-chat · custom route workspace",
@@ -9951,45 +9358,21 @@
                   "name": "providerWorkspace",
                   "width": "fill_container",
                   "height": "fill_container",
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#FFFFFF",
-                        "position": 0
-                      },
-                      {
-                        "color": "#EDF6FF",
-                        "position": 0.5
-                      },
-                      {
-                        "color": "#FFF0DD",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "cornerRadius": 26,
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#D8E7FF"
+                    "fill": "#dadce0"
                   },
                   "effect": {
                     "type": "shadow",
                     "shadowType": "outer",
-                    "color": "#A7C3FF48",
+                    "color": "#0000001A",
                     "offset": {
                       "x": 0,
-                      "y": 26
-                    },
-                    "blur": 56,
-                    "spread": -30
+                      "y": 1
+                    }
                   },
                   "layout": "vertical",
                   "gap": 16,
@@ -10014,7 +9397,7 @@
                             {
                               "type": "text",
                               "id": "sQoh3",
-                              "fill": "#2A2933",
+                              "fill": "#202124",
                               "content": "Providers Workspace",
                               "lineHeight": 1.3,
                               "fontFamily": "Inter",
@@ -10024,7 +9407,7 @@
                             {
                               "type": "text",
                               "id": "cvpJn",
-                              "fill": "#616167",
+                              "fill": "#5f6368",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
                               "content": "搜索、筛选、测试连接与编辑提供商都在同一工作区完成。",
@@ -10074,7 +9457,8 @@
                                   "y": 10
                                 },
                                 "zF167": {
-                                  "iconFontName": "plus"
+                                  "iconFontName": "plus",
+                                  "fill": "#FFFFFF"
                                 },
                                 "FT3cO": {
                                   "content": "Add Provider",
@@ -10105,7 +9489,12 @@
                           "descendants": {
                             "FAr9l": {
                               "width": "fill_container",
-                              "height": "fit_content"
+                              "height": "fit_content",
+                              "fill": {
+                                "type": "color",
+                                "color": "#FFFFFF",
+                                "enabled": false
+                              }
                             },
                             "EVJFg": {
                               "content": "Search",
@@ -10114,7 +9503,8 @@
                             "FcSY0": {
                               "width": "fill_container",
                               "height": "fit_content",
-                              "y": 26
+                              "y": 26,
+                              "fill": "#E8F0FE"
                             },
                             "SdDrF": {
                               "content": "api key / model / session",
@@ -10135,7 +9525,12 @@
                           "descendants": {
                             "w9KWi": {
                               "width": "fill_container",
-                              "height": "fit_content"
+                              "height": "fit_content",
+                              "fill": {
+                                "type": "color",
+                                "color": "#FFFFFF",
+                                "enabled": false
+                              }
                             },
                             "yBLtW": {
                               "content": "Provider Type",
@@ -10144,7 +9539,8 @@
                             "J2yno": {
                               "width": "fill_container",
                               "height": "fit_content",
-                              "y": 26
+                              "y": 26,
+                              "fill": "#E8F0FE"
                             },
                             "8mNGM": {
                               "content": "All types",
@@ -10183,34 +9579,17 @@
                       "id": "Lzq8L",
                       "name": "summary",
                       "width": "fill_container",
-                      "fill": {
-                        "type": "gradient",
-                        "gradientType": "linear",
-                        "enabled": true,
-                        "rotation": 135,
-                        "size": {
-                          "height": 1
-                        },
-                        "colors": [
-                          {
-                            "color": "#EEF5FF",
-                            "position": 0
-                          },
-                          {
-                            "color": "#F8FAFF",
-                            "position": 0.62
-                          },
-                          {
-                            "color": "#FFF2E4",
-                            "position": 1
-                          }
-                        ]
-                      },
-                      "cornerRadius": 20,
+                      "fill": "#F1F3F4",
+                      "cornerRadius": 8,
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#D9E6FF"
+                        "fill": "#DADCE0"
+                      },
+                      "effect": {
+                        "type": "shadow",
+                        "shadowType": "outer",
+                        "color": "#00000000"
                       },
                       "padding": 18,
                       "justifyContent": "space_between",
@@ -10218,7 +9597,7 @@
                         {
                           "type": "text",
                           "id": "fAVFB",
-                          "fill": "#2A2933",
+                          "fill": "#202124",
                           "content": "7 providers · 1 degraded · 3 custom",
                           "lineHeight": 1.4,
                           "fontFamily": "Inter",
@@ -10228,7 +9607,7 @@
                         {
                           "type": "text",
                           "id": "4j1eX",
-                          "fill": "#616167",
+                          "fill": "#5f6368",
                           "content": "按健康状态与默认模型概览",
                           "lineHeight": 1.4,
                           "fontFamily": "Inter",
@@ -10249,41 +9628,21 @@
                           "id": "CzxB3",
                           "name": "providerCard1",
                           "width": "fill_container",
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 135,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#EEF5FF",
-                                "position": 0
-                              },
-                              {
-                                "color": "#DDEBFF",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "cornerRadius": 18,
+                          "fill": "#FFFFFF",
+                          "cornerRadius": 8,
                           "stroke": {
                             "align": "inside",
                             "thickness": 1,
-                            "fill": "#BDD4FF"
+                            "fill": "#DADCE0"
                           },
                           "effect": {
                             "type": "shadow",
                             "shadowType": "outer",
-                            "color": "#98BEFF33",
+                            "color": "#0000001A",
                             "offset": {
                               "x": 0,
-                              "y": 18
-                            },
-                            "blur": 38,
-                            "spread": -26
+                              "y": 1
+                            }
                           },
                           "layout": "vertical",
                           "gap": 10,
@@ -10293,7 +9652,7 @@
                               "type": "text",
                               "id": "63AMd",
                               "name": "name1",
-                              "fill": "#2A2933",
+                              "fill": "#202124",
                               "content": "prod-anthropic · Anthropic",
                               "lineHeight": 1.3,
                               "fontFamily": "Inter",
@@ -10304,7 +9663,7 @@
                               "type": "text",
                               "id": "K5YPD",
                               "name": "meta1",
-                              "fill": "#616167",
+                              "fill": "#5f6368",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
                               "content": "default claude-3-7-sonnet · auth apiKey · 28 models",
@@ -10317,7 +9676,7 @@
                               "type": "text",
                               "id": "VEclf",
                               "name": "health1",
-                              "fill": "#1D4ED8",
+                              "fill": "#1a73e8",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
                               "content": "healthy · last test 38 ms · preset active",
@@ -10378,41 +9737,21 @@
                           "id": "9LHWG",
                           "name": "providerCard1",
                           "width": "fill_container",
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 135,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#FFF7EF",
-                                "position": 0
-                              },
-                              {
-                                "color": "#FFEAD8",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "cornerRadius": 18,
+                          "fill": "#FFFFFF",
+                          "cornerRadius": 8,
                           "stroke": {
                             "align": "inside",
                             "thickness": 1,
-                            "fill": "#F0D0BE"
+                            "fill": "#DADCE0"
                           },
                           "effect": {
                             "type": "shadow",
                             "shadowType": "outer",
-                            "color": "#F2BE8C33",
+                            "color": "#0000001A",
                             "offset": {
                               "x": 0,
-                              "y": 18
-                            },
-                            "blur": 38,
-                            "spread": -26
+                              "y": 1
+                            }
                           },
                           "layout": "vertical",
                           "gap": 10,
@@ -10422,7 +9761,7 @@
                               "type": "text",
                               "id": "GlsJU",
                               "name": "name1",
-                              "fill": "#2A2933",
+                              "fill": "#202124",
                               "content": "openrouter-core · OpenAI-compatible",
                               "lineHeight": 1.3,
                               "fontFamily": "Inter",
@@ -10433,7 +9772,7 @@
                               "type": "text",
                               "id": "IDwS4",
                               "name": "meta1",
-                              "fill": "#616167",
+                              "fill": "#5f6368",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
                               "content": "default gpt-4.1-mini · auth xAuthToken · 64 models",
@@ -10446,7 +9785,7 @@
                               "type": "text",
                               "id": "y3TAB",
                               "name": "health1",
-                              "fill": "#CC3314",
+                              "fill": "#ea4335",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
                               "content": "degraded · retry warning · custom baseUrl",
@@ -10507,41 +9846,21 @@
                           "id": "WsSBK",
                           "name": "providerCard1",
                           "width": "fill_container",
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 135,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#F2FFF7",
-                                "position": 0
-                              },
-                              {
-                                "color": "#DEF8E9",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "cornerRadius": 18,
+                          "fill": "#FFFFFF",
+                          "cornerRadius": 8,
                           "stroke": {
                             "align": "inside",
                             "thickness": 1,
-                            "fill": "#C5E9D2"
+                            "fill": "#DADCE0"
                           },
                           "effect": {
                             "type": "shadow",
                             "shadowType": "outer",
-                            "color": "#8FD8AE33",
+                            "color": "#0000001A",
                             "offset": {
                               "x": 0,
-                              "y": 18
-                            },
-                            "blur": 38,
-                            "spread": -26
+                              "y": 1
+                            }
                           },
                           "layout": "vertical",
                           "gap": 10,
@@ -10551,7 +9870,7 @@
                               "type": "text",
                               "id": "zaSw0",
                               "name": "name1",
-                              "fill": "#2A2933",
+                              "fill": "#202124",
                               "content": "deepseek-prod · DeepSeek",
                               "lineHeight": 1.3,
                               "fontFamily": "Inter",
@@ -10562,7 +9881,7 @@
                               "type": "text",
                               "id": "ACAYI",
                               "name": "meta1",
-                              "fill": "#616167",
+                              "fill": "#5f6368",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
                               "content": "default deepseek-chat · auth apiKey · 18 models",
@@ -10575,7 +9894,7 @@
                               "type": "text",
                               "id": "8cjwr",
                               "name": "health1",
-                              "fill": "#1D4ED8",
+                              "fill": "#1a73e8",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
                               "content": "healthy · wildcard ready · latency 91 ms",
@@ -10653,29 +9972,7 @@
       "clip": true,
       "width": 1440,
       "height": 1024,
-      "fill": {
-        "type": "gradient",
-        "gradientType": "linear",
-        "enabled": true,
-        "rotation": 135,
-        "size": {
-          "height": 1
-        },
-        "colors": [
-          {
-            "color": "#EFF7FF",
-            "position": 0
-          },
-          {
-            "color": "#FFF4E6",
-            "position": 0.52
-          },
-          {
-            "color": "#F5EEFF",
-            "position": 1
-          }
-        ]
-      },
+      "fill": "#F8F9FA",
       "children": [
         {
           "id": "fqxJV",
@@ -10685,40 +9982,16 @@
           "name": "sidebar",
           "x": 0,
           "y": 0,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 180,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FFFFFF",
-                "position": 0
-              },
-              {
-                "color": "#EEF7FF",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#FFFFFF",
           "stroke": {
             "align": "inside",
             "thickness": 1,
-            "fill": "#D4E5FF"
+            "fill": "#DADCE0"
           },
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#9FBEFF22",
-            "offset": {
-              "x": 10,
-              "y": 0
-            },
-            "blur": 26,
-            "spread": -18
+            "color": "#00000000"
           },
           "descendants": {
             "nm75J": {
@@ -10870,7 +10143,7 @@
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#8AA9FF"
+                    "fill": "#C5D8FC"
                   },
                   "effect": {
                     "type": "shadow",
@@ -10894,7 +10167,8 @@
                     "edTIG": {
                       "iconFontName": "key-round",
                       "x": 184,
-                      "y": 12
+                      "y": 12,
+                      "fill": "#1a73e8"
                     }
                   }
                 },
@@ -10940,7 +10214,8 @@
             },
             "xqIDC": {
               "x": 208,
-              "y": 24
+              "y": 24,
+              "fill": "#1a73e8"
             }
           }
         },
@@ -10950,29 +10225,7 @@
           "name": "main",
           "width": "fill_container",
           "height": "fill_container",
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FCFEFF",
-                "position": 0
-              },
-              {
-                "color": "#F7FBFF",
-                "position": 0.6
-              },
-              {
-                "color": "#FFF9F2",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#F8F9FA",
           "layout": "vertical",
           "gap": 20,
           "padding": 32,
@@ -10982,45 +10235,21 @@
               "id": "UXgJe",
               "name": "header",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#E8F3FF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#FFF0DE",
-                    "position": 0.54
-                  },
-                  {
-                    "color": "#F2ECFF",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 24,
+              "fill": "#FFFFFF",
+              "cornerRadius": 12,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#DCE3FF"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#B9C7FF38",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 20
-                },
-                "blur": 44,
-                "spread": -26
+                  "y": 1
+                }
               },
               "padding": [
                 20,
@@ -11113,7 +10342,8 @@
                           "y": 10
                         },
                         "zF167": {
-                          "iconFontName": "plus"
+                          "iconFontName": "plus",
+                          "fill": "#FFFFFF"
                         },
                         "FT3cO": {
                           "content": "Create API Key",
@@ -11131,45 +10361,21 @@
               "id": "UH0og",
               "name": "filters",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFFFFF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#F8FBFF",
-                    "position": 0.66
-                  },
-                  {
-                    "color": "#FFF5EC",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 20,
+              "fill": "#FFFFFF",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#DCE8FA"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#B6CCF629",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 16
-                },
-                "blur": 34,
-                "spread": -24
+                  "y": 1
+                }
               },
               "gap": 16,
               "padding": [
@@ -11188,7 +10394,12 @@
                   "descendants": {
                     "FAr9l": {
                       "width": "fill_container",
-                      "height": "fit_content"
+                      "height": "fit_content",
+                      "fill": {
+                        "type": "color",
+                        "color": "#FFFFFF",
+                        "enabled": false
+                      }
                     },
                     "EVJFg": {
                       "content": "Search",
@@ -11197,7 +10408,8 @@
                     "FcSY0": {
                       "width": "fill_container",
                       "height": "fit_content",
-                      "y": 26
+                      "y": 26,
+                      "fill": "#E8F0FE"
                     },
                     "SdDrF": {
                       "content": "name / description / endpoint",
@@ -11218,7 +10430,12 @@
                   "descendants": {
                     "w9KWi": {
                       "width": "fill_container",
-                      "height": "fit_content"
+                      "height": "fit_content",
+                      "fill": {
+                        "type": "color",
+                        "color": "#FFFFFF",
+                        "enabled": false
+                      }
                     },
                     "yBLtW": {
                       "content": "Status",
@@ -11227,7 +10444,8 @@
                     "J2yno": {
                       "width": "fill_container",
                       "height": "fit_content",
-                      "y": 26
+                      "y": 26,
+                      "fill": "#E8F0FE"
                     },
                     "8mNGM": {
                       "content": "All",
@@ -11252,7 +10470,12 @@
                   "descendants": {
                     "w9KWi": {
                       "width": "fill_container",
-                      "height": "fit_content"
+                      "height": "fit_content",
+                      "fill": {
+                        "type": "color",
+                        "color": "#FFFFFF",
+                        "enabled": false
+                      }
                     },
                     "yBLtW": {
                       "content": "Window",
@@ -11261,7 +10484,8 @@
                     "J2yno": {
                       "width": "fill_container",
                       "height": "fit_content",
-                      "y": 26
+                      "y": 26,
+                      "fill": "#E8F0FE"
                     },
                     "8mNGM": {
                       "content": "Last 7 days",
@@ -11293,29 +10517,20 @@
                   "x": 0,
                   "y": 0,
                   "height": "fit_content",
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#EDF6FF",
-                        "position": 0
-                      },
-                      {
-                        "color": "#DDEBFF",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#B7D3FF"
+                    "fill": "#dadce0"
+                  },
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#1A73E814",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -11402,29 +10617,20 @@
                   "x": 284,
                   "y": 0,
                   "height": "fit_content",
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#F3FFF7",
-                        "position": 0
-                      },
-                      {
-                        "color": "#DDF6E7",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#BFE8CB"
+                    "fill": "#dadce0"
+                  },
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#34A85314",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -11511,29 +10717,20 @@
                   "x": 568,
                   "y": 0,
                   "height": "fit_content",
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#FFF8EC",
-                        "position": 0
-                      },
-                      {
-                        "color": "#FFE7C5",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#F5CF90"
+                    "fill": "#dadce0"
+                  },
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#FBBC0414",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -11620,29 +10817,20 @@
                   "x": 852,
                   "y": 0,
                   "height": "fit_content",
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#F6F2FF",
-                        "position": 0
-                      },
-                      {
-                        "color": "#EBDDFF",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#D6B8FF"
+                    "fill": "#dadce0"
+                  },
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#EA433514",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -11774,7 +10962,7 @@
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#D7E5FF"
+                        "fill": "#DADCE0"
                       },
                       "effect": {
                         "type": "shadow",
@@ -12003,7 +11191,7 @@
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#D8E7FF"
+                        "fill": "#dadce0"
                       },
                       "effect": {
                         "type": "shadow",
@@ -12222,7 +11410,8 @@
                                   "y": 10
                                 },
                                 "zF167": {
-                                  "iconFontName": "plus"
+                                  "iconFontName": "plus",
+                                  "fill": "#FFFFFF"
                                 },
                                 "FT3cO": {
                                   "content": "Create Another Key",
@@ -12261,29 +11450,7 @@
       "clip": true,
       "width": 1440,
       "height": 1024,
-      "fill": {
-        "type": "gradient",
-        "gradientType": "linear",
-        "enabled": true,
-        "rotation": 135,
-        "size": {
-          "height": 1
-        },
-        "colors": [
-          {
-            "color": "#EEF7FF",
-            "position": 0
-          },
-          {
-            "color": "#FFF5E8",
-            "position": 0.55
-          },
-          {
-            "color": "#F6F0FF",
-            "position": 1
-          }
-        ]
-      },
+      "fill": "#F8F9FA",
       "children": [
         {
           "id": "KPyrK",
@@ -12293,40 +11460,16 @@
           "name": "sidebar",
           "x": 0,
           "y": 0,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 180,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FFFFFF",
-                "position": 0
-              },
-              {
-                "color": "#EEF7FF",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#FFFFFF",
           "stroke": {
             "align": "inside",
             "thickness": 1,
-            "fill": "#D4E5FF"
+            "fill": "#DADCE0"
           },
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#9FBEFF22",
-            "offset": {
-              "x": 10,
-              "y": 0
-            },
-            "blur": 26,
-            "spread": -18
+            "color": "#00000000"
           },
           "descendants": {
             "nm75J": {
@@ -12496,7 +11639,7 @@
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#8AA9FF"
+                    "fill": "#C5D8FC"
                   },
                   "effect": {
                     "type": "shadow",
@@ -12520,7 +11663,8 @@
                     "edTIG": {
                       "iconFontName": "settings-2",
                       "x": 184,
-                      "y": 12
+                      "y": 12,
+                      "fill": "#1a73e8"
                     }
                   }
                 }
@@ -12548,7 +11692,8 @@
             },
             "xqIDC": {
               "x": 208,
-              "y": 24
+              "y": 24,
+              "fill": "#1a73e8"
             }
           }
         },
@@ -12558,29 +11703,7 @@
           "name": "main",
           "width": "fill_container",
           "height": "fill_container",
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FCFEFF",
-                "position": 0
-              },
-              {
-                "color": "#F7FBFF",
-                "position": 0.6
-              },
-              {
-                "color": "#FFF9F2",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#F8F9FA",
           "layout": "vertical",
           "gap": 12,
           "padding": 24,
@@ -12590,45 +11713,21 @@
               "id": "1gGQL",
               "name": "header",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#E8F3FF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#FFF1E0",
-                    "position": 0.56
-                  },
-                  {
-                    "color": "#F3EDFF",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 24,
+              "fill": "#FFFFFF",
+              "cornerRadius": 12,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#DDE5FF"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#BACBFF38",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 20
-                },
-                "blur": 44,
-                "spread": -26
+                  "y": 1
+                }
               },
               "padding": [
                 18,
@@ -12704,7 +11803,7 @@
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#F2D39A"
+                        "fill": "#dadce0"
                       },
                       "padding": [
                         10,
@@ -12749,7 +11848,7 @@
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#BFD1FF"
+                        "fill": "#dadce0"
                       },
                       "padding": [
                         10,
@@ -12759,7 +11858,7 @@
                         {
                           "type": "text",
                           "id": "ViQZ2",
-                          "fill": "#3457B3",
+                          "fill": "#1a73e8",
                           "content": "Restart Required",
                           "fontFamily": "Inter",
                           "fontSize": 13,
@@ -12786,29 +11885,20 @@
                   "height": "fit_content",
                   "x": 0,
                   "y": 0,
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#EEF6FF",
-                        "position": 0
-                      },
-                      {
-                        "color": "#DDEBFF",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#B7D2FF"
+                    "fill": "#dadce0"
+                  },
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#0000001A",
+                    "offset": {
+                      "x": 0,
+                      "y": 1
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -12893,29 +11983,20 @@
                   "height": "fit_content",
                   "x": 574,
                   "y": 0,
-                  "fill": {
-                    "type": "gradient",
-                    "gradientType": "linear",
-                    "enabled": true,
-                    "rotation": 135,
-                    "size": {
-                      "height": 1
-                    },
-                    "colors": [
-                      {
-                        "color": "#F3FFF8",
-                        "position": 0
-                      },
-                      {
-                        "color": "#DEF7E8",
-                        "position": 1
-                      }
-                    ]
-                  },
+                  "fill": "#FFFFFF",
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#C4EBCF"
+                    "fill": "#dadce0"
+                  },
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#0000001A",
+                    "offset": {
+                      "x": 0,
+                      "y": 1
+                    }
                   },
                   "descendants": {
                     "SaWqo": {
@@ -13037,7 +12118,7 @@
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#D8E6FF"
+                    "fill": "#dadce0"
                   },
                   "effect": {
                     "type": "shadow",
@@ -13134,7 +12215,7 @@
                           "stroke": {
                             "align": "inside",
                             "thickness": 1,
-                            "fill": "#8AA9FF"
+                            "fill": "#C5D8FC"
                           },
                           "effect": {
                             "type": "shadow",
@@ -13158,7 +12239,8 @@
                             "edTIG": {
                               "iconFontName": "sliders-horizontal",
                               "x": 172,
-                              "y": 12
+                              "y": 12,
+                              "fill": "#1a73e8"
                             }
                           }
                         },
@@ -13292,7 +12374,7 @@
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#D8E7FF"
+                        "fill": "#dadce0"
                       },
                       "effect": {
                         "type": "shadow",
@@ -13459,7 +12541,8 @@
                                     },
                                     "sYa8v": {
                                       "x": 16,
-                                      "y": 4
+                                      "y": 4,
+                                      "fill": "#FFFFFF"
                                     },
                                     "8doiY": {
                                       "content": "Store request payloads",
@@ -13482,7 +12565,8 @@
                                     },
                                     "sYa8v": {
                                       "x": 16,
-                                      "y": 4
+                                      "y": 4,
+                                      "fill": "#FFFFFF"
                                     },
                                     "8doiY": {
                                       "content": "Store response payloads",
@@ -13505,7 +12589,8 @@
                                     },
                                     "sYa8v": {
                                       "x": 16,
-                                      "y": 4
+                                      "y": 4,
+                                      "fill": "#FFFFFF"
                                     },
                                     "8doiY": {
                                       "content": "Enable routing fallback",
@@ -13560,7 +12645,7 @@
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#F1D29B"
+                        "fill": "#dadce0"
                       },
                       "effect": {
                         "type": "shadow",
@@ -13765,7 +12850,7 @@
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#F1D7D7"
+                        "fill": "#dadce0"
                       },
                       "effect": {
                         "type": "shadow",
@@ -13984,7 +13069,8 @@
                                       "y": 10
                                     },
                                     "zF167": {
-                                      "iconFontName": "save"
+                                      "iconFontName": "save",
+                                      "fill": "#FFFFFF"
                                     },
                                     "FT3cO": {
                                       "content": "Review Before Save",
@@ -14014,45 +13100,21 @@
               "id": "N3sv5",
               "name": "saveBar",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#EEF5FF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#F6EEFF",
-                    "position": 0.56
-                  },
-                  {
-                    "color": "#FFF3E6",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 18,
+              "fill": "#FFFFFF",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D8E6FF"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#AFC8FF2E",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 16
-                },
-                "blur": 32,
-                "spread": -22
+                  "y": 1
+                }
               },
               "padding": 14,
               "justifyContent": "space_between",
@@ -14105,7 +13167,7 @@
                       "stroke": {
                         "align": "inside",
                         "thickness": 1,
-                        "fill": "#d4e2ff"
+                        "fill": "#dadce0"
                       },
                       "width": "fit_content",
                       "height": "fit_content",
@@ -14130,7 +13192,7 @@
                           "y": 10
                         },
                         "zF167": {
-                          "fill": "#fbfdff"
+                          "fill": "#ffffff"
                         },
                         "FT3cO": {
                           "content": "Save Auth",
@@ -14172,7 +13234,8 @@
                           "y": 10
                         },
                         "zF167": {
-                          "enabled": false
+                          "enabled": false,
+                          "fill": "#FFFFFF"
                         },
                         "FT3cO": {
                           "content": "Save Config",
@@ -21780,29 +20843,7 @@
       "clip": true,
       "width": 1440,
       "height": 1024,
-      "fill": {
-        "type": "gradient",
-        "gradientType": "linear",
-        "enabled": true,
-        "rotation": 135,
-        "size": {
-          "height": 1
-        },
-        "colors": [
-          {
-            "color": "#F4FAFF",
-            "position": 0
-          },
-          {
-            "color": "#FFF8EF",
-            "position": 0.48
-          },
-          {
-            "color": "#F7F2FF",
-            "position": 1
-          }
-        ]
-      },
+      "fill": "#F8F9FA",
       "children": [
         {
           "type": "frame",
@@ -21810,40 +20851,16 @@
           "name": "eventsSidebar",
           "width": 256,
           "height": "fill_container",
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 180,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FFFFFF",
-                "position": 0
-              },
-              {
-                "color": "#EFF7FF",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#FFFFFF",
           "stroke": {
             "align": "inside",
             "thickness": 1,
-            "fill": "#D4E5FF"
+            "fill": "#DADCE0"
           },
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#9FBEFF22",
-            "offset": {
-              "x": 10,
-              "y": 0
-            },
-            "blur": 26,
-            "spread": -18
+            "color": "#00000000"
           },
           "layout": "vertical",
           "children": [
@@ -22076,29 +21093,7 @@
           "name": "eventsMain",
           "width": "fill_container",
           "height": "fill_container",
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FCFEFF",
-                "position": 0
-              },
-              {
-                "color": "#F7FBFF",
-                "position": 0.65
-              },
-              {
-                "color": "#FFF9F3",
-                "position": 1
-              }
-            ]
-          },
+          "fill": "#F8F9FA",
           "layout": "vertical",
           "gap": 18,
           "padding": 28,
@@ -22108,45 +21103,21 @@
               "id": "qfvVl",
               "name": "eventsHeader",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFF4E8",
-                    "position": 0
-                  },
-                  {
-                    "color": "#EEF9F1",
-                    "position": 0.48
-                  },
-                  {
-                    "color": "#EAF2FF",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 24,
+              "fill": "#FFFFFF",
+              "cornerRadius": 12,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#F0DDBA"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#F0C98A34",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 20
-                },
-                "blur": 42,
-                "spread": -26
+                  "y": 1
+                }
               },
               "padding": [
                 18,
@@ -22212,7 +21183,7 @@
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#CADBFF"
+                    "fill": "#dadce0"
                   },
                   "effect": {
                     "type": "shadow",
@@ -22248,45 +21219,21 @@
               "id": "lp84Y",
               "name": "eventsFilters",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFFFFF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#F7FAFF",
-                    "position": 0.66
-                  },
-                  {
-                    "color": "#FFF6ED",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 22,
+              "fill": "#FFFFFF",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D8E6FF"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#A7C8FF33",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 18
-                },
-                "blur": 42,
-                "spread": -26
+                  "y": 1
+                }
               },
               "layout": "vertical",
               "gap": 12,
@@ -22471,7 +21418,7 @@
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#F0D7C1"
+                    "fill": "#dadce0"
                   },
                   "effect": {
                     "type": "shadow",
@@ -22659,7 +21606,7 @@
                   "stroke": {
                     "align": "inside",
                     "thickness": 1,
-                    "fill": "#CDE9D8"
+                    "fill": "#dadce0"
                   },
                   "effect": {
                     "type": "shadow",
@@ -22723,29 +21670,7 @@
       "clip": true,
       "width": 1440,
       "height": 1024,
-      "fill": {
-        "type": "gradient",
-        "gradientType": "linear",
-        "enabled": true,
-        "rotation": 135,
-        "size": {
-          "height": 1
-        },
-        "colors": [
-          {
-            "color": "#EEF7FF",
-            "position": 0
-          },
-          {
-            "color": "#F6FBF3",
-            "position": 0.5
-          },
-          {
-            "color": "#FFF4E7",
-            "position": 1
-          }
-        ]
-      },
+      "fill": "#F8F9FA",
       "layout": "vertical",
       "gap": 18,
       "padding": 32,
@@ -22755,45 +21680,21 @@
           "id": "FlLYU",
           "name": "helpHead",
           "width": "fill_container",
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#E8F3FF",
-                "position": 0
-              },
-              {
-                "color": "#F3EEFF",
-                "position": 0.54
-              },
-              {
-                "color": "#FFF0DE",
-                "position": 1
-              }
-            ]
-          },
-          "cornerRadius": 26,
+          "fill": "#FFFFFF",
+          "cornerRadius": 12,
           "stroke": {
             "align": "inside",
             "thickness": 1,
-            "fill": "#DAE4FF"
+            "fill": "#DADCE0"
           },
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#B7C8FF38",
+            "color": "#0000001A",
             "offset": {
               "x": 0,
-              "y": 20
-            },
-            "blur": 44,
-            "spread": -26
+              "y": 1
+            }
           },
           "layout": "vertical",
           "gap": 8,
@@ -22836,41 +21737,21 @@
               "type": "frame",
               "id": "y5rOt",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#EEF6FF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#DEECFF",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 20,
+              "fill": "#E8F0FE",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#B6D1FF"
+                "fill": "#C5D8FC"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#A7C8FF38",
+                "color": "#1A73E814",
                 "offset": {
                   "x": 0,
-                  "y": 20
-                },
-                "blur": 40,
-                "spread": -26
+                  "y": 1
+                }
               },
               "layout": "vertical",
               "gap": 6,
@@ -22903,41 +21784,21 @@
               "type": "frame",
               "id": "hX4uR",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFF8EF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#FFECCF",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 20,
+              "fill": "#FEF7E0",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#F0CE94"
+                "fill": "#dadce0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#F0CB8A38",
+                "color": "#FBBC0414",
                 "offset": {
                   "x": 0,
-                  "y": 20
-                },
-                "blur": 40,
-                "spread": -26
+                  "y": 1
+                }
               },
               "layout": "vertical",
               "gap": 6,
@@ -22980,45 +21841,21 @@
               "type": "frame",
               "id": "6ygwx",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFFFFF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#EEF6FF",
-                    "position": 0.54
-                  },
-                  {
-                    "color": "#FFF0DD",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 22,
+              "fill": "#FFFFFF",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D7E6FF"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#ABC5FF44",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 26
-                },
-                "blur": 52,
-                "spread": -30
+                  "y": 1
+                }
               },
               "layout": "vertical",
               "gap": 10,
@@ -23104,45 +21941,21 @@
               "type": "frame",
               "id": "CtsZs",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#F8FFF9",
-                    "position": 0
-                  },
-                  {
-                    "color": "#ECF9F0",
-                    "position": 0.54
-                  },
-                  {
-                    "color": "#FFF2E2",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 22,
+              "fill": "#FFFFFF",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D3E8D9"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#B7DFC844",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 26
-                },
-                "blur": 52,
-                "spread": -30
+                  "y": 1
+                }
               },
               "layout": "vertical",
               "gap": 10,
@@ -23257,29 +22070,7 @@
       "clip": true,
       "width": 1440,
       "height": 1024,
-      "fill": {
-        "type": "gradient",
-        "gradientType": "linear",
-        "enabled": true,
-        "rotation": 135,
-        "size": {
-          "height": 1
-        },
-        "colors": [
-          {
-            "color": "#EEF7FF",
-            "position": 0
-          },
-          {
-            "color": "#F5FBF3",
-            "position": 0.48
-          },
-          {
-            "color": "#FFF2E4",
-            "position": 1
-          }
-        ]
-      },
+      "fill": "#F8F9FA",
       "layout": "vertical",
       "gap": 18,
       "padding": 32,
@@ -23289,45 +22080,21 @@
           "id": "0VRQX",
           "name": "aboutHead",
           "width": "fill_container",
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#E7F3FF",
-                "position": 0
-              },
-              {
-                "color": "#EEF9F1",
-                "position": 0.48
-              },
-              {
-                "color": "#FFF0E1",
-                "position": 1
-              }
-            ]
-          },
-          "cornerRadius": 24,
+          "fill": "#FFFFFF",
+          "cornerRadius": 12,
           "stroke": {
             "align": "inside",
             "thickness": 1,
-            "fill": "#D9E7F7"
+            "fill": "#DADCE0"
           },
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#B3CBFF36",
+            "color": "#0000001A",
             "offset": {
               "x": 0,
-              "y": 20
-            },
-            "blur": 42,
-            "spread": -26
+              "y": 1
+            }
           },
           "padding": [
             18,
@@ -23370,41 +22137,17 @@
             {
               "type": "frame",
               "id": "uBOAF",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFFFFF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#EEF4FF",
-                    "position": 1
-                  }
-                ]
-              },
+              "fill": "#E8F0FE",
               "cornerRadius": 999,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#CADBFF"
+                "fill": "#C5D8FC"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#B6CCFF33",
-                "offset": {
-                  "x": 0,
-                  "y": 10
-                },
-                "blur": 22,
-                "spread": -16
+                "color": "#00000000"
               },
               "padding": [
                 10,
@@ -23434,7 +22177,7 @@
             {
               "type": "frame",
               "id": "Wrr8U",
-              "fill": "$--card",
+              "fill": "#FFFFFF",
               "cornerRadius": 999,
               "stroke": {
                 "align": "inside",
@@ -23460,7 +22203,7 @@
             {
               "type": "frame",
               "id": "DADgk",
-              "fill": "$--card",
+              "fill": "#FFFFFF",
               "cornerRadius": 999,
               "stroke": {
                 "align": "inside",
@@ -23540,45 +22283,21 @@
               "id": "9YNks",
               "name": "appCard",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFFFFF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#EEF6FF",
-                    "position": 0.58
-                  },
-                  {
-                    "color": "#FFF1DF",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 22,
+              "fill": "#FFFFFF",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D8E6FF"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#AEC6FF44",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 26
-                },
-                "blur": 52,
-                "spread": -30
+                  "y": 1
+                }
               },
               "layout": "vertical",
               "gap": 10,
@@ -23668,45 +22387,21 @@
               "id": "HjjFg",
               "name": "runtimeCard",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#F8FFF9",
-                    "position": 0
-                  },
-                  {
-                    "color": "#EDF9F2",
-                    "position": 0.58
-                  },
-                  {
-                    "color": "#FFF4E6",
-                    "position": 1
-                  }
-                ]
-              },
-              "cornerRadius": 22,
+              "fill": "#FFFFFF",
+              "cornerRadius": 8,
               "stroke": {
                 "align": "inside",
                 "thickness": 1,
-                "fill": "#D1E8D8"
+                "fill": "#DADCE0"
               },
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#B8E0C845",
+                "color": "#0000001A",
                 "offset": {
                   "x": 0,
-                  "y": 26
-                },
-                "blur": 52,
-                "spread": -30
+                  "y": 1
+                }
               },
               "layout": "vertical",
               "gap": 10,
@@ -23825,45 +22520,21 @@
           "id": "hlIfJ",
           "name": "supportCard",
           "width": "fill_container",
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FFF9F3",
-                "position": 0
-              },
-              {
-                "color": "#FFF0DC",
-                "position": 0.58
-              },
-              {
-                "color": "#FFE6CB",
-                "position": 1
-              }
-            ]
-          },
-          "cornerRadius": 22,
+          "fill": "#FFFFFF",
+          "cornerRadius": 8,
           "stroke": {
             "align": "inside",
             "thickness": 1,
-            "fill": "#F0D4AF"
+            "fill": "#DADCE0"
           },
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#F0C89345",
+            "color": "#0000001A",
             "offset": {
               "x": 0,
-              "y": 26
-            },
-            "blur": 52,
-            "spread": -30
+              "y": 1
+            }
           },
           "layout": "vertical",
           "gap": 8,
@@ -23925,29 +22596,7 @@
       "clip": true,
       "width": 1440,
       "height": 1024,
-      "fill": {
-        "type": "gradient",
-        "gradientType": "linear",
-        "enabled": true,
-        "rotation": 135,
-        "size": {
-          "height": 1
-        },
-        "colors": [
-          {
-            "color": "#EDF7FF",
-            "position": 0
-          },
-          {
-            "color": "#FFF4E6",
-            "position": 0.54
-          },
-          {
-            "color": "#F4EEFF",
-            "position": 1
-          }
-        ]
-      },
+      "fill": "#F8F9FA",
       "layout": "none",
       "children": [
         {
@@ -23957,29 +22606,7 @@
           "y": 0,
           "width": 1440,
           "height": 1024,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#EEF6FF",
-                "position": 0
-              },
-              {
-                "color": "#FFF4E6",
-                "position": 0.54
-              },
-              {
-                "color": "#F4EEFF",
-                "position": 1
-              }
-            ]
-          }
+          "fill": "#F8F9FA"
         },
         {
           "type": "ellipse",
@@ -23987,27 +22614,8 @@
           "x": 40,
           "y": 700,
           "name": "orbBlue",
-          "opacity": 0.95,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "radial",
-            "enabled": true,
-            "rotation": 0,
-            "size": {
-              "width": 1,
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#CFE2FFB8",
-                "position": 0
-              },
-              {
-                "color": "#CFE2FF00",
-                "position": 1
-              }
-            ]
-          },
+          "opacity": 0,
+          "fill": "#F8F9FA",
           "width": 280,
           "height": 240
         },
@@ -24017,27 +22625,8 @@
           "x": 860,
           "y": 730,
           "name": "orbWarm",
-          "opacity": 0.95,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "radial",
-            "enabled": true,
-            "rotation": 0,
-            "size": {
-              "width": 1,
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FFDDB3A8",
-                "position": 0
-              },
-              {
-                "color": "#FFDDB300",
-                "position": 1
-              }
-            ]
-          },
+          "opacity": 0,
+          "fill": "#F8F9FA",
           "width": 300,
           "height": 250
         },
@@ -24048,45 +22637,21 @@
           "y": 180,
           "name": "loginCard",
           "width": 520,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#FFFFFF",
-                "position": 0
-              },
-              {
-                "color": "#F2F7FF",
-                "position": 0.54
-              },
-              {
-                "color": "#FFF0DE",
-                "position": 1
-              }
-            ]
-          },
-          "cornerRadius": 28,
+          "fill": "#FFFFFF",
+          "cornerRadius": 12,
           "stroke": {
             "align": "inside",
             "thickness": 1,
-            "fill": "#D7E5FF"
+            "fill": "#DADCE0"
           },
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#AAC4FF4D",
+            "color": "#0000001F",
             "offset": {
               "x": 0,
-              "y": 34
-            },
-            "blur": 64,
-            "spread": -34
+              "y": 2
+            }
           },
           "layout": "vertical",
           "gap": 18,
@@ -24127,36 +22692,21 @@
               "id": "ge4N8",
               "name": "formBox",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#F8FBFF",
-                    "position": 0
-                  },
-                  {
-                    "color": "#EEF5FF",
-                    "position": 1
-                  }
-                ]
+              "fill": "#F8F9FA",
+              "cornerRadius": 8,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#DADCE0"
               },
-              "cornerRadius": 20,
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#C0D6FF22",
+                "color": "#00000014",
                 "offset": {
                   "x": 0,
-                  "y": 14
-                },
-                "blur": 26,
-                "spread": -18
+                  "y": 1
+                }
               },
               "layout": "vertical",
               "gap": 12,
@@ -24254,36 +22804,21 @@
               "id": "8bYqP",
               "name": "stateBox",
               "width": "fill_container",
-              "fill": {
-                "type": "gradient",
-                "gradientType": "linear",
-                "enabled": true,
-                "rotation": 135,
-                "size": {
-                  "height": 1
-                },
-                "colors": [
-                  {
-                    "color": "#FFF8F2",
-                    "position": 0
-                  },
-                  {
-                    "color": "#FFEEDF",
-                    "position": 1
-                  }
-                ]
+              "fill": "#FEF7E0",
+              "cornerRadius": 8,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#dadce0"
               },
-              "cornerRadius": 20,
               "effect": {
                 "type": "shadow",
                 "shadowType": "outer",
-                "color": "#F0D6B322",
+                "color": "#00000014",
                 "offset": {
                   "x": 0,
-                  "y": 14
-                },
-                "blur": 26,
-                "spread": -18
+                  "y": 1
+                }
               },
               "layout": "vertical",
               "gap": 12,
@@ -24321,40 +22856,21 @@
           "y": 220,
           "name": "loginSide",
           "width": 460,
-          "fill": {
-            "type": "gradient",
-            "gradientType": "linear",
-            "enabled": true,
-            "rotation": 135,
-            "size": {
-              "height": 1
-            },
-            "colors": [
-              {
-                "color": "#EAF4FF",
-                "position": 0
-              },
-              {
-                "color": "#E4F8FF",
-                "position": 0.4
-              },
-              {
-                "color": "#F2ECFF",
-                "position": 1
-              }
-            ]
+          "fill": "#F8F9FA",
+          "cornerRadius": 12,
+          "stroke": {
+            "align": "inside",
+            "thickness": 1,
+            "fill": "#DADCE0"
           },
-          "cornerRadius": 32,
           "effect": {
             "type": "shadow",
             "shadowType": "outer",
-            "color": "#A6C4FF49",
+            "color": "#0000001F",
             "offset": {
               "x": 0,
-              "y": 32
-            },
-            "blur": 62,
-            "spread": -34
+              "y": 2
+            }
           },
           "layout": "vertical",
           "gap": 16,
@@ -24468,6 +22984,7 @@
           "x": 1020,
           "y": 90,
           "name": "orbA",
+          "opacity": 0,
           "fill": {
             "type": "gradient",
             "gradientType": "radial",
@@ -24498,6 +23015,7 @@
           "x": 170,
           "y": 640,
           "name": "orbB",
+          "opacity": 0,
           "fill": {
             "type": "gradient",
             "gradientType": "radial",
@@ -24546,6 +23064,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#2D2F31",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24560,6 +23090,18 @@
         },
         {
           "value": "#ACABB2",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#5F6368",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#9AA0A6",
           "theme": {
             "Mode": "Dark"
           }
@@ -24580,6 +23122,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#E8F0FE",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#1A3A6B",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24594,6 +23148,30 @@
         },
         {
           "value": "#E8E8EA",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#1A73E8",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#8AB4F8",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#1A73E8",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#8AB4F8",
           "theme": {
             "Mode": "Dark"
           }
@@ -24614,6 +23192,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#DADCE0",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#3C4043",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24628,6 +23218,18 @@
         },
         {
           "value": "#2B283D",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#E8F0FE",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#1A3A6B",
           "theme": {
             "Mode": "Dark"
           }
@@ -24648,6 +23250,42 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#1A73E8",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#8AB4F8",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#1558D6",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#8AB4F8",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#1A73E8",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#8AB4F8",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24662,6 +23300,18 @@
         },
         {
           "value": "#2B283D",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#DADCE0",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#3C4043",
           "theme": {
             "Mode": "Dark"
           }
@@ -24682,6 +23332,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#F8F9FA",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#202124",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24696,6 +23358,18 @@
         },
         {
           "value": "#E8E8EA",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#202124",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#E8EAED",
           "theme": {
             "Mode": "Dark"
           }
@@ -24716,6 +23390,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#2D2F31",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24730,6 +23416,18 @@
         },
         {
           "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#202124",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#E8EAED",
           "theme": {
             "Mode": "Dark"
           }
@@ -24750,6 +23448,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#2D2F31",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24764,6 +23474,18 @@
         },
         {
           "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#202124",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#E8EAED",
           "theme": {
             "Mode": "Dark"
           }
@@ -24784,6 +23506,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#1A73E8",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#8AB4F8",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24798,6 +23532,18 @@
         },
         {
           "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#202124",
           "theme": {
             "Mode": "Dark"
           }
@@ -24818,6 +23564,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#F1F3F4",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#3C4043",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24832,6 +23590,18 @@
         },
         {
           "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#202124",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#E8EAED",
           "theme": {
             "Mode": "Dark"
           }
@@ -24852,6 +23622,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#F1F3F4",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#3C4043",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24866,6 +23648,18 @@
         },
         {
           "value": "#888799",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#5F6368",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#9AA0A6",
           "theme": {
             "Mode": "Dark"
           }
@@ -24886,6 +23680,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#E8F0FE",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#1A3A6B",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24900,6 +23706,42 @@
         },
         {
           "value": "#F2F3F0",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#1A73E8",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#8AB4F8",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#1558D6",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#8AB4F8",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#1A73E8",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#8AB4F8",
           "theme": {
             "Mode": "Dark"
           }
@@ -24920,6 +23762,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#EA4335",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#F28B82",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24934,6 +23788,18 @@
         },
         {
           "value": "#2B283D",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#DADCE0",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#3C4043",
           "theme": {
             "Mode": "Dark"
           }
@@ -24954,6 +23820,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#DADCE0",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#3C4043",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -24965,6 +23843,15 @@
         },
         {
           "value": "#666666",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#1A73E8"
+        },
+        {
+          "value": "#8AB4F8",
           "theme": {
             "Mode": "Dark"
           }
@@ -25031,6 +23918,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#E6F4EA",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#1E3A2A",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -25045,6 +23944,18 @@
         },
         {
           "value": "#A1E5A1",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#137333",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#81C995",
           "theme": {
             "Mode": "Dark"
           }
@@ -25065,6 +23976,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#FEF7E0",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#3B2E00",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -25079,6 +24002,18 @@
         },
         {
           "value": "#FFD9B2",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#B06000",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#FDD663",
           "theme": {
             "Mode": "Dark"
           }
@@ -25099,6 +24034,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#FCE8E6",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#3B1A18",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -25113,6 +24060,18 @@
         },
         {
           "value": "#FFBFB2",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#C5221F",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#F28B82",
           "theme": {
             "Mode": "Dark"
           }
@@ -25133,6 +24092,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#E8F0FE",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#1A3A6B",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -25147,6 +24118,15 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": "#1A73E8"
+        },
+        {
+          "value": "#8AB4F8",
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -25158,6 +24138,15 @@
         },
         {
           "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#FFFFFF"
+        },
+        {
+          "value": "#202124",
           "theme": {
             "Mode": "Dark"
           }
@@ -25178,6 +24167,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": 12,
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": 12,
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -25195,6 +24196,18 @@
           "theme": {
             "Mode": "Dark"
           }
+        },
+        {
+          "value": 16,
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": 16,
+          "theme": {
+            "Mode": "Dark"
+          }
         }
       ]
     },
@@ -25209,6 +24222,18 @@
         },
         {
           "value": 6,
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": 4,
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": 4,
           "theme": {
             "Mode": "Dark"
           }
@@ -25243,6 +24268,18 @@
         },
         {
           "value": "#1A182E",
+          "theme": {
+            "Mode": "Dark"
+          }
+        },
+        {
+          "value": "#F1F3F4",
+          "theme": {
+            "Mode": "Light"
+          }
+        },
+        {
+          "value": "#2D2F31",
           "theme": {
             "Mode": "Dark"
           }

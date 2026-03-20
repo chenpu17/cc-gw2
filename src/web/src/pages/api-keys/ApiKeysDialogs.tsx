@@ -52,7 +52,7 @@ export function CreateApiKeyDialog({
           <DialogDescription>{t('apiKeys.createDescription')}</DialogDescription>
         </AppDialogHeader>
         <AppDialogBody className="space-y-4">
-          <div className="rounded-[1.2rem] border border-blue-200 bg-blue-50/70 px-4 py-3 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100">
+          <div className="rounded-lg border border-primary/20 bg-accent px-4 py-3 text-xs text-primary">
             {t('apiKeys.selectEndpoints')}
           </div>
           <div className="grid gap-3 md:grid-cols-3">
@@ -141,7 +141,7 @@ export function ApiKeyCreatedDialog({
           <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
             {t('apiKeys.saveKeyWarning')}
           </p>
-          <div className="rounded-[1.1rem] border border-border/70 bg-background/70 px-4 py-3 font-mono text-sm">
+          <div className="rounded-lg border border-border bg-secondary px-4 py-3 font-mono text-sm">
             {createdKey?.key}
           </div>
           {createdKey?.description ? (
@@ -187,10 +187,10 @@ export function EditApiKeyEndpointsDialog({
           <DialogDescription>{apiKey?.name}</DialogDescription>
         </AppDialogHeader>
         <AppDialogBody className="space-y-4">
-          <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50/70 px-4 py-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          <div className="rounded-lg border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning-bg))] px-4 py-3 text-xs text-[hsl(var(--warning)/1)]">
             {t('apiKeys.allEndpoints')}
           </div>
-          <div className="rounded-[1rem] border border-[rgba(24,16,13,0.08)] bg-background/75 px-4 py-3 text-xs text-muted-foreground">
+          <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">
             Empty selection means unrestricted access. Only explicit selections create a restricted key scope.
           </div>
           <EndpointSelector
@@ -236,7 +236,7 @@ export function DeleteApiKeyDialog({
       onConfirm={onConfirm}
     >
       {deleteTarget ? (
-        <div className="rounded-[1.1rem] border border-destructive/20 bg-destructive/5 px-3 py-2 font-mono text-xs text-foreground">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 font-mono text-xs text-foreground">
           {deleteTarget.name}
         </div>
       ) : null}

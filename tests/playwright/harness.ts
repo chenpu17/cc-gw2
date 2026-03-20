@@ -198,8 +198,6 @@ function writeConfig(
     storeRequestPayloads: true,
     storeResponsePayloads: true,
     logLevel: 'error',
-    requestLogging: false,
-    responseLogging: false,
     webAuth: {
       enabled: options.auth?.enabled ?? false,
       username: options.auth?.enabled ? options.auth.username : '',

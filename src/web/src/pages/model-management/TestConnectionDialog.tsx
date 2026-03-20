@@ -45,10 +45,10 @@ export function TestConnectionDialog({
           </DialogDescription>
         </AppDialogHeader>
         <AppDialogBody className="space-y-4">
-          <div className="rounded-[1.2rem] border border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100">
+          <div className="rounded-lg border border-primary/20 bg-accent p-4 text-sm text-primary">
             {t('providers.testDialog.description')}
           </div>
-          <div className="space-y-4 rounded-[1.2rem] border border-border/70 bg-background/45 p-4">
+          <div className="space-y-4 rounded-lg border border-border bg-secondary p-4">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-2">
                 <Label htmlFor="provider-test-preset">{t('providers.testDialog.presetLabel')}</Label>
@@ -64,13 +64,13 @@ export function TestConnectionDialog({
             </div>
             {usePreset ? (
               <div className="space-y-2">
-                <details className="rounded-[1rem] border border-border/70 bg-background/70 p-2 text-xs">
+                <details className="rounded-lg border border-border bg-secondary p-2 text-xs">
                   <summary className="cursor-pointer text-primary hover:underline">
                     {t('providers.testDialog.presetPreviewSummary')}
                   </summary>
                   <div className="mt-2 space-y-1">
                     {options.map((option) => (
-                      <code key={option.key} className="block rounded-xl border border-border/70 bg-background/85 px-2 py-1 text-xs">
+                      <code key={option.key} className="block rounded-md border border-border bg-card px-2 py-1 text-xs">
                         {option.key}: {option.value}
                       </code>
                     ))}
@@ -82,10 +82,10 @@ export function TestConnectionDialog({
             )}
           </div>
           {Object.keys(preservedExtras).length > 0 && (
-            <div className="space-y-2 rounded-[1.15rem] border border-border/70 bg-background/70 p-4 text-xs">
+            <div className="space-y-2 rounded-lg border border-border bg-secondary p-4 text-xs">
               <p className="font-medium">{t('providers.testDialog.preservedInfo')}</p>
               {Object.entries(preservedExtras).map(([key, value]) => (
-                <code key={key} className="block rounded-xl border border-border/70 bg-background/85 px-2 py-1">
+                <code key={key} className="block rounded-md border border-border bg-card px-2 py-1">
                   {key}: {value}
                 </code>
               ))}

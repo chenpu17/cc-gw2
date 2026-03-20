@@ -57,6 +57,7 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
 
   await page.goto(`${baseUrl}/ui/logs`)
   await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
+  await expect(page.getByTestId('logs-filters-card')).toHaveCSS('position', 'static')
   await expect(page.getByRole('button', { name: '列设置' })).toBeVisible()
 
   await page.getByRole('button', { name: '列设置' }).click()
@@ -85,8 +86,8 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
 
   const detailDialog = page.getByRole('dialog', { name: '日志详情' })
   await expect(detailDialog).toBeVisible()
-  await expect(detailDialog.getByText('请求体')).toBeVisible()
-  await expect(detailDialog.getByText('响应体')).toBeVisible()
+  await expect(detailDialog.getByText('客户端请求体')).toBeVisible()
+  await expect(detailDialog.getByText('客户端响应体')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(detailDialog).not.toBeVisible()
 
@@ -108,6 +109,7 @@ test('logs table controls respect column toggles, pagination, and export payload
 
   await page.goto(`${baseUrl}/ui/logs`)
   await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
+  await expect(page.getByTestId('logs-filters-card')).toHaveCSS('position', 'static')
 
   await page.getByRole('button', { name: '列设置' }).click()
   const columnPanel = page.getByRole('dialog').filter({ hasText: '列设置' }).first()
