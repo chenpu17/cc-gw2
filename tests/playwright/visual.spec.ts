@@ -45,6 +45,12 @@ async function expectPageSnapshot(page: Page, name: string) {
   })
 }
 
+async function hideVolatileVisualValues(page: Page) {
+  await page.addStyleTag({
+    content: '[data-visual-volatile="true"] { visibility: hidden !important; }',
+  })
+}
+
 test('dashboard visual shell stays aligned with redesign baseline', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/`)
   await waitForVisualReady(page, page.getByRole('heading', { name: '仪表盘', level: 1 }))
@@ -90,6 +96,7 @@ test('help visual shell stays aligned with redesign baseline', async ({ page }) 
 test('about visual shell stays aligned with redesign baseline', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/about`)
   await waitForVisualReady(page, page.getByRole('heading', { level: 1 }).filter({ hasText: /关于/ }))
+  await hideVolatileVisualValues(page)
   await expectPageSnapshot(page, 'about-page.png')
 })
 

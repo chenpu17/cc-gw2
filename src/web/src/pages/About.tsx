@@ -56,10 +56,10 @@ export default function AboutPage() {
   const infoItems = useMemo<InfoGridItem[]>(
     () => [
       { label: t('about.app.labels.name'), value: <span className="font-mono">cc-gw</span> },
-      { label: t('about.app.labels.version'), value: <span className="font-mono text-primary">v{appVersion}</span> },
-      { label: t('about.app.labels.buildTime'), value: buildTime, hint: t('about.app.hint.buildTime') },
+      { label: t('about.app.labels.version'), value: <span data-visual-volatile="true" className="font-mono text-primary">v{appVersion}</span> },
+      { label: t('about.app.labels.buildTime'), value: <span data-visual-volatile="true">{buildTime}</span>, hint: t('about.app.hint.buildTime') },
       { label: t('about.app.labels.runtime'), value: <span className="font-mono">{statusQuery.data?.runtime ?? 'rust'}</span> },
-      { label: t('about.app.labels.backendVersion'), value: <span className="font-mono">{statusQuery.data?.backendVersion ?? '-'}</span> }
+      { label: t('about.app.labels.backendVersion'), value: <span data-visual-volatile="true" className="font-mono">{statusQuery.data?.backendVersion ?? '-'}</span> }
     ],
     [appVersion, buildTime, statusQuery.data?.backendVersion, statusQuery.data?.runtime, t]
   )
@@ -71,7 +71,7 @@ export default function AboutPage() {
 
     return [
       { label: t('about.status.labels.host'), value: statusQuery.data.host ?? '127.0.0.1' },
-      { label: t('about.status.labels.port'), value: statusQuery.data.port.toLocaleString() },
+      { label: t('about.status.labels.port'), value: <span data-visual-volatile="true">{statusQuery.data.port.toLocaleString()}</span> },
       { label: t('about.status.labels.providers'), value: statusQuery.data.providers.toLocaleString() },
       {
         label: t('about.status.labels.active'),
@@ -79,7 +79,7 @@ export default function AboutPage() {
         hint: t('about.status.hint.active')
       },
       { label: t('about.status.labels.platform'), value: statusQuery.data.platform ?? '-' },
-      { label: t('about.status.labels.pid'), value: statusQuery.data.pid?.toLocaleString() ?? '-' }
+      { label: t('about.status.labels.pid'), value: <span data-visual-volatile="true">{statusQuery.data.pid?.toLocaleString() ?? '-'}</span> }
     ]
   }, [statusQuery.data, t])
 
@@ -89,7 +89,7 @@ export default function AboutPage() {
         icon={<Info className="h-5 w-5" aria-hidden="true" />}
         title={t('about.title')}
         description={t('about.description')}
-        badge={`v${appVersion}`}
+        badge={<span data-visual-volatile="true">v{appVersion}</span>}
         eyebrow="Runtime"
         breadcrumb="Gateway / About"
         helper={t('about.support.description')}
@@ -115,7 +115,7 @@ export default function AboutPage() {
                 Runtime snapshot
               </div>
               <div className="space-y-2">
-                <p className="text-3xl font-semibold tracking-tight text-foreground">
+                <p data-visual-volatile="true" className="text-3xl font-semibold tracking-tight text-foreground">
                   {statusQuery.data?.host ?? '127.0.0.1'}:{statusQuery.data?.port ?? '-'}
                 </p>
                 <p className="text-sm text-muted-foreground">{t('about.description')}</p>
@@ -134,8 +134,8 @@ export default function AboutPage() {
           <CardContent className="pt-6">
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Build</p>
-              <p className="font-mono text-lg text-primary">v{appVersion}</p>
-              <p className="text-sm text-muted-foreground">{buildTime}</p>
+              <p data-visual-volatile="true" className="font-mono text-lg text-primary">v{appVersion}</p>
+              <p data-visual-volatile="true" className="text-sm text-muted-foreground">{buildTime}</p>
               <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-sm text-muted-foreground">
                 {t('about.support.tip')}
               </div>

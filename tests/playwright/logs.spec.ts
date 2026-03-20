@@ -92,7 +92,7 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
   await expect(detailDialog).not.toBeVisible()
 
   const downloadPromise = page.waitForEvent('download')
-  await page.getByRole('button', { name: '导出日志' }).click()
+  await page.getByRole('button', { name: /导出(?: ZIP)? 日志/ }).click()
   const download = await downloadPromise
   expect(download.suggestedFilename()).toMatch(/cc-gw-logs-.*\.zip$/)
 })
@@ -134,7 +134,7 @@ test('logs table controls respect column toggles, pagination, and export payload
   await page.getByRole('button', { name: '展开筛选' }).click()
   await page.getByPlaceholder('如 deepseek-chat').fill('stub-model')
   const exportResponse = page.waitForResponse((response) => response.url().endsWith('/logs/export') && response.request().method() === 'POST')
-  await page.getByRole('button', { name: '导出日志' }).click()
+  await page.getByRole('button', { name: /导出(?: ZIP)? 日志/ }).click()
   const loggedExport = await exportResponse
   const exportPayload = loggedExport.request().postDataJSON()
   expect(exportPayload?.model).toBe('stub-model')
