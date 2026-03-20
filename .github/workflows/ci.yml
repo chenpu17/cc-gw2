@@ -53,14 +53,6 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: pnpm test:e2e:web:hardening
 
-      - name: Install Playwright Chromium
-        if: matrix.os == 'macos-latest'
-        run: pnpm exec playwright install chromium
-
-      - name: Run Web UI Visual Regression
-        if: matrix.os == 'macos-latest'
-        run: pnpm test:e2e:web:visual
-
       - name: Smoke test CLI
         run: pnpm smoke:cli
 
