@@ -139,3 +139,44 @@ test('logs table controls respect column toggles, pagination, and export payload
   const exportPayload = loggedExport.request().postDataJSON()
   expect(exportPayload?.model).toBe('stub-model')
 })
+
+test('logs table assigns the same color marker to rows from the same session', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+  const requests = [
+    { user: 'session-color-a', content: 'first session row' },
+    { user: 'session-color-b', content: 'second session row' },
+    { user: 'session-color-a', content: 'third session row' },
+  ]
+
+  for (const entry of requests) {
+    const response = await request.post(`${baseUrl}/openai/v1/chat/completions`, {
+      data: {
+        model: 'stub-model',
+        user: entry.user,
+        messages: [{ role: 'user', content: entry.content }]
+      },
+      headers: {
+        'content-type': 'application/json'
+      }
+    })
+    expect(response.status()).toBe(200)
+  }
+
+  await pollForAnyLog(request, baseUrl)
+
+  await page.goto(`${baseUrl}/ui/logs`)
+  await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
+
+  const sessionARows = page.locator('tbody tr[data-session-id="session-color-a"]')
+  const sessionBRows = page.locator('tbody tr[data-session-id="session-color-b"]')
+  await expect(sessionARows).toHaveCount(2)
+  await expect(sessionBRows).toHaveCount(1)
+
+  const sessionAColor = await sessionARows.first().getAttribute('data-session-color')
+  expect(sessionAColor).toBeTruthy()
+  await expect(sessionARows.nth(1)).toHaveAttribute('data-session-color', sessionAColor ?? '')
+
+  const sessionBColor = await sessionBRows.first().getAttribute('data-session-color')
+  expect(sessionBColor).toBeTruthy()
+  expect(sessionBColor).not.toBe(sessionAColor)
+})

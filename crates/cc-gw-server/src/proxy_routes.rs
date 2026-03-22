@@ -1,4 +1,5 @@
 use super::*;
+use cc_gw_core::profiler::{AppendProfilerTurnInput, append_profiler_turn};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -491,6 +492,11 @@ pub(super) async fn proxy_standard_request(
     };
 
     let stream = body.get("stream").and_then(Value::as_bool).unwrap_or(false);
+    let profiling_active = state.profiling_active.load(Ordering::Relaxed) != 0;
+    let profiler_session_id = session_id
+        .as_deref()
+        .filter(|_| profiling_active)
+        .map(profiler_session_id_for);
     let request_log_id = insert_request_log(
         &state.paths.db_path,
         &RequestLogInput {
@@ -606,6 +612,13 @@ pub(super) async fn proxy_standard_request(
                 api_key_id: api_key_context.id,
                 started_at,
                 store_response_payload: response_payload_storage_enabled(&config),
+                profiling_active,
+                session_id: session_id.clone(),
+                profiler_session_id: profiler_session_id.clone(),
+                client_request_payload: client_request_payload.clone(),
+                model: target.model_id.clone(),
+                client_model: requested_model.map(ToString::to_string),
+                stream,
             });
             if cross_protocol && stream {
                 into_streaming_converted_response(
@@ -628,13 +641,14 @@ pub(super) async fn proxy_standard_request(
             } else if cross_protocol {
                 let status_code = response.status().as_u16() as i64;
                 let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
-                let (result, usage, upstream_response_payload, client_response_payload) = into_converted_response(
-                    response,
-                    protocol,
-                    target_protocol,
-                    requested_model.unwrap_or(""),
-                )
-                .await;
+                let (result, usage, upstream_response_payload, client_response_payload) =
+                    into_converted_response(
+                        response,
+                        protocol,
+                        target_protocol,
+                        requested_model.unwrap_or(""),
+                    )
+                    .await;
                 if let Some(log_id) = request_log_id {
                     let update = RequestLogUpdate {
                         latency_ms: Some(latency_ms),
@@ -654,14 +668,39 @@ pub(super) async fn proxy_standard_request(
                         &usage,
                     );
                     let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                    if profiling_active {
+                        if let (Some(session_id), Some(profiler_session_id)) =
+                            (&session_id, &profiler_session_id)
+                        {
+                            let tpot = compute_tpot_ms(latency_ms, usage.output_tokens, None);
+                            record_profiler_turn(
+                                &state.paths.db_path,
+                                session_id,
+                                profiler_session_id,
+                                log_id,
+                                started_at,
+                                &target.model_id,
+                                requested_model,
+                                stream,
+                                latency_ms,
+                                None,
+                                tpot,
+                                status_code,
+                                &usage,
+                                None,
+                                client_request_payload.as_deref(),
+                                client_response_payload.as_deref(),
+                            );
+                        }
+                    }
                     if response_payload_storage_enabled(&config) {
                         let _ = upsert_request_payload(
                             &state.paths.db_path,
                             log_id,
                             &LogPayloadUpdate {
-                                upstream_response: upstream_response_payload
-                                    .as_deref()
-                                    .filter(|payload| Some(*payload) != client_response_payload.as_deref()),
+                                upstream_response: upstream_response_payload.as_deref().filter(
+                                    |payload| Some(*payload) != client_response_payload.as_deref(),
+                                ),
                                 client_response: client_response_payload.as_deref(),
                                 ..LogPayloadUpdate::default()
                             },
@@ -693,6 +732,31 @@ pub(super) async fn proxy_standard_request(
                         &usage,
                     );
                     let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                    if profiling_active {
+                        if let (Some(session_id), Some(profiler_session_id)) =
+                            (&session_id, &profiler_session_id)
+                        {
+                            let tpot = compute_tpot_ms(latency_ms, usage.output_tokens, None);
+                            record_profiler_turn(
+                                &state.paths.db_path,
+                                session_id,
+                                profiler_session_id,
+                                log_id,
+                                started_at,
+                                &target.model_id,
+                                requested_model,
+                                stream,
+                                latency_ms,
+                                None,
+                                tpot,
+                                status_code,
+                                &usage,
+                                None,
+                                client_request_payload.as_deref(),
+                                response_payload.as_deref(),
+                            );
+                        }
+                    }
                     if response_payload_storage_enabled(&config) {
                         let _ = upsert_request_payload(
                             &state.paths.db_path,
@@ -847,7 +911,12 @@ async fn into_converted_response(
     };
 
     let response_payload = serde_json::to_string(&converted).ok();
-    (Json(converted).into_response(), usage, upstream_payload, response_payload)
+    (
+        Json(converted).into_response(),
+        usage,
+        upstream_payload,
+        response_payload,
+    )
 }
 
 async fn into_streaming_converted_response(
@@ -1141,6 +1210,52 @@ fn endpoint_name(endpoint: GatewayEndpoint<'_>, _protocol: ProviderProtocol) -> 
     }
 }
 
+fn record_profiler_turn(
+    db_path: &std::path::Path,
+    session_id: &str,
+    profiler_session_id: &str,
+    log_id: i64,
+    started_at: i64,
+    model: &str,
+    client_model: Option<&str>,
+    stream: bool,
+    latency_ms: i64,
+    ttft_ms: Option<i64>,
+    tpot_ms: Option<f64>,
+    status_code: i64,
+    usage: &UsageStats,
+    error: Option<&str>,
+    client_request_payload: Option<&str>,
+    client_response_payload: Option<&str>,
+) {
+    use cc_gw_core::profiler::compress_profiler_payload;
+    let client_req_bytes = client_request_payload.and_then(|p| compress_profiler_payload(p).ok());
+    let client_resp_bytes = client_response_payload.and_then(|p| compress_profiler_payload(p).ok());
+    let _ = append_profiler_turn(
+        db_path,
+        &AppendProfilerTurnInput {
+            profiler_session_id,
+            log_id,
+            session_id,
+            timestamp: started_at,
+            model,
+            client_model,
+            stream,
+            latency_ms: Some(latency_ms),
+            ttft_ms,
+            tpot_ms,
+            status_code: Some(status_code),
+            input_tokens: Some(usage.input_tokens),
+            output_tokens: Some(usage.output_tokens),
+            cache_read_tokens: Some(usage.cache_read_tokens),
+            cache_creation_tokens: Some(usage.cache_creation_tokens),
+            error,
+            client_request: client_req_bytes.as_deref(),
+            client_response: client_resp_bytes.as_deref(),
+        },
+    );
+}
+
 fn extract_usage_stats(payload: &Value) -> UsageStats {
     let usage = payload
         .get("usage")
@@ -1228,11 +1343,54 @@ fn finalize_stream_logging(
     let _ = finalize_request_log(&context.db_path, context.log_id, &update);
     let _ = increment_daily_metrics(&context.db_path, &context.endpoint_id, latency_ms, &usage);
     let _ = record_api_key_usage(&context.db_path, context.api_key_id, &usage);
+
+    // Profiler recording
+    if context.profiling_active {
+        if let (Some(session_id), Some(profiler_session_id)) =
+            (&context.session_id, &context.profiler_session_id)
+        {
+            use cc_gw_core::profiler::compress_profiler_payload;
+            let client_req_bytes = context
+                .client_request_payload
+                .as_deref()
+                .and_then(|payload| compress_profiler_payload(payload).ok());
+            let client_resp_bytes = client_response_payload
+                .as_deref()
+                .map(|payload| {
+                    materialize_stream_response(client_response_protocol, payload)
+                        .unwrap_or_else(|| payload.to_string())
+                })
+                .and_then(|payload| compress_profiler_payload(&payload).ok());
+            let _ = append_profiler_turn(
+                &context.db_path,
+                &AppendProfilerTurnInput {
+                    profiler_session_id,
+                    log_id: context.log_id,
+                    session_id,
+                    timestamp: context.started_at,
+                    model: &context.model,
+                    client_model: context.client_model.as_deref(),
+                    stream: context.stream,
+                    latency_ms: Some(latency_ms),
+                    ttft_ms,
+                    tpot_ms: update.tpot_ms,
+                    status_code: Some(status_code),
+                    input_tokens: Some(usage.input_tokens),
+                    output_tokens: Some(usage.output_tokens),
+                    cache_read_tokens: Some(usage.cache_read_tokens),
+                    cache_creation_tokens: Some(usage.cache_creation_tokens),
+                    error: update.error.as_deref(),
+                    client_request: client_req_bytes.as_deref(),
+                    client_response: client_resp_bytes.as_deref(),
+                },
+            );
+        }
+    }
+
     if context.store_response_payload {
-        let client_response_payload = client_response_payload
-            .map(|payload| {
-                materialize_stream_response(client_response_protocol, &payload).unwrap_or(payload)
-            });
+        let client_response_payload = client_response_payload.map(|payload| {
+            materialize_stream_response(client_response_protocol, &payload).unwrap_or(payload)
+        });
         let upstream_response_payload = upstream_response_payload
             .zip(upstream_response_protocol)
             .map(|(payload, protocol)| {

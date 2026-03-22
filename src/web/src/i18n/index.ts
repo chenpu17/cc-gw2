@@ -21,6 +21,7 @@ const resources = {
         settings: '设置',
         help: '使用指南',
         about: '关于',
+        profiler: '性能分析',
         group: {
           overview: '概览',
           admin: '管理'
@@ -117,10 +118,11 @@ const resources = {
           providers: 'Provider 数量',
           activeClientAddresses: '活跃来源地址',
           activeClientSessions: '活跃会话',
-          uniqueClientAddressesLastHour: '1小时来源地址',
+          uniqueClientAddressesLastHour: '1小时活跃客户端 IP',
           uniqueClientSessionsLastHour: '1小时会话',
           todayRequests: '今日请求',
           activeRequests: '活跃转发连接',
+          cpu: 'CPU 占用率',
           database: '数据库',
           memory: '内存占用'
         },
@@ -1294,6 +1296,9 @@ const resources = {
         deleteError: '删除失败：{{error}}',
         deleteConfirm: '确定要删除端点 "{{label}}" 吗？此操作无法撤销。',
         validationError: '请填写所有必填字段'
+      },
+      profiler: {
+        description: '记录并分析 LLM 会话的延迟与 token 用量。'
       }
     }
   },
@@ -1315,6 +1320,7 @@ const resources = {
         settings: 'Settings',
         help: 'Help',
         about: 'About',
+        profiler: 'Profiler',
         group: {
           overview: 'Overview',
           admin: 'Admin'
@@ -1411,10 +1417,11 @@ const resources = {
           providers: 'Providers',
           activeClientAddresses: 'Active client addresses',
           activeClientSessions: 'Active sessions',
-          uniqueClientAddressesLastHour: '1h client addresses',
+          uniqueClientAddressesLastHour: '1h active client IPs',
           uniqueClientSessionsLastHour: '1h sessions',
           todayRequests: 'Today requests',
           activeRequests: 'Active forwarded connections',
+          cpu: 'CPU usage',
           database: 'Database',
           memory: 'Memory'
         },
@@ -2574,6 +2581,9 @@ const resources = {
         deleteError: 'Failed to delete: {{error}}',
         deleteConfirm: 'Are you sure you want to delete endpoint "{{label}}"? This action cannot be undone.',
         validationError: 'Please fill in all required fields'
+      },
+      profiler: {
+        description: 'Record and analyze LLM session latency and token usage.'
       }
     }
   }

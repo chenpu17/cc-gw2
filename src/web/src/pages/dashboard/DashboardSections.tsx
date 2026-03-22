@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Activity,
   BarChart3,
+  Cpu,
   Database,
   Gauge,
   MemoryStick,
@@ -27,7 +28,7 @@ import {
 } from '@/components/ui/table'
 import type { LogRecord } from '@/types/logs'
 import { cn } from '@/lib/utils'
-import { formatLatencyValue, type DailyMetric, type ModelUsageMetric, type OverviewStats, type ServiceStatus } from './types'
+import { formatLatencyValue, formatPercent, type DailyMetric, type ModelUsageMetric, type OverviewStats, type ServiceStatus } from './types'
 
 export function DashboardLoading() {
   return (
@@ -96,8 +97,9 @@ export function DashboardSpotlight({
                 <Badge variant="outline">{t('dashboard.labels.todayRequests')}: {todayRequests.toLocaleString()}</Badge>
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[320px] lg:flex-1">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:min-w-[420px] lg:flex-1">
               <SpotlightMetric icon={<Gauge className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.activeRequests')} value={(status?.activeRequests ?? 0).toLocaleString()} />
+              <SpotlightMetric icon={<Cpu className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.cpu')} value={formatPercent(status?.cpuUsagePercent)} />
               <SpotlightMetric icon={<Database className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.database')} value={dbSizeDisplay} />
               <SpotlightMetric icon={<MemoryStick className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.memory')} value={memoryDisplay} />
             </div>
@@ -114,10 +116,11 @@ export function DashboardSpotlight({
                 {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <InfoMetric label={t('dashboard.labels.providers')} value={(status?.providers ?? 0).toLocaleString()} />
               <InfoMetric label={t('dashboard.labels.activeClientAddresses')} value={(status?.activeClientAddresses ?? 0).toLocaleString()} />
               <InfoMetric label={t('dashboard.labels.activeClientSessions')} value={(status?.activeClientSessions ?? 0).toLocaleString()} />
+              <InfoMetric label={t('dashboard.labels.uniqueClientAddressesLastHour')} value={(status?.uniqueClientAddressesLastHour ?? 0).toLocaleString()} />
               <InfoMetric label={t('dashboard.labels.uniqueClientSessionsLastHour')} value={(status?.uniqueClientSessionsLastHour ?? 0).toLocaleString()} />
             </div>
           </div>

@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import type { LogRecord } from '@/types/logs'
@@ -5,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { LogColumnId, RowDensity } from './shared'
-import { formatDateTime, formatLatency, formatNumber } from './utils'
+import { formatDateTime, formatLatency, formatNumber, getSessionRowTone } from './utils'
 
 interface LogRowProps {
   record: LogRecord
@@ -50,10 +51,36 @@ export function LogRow({
   })()
   const cellPadding = density === 'compact' ? 'px-3 py-1.5' : 'px-3 py-2'
   const stickyCellBg = isEven ? 'bg-muted/30' : 'bg-background'
+  const sessionTone = getSessionRowTone(record.session_id)
+  const rowStyle = sessionTone?.rowStyle as CSSProperties | undefined
+  const stickyStyle = sessionTone?.stickyStyle as CSSProperties | undefined
+  const timeCellStyle = sessionTone
+    ? ({
+        ...sessionTone.stickyStyle,
+        ...sessionTone.accentStyle
+      } as CSSProperties)
+    : undefined
 
   return (
-    <tr className={cn('transition-colors', isEven ? 'bg-muted/30' : '', 'hover:bg-muted/50')}>
-      <td className={cn('sticky left-0 z-10 text-xs', cellPadding, stickyCellBg)}>{formatDateTime(record.timestamp)}</td>
+    <tr
+      data-session-id={sessionTone?.sessionId}
+      data-session-color={sessionTone?.colorKey}
+      className={cn(
+        'transition-colors',
+        sessionTone ? '' : isEven ? 'bg-muted/30' : '',
+        sessionTone ? '' : 'hover:bg-muted/50'
+      )}
+      style={rowStyle}
+      onMouseEnter={(event) => {
+        if (!sessionTone) return
+        Object.assign(event.currentTarget.style, sessionTone.hoverStyle)
+      }}
+      onMouseLeave={(event) => {
+        if (!sessionTone) return
+        Object.assign(event.currentTarget.style, sessionTone.rowStyle)
+      }}
+    >
+      <td className={cn('sticky left-0 z-10 text-xs', cellPadding, sessionTone ? '' : stickyCellBg)} style={timeCellStyle}>{formatDateTime(record.timestamp)}</td>
       {visibleColumnSet.has('endpoint') && (
         <td className={cn(cellPadding, 'text-xs')}>{endpointLabel}</td>
       )}
@@ -112,7 +139,7 @@ export function LogRow({
           </div>
         </td>
       )}
-      <td className={cn('sticky right-0 z-10 text-center', cellPadding, stickyCellBg)}>
+      <td className={cn('sticky right-0 z-10 text-center', cellPadding, sessionTone ? '' : stickyCellBg)} style={stickyStyle}>
         <Button variant="outline" size="sm" onClick={() => onSelect(record.id)}>
           {t('logs.actions.detail')}
         </Button>

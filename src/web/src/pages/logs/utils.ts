@@ -1,3 +1,5 @@
+const SESSION_ROW_HUES = [12, 28, 48, 88, 112, 152, 184, 208, 228, 262, 292, 332] as const
+
 export function formatDateTime(timestamp: number): string {
   const date = new Date(timestamp)
   return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')} ${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}:${`${date.getSeconds()}`.padStart(2, '0')}`
@@ -26,5 +28,41 @@ export function formatPayloadDisplay(value: string | null | undefined, fallback:
     return JSON.stringify(parsed, null, 2)
   } catch {
     return value
+  }
+}
+
+function hashSessionId(value: string): number {
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0
+  }
+  return hash
+}
+
+export function getSessionRowTone(sessionId: string | null | undefined) {
+  const normalized = sessionId?.trim()
+  if (!normalized) {
+    return null
+  }
+
+  const hash = hashSessionId(normalized)
+  const hue = SESSION_ROW_HUES[hash % SESSION_ROW_HUES.length]
+  const accent = `hsl(${hue} 82% 42%)`
+
+  return {
+    sessionId: normalized,
+    colorKey: `${hue}`,
+    rowStyle: {
+      backgroundColor: `hsl(${hue} 82% 42% / 0.08)`
+    },
+    hoverStyle: {
+      backgroundColor: `hsl(${hue} 82% 42% / 0.12)`
+    },
+    stickyStyle: {
+      backgroundColor: `hsl(${hue} 82% 42% / 0.1)`
+    },
+    accentStyle: {
+      borderLeft: `3px solid ${accent}`
+    }
   }
 }

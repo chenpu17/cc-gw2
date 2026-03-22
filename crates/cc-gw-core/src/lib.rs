@@ -4,6 +4,7 @@ pub mod convert;
 pub mod events;
 pub mod models;
 pub mod observability;
+pub mod profiler;
 pub mod provider;
 pub mod routing;
 pub mod storage;

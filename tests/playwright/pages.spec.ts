@@ -33,6 +33,10 @@ test('web console pages load and navigation works', async ({ page }) => {
   await expect(page.getByRole('button', { name: '最新' })).toBeVisible()
   await expect(page.getByPlaceholder('按事件类型过滤（可留空）')).toBeVisible()
 
+  await page.getByRole('link', { name: '性能分析' }).click()
+  await expect(page).toHaveURL(/\/ui\/profiler$/)
+  await expect(page.getByText('Profiler')).toBeVisible()
+
   await page.getByRole('link', { name: 'API 密钥' }).click()
   await expect(page).toHaveURL(/\/ui\/api-keys$/)
   await expect(page.getByRole('heading', { name: 'API 密钥管理', level: 1 })).toBeVisible()

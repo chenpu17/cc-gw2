@@ -53,6 +53,11 @@ pub(super) async fn api_status(
     } else {
         count_active_entries(&state.active_client_sessions)
     };
+    let cpu_usage_percent = state
+        .runtime_metrics
+        .lock()
+        .ok()
+        .and_then(|mut metrics| metrics.current_process_cpu_usage_percent());
     Json(StatusResponse {
         port: config.port,
         host: config.host.clone(),
@@ -65,6 +70,7 @@ pub(super) async fn api_status(
         runtime: "rust",
         backend_version: env!("CARGO_PKG_VERSION"),
         platform: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+        cpu_usage_percent,
         pid: std::process::id(),
     })
 }

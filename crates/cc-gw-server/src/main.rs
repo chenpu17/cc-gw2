@@ -38,11 +38,11 @@ use cc_gw_core::{
     events::{RecordEventInput, list_events, record_event},
     models::build_models_response,
     observability::{
-        LogPayloadUpdate, LogQuery, RequestLogInput, RequestLogUpdate, UsageStats, cleanup_logs_before,
-        clear_all_logs, compact_database, export_logs, finalize_request_log, get_daily_metrics,
-        get_database_info, get_log_detail, get_metrics_overview, get_model_usage_metrics,
-        get_recent_client_activity, increment_daily_metrics, insert_request_log, query_logs,
-        upsert_request_payload,
+        LogPayloadUpdate, LogQuery, RequestLogInput, RequestLogUpdate, RuntimeMetricsSampler,
+        UsageStats, cleanup_logs_before, clear_all_logs, compact_database, export_logs,
+        finalize_request_log, get_daily_metrics, get_database_info, get_log_detail,
+        get_metrics_overview, get_model_usage_metrics, get_recent_client_activity,
+        increment_daily_metrics, insert_request_log, query_logs, upsert_request_payload,
     },
     provider::{ProviderProtocol, ProxyRequest, forward_request},
     routing::{GatewayEndpoint, resolve_route},
@@ -61,6 +61,7 @@ use zip::write::SimpleFileOptions;
 mod admin_routes;
 mod auth;
 mod auth_routes;
+mod profiler_routes;
 mod proxy_routes;
 mod ui_routes;
 mod web_middleware;
@@ -76,8 +77,10 @@ struct AppState {
     active_requests_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
     active_client_addresses_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_client_sessions_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
+    runtime_metrics: Arc<Mutex<RuntimeMetricsSampler>>,
     http_client: reqwest::Client,
     sessions: auth::SessionStore,
+    profiling_active: Arc<AtomicU64>,
 }
 
 #[derive(Serialize)]
@@ -101,6 +104,8 @@ struct StatusResponse {
     backend_version: &'static str,
     #[serde(rename = "platform")]
     platform: String,
+    #[serde(rename = "cpuUsagePercent")]
+    cpu_usage_percent: Option<f64>,
     pid: u32,
 }
 
@@ -162,6 +167,13 @@ struct StreamingLogContext {
     api_key_id: i64,
     started_at: i64,
     store_response_payload: bool,
+    profiling_active: bool,
+    session_id: Option<String>,
+    profiler_session_id: Option<String>,
+    client_request_payload: Option<String>,
+    model: String,
+    client_model: Option<String>,
+    stream: bool,
 }
 
 fn extract_provider_test_sample(provider_type: Option<&str>, payload: &Value) -> Option<String> {
@@ -252,10 +264,12 @@ async fn main() -> Result<()> {
         active_requests_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
         http_client: reqwest::Client::builder()
             .build()
             .context("failed to build reqwest client")?,
         sessions: auth::SessionStore::default(),
+        profiling_active: Arc::new(AtomicU64::new(0)),
     };
 
     let app = build_router(state.clone());
@@ -371,6 +385,34 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/api/stats/api-keys/usage",
             get(admin_routes::api_stats_api_keys_usage),
+        )
+        .route(
+            "/api/profiler/status",
+            get(profiler_routes::api_profiler_status),
+        )
+        .route(
+            "/api/profiler/start",
+            post(profiler_routes::api_profiler_start),
+        )
+        .route(
+            "/api/profiler/stop",
+            post(profiler_routes::api_profiler_stop),
+        )
+        .route(
+            "/api/profiler/sessions",
+            get(profiler_routes::api_profiler_sessions),
+        )
+        .route(
+            "/api/profiler/sessions/clear",
+            post(profiler_routes::api_profiler_clear),
+        )
+        .route(
+            "/api/profiler/sessions/{id}",
+            get(profiler_routes::api_profiler_session_detail),
+        )
+        .route(
+            "/api/profiler/sessions/{id}",
+            axum::routing::delete(profiler_routes::api_profiler_session_delete),
         )
         .route(
             "/anthropic/api/event_logging/batch",
@@ -786,20 +828,28 @@ fn response_payload_storage_enabled(config: &GatewayConfig) -> bool {
         .unwrap_or(true)
 }
 
+/// For a given session, generate a stable profiler session ID.
+/// We use the session_id itself as the profiler session key so all turns in one
+/// session are grouped together in `profiler_sessions`.
+fn profiler_session_id_for(session_id: &str) -> String {
+    session_id.to_string()
+}
+
 fn extract_session_id(body: &Value) -> Option<String> {
-    body.get("metadata")
-        .and_then(|metadata| metadata.get("user_id"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .or_else(|| {
-            body.get("user")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
-        })
+    fn extract_string(value: Option<&Value>) -> Option<String> {
+        value
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    }
+
+    let metadata = body.get("metadata");
+    extract_string(metadata.and_then(|value| value.get("session_id")))
+        .or_else(|| extract_string(metadata.and_then(|value| value.get("conversation_id"))))
+        .or_else(|| extract_string(body.get("session_id")))
+        .or_else(|| extract_string(metadata.and_then(|value| value.get("user_id"))))
+        .or_else(|| extract_string(body.get("user")))
 }
 
 #[cfg(test)]

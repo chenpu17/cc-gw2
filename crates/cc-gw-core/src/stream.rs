@@ -239,12 +239,23 @@ impl SseStreamObserver {
     fn detect_content(&self, event: &Value) -> bool {
         match self.protocol {
             ProviderProtocol::AnthropicMessages => {
-                event.get("type").and_then(Value::as_str) == Some("content_block_delta")
-                    && event
-                        .get("delta")
-                        .and_then(|delta| delta.get("type"))
-                        .and_then(Value::as_str)
-                        == Some("text_delta")
+                match event.get("type").and_then(Value::as_str) {
+                    Some("content_block_start") => matches!(
+                        event
+                            .get("content_block")
+                            .and_then(|content_block| content_block.get("type"))
+                            .and_then(Value::as_str),
+                        Some("tool_use") | Some("thinking")
+                    ),
+                    Some("content_block_delta") => matches!(
+                        event
+                            .get("delta")
+                            .and_then(|delta| delta.get("type"))
+                            .and_then(Value::as_str),
+                        Some("text_delta") | Some("input_json_delta") | Some("thinking_delta")
+                    ),
+                    _ => false,
+                }
             }
             ProviderProtocol::OpenAiChatCompletions => event
                 .get("choices")
@@ -252,14 +263,24 @@ impl SseStreamObserver {
                 .and_then(|choices| choices.first())
                 .and_then(|choice| choice.get("delta"))
                 .is_some_and(|delta| {
-                    delta.get("content").is_some() || delta.get("reasoning_content").is_some()
+                    delta.get("content").is_some()
+                        || delta.get("reasoning_content").is_some()
+                        || delta.get("tool_calls").is_some()
                 }),
-            ProviderProtocol::OpenAiResponses => matches!(
-                event.get("type").and_then(Value::as_str),
+            ProviderProtocol::OpenAiResponses => match event.get("type").and_then(Value::as_str) {
                 Some("response.output_text.delta")
-                    | Some("response.content_part.delta")
-                    | Some("response.output_item.content_part.delta")
-            ),
+                | Some("response.content_part.delta")
+                | Some("response.output_item.content_part.delta")
+                | Some("response.function_call_arguments.delta") => true,
+                Some("response.output_item.added") => matches!(
+                    event
+                        .get("item")
+                        .and_then(|item| item.get("type"))
+                        .and_then(Value::as_str),
+                    Some("function_call") | Some("tool_use") | Some("output_text") | Some("text")
+                ),
+                _ => false,
+            },
         }
     }
 }
@@ -1483,7 +1504,11 @@ fn materialize_anthropic_stream(sse_stream: &str) -> Option<String> {
             "content_block_start" => {
                 let index = event.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
                 if let Some(content_block) = event.get("content_block") {
-                    match content_block.get("type").and_then(Value::as_str).unwrap_or("") {
+                    match content_block
+                        .get("type")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                    {
                         "text" => {
                             content_blocks.insert(index, json!({ "type": "text", "text": "" }));
                         }
@@ -1707,7 +1732,10 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
                 .and_then(Value::as_str)
                 .map(ToString::to_string)
                 .or(id);
-            created = response_value.get("created").and_then(Value::as_i64).or(created);
+            created = response_value
+                .get("created")
+                .and_then(Value::as_i64)
+                .or(created);
             model = response_value
                 .get("model")
                 .and_then(Value::as_str)
@@ -1748,7 +1776,10 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
                 }
             }
             "response.function_call_arguments.delta" => {
-                let item_id = event.get("item_id").and_then(Value::as_str).unwrap_or("call");
+                let item_id = event
+                    .get("item_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("call");
                 let delta = event.get("delta").and_then(Value::as_str).unwrap_or("");
                 let entry = tool_calls.entry(item_id.to_string()).or_insert_with(|| {
                     json!({
@@ -1854,6 +1885,42 @@ mod tests {
         assert_eq!(usage.cache_read_tokens, 3);
         assert_eq!(usage.cache_creation_tokens, 0);
         assert_eq!(usage.cached_tokens, 3);
+    }
+
+    #[test]
+    fn anthropic_observer_treats_tool_and_thinking_events_as_first_output() {
+        let mut observer = SseStreamObserver::new(ProviderProtocol::AnthropicMessages);
+        let observation = observer.push(
+            "event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"considering options\"}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tool_1\",\"name\":\"weather\",\"input\":{}}}\n\n",
+        );
+
+        assert!(observation.saw_first_token);
+    }
+
+    #[test]
+    fn openai_chat_observer_treats_tool_calls_as_first_output() {
+        let mut observer = SseStreamObserver::new(ProviderProtocol::OpenAiChatCompletions);
+        let observation = observer.push(
+            "data: {\"id\":\"chatcmpl_123\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"weather\",\"arguments\":\"\"}}]}}]}\n\n",
+        );
+
+        assert!(observation.saw_first_token);
+    }
+
+    #[test]
+    fn openai_responses_observer_treats_function_call_events_as_first_output() {
+        let mut observer = SseStreamObserver::new(ProviderProtocol::OpenAiResponses);
+        let observation = observer.push(
+            "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"call_1\",\"type\":\"function_call\",\"name\":\"weather\",\"arguments\":\"\"}}\n\n\
+             data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"call_1\",\"delta\":\"{\\\"city\\\":\\\"Paris\\\"}\"}\n\n",
+        );
+
+        assert!(observation.saw_first_token);
     }
 
     #[test]

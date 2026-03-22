@@ -117,7 +117,9 @@ mod tests {
             "client_response",
         ] {
             assert!(
-                request_payload_columns.iter().any(|(name, _)| name == column),
+                request_payload_columns
+                    .iter()
+                    .any(|(name, _)| name == column),
                 "missing migrated payload column {column}"
             );
         }
@@ -415,6 +417,7 @@ pub fn initialize_database(path: &Path) -> Result<()> {
     )?;
     maybe_add_column(&conn, "api_keys", "allowed_endpoints", "TEXT DEFAULT NULL")?;
 
+    crate::profiler::initialize_profiler_tables(&conn)?;
     migrate_daily_metrics_table(&conn)?;
     maybe_add_column(
         &conn,

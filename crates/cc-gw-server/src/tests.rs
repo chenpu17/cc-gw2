@@ -5,6 +5,60 @@ use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
+#[test]
+fn extract_session_id_prefers_session_fields_over_user_fields() {
+    let payload = json!({
+        "metadata": {
+            "user_id": "user-fallback",
+            "session_id": "session-from-metadata",
+            "conversation_id": "conversation-fallback"
+        },
+        "session_id": "session-from-body",
+        "user": "user-from-body"
+    });
+
+    assert_eq!(
+        extract_session_id(&payload),
+        Some("session-from-metadata".to_string())
+    );
+
+    let payload_without_user_id = json!({
+        "metadata": {
+            "session_id": "session-from-metadata",
+            "conversation_id": "conversation-fallback"
+        },
+        "session_id": "session-from-body",
+        "user": "user-from-body"
+    });
+
+    assert_eq!(
+        extract_session_id(&payload_without_user_id),
+        Some("session-from-metadata".to_string())
+    );
+
+    let payload_with_body_session = json!({
+        "session_id": "session-from-body",
+        "user": "user-from-body"
+    });
+
+    assert_eq!(
+        extract_session_id(&payload_with_body_session),
+        Some("session-from-body".to_string())
+    );
+
+    let payload_with_only_user = json!({
+        "metadata": {
+            "user_id": "user-fallback"
+        },
+        "user": "user-from-body"
+    });
+
+    assert_eq!(
+        extract_session_id(&payload_with_only_user),
+        Some("user-fallback".to_string())
+    );
+}
+
 fn test_paths(label: &str) -> GatewayPaths {
     let root = std::env::temp_dir().join(format!(
         "cc-gw2-tests-{label}-{}",
@@ -38,8 +92,10 @@ fn build_test_state(
         active_requests_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
         http_client: reqwest::Client::builder().build().expect("client"),
         sessions: auth::SessionStore::default(),
+        profiling_active: Arc::new(AtomicU64::new(0)),
     }
 }
 
@@ -415,9 +471,7 @@ async fn streaming_logs_store_materialized_response_instead_of_raw_sse_chunks() 
     let response_payload_json: Value =
         serde_json::from_str(response_payload).expect("materialized response payload");
     assert_eq!(
-        response_payload_json
-            .get("object")
-            .and_then(Value::as_str),
+        response_payload_json.get("object").and_then(Value::as_str),
         Some("response")
     );
     assert_eq!(
@@ -472,7 +526,10 @@ async fn cross_protocol_logs_capture_four_payload_blocks_on_one_record() {
         .json()
         .await
         .expect("decode non-stream responses response");
-    assert_eq!(response.get("object").and_then(Value::as_str), Some("response"));
+    assert_eq!(
+        response.get("object").and_then(Value::as_str),
+        Some("response")
+    );
 
     let logs: Value = client
         .get(format!("http://{gateway_addr}/api/logs?limit=1"))
@@ -1334,6 +1391,12 @@ async fn api_status_reports_live_and_recent_client_activity() {
             .and_then(Value::as_u64),
         Some(1)
     );
+    assert!(
+        live_status
+            .get("cpuUsagePercent")
+            .and_then(Value::as_f64)
+            .is_some()
+    );
 
     let response = in_flight.await.expect("join in-flight request");
     assert_eq!(response.status(), StatusCode::OK);
@@ -1398,6 +1461,12 @@ async fn api_status_reports_live_and_recent_client_activity() {
             .get("uniqueClientSessionsLastHour")
             .and_then(Value::as_u64),
         Some(2)
+    );
+    assert!(
+        settled_status
+            .get("cpuUsagePercent")
+            .and_then(Value::as_f64)
+            .is_some()
     );
 
     gateway_handle.abort();
@@ -1695,4 +1764,111 @@ async fn ui_html_is_not_cached_but_hashed_assets_are_cacheable() {
 
     gateway_handle.abort();
     let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+// ---------------------------------------------------------------------------
+// Profiler API tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn profiler_status_start_stop() {
+    let (home_dir, addr, handle) =
+        spawn_test_gateway(GatewayConfig::default(), "profiler-status").await;
+    let client = reqwest::Client::new();
+
+    // Initial status: not active
+    let status: Value = client
+        .get(format!("http://{addr}/api/profiler/status"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["active"], false);
+
+    // Start recording
+    let status: Value = client
+        .post(format!("http://{addr}/api/profiler/start"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["active"], true);
+
+    // Status now active
+    let status: Value = client
+        .get(format!("http://{addr}/api/profiler/status"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["active"], true);
+
+    // Stop recording
+    let status: Value = client
+        .post(format!("http://{addr}/api/profiler/stop"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["active"], false);
+
+    handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn profiler_sessions_list_and_clear() {
+    let (home_dir, addr, handle) =
+        spawn_test_gateway(GatewayConfig::default(), "profiler-sessions").await;
+    let client = reqwest::Client::new();
+
+    // Empty list
+    let list: Value = client
+        .get(format!("http://{addr}/api/profiler/sessions"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(list["total"], 0);
+    assert!(list["items"].as_array().unwrap().is_empty());
+
+    // Unknown session returns 404
+    let res = client
+        .get(format!("http://{addr}/api/profiler/sessions/unknown-id"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+
+    // Delete unknown session returns 404
+    let res = client
+        .delete(format!("http://{addr}/api/profiler/sessions/unknown-id"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+
+    // Clear returns count 0
+    let cleared: Value = client
+        .post(format!("http://{addr}/api/profiler/sessions/clear"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(cleared["deleted"], 0);
+
+    handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
 }

@@ -46,6 +46,7 @@ export interface ServiceStatus {
   host?: string
   providers: number
   activeRequests?: number
+  cpuUsagePercent?: number
   activeClientAddresses?: number
   activeClientSessions?: number
   uniqueClientAddressesLastHour?: number
@@ -107,4 +108,14 @@ export function formatBytes(value: number | null | undefined): string {
   }
 
   return `${bytes.toFixed(bytes >= 100 ? 0 : bytes >= 10 ? 1 : 2)} ${units[unitIndex]}`
+}
+
+export function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return '-'
+  }
+
+  return `${value.toLocaleString(undefined, {
+    maximumFractionDigits: value >= 10 ? 0 : 1
+  })}%`
 }

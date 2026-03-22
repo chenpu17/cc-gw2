@@ -38,5 +38,10 @@ export const queryKeys = {
     all: () => ['api-keys'] as const,
     overview: (days: number) => ['api-keys', 'overview', days] as const,
     usage: (days: number) => ['api-keys', 'usage', days] as const
+  },
+  profiler: {
+    status: () => ['profiler', 'status'] as const,
+    sessions: (params: Record<string, unknown>) => ['profiler', 'sessions', params] as const,
+    session: (id: string | null) => ['profiler', 'session', id] as const
   }
 }

@@ -155,6 +155,43 @@ pub struct DatabaseInfo {
     pub memory_rss_bytes: Option<i64>,
 }
 
+pub struct RuntimeMetricsSampler {
+    pid: Pid,
+    system: System,
+    cpu_count: f32,
+}
+
+impl RuntimeMetricsSampler {
+    pub fn new() -> Self {
+        let pid = Pid::from_u32(std::process::id());
+        let refresh =
+            RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_cpu());
+        let system = System::new_with_specifics(refresh);
+        let cpu_count = std::thread::available_parallelism()
+            .map(|count| count.get() as f32)
+            .unwrap_or(1.0);
+
+        Self {
+            pid,
+            system,
+            cpu_count,
+        }
+    }
+
+    pub fn current_process_cpu_usage_percent(&mut self) -> Option<f64> {
+        self.system.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[self.pid]),
+            false,
+            ProcessRefreshKind::nothing().with_cpu(),
+        );
+
+        self.system.process(self.pid).map(|process| {
+            let normalized = process.cpu_usage() / self.cpu_count.max(1.0);
+            normalized.clamp(0.0, 100.0) as f64
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientActivityMetrics {
@@ -282,7 +319,11 @@ pub fn finalize_request_log(db_path: &Path, id: i64, update: &RequestLogUpdate) 
     Ok(())
 }
 
-pub fn upsert_request_payload(db_path: &Path, request_id: i64, payload: &LogPayloadUpdate<'_>) -> Result<()> {
+pub fn upsert_request_payload(
+    db_path: &Path,
+    request_id: i64,
+    payload: &LogPayloadUpdate<'_>,
+) -> Result<()> {
     if payload.client_request.is_none()
         && payload.upstream_request.is_none()
         && payload.upstream_response.is_none()
@@ -293,7 +334,10 @@ pub fn upsert_request_payload(db_path: &Path, request_id: i64, payload: &LogPayl
     let conn = open_db(db_path)?;
     let client_request_blob = payload.client_request.map(compress_payload).transpose()?;
     let upstream_request_blob = payload.upstream_request.map(compress_payload).transpose()?;
-    let upstream_response_blob = payload.upstream_response.map(compress_payload).transpose()?;
+    let upstream_response_blob = payload
+        .upstream_response
+        .map(compress_payload)
+        .transpose()?;
     let client_response_blob = payload.client_response.map(compress_payload).transpose()?;
     conn.execute(
         "INSERT INTO request_payloads (
@@ -464,7 +508,8 @@ fn build_log_payload(
     upstream_response: Option<Vec<u8>>,
     client_response: Option<Vec<u8>>,
 ) -> Option<LogPayload> {
-    let client_request = decompress_payload(client_request).or_else(|| decompress_payload(legacy_prompt));
+    let client_request =
+        decompress_payload(client_request).or_else(|| decompress_payload(legacy_prompt));
     let client_response =
         decompress_payload(client_response).or_else(|| decompress_payload(legacy_response));
     let upstream_request = decompress_payload(upstream_request);

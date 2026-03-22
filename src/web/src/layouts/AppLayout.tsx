@@ -18,7 +18,7 @@ function isNavigationItemActive(pathname: string, item: (typeof navigationRoutes
   })
 }
 
-const overviewPaths = ['/', '/logs', '/models', '/events']
+const overviewPaths = ['/', '/logs', '/models', '/events', '/profiler']
 const adminPaths = ['/api-keys', '/settings', '/help', '/about']
 
 function NavGroup({
