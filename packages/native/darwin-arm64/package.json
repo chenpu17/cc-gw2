@@ -1,6 +1,6 @@
 {
   "name": "@chenpu17/cc-gw-darwin-arm64",
-  "version": "0.8.0-beta.1",
+  "version": "0.8.0-beta.2",
   "private": false,
   "description": "Prebuilt darwin arm64 binary for cc-gw",
   "license": "MIT",

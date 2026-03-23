@@ -134,3 +134,48 @@ test('profiler clear removes old turns before reusing the same session id', asyn
   await expect(page.getByText('old profiler turn')).toHaveCount(0)
   await expect(page.getByRole('button', { name: /T1.*TTFT.*tool calls/i })).toBeVisible()
 })
+
+test('profiler timeline stays scrollable when a session has many turns', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+  const sessionId = 'prof-many-turns'
+  const turnCount = 28
+
+  await resetProfiler(request, baseUrl)
+
+  await page.goto(`${baseUrl}/ui/profiler`)
+  await expect(page.getByText('Profiler')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Start Recording' }).click()
+  await expect(page.getByRole('button', { name: 'Stop Recording' })).toBeVisible()
+
+  for (let turn = 1; turn <= turnCount; turn += 1) {
+    await sendChatTurn(request, baseUrl, sessionId, `many profiler turn ${turn}`)
+  }
+  await pollForProfilerSession(request, baseUrl, sessionId, turnCount)
+
+  const sessionItem = page.getByRole('button', { name: new RegExp(`${sessionId}.*${turnCount} turns`) })
+  await expect(sessionItem).toBeVisible({ timeout: 15_000 })
+  await sessionItem.click()
+
+  await page.getByRole('button', { name: 'Timeline' }).click()
+
+  const sessionContent = page.getByTestId('profiler-session-content')
+  await expect(sessionContent).toBeVisible()
+
+  const scrollMetrics = await sessionContent.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight
+  }))
+  expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight)
+
+  await sessionContent.evaluate((element) => {
+    element.scrollTo({ top: element.scrollHeight, behavior: 'auto' })
+  })
+
+  await expect(page.getByTestId('profiler-turn-detail')).toBeInViewport()
+  await expect(page.getByRole('button', { name: 'Tool Calls' })).toBeVisible()
+  await expect(page.getByText('many profiler turn 1').first()).toBeVisible()
+
+  await page.getByRole('button', { name: 'Stop Recording' }).click()
+  await expect(page.getByRole('button', { name: 'Start Recording' })).toBeVisible()
+})

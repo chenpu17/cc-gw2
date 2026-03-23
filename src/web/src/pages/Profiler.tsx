@@ -431,7 +431,7 @@ function TurnDetail({
           : '(no tool calls)'
 
   return (
-    <div className="bg-slate-50">
+    <div data-testid="profiler-turn-detail" className="shrink-0 bg-slate-50">
       <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
           <span
@@ -515,17 +515,15 @@ function TimelinePanel({
   onDetailTabChange: (tab: TimelineDetailTab) => void
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-full flex-col">
       <TimelineOverview detail={detail} selectedTurn={selectedTurn} onSelectTurn={onSelectTurn} />
-      <div className="min-h-0 flex-1 overflow-auto">
-        <TurnDetail
-          detail={detail}
-          selectedTurn={selectedTurn}
-          detailTab={detailTab}
-          onDetailTabChange={onDetailTabChange}
-          onSelectTurn={onSelectTurn}
-        />
-      </div>
+      <TurnDetail
+        detail={detail}
+        selectedTurn={selectedTurn}
+        detailTab={detailTab}
+        onDetailTabChange={onDetailTabChange}
+        onSelectTurn={onSelectTurn}
+      />
     </div>
   )
 }
@@ -955,7 +953,7 @@ export default function ProfilerPage() {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+              <div data-testid="profiler-session-content" className="min-h-0 flex-1 overflow-auto bg-slate-50">
                 {detailQuery.isPending ? (
                   <PageLoadingState compact className="min-h-[240px]" label="Loading session..." />
                 ) : detailQuery.isError ? (
