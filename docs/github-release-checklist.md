@@ -29,14 +29,15 @@ pnpm test:e2e:web:hardening
 pnpm test:e2e:web:visual
 pnpm smoke:cli
 pnpm pack:dry-run
+pnpm docs:readme-screenshots
 ```
 
-当前本地最新核验记录（2026-03-19）：
+当前本地最新核验记录（2026-03-26）：
 
 - `pnpm smoke:cli` 通过
 - `pnpm pack:dry-run` 通过
-- 根包 dry-run 产物：`.pack/chenpu17-cc-gw-0.8.0-alpha.12.tgz`
-- 根包 tarball 大小：`466942 bytes`
+- 根包 dry-run 产物：`.pack/chenpu17-cc-gw-0.8.0.tgz`
+- 根包 tarball 大小：`466900 bytes`
 - 已确认根包包含 `src/cli/dist`、`src/web/dist`、`README.md`、`LICENSE`
 
 如本轮修改涉及页面结构、主题或信息层级，再额外执行：
@@ -80,8 +81,8 @@ pnpm run sync:native-versions
 确认版本号一致后打 tag：
 
 ```bash
-git tag v0.8.0-alpha.12
-git push origin v0.8.0-alpha.12
+git tag v0.8.0
+git push origin v0.8.0
 ```
 
 `release.yml` 会按下面顺序执行：

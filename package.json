@@ -1,6 +1,6 @@
 {
   "name": "@chenpu17/cc-gw",
-  "version": "0.8.0-beta.2",
+  "version": "0.8.0",
   "private": false,
   "type": "module",
   "description": "Rust-backed local Claude Code compatible gateway with web console and CLI daemon.",
@@ -28,6 +28,7 @@
     "bundle:native": "node scripts/bundle-native-binary.mjs",
     "smoke:cli": "node scripts/smoke-cli.mjs",
     "build:package": "pnpm run sync:native-versions && pnpm run build:cli && pnpm run build:web",
+    "docs:readme-screenshots": "pnpm build && node scripts/capture-readme-screenshots.mjs",
     "pack:dry-run": "pnpm run build:package && node scripts/pack-root-package.mjs",
     "publish:packed": "node scripts/publish-artifacts.mjs",
     "test:e2e:web": "pnpm build && playwright test",
