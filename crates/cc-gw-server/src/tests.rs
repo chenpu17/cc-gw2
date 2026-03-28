@@ -92,6 +92,7 @@ fn build_test_state(
         active_requests_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
         runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
         http_client: reqwest::Client::builder().build().expect("client"),
         sessions: auth::SessionStore::default(),
@@ -1870,5 +1871,161 @@ async fn profiler_sessions_list_and_clear() {
     assert_eq!(cleared["deleted"], 0);
 
     handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn api_key_concurrency_limit_returns_429_and_records_event() {
+    // Upstream sleeps so the first request stays in-flight while the second arrives
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            sleep(Duration::from_millis(800)).await;
+            Json(json!({
+                "choices": [{
+                    "message": { "content": "ok" }
+                }],
+                "usage": {
+                    "prompt_tokens": 4,
+                    "completion_tokens": 2
+                }
+            }))
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.defaults.completion = Some("gpt-test".to_string());
+    if let Some(openai) = config.endpoint_routing.get_mut("openai") {
+        openai.defaults.completion = Some("gpt-test".to_string());
+    }
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "concurrency-429").await;
+    let client = reqwest::Client::new();
+
+    // Create a key with maxConcurrency=1
+    let create: Value = client
+        .post(format!("http://{gateway_addr}/api/keys"))
+        .json(&json!({
+            "name": "concurrency-test",
+            "maxConcurrency": 1
+        }))
+        .send()
+        .await
+        .expect("create api key")
+        .json()
+        .await
+        .expect("decode api key create");
+    let api_key = create
+        .get("key")
+        .and_then(Value::as_str)
+        .expect("created api key")
+        .to_string();
+
+    // Launch first request (will sleep at upstream, keeping the concurrency slot occupied)
+    let first_client = client.clone();
+    let first_url = format!("http://{gateway_addr}/openai/v1/chat/completions");
+    let first_key = api_key.clone();
+    let in_flight = tokio::spawn(async move {
+        first_client
+            .post(first_url)
+            .header("x-api-key", &first_key)
+            .json(&json!({
+                "model": "gpt-test",
+                "messages": [{ "role": "user", "content": "first" }]
+            }))
+            .send()
+            .await
+            .expect("send first request")
+    });
+
+    // Wait for the first request to be registered in the concurrency tracker
+    sleep(Duration::from_millis(200)).await;
+
+    // Second request should get 429
+    let rejected = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .header("x-api-key", &api_key)
+        .json(&json!({
+            "model": "gpt-test",
+            "messages": [{ "role": "user", "content": "second" }]
+        }))
+        .send()
+        .await
+        .expect("send second request");
+    assert_eq!(rejected.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let rejected_body: Value = rejected.json().await.expect("decode rejected response");
+    assert_eq!(
+        rejected_body
+            .get("error")
+            .and_then(|e| e.get("code"))
+            .and_then(Value::as_str),
+        Some("concurrency_limit_exceeded")
+    );
+    assert!(rejected_body
+        .get("error")
+        .and_then(|e| e.get("message"))
+        .and_then(Value::as_str)
+        .is_some_and(|msg| msg.contains("maximum concurrency limit of 1")));
+
+    // Wait for the first request to complete
+    let first_response = in_flight.await.expect("join first request");
+    assert_eq!(first_response.status(), StatusCode::OK);
+
+    // Verify the concurrency rejection event was recorded
+    let events: Value = client
+        .get(format!("http://{gateway_addr}/api/events?limit=10"))
+        .send()
+        .await
+        .expect("request events")
+        .json()
+        .await
+        .expect("decode events");
+    let event_items = events
+        .get("events")
+        .and_then(Value::as_array)
+        .expect("events array");
+    let rejection_event = event_items
+        .iter()
+        .find(|e| e.get("type").and_then(Value::as_str) == Some("api_key_concurrency_rejected"))
+        .expect("find concurrency rejection event");
+    assert_eq!(
+        rejection_event.get("level").and_then(Value::as_str),
+        Some("warn")
+    );
+    assert_eq!(
+        rejection_event.get("source").and_then(Value::as_str),
+        Some("auth")
+    );
+
+    // After the first request completes, a third request should succeed
+    let third = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .header("x-api-key", &api_key)
+        .json(&json!({
+            "model": "gpt-test",
+            "messages": [{ "role": "user", "content": "third" }]
+        }))
+        .send()
+        .await
+        .expect("send third request");
+    assert_eq!(third.status(), StatusCode::OK);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
 }

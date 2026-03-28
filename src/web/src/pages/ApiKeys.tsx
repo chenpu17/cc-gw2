@@ -94,9 +94,11 @@ export default function ApiKeysPage() {
         isOpen={state.isCreateDialogOpen}
         keyDescription={state.newKeyDescription}
         keyName={state.newKeyName}
+        maxConcurrency={state.newKeyMaxConcurrency}
         onDescriptionChange={state.setNewKeyDescription}
         onEndpointsChange={state.setNewKeyEndpoints}
         onKeyNameChange={state.setNewKeyName}
+        onMaxConcurrencyChange={state.setNewKeyMaxConcurrency}
         onOpenChange={state.handleCreateDialogChange}
         onSubmit={() => void state.handleCreateKey()}
         selectedEndpoints={state.newKeyEndpoints}
@@ -111,8 +113,10 @@ export default function ApiKeysPage() {
       <EditApiKeyEndpointsDialog
         apiKey={state.editEndpointsKey}
         availableEndpoints={state.availableEndpoints}
+        maxConcurrency={state.editMaxConcurrency}
         onClose={() => state.setEditEndpointsKey(null)}
         onEndpointsChange={state.setEditEndpointsSelection}
+        onMaxConcurrencyChange={state.setEditMaxConcurrency}
         onSave={() => void state.handleSaveEndpoints()}
         selectedEndpoints={state.editEndpointsSelection}
       />

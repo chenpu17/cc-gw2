@@ -24,9 +24,11 @@ export function CreateApiKeyDialog({
   isOpen,
   keyDescription,
   keyName,
+  maxConcurrency,
   onDescriptionChange,
   onEndpointsChange,
   onKeyNameChange,
+  onMaxConcurrencyChange,
   onOpenChange,
   onSubmit,
   selectedEndpoints
@@ -35,9 +37,11 @@ export function CreateApiKeyDialog({
   isOpen: boolean
   keyDescription: string
   keyName: string
+  maxConcurrency: string
   onDescriptionChange: (value: string) => void
   onEndpointsChange: (next: string[]) => void
   onKeyNameChange: (value: string) => void
+  onMaxConcurrencyChange: (value: string) => void
   onOpenChange: (open: boolean) => void
   onSubmit: () => void
   selectedEndpoints: string[]
@@ -103,6 +107,18 @@ export function CreateApiKeyDialog({
               hint={t('apiKeys.selectEndpoints')}
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="maxConcurrency">{t('apiKeys.maxConcurrency')}</Label>
+            <Input
+              id="maxConcurrency"
+              type="number"
+              min="0"
+              value={maxConcurrency}
+              onChange={(event) => onMaxConcurrencyChange(event.target.value)}
+              placeholder={t('apiKeys.maxConcurrencyPlaceholder')}
+            />
+            <p className="text-xs text-muted-foreground">{t('apiKeys.maxConcurrencyHelper')}</p>
+          </div>
         </AppDialogBody>
         <AppDialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -165,15 +181,19 @@ export function ApiKeyCreatedDialog({
 export function EditApiKeyEndpointsDialog({
   apiKey,
   availableEndpoints,
+  maxConcurrency,
   onClose,
   onEndpointsChange,
+  onMaxConcurrencyChange,
   onSave,
   selectedEndpoints
 }: {
   apiKey: ApiKeySummary | null
   availableEndpoints: EndpointOption[]
+  maxConcurrency: string
   onClose: () => void
   onEndpointsChange: (next: string[]) => void
+  onMaxConcurrencyChange: (value: string) => void
   onSave: () => void
   selectedEndpoints: string[]
 }) {
@@ -187,18 +207,34 @@ export function EditApiKeyEndpointsDialog({
           <DialogDescription>{apiKey?.name}</DialogDescription>
         </AppDialogHeader>
         <AppDialogBody className="space-y-4">
-          <div className="rounded-lg border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning-bg))] px-4 py-3 text-xs text-[hsl(var(--warning)/1)]">
-            {t('apiKeys.allEndpoints')}
+          {!apiKey?.isWildcard && (
+            <>
+              <div className="rounded-lg border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning-bg))] px-4 py-3 text-xs text-[hsl(var(--warning)/1)]">
+                {t('apiKeys.allEndpoints')}
+              </div>
+              <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">
+                Empty selection means unrestricted access. Only explicit selections create a restricted key scope.
+              </div>
+              <EndpointSelector
+                available={availableEndpoints}
+                selected={selectedEndpoints}
+                onChange={onEndpointsChange}
+                hint={t('apiKeys.selectEndpoints')}
+              />
+            </>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="editMaxConcurrency">{t('apiKeys.maxConcurrency')}</Label>
+            <Input
+              id="editMaxConcurrency"
+              type="number"
+              min="0"
+              value={maxConcurrency}
+              onChange={(event) => onMaxConcurrencyChange(event.target.value)}
+              placeholder={t('apiKeys.maxConcurrencyPlaceholder')}
+            />
+            <p className="text-xs text-muted-foreground">{t('apiKeys.maxConcurrencyHelper')}</p>
           </div>
-          <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">
-            Empty selection means unrestricted access. Only explicit selections create a restricted key scope.
-          </div>
-          <EndpointSelector
-            available={availableEndpoints}
-            selected={selectedEndpoints}
-            onChange={onEndpointsChange}
-            hint={t('apiKeys.selectEndpoints')}
-          />
         </AppDialogBody>
         <AppDialogFooter>
           <Button variant="outline" onClick={onClose}>

@@ -325,9 +325,9 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
                   <TableCell>
                     <Badge variant="outline" className="text-[11px]">
                       {item.endpoint === 'anthropic'
-                        ? t('logs.table.endpointAnthropic')
+                        ? t('logs.endpointAnthropic')
                         : item.endpoint === 'openai'
-                          ? t('logs.table.endpointOpenAI')
+                          ? t('logs.endpointOpenAI')
                           : item.endpoint}
                     </Badge>
                   </TableCell>

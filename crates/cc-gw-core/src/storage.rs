@@ -416,6 +416,7 @@ pub fn initialize_database(path: &Path) -> Result<()> {
         "INTEGER DEFAULT 0",
     )?;
     maybe_add_column(&conn, "api_keys", "allowed_endpoints", "TEXT DEFAULT NULL")?;
+    maybe_add_column(&conn, "api_keys", "max_concurrency", "INTEGER DEFAULT NULL")?;
 
     crate::profiler::initialize_profiler_tables(&conn)?;
     migrate_daily_metrics_table(&conn)?;

@@ -3,6 +3,7 @@ use cc_gw_core::profiler::{AppendProfilerTurnInput, append_profiler_turn};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+#[derive(Debug)]
 struct RequestActivityGuard {
     active_requests: Arc<AtomicU64>,
     active_client_addresses: Arc<Mutex<HashMap<String, u64>>>,
@@ -10,9 +11,11 @@ struct RequestActivityGuard {
     active_requests_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
     active_client_addresses_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_client_sessions_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
+    active_requests_by_api_key: Arc<Mutex<HashMap<i64, u64>>>,
     endpoint_id: String,
     source_ip: Option<String>,
     session_id: Option<String>,
+    api_key_id: Option<i64>,
 }
 
 impl RequestActivityGuard {
@@ -21,6 +24,7 @@ impl RequestActivityGuard {
         endpoint_id: String,
         source_ip: Option<String>,
         session_id: Option<String>,
+        api_key_id: Option<i64>,
     ) -> Self {
         state.active_requests.fetch_add(1, Ordering::Relaxed);
         increment_endpoint_counter(&state.active_requests_by_endpoint, &endpoint_id);
@@ -40,6 +44,9 @@ impl RequestActivityGuard {
                 session_id,
             );
         }
+        if let Some(api_key_id) = api_key_id {
+            increment_api_key_counter(&state.active_requests_by_api_key, api_key_id);
+        }
         Self {
             active_requests: Arc::clone(&state.active_requests),
             active_client_addresses: Arc::clone(&state.active_client_addresses),
@@ -51,9 +58,91 @@ impl RequestActivityGuard {
             active_client_sessions_by_endpoint: Arc::clone(
                 &state.active_client_sessions_by_endpoint,
             ),
+            active_requests_by_api_key: Arc::clone(&state.active_requests_by_api_key),
             endpoint_id,
             source_ip,
             session_id,
+            api_key_id,
+        }
+    }
+
+    /// Atomically check the per-key concurrency limit and reserve a slot.
+    /// Returns `Ok(guard)` on success, `Err(current_count)` if the limit would be exceeded.
+    fn try_new_with_concurrency_check(
+        state: &AppState,
+        endpoint_id: String,
+        source_ip: Option<String>,
+        session_id: Option<String>,
+        api_key_id: Option<i64>,
+        max_concurrency: Option<i64>,
+    ) -> Result<Self, u64> {
+        // Atomically check and increment the API key counter in one lock scope
+        if let (Some(api_key_id), Some(max)) = (api_key_id, max_concurrency) {
+            if max > 0 {
+                if let Ok(mut entries) = state.active_requests_by_api_key.lock() {
+                    let current = *entries.get(&api_key_id).unwrap_or(&0);
+                    if current >= max as u64 {
+                        return Err(current);
+                    }
+                    // Reserve the slot immediately while still holding the lock
+                    entries.entry(api_key_id).and_modify(|c| *c += 1).or_insert(1);
+                } else {
+                    // Lock poisoned — fail open
+                    return Ok(Self::new(state, endpoint_id, source_ip, session_id, Some(api_key_id)));
+                }
+                // Counter already incremented; build the guard without re-incrementing
+                return Ok(Self::build_without_api_key_increment(
+                    state, endpoint_id, source_ip, session_id, Some(api_key_id),
+                ));
+            }
+        }
+        // No concurrency limit or no API key — use the normal path
+        Ok(Self::new(state, endpoint_id, source_ip, session_id, api_key_id))
+    }
+
+    /// Build a guard assuming the API key counter was already incremented by the caller.
+    fn build_without_api_key_increment(
+        state: &AppState,
+        endpoint_id: String,
+        source_ip: Option<String>,
+        session_id: Option<String>,
+        api_key_id: Option<i64>,
+    ) -> Self {
+        state.active_requests.fetch_add(1, Ordering::Relaxed);
+        increment_endpoint_counter(&state.active_requests_by_endpoint, &endpoint_id);
+        if let Some(source_ip) = source_ip.as_deref() {
+            increment_active_entry(&state.active_client_addresses, source_ip);
+            increment_active_entry_for_endpoint(
+                &state.active_client_addresses_by_endpoint,
+                &endpoint_id,
+                source_ip,
+            );
+        }
+        if let Some(session_id) = session_id.as_deref() {
+            increment_active_entry(&state.active_client_sessions, session_id);
+            increment_active_entry_for_endpoint(
+                &state.active_client_sessions_by_endpoint,
+                &endpoint_id,
+                session_id,
+            );
+        }
+        // NOTE: api_key_id counter is NOT incremented here — already done by caller
+        Self {
+            active_requests: Arc::clone(&state.active_requests),
+            active_client_addresses: Arc::clone(&state.active_client_addresses),
+            active_client_sessions: Arc::clone(&state.active_client_sessions),
+            active_requests_by_endpoint: Arc::clone(&state.active_requests_by_endpoint),
+            active_client_addresses_by_endpoint: Arc::clone(
+                &state.active_client_addresses_by_endpoint,
+            ),
+            active_client_sessions_by_endpoint: Arc::clone(
+                &state.active_client_sessions_by_endpoint,
+            ),
+            active_requests_by_api_key: Arc::clone(&state.active_requests_by_api_key),
+            endpoint_id,
+            source_ip,
+            session_id,
+            api_key_id,
         }
     }
 }
@@ -77,6 +166,9 @@ impl Drop for RequestActivityGuard {
                 &self.endpoint_id,
                 session_id,
             );
+        }
+        if let Some(api_key_id) = self.api_key_id {
+            decrement_api_key_counter(&self.active_requests_by_api_key, api_key_id);
         }
     }
 }
@@ -147,6 +239,25 @@ fn decrement_active_entry_for_endpoint(
             }
             if bucket.is_empty() {
                 entries.remove(endpoint);
+            }
+        }
+    }
+}
+
+fn increment_api_key_counter(entries: &Mutex<HashMap<i64, u64>>, api_key_id: i64) {
+    if let Ok(mut entries) = entries.lock() {
+        let counter = entries.entry(api_key_id).or_insert(0);
+        *counter += 1;
+    }
+}
+
+fn decrement_api_key_counter(entries: &Mutex<HashMap<i64, u64>>, api_key_id: i64) {
+    if let Ok(mut entries) = entries.lock() {
+        if let Some(counter) = entries.get_mut(&api_key_id) {
+            if *counter > 1 {
+                *counter -= 1;
+            } else {
+                entries.remove(&api_key_id);
             }
         }
     }
@@ -449,12 +560,57 @@ pub(super) async fn proxy_standard_request(
     let endpoint_id = endpoint_name(endpoint, protocol);
     let user_agent = header_value(&headers, header::USER_AGENT.as_str());
     let session_id = extract_session_id(&body);
-    let activity_guard = RequestActivityGuard::new(
+
+    // Atomically check per-key concurrency limit and create the activity guard
+    let activity_guard = match RequestActivityGuard::try_new_with_concurrency_check(
         &state,
         endpoint_id.clone(),
         source_ip.clone(),
         session_id.clone(),
-    );
+        Some(api_key_context.id),
+        api_key_context.max_concurrency,
+    ) {
+        Ok(guard) => guard,
+        Err(current) => {
+            let max = api_key_context.max_concurrency.unwrap();
+            let _ = record_event(
+                &state.paths.db_path,
+                &RecordEventInput {
+                    event_type: "api_key_concurrency_rejected".to_string(),
+                    level: Some("warn".to_string()),
+                    source: Some("auth".to_string()),
+                    title: Some("API key concurrency limit exceeded".to_string()),
+                    message: Some(format!(
+                        "Request rejected: API key {} exceeded max concurrency of {}",
+                        api_key_context.name, max
+                    )),
+                    api_key_id: Some(api_key_context.id),
+                    api_key_name: Some(api_key_context.name.clone()),
+                    endpoint: Some(endpoint_id.clone()),
+                    ip_address: source_ip.clone(),
+                    user_agent: user_agent.clone(),
+                    details: Some(json!({
+                        "maxConcurrency": max,
+                        "currentCount": current
+                    })),
+                    ..RecordEventInput::default()
+                },
+            );
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({
+                    "error": {
+                        "code": "concurrency_limit_exceeded",
+                        "message": format!(
+                            "API key has reached its maximum concurrency limit of {}",
+                            max
+                        )
+                    }
+                })),
+            )
+                .into_response();
+        }
+    };
     let encrypted_api_key_value = if api_key_context.provided_key.is_empty() {
         None
     } else {
@@ -1411,8 +1567,152 @@ fn finalize_stream_logging(
 
 #[cfg(test)]
 mod tests {
-    use super::extract_usage_stats;
+    use super::*;
     use serde_json::json;
+
+    fn make_test_state() -> AppState {
+        AppState {
+            config: Arc::new(RwLock::new(GatewayConfig::default())),
+            paths: Arc::new(GatewayPaths {
+                home_dir: std::path::PathBuf::from("/tmp"),
+                db_path: std::path::PathBuf::from("/tmp/test.db"),
+                config_path: std::path::PathBuf::from("/tmp/config.json"),
+                data_dir: std::path::PathBuf::from("/tmp/data"),
+                log_dir: std::path::PathBuf::from("/tmp/logs"),
+            }),
+            ui_root: None,
+            active_requests: Arc::new(AtomicU64::new(0)),
+            active_client_addresses: Arc::new(Mutex::new(HashMap::new())),
+            active_client_sessions: Arc::new(Mutex::new(HashMap::new())),
+            active_requests_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+            active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+            active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+            active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
+            runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
+            http_client: reqwest::Client::builder().build().expect("client"),
+            sessions: auth::SessionStore::default(),
+            profiling_active: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    #[test]
+    fn concurrency_allows_when_under_limit() {
+        let state = make_test_state();
+        let result = RequestActivityGuard::try_new_with_concurrency_check(
+            &state,
+            "test-endpoint".to_string(),
+            None,
+            None,
+            Some(42),
+            Some(3),
+        );
+        assert!(result.is_ok(), "should succeed when under limit");
+    }
+
+    #[test]
+    fn concurrency_rejects_when_at_limit() {
+        let state = make_test_state();
+        {
+            let mut entries = state.active_requests_by_api_key.lock().unwrap();
+            entries.insert(42, 3);
+        }
+        let result = RequestActivityGuard::try_new_with_concurrency_check(
+            &state,
+            "test-endpoint".to_string(),
+            None,
+            None,
+            Some(42),
+            Some(3),
+        );
+        assert!(result.is_err(), "should reject when at limit");
+        assert_eq!(result.unwrap_err(), 3);
+    }
+
+    #[test]
+    fn concurrency_allows_when_no_limit() {
+        let state = make_test_state();
+        let result = RequestActivityGuard::try_new_with_concurrency_check(
+            &state,
+            "test-endpoint".to_string(),
+            None,
+            None,
+            Some(42),
+            None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn concurrency_allows_when_limit_is_zero() {
+        let state = make_test_state();
+        let result = RequestActivityGuard::try_new_with_concurrency_check(
+            &state,
+            "test-endpoint".to_string(),
+            None,
+            None,
+            Some(42),
+            Some(0),
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn concurrency_releases_slot_on_drop() {
+        let state = make_test_state();
+        {
+            let guard = RequestActivityGuard::try_new_with_concurrency_check(
+                &state,
+                "test-endpoint".to_string(),
+                None,
+                None,
+                Some(42),
+                Some(1),
+            );
+            assert!(guard.is_ok());
+
+            let second = RequestActivityGuard::try_new_with_concurrency_check(
+                &state,
+                "test-endpoint".to_string(),
+                None,
+                None,
+                Some(42),
+                Some(1),
+            );
+            assert!(second.is_err(), "should reject while slot is held");
+        }
+        // guard dropped — slot released
+
+        let third = RequestActivityGuard::try_new_with_concurrency_check(
+            &state,
+            "test-endpoint".to_string(),
+            None,
+            None,
+            Some(42),
+            Some(1),
+        );
+        assert!(third.is_ok(), "should succeed after slot released");
+    }
+
+    #[test]
+    fn concurrency_check_increments_atomically() {
+        let state = make_test_state();
+        {
+            let mut entries = state.active_requests_by_api_key.lock().unwrap();
+            entries.insert(42, 0);
+        }
+        let _guard = RequestActivityGuard::try_new_with_concurrency_check(
+            &state,
+            "test-endpoint".to_string(),
+            None,
+            None,
+            Some(42),
+            Some(1),
+        );
+        {
+            let entries = state.active_requests_by_api_key.lock().unwrap();
+            assert_eq!(*entries.get(&42).unwrap(), 1, "counter should be 1 after acquiring slot");
+        }
+    }
 
     #[test]
     fn extract_usage_stats_sums_cache_read_and_creation_tokens() {

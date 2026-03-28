@@ -9,12 +9,14 @@ import type {
 export interface ApiKeyMutationPayload {
   enabled?: boolean
   allowedEndpoints?: string[] | null
+  maxConcurrency?: number | null
 }
 
 export interface CreateApiKeyPayload {
   name: string
   description?: string
   allowedEndpoints?: string[]
+  maxConcurrency?: number | null
 }
 
 export interface RevealApiKeyResponse {

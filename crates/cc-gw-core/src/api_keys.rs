@@ -33,6 +33,7 @@ pub struct ApiKeyListItem {
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
     pub allowed_endpoints: Option<Vec<String>>,
+    pub max_concurrency: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -51,6 +52,7 @@ pub struct ResolvedApiKey {
     pub name: String,
     pub is_wildcard: bool,
     pub provided_key: String,
+    pub max_concurrency: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -358,7 +360,7 @@ pub fn list_api_keys(db_path: &Path) -> Result<Vec<ApiKeyListItem>> {
     let mut stmt = conn.prepare(
         "SELECT id, name, description, key_prefix, key_suffix, is_wildcard, enabled,
                 created_at, last_used_at, request_count, total_input_tokens, total_output_tokens,
-                allowed_endpoints
+                allowed_endpoints, max_concurrency
          FROM api_keys
          ORDER BY is_wildcard DESC, created_at DESC",
     )?;
@@ -384,6 +386,7 @@ pub fn list_api_keys(db_path: &Path) -> Result<Vec<ApiKeyListItem>> {
             total_input_tokens: row.get::<_, Option<i64>>(10)?.unwrap_or(0),
             total_output_tokens: row.get::<_, Option<i64>>(11)?.unwrap_or(0),
             allowed_endpoints: parse_allowed_endpoints(allowed_endpoints.as_deref()),
+            max_concurrency: row.get::<_, Option<i64>>(13)?,
         })
     })?;
 
@@ -400,6 +403,7 @@ pub fn create_api_key(
     name: &str,
     description: Option<&str>,
     allowed_endpoints: Option<Vec<String>>,
+    max_concurrency: Option<i64>,
     ip_address: Option<&str>,
 ) -> Result<CreateApiKeyResult> {
     let trimmed_name = name.trim();
@@ -439,8 +443,8 @@ pub fn create_api_key(
     conn.execute(
         "INSERT INTO api_keys (
             name, description, key_hash, key_ciphertext, key_prefix, key_suffix, is_wildcard,
-            enabled, created_at, updated_at, allowed_endpoints
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 1, ?7, ?7, ?8)",
+            enabled, created_at, updated_at, allowed_endpoints, max_concurrency
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 1, ?7, ?7, ?8, ?9)",
         params![
             trimmed_name,
             description,
@@ -449,7 +453,8 @@ pub fn create_api_key(
             prefix,
             suffix,
             created_at,
-            serialized_endpoints
+            serialized_endpoints,
+            max_concurrency
         ],
     )?;
     let id = conn.last_insert_rowid();
@@ -487,6 +492,7 @@ pub fn update_api_key_settings(
     id: i64,
     enabled: Option<bool>,
     allowed_endpoints: Option<Option<Vec<String>>>,
+    max_concurrency: Option<Option<i64>>,
     ip_address: Option<&str>,
 ) -> Result<()> {
     let conn = open_db(db_path)?;
@@ -546,8 +552,31 @@ pub fn update_api_key_settings(
         );
     }
 
+    if let Some(max_concurrency) = max_concurrency {
+        clauses.push("max_concurrency = ?");
+        values.push(max_concurrency.into());
+        let details = serde_json::json!({ "maxConcurrency": max_concurrency }).to_string();
+        record_audit_log(
+            &conn,
+            Some(existing.0),
+            Some(existing.1.as_str()),
+            "update_max_concurrency",
+            Some(&details),
+            ip_address,
+        )?;
+        record_management_event(
+            db_path,
+            "api_key_max_concurrency_updated",
+            "API key max concurrency updated",
+            &format!("Updated max concurrency for {}", existing.1),
+            Some(existing.0),
+            Some(existing.1.as_str()),
+            ip_address,
+        );
+    }
+
     if clauses.is_empty() {
-        bail!("At least one of enabled or allowedEndpoints is required");
+        bail!("At least one of enabled, allowedEndpoints or maxConcurrency is required");
     }
 
     if enabled.is_some() {
@@ -674,13 +703,14 @@ pub fn resolve_api_key(
     })?;
     let wildcard = conn
         .query_row(
-            "SELECT id, name, enabled FROM api_keys WHERE is_wildcard = 1 LIMIT 1",
+            "SELECT id, name, enabled, max_concurrency FROM api_keys WHERE is_wildcard = 1 LIMIT 1",
             [],
             |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, i64>(2)? != 0,
+                    row.get::<_, Option<i64>>(3)?,
                 ))
             },
         )
@@ -692,12 +722,13 @@ pub fn resolve_api_key(
 
     let provided = provided_raw.unwrap_or_default().trim().to_string();
     if provided.is_empty() {
-        if let Some((id, name, true)) = wildcard {
+        if let Some((id, name, true, max_concurrency)) = wildcard {
             return Ok(ResolvedApiKey {
                 id,
                 name,
                 is_wildcard: true,
                 provided_key: String::new(),
+                max_concurrency,
             });
         }
         let _ = record_event(
@@ -724,7 +755,7 @@ pub fn resolve_api_key(
     let key_hash = hash_key(&provided);
     let existing = conn
         .query_row(
-            "SELECT id, name, enabled, is_wildcard, allowed_endpoints
+            "SELECT id, name, enabled, is_wildcard, allowed_endpoints, max_concurrency
              FROM api_keys
              WHERE key_hash = ?1",
             params![key_hash],
@@ -735,6 +766,7 @@ pub fn resolve_api_key(
                     row.get::<_, i64>(2)? != 0,
                     row.get::<_, i64>(3)? != 0,
                     row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
                 ))
             },
         )
@@ -744,7 +776,7 @@ pub fn resolve_api_key(
             code: AuthFailureCode::Invalid,
         })?;
 
-    if let Some((id, name, enabled, is_wildcard, allowed_endpoints)) = existing {
+    if let Some((id, name, enabled, is_wildcard, allowed_endpoints, max_concurrency)) = existing {
         if !enabled {
             let _ = record_event(
                 db_path,
@@ -811,15 +843,17 @@ pub fn resolve_api_key(
             name,
             is_wildcard,
             provided_key: provided,
+            max_concurrency,
         });
     }
 
-    if let Some((id, name, true)) = wildcard {
+    if let Some((id, name, true, max_concurrency)) = wildcard {
         return Ok(ResolvedApiKey {
             id,
             name,
             is_wildcard: true,
             provided_key: provided,
+            max_concurrency,
         });
     }
 
@@ -988,7 +1022,8 @@ mod tests {
               request_count INTEGER DEFAULT 0,
               total_input_tokens INTEGER DEFAULT 0,
               total_output_tokens INTEGER DEFAULT 0,
-              allowed_endpoints TEXT DEFAULT NULL
+              allowed_endpoints TEXT DEFAULT NULL,
+              max_concurrency INTEGER DEFAULT NULL
             );
 
             INSERT INTO api_keys (

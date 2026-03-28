@@ -77,6 +77,7 @@ struct AppState {
     active_requests_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
     active_client_addresses_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_client_sessions_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
+    active_requests_by_api_key: Arc<Mutex<HashMap<i64, u64>>>,
     runtime_metrics: Arc<Mutex<RuntimeMetricsSampler>>,
     http_client: reqwest::Client,
     sessions: auth::SessionStore,
@@ -121,6 +122,8 @@ struct CreateApiKeyBody {
     description: Option<String>,
     #[serde(rename = "allowedEndpoints")]
     allowed_endpoints: Option<Vec<String>>,
+    #[serde(rename = "maxConcurrency")]
+    max_concurrency: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -264,6 +267,7 @@ async fn main() -> Result<()> {
         active_requests_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
         runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
         http_client: reqwest::Client::builder()
             .build()

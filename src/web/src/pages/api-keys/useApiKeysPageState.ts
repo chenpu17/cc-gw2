@@ -25,6 +25,7 @@ export function useApiKeysPageState() {
   const [newKeyName, setNewKeyName] = useState('')
   const [newKeyDescription, setNewKeyDescription] = useState('')
   const [newKeyEndpoints, setNewKeyEndpoints] = useState<string[]>([])
+  const [newKeyMaxConcurrency, setNewKeyMaxConcurrency] = useState<string>('')
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<NewApiKeyResponse | null>(null)
   const [isDeleting, setIsDeleting] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ApiKeySummary | null>(null)
@@ -43,6 +44,7 @@ export function useApiKeysPageState() {
   const [isRevealing, setIsRevealing] = useState<number | null>(null)
   const [editEndpointsKey, setEditEndpointsKey] = useState<ApiKeySummary | null>(null)
   const [editEndpointsSelection, setEditEndpointsSelection] = useState<string[]>([])
+  const [editMaxConcurrency, setEditMaxConcurrency] = useState('')
   const [search, setSearch] = usePersistentState<string>(storageKeys.apiKeys.search, '')
   const [statusFilter, setStatusFilter] = usePersistentState<'all' | 'enabled' | 'disabled'>(
     storageKeys.apiKeys.statusFilter,
@@ -70,7 +72,7 @@ export function useApiKeysPageState() {
 
   const createKeyMutation = useAppMutation<
     NewApiKeyResponse,
-    { name: string; description?: string; allowedEndpoints?: string[] }
+    { name: string; description?: string; allowedEndpoints?: string[]; maxConcurrency?: number | null }
   >({
     mutationFn: apiKeysApi.create,
     invalidateKeys: [
@@ -82,7 +84,7 @@ export function useApiKeysPageState() {
     errorToast: (error) => ({ title: t('apiKeys.toast.createFailure', { message: error.message }) })
   })
 
-  const updateKeyMutation = useAppMutation<void, { id: number; enabled?: boolean; allowedEndpoints?: string[] | null }>({
+  const updateKeyMutation = useAppMutation<void, { id: number; enabled?: boolean; allowedEndpoints?: string[] | null; maxConcurrency?: number | null }>({
     mutationFn: ({ id, ...payload }) => apiKeysApi.update(id, payload),
     invalidateKeys: [
       queryKeys.apiKeys.all(),
@@ -200,6 +202,7 @@ export function useApiKeysPageState() {
     setNewKeyName('')
     setNewKeyDescription('')
     setNewKeyEndpoints([])
+    setNewKeyMaxConcurrency('')
   }, [])
 
   const handleCreateDialogChange = useCallback((open: boolean) => {
@@ -219,13 +222,14 @@ export function useApiKeysPageState() {
       const response = await createKeyMutation.mutateAsync({
         name: newKeyName.trim(),
         description: newKeyDescription.trim() || undefined,
-        allowedEndpoints: newKeyEndpoints.length > 0 ? newKeyEndpoints : undefined
+        allowedEndpoints: newKeyEndpoints.length > 0 ? newKeyEndpoints : undefined,
+        maxConcurrency: newKeyMaxConcurrency ? Number(newKeyMaxConcurrency) : null
       })
       setNewlyCreatedKey(response)
       handleCreateDialogChange(false)
     } catch {
     }
-  }, [createKeyMutation, handleCreateDialogChange, newKeyDescription, newKeyEndpoints, newKeyName, pushToast, t])
+  }, [createKeyMutation, handleCreateDialogChange, newKeyDescription, newKeyEndpoints, newKeyMaxConcurrency, newKeyName, pushToast, t])
 
   const handleToggleEnabled = useCallback(async (id: number, enabled: boolean) => {
     try {
@@ -286,6 +290,7 @@ export function useApiKeysPageState() {
   const handleOpenEditEndpoints = useCallback((key: ApiKeySummary) => {
     setEditEndpointsKey(key)
     setEditEndpointsSelection(key.allowedEndpoints ?? [])
+    setEditMaxConcurrency(key.maxConcurrency ? String(key.maxConcurrency) : '')
   }, [])
 
   const handleSaveEndpoints = useCallback(async () => {
@@ -294,12 +299,15 @@ export function useApiKeysPageState() {
     try {
       await updateKeyMutation.mutateAsync({
         id: editEndpointsKey.id,
-        allowedEndpoints: editEndpointsSelection.length > 0 ? editEndpointsSelection : null
+        ...(editEndpointsKey.isWildcard
+          ? {}
+          : { allowedEndpoints: editEndpointsSelection.length > 0 ? editEndpointsSelection : null }),
+        maxConcurrency: editMaxConcurrency ? Number(editMaxConcurrency) : null
       })
       setEditEndpointsKey(null)
     } catch {
     }
-  }, [editEndpointsKey, editEndpointsSelection, updateKeyMutation])
+  }, [editEndpointsKey, editEndpointsSelection, editMaxConcurrency, updateKeyMutation])
 
   const formatDate = useCallback((isoString: string | null) => {
     if (!isoString) return t('common.noData')
@@ -312,6 +320,7 @@ export function useApiKeysPageState() {
     deleteTarget,
     editEndpointsKey,
     editEndpointsSelection,
+    editMaxConcurrency,
     enabledKeysValue,
     filteredKeys,
     formatDate,
@@ -342,6 +351,7 @@ export function useApiKeysPageState() {
     setDeleteTarget,
     setEditEndpointsKey,
     setEditEndpointsSelection,
+    setEditMaxConcurrency,
     setNewKeyDescription,
     setNewKeyEndpoints,
     setNewKeyName,

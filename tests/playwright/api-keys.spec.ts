@@ -167,3 +167,130 @@ test('api key web ui covers create, reveal, restrict, toggle, analytics, and del
   await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
   await expect(page.getByText('Playwright Test Key')).toBeVisible()
 })
+
+test('maxConcurrency: create via API, display in card, edit via dialog, and clear', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+  await disableWildcard(request, baseUrl)
+
+  // Create a key with maxConcurrency=3 via API
+  const createResp = await request.post(`${baseUrl}/api/keys`, {
+    data: { name: 'Concurrency Key', maxConcurrency: 3 },
+  })
+  expect(createResp.status()).toBe(200)
+  const created = await createResp.json()
+  expect(created.name).toBe('Concurrency Key')
+  const apiKeyValue = created.key
+
+  // Verify via list API
+  const listResp = await request.get(`${baseUrl}/api/keys`)
+  const allKeys = await listResp.json()
+  const listed = allKeys.find((k: any) => k.id === created.id)
+  expect(listed.maxConcurrency).toBe(3)
+
+  // Load the UI and verify the card displays the concurrency value
+  await page.goto(`${baseUrl}/ui/api-keys`)
+  await expect(page.getByRole('heading', { name: 'API 密钥管理', level: 1 })).toBeVisible()
+
+  const card = page.locator(
+    'xpath=//h3[normalize-space()="Concurrency Key"]/ancestor::div[@data-testid="api-key-card"][1]'
+  )
+  await expect(card).toBeVisible()
+
+  // Edit maxConcurrency via the edit dialog
+  await card.getByRole('button', { name: '编辑端点权限' }).click()
+  const editDialog = page.getByRole('dialog', { name: '编辑端点权限' })
+  await expect(editDialog).toBeVisible()
+  const concurrencyInput = editDialog.locator('input[type="number"]')
+  await concurrencyInput.clear()
+  await concurrencyInput.fill('10')
+  await editDialog.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByText('API 密钥已更新').first()).toBeVisible()
+
+  // Verify the update via API
+  const updatedResp = await request.get(`${baseUrl}/api/keys`)
+  const updatedKeys = await updatedResp.json()
+  const updated = updatedKeys.find((k: any) => k.id === created.id)
+  expect(updated.maxConcurrency).toBe(10)
+
+  // Clear maxConcurrency via API PATCH
+  const patchResp = await request.patch(`${baseUrl}/api/keys/${created.id}`, {
+    data: { maxConcurrency: null },
+  })
+  expect(patchResp.status()).toBe(200)
+
+  const clearedResp = await request.get(`${baseUrl}/api/keys`)
+  const clearedKeys = await clearedResp.json()
+  const cleared = clearedKeys.find((k: any) => k.id === created.id)
+  expect(cleared.maxConcurrency).toBeNull()
+
+  // Verify the request still works with the key (unlimited now)
+  const validReq = await request.post(`${baseUrl}/v1/messages`, {
+    data: messagePayload,
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': apiKeyValue!,
+    },
+  })
+  expect(validReq.status()).toBe(200)
+
+  // Clean up
+  await request.delete(`${baseUrl}/api/keys/${created.id}`)
+})
+
+test('wildcard key: edit maxConcurrency via UI dialog saves without allowedEndpoints', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+
+  // Find the wildcard key
+  const listResp = await request.get(`${baseUrl}/api/keys`)
+  const allKeys = await listResp.json()
+  const wildcard = allKeys.find((k: any) => k.isWildcard)
+  expect(wildcard).toBeTruthy()
+  const wildcardId = wildcard.id
+
+  // Enable wildcard so it appears in the UI
+  await request.patch(`${baseUrl}/api/keys/${wildcardId}`, {
+    data: { enabled: true },
+  })
+
+  // Load the API keys page
+  await page.goto(`${baseUrl}/ui/api-keys`)
+  await expect(page.getByRole('heading', { name: 'API 密钥管理', level: 1 })).toBeVisible()
+
+  // Find the wildcard card
+  const wildcardCard = page.locator(
+    'xpath=//h3[normalize-space()="Wildcard"]/ancestor::div[@data-testid="api-key-card"][1]'
+  )
+  await expect(wildcardCard).toBeVisible()
+
+  // Click the "最大并发数" button (wildcard shows maxConcurrency label, not editEndpoints)
+  await wildcardCard.getByRole('button', { name: '最大并发数' }).click()
+
+  // The edit dialog should open; for wildcard, endpoint selector is hidden
+  const editDialog = page.getByRole('dialog', { name: '编辑端点权限' })
+  await expect(editDialog).toBeVisible()
+
+  // Endpoint selector should NOT be visible for wildcard
+  await expect(editDialog.getByText(/Empty selection means unrestricted/)).not.toBeVisible()
+
+  // Fill in maxConcurrency
+  const concurrencyInput = editDialog.locator('input[type="number"]')
+  await concurrencyInput.clear()
+  await concurrencyInput.fill('5')
+  await editDialog.getByRole('button', { name: '保存' }).click()
+
+  // Verify success toast
+  await expect(page.getByText('API 密钥已更新').first()).toBeVisible()
+
+  // Verify via API that maxConcurrency was set and allowedEndpoints was NOT sent
+  const afterResp = await request.get(`${baseUrl}/api/keys`)
+  const afterKeys = await afterResp.json()
+  const updatedWildcard = afterKeys.find((k: any) => k.id === wildcardId)
+  expect(updatedWildcard.maxConcurrency).toBe(5)
+  // Wildcard should still have no allowedEndpoints
+  expect(updatedWildcard.allowedEndpoints).toBeNull()
+
+  // Clean up: clear maxConcurrency
+  await request.patch(`${baseUrl}/api/keys/${wildcardId}`, {
+    data: { maxConcurrency: null, enabled: false },
+  })
+})

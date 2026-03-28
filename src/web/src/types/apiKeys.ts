@@ -11,6 +11,7 @@ export interface ApiKeySummary {
   totalInputTokens: number
   totalOutputTokens: number
   allowedEndpoints: string[] | null
+  maxConcurrency: number | null
 }
 
 export interface NewApiKeyResponse {

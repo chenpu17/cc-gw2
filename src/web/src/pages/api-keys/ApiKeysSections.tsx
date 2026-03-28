@@ -338,14 +338,8 @@ function ApiKeyCard({
               <KeyMetaChip label={t('apiKeys.requestCount')} value={keySummary.requestCount.toLocaleString()} />
               <KeyMetaChip label={t('apiKeys.totalTokens')} value={totalTokens} />
               <KeyMetaChip
-                label={t('apiKeys.allowedEndpoints')}
-                value={
-                  keySummary.isWildcard
-                    ? t('apiKeys.wildcard')
-                    : keySummary.allowedEndpoints && keySummary.allowedEndpoints.length > 0
-                      ? keySummary.allowedEndpoints.join(', ')
-                      : t('apiKeys.allEndpoints')
-                }
+                label={t('apiKeys.maxConcurrency')}
+                value={keySummary.maxConcurrency ? String(keySummary.maxConcurrency) : t('apiKeys.maxConcurrencyPlaceholder')}
               />
             </div>
 
@@ -431,12 +425,10 @@ function ApiKeyCard({
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
-            {!keySummary.isWildcard ? (
-              <Button variant="outline" size="sm" onClick={() => onEditEndpoints(keySummary)} className="w-full lg:w-auto">
-                <Shield className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-                {t('apiKeys.editEndpoints')}
-              </Button>
-            ) : null}
+            <Button variant="outline" size="sm" onClick={() => onEditEndpoints(keySummary)} className="w-full lg:w-auto">
+              <Shield className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              {keySummary.isWildcard ? t('apiKeys.maxConcurrency') : t('apiKeys.editEndpoints')}
+            </Button>
             <Button
               variant={keySummary.enabled ? 'outline' : 'default'}
               size="sm"

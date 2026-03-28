@@ -1236,7 +1236,10 @@ const resources = {
         allEndpoints: '全部端点（不限制）',
         editEndpoints: '编辑端点权限',
         endpointRestricted: '已限制端点',
-        selectEndpoints: '选择此密钥可以访问的端点，不选择则允许访问全部端点。'
+        selectEndpoints: '选择此密钥可以访问的端点，不选择则允许访问全部端点。',
+        maxConcurrency: '最大并发数',
+        maxConcurrencyPlaceholder: '留空表示不限制',
+        maxConcurrencyHelper: '设置此密钥同时请求的最大数量。留空或设为 0 表示不限制。'
       },
       endpoints: {
         title: '自定义端点',
@@ -2470,7 +2473,10 @@ const resources = {
         allEndpoints: 'All endpoints (unrestricted)',
         editEndpoints: 'Edit Endpoint Access',
         endpointRestricted: 'Restricted',
-        selectEndpoints: 'Select which endpoints this key can access. Leave empty to allow all.'
+        selectEndpoints: 'Select which endpoints this key can access. Leave empty to allow all.',
+        maxConcurrency: 'Max Concurrency',
+        maxConcurrencyPlaceholder: 'Leave empty for unlimited',
+        maxConcurrencyHelper: 'Set the maximum number of simultaneous requests for this key. Leave empty or set to 0 for unlimited.'
       },
 
       about: {

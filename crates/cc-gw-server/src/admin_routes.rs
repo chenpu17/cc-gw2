@@ -945,12 +945,23 @@ pub(super) async fn api_keys_create(
         }
     };
 
+    if let Some(max) = body.max_concurrency {
+        if max < 0 {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "maxConcurrency must be a non-negative integer" })),
+            )
+                .into_response();
+        }
+    }
+
     match create_api_key(
         &state.paths.db_path,
         &state.paths.home_dir,
         name,
         body.description.as_deref(),
         allowed_endpoints,
+        body.max_concurrency,
         header_value(&headers, "x-forwarded-for").as_deref(),
     ) {
         Ok(result) => Json(json!(result)).into_response(),
@@ -1025,11 +1036,59 @@ pub(super) async fn api_keys_patch(
         None
     };
 
+    let max_concurrency = if object.contains_key("maxConcurrency") {
+        match object.get("maxConcurrency") {
+            Some(Value::Null) => Some(None),
+            Some(Value::Number(n)) => {
+                // Reject fractional floats (e.g. 1.5, NaN) — only true integers are accepted.
+                if n.is_f64() {
+                    let float_val = n.as_f64().unwrap();
+                    if float_val != float_val.trunc() || !float_val.is_finite() {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({ "error": "maxConcurrency must be an integer" })),
+                        )
+                            .into_response();
+                    }
+                }
+                // as_i64 returns None for values outside i64 range — treat as invalid, not 0.
+                let value = match n.as_i64() {
+                    Some(v) => v,
+                    None => {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({ "error": "maxConcurrency is out of the accepted range" })),
+                        )
+                            .into_response();
+                    }
+                };
+                if value < 0 {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({ "error": "maxConcurrency must be a non-negative integer" })),
+                    )
+                        .into_response();
+                }
+                Some(Some(value))
+            }
+            _ => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "maxConcurrency must be a number or null" })),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        None
+    };
+
     match update_api_key_settings(
         &state.paths.db_path,
         id,
         enabled,
         allowed_endpoints,
+        max_concurrency,
         header_value(&headers, "x-forwarded-for").as_deref(),
     ) {
         Ok(()) => Json(json!({ "success": true })).into_response(),

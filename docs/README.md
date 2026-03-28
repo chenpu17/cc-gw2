@@ -18,6 +18,8 @@
   - 当前 WebUI 重构后的功能、视觉与回归审计结果
 - [frontend-redesign-implementation-map.md](./frontend-redesign-implementation-map.md)
   - Pencil 画板、页面实现入口与 Playwright 回归入口
+- [api-key-max-concurrency.md](./api-key-max-concurrency.md)
+  - API Key 单 Key 最大并发限制：语义、数据库变更、内存追踪、429 响应和管理台 UI
 
 如果后续继续补文档，优先遵守这条规则：
 
