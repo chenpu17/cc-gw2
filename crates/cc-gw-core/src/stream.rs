@@ -1265,13 +1265,12 @@ impl CrossProtocolStreamTransformer {
     fn finish_openai_responses(&mut self) -> Vec<String> {
         let mut tool_blocks = Vec::new();
         for tool in self.anthropic_tools.values() {
-            let parsed_arguments = serde_json::from_str::<Value>(&tool.arguments)
-                .unwrap_or_else(|_| Value::String(tool.arguments.clone()));
             tool_blocks.push(json!({
-                "type": "tool_use",
+                "type": "function_call",
                 "id": tool.id,
+                "call_id": tool.id,
                 "name": tool.name,
-                "input": parsed_arguments
+                "arguments": tool.arguments
             }));
         }
 
@@ -2045,8 +2044,9 @@ mod tests {
         assert!(joined.contains("\"type\":\"response.function_call_arguments.delta\""));
         assert!(joined.contains("\"item_id\":\"tool_1\""));
         assert!(joined.contains("\"status\":\"requires_action\""));
-        assert!(joined.contains("\"type\":\"tool_use\""));
+        assert!(joined.contains("\"type\":\"function_call\""));
         assert!(joined.contains("\"name\":\"weather\""));
+        assert!(joined.contains("\"arguments\":\"{\\\"city\\\":\\\"Paris\\\"}\""));
     }
 
     #[test]

@@ -73,7 +73,7 @@ fn anthropic_tool_choice_to_openai(value: Option<&Value>) -> Option<Value> {
         Value::String(raw) => match raw.trim().to_ascii_lowercase().as_str() {
             "auto" => Some(Value::String("auto".to_string())),
             "none" => Some(Value::String("none".to_string())),
-            "required" | "any" => Some(Value::String("auto".to_string())),
+            "required" | "any" => Some(Value::String("required".to_string())),
             _ => None,
         },
         Value::Object(map) => {
@@ -86,7 +86,7 @@ fn anthropic_tool_choice_to_openai(value: Option<&Value>) -> Option<Value> {
             match kind.as_str() {
                 "auto" => Some(Value::String("auto".to_string())),
                 "none" => Some(Value::String("none".to_string())),
-                "required" | "any" => Some(Value::String("auto".to_string())),
+                "required" | "any" => Some(Value::String("required".to_string())),
                 "tool" => map
                     .get("name")
                     .and_then(Value::as_str)
@@ -284,6 +284,13 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
     if let Some(tools) = anthropic_tools_to_openai(body.get("tools")) {
         result.insert("tools".to_string(), tools);
     }
+    if let Some(stop) = body
+        .get("stop")
+        .cloned()
+        .or_else(|| body.get("stop_sequences").cloned())
+    {
+        result.insert("stop".to_string(), stop);
+    }
     for key in [
         "metadata",
         "response_format",
@@ -293,8 +300,6 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
         "logit_bias",
         "top_p",
         "top_k",
-        "stop",
-        "stop_sequences",
         "user",
         "seed",
         "n",
@@ -643,11 +648,21 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
                         }
                     }
                     "tool_use" | "function_call" => {
+                        let input = block
+                            .get("input")
+                            .cloned()
+                            .or_else(|| {
+                                block
+                                    .get("arguments")
+                                    .and_then(Value::as_str)
+                                    .map(parse_json_string)
+                            })
+                            .unwrap_or_else(|| json!({}));
                         content.push(json!({
                             "type": "tool_use",
                             "id": block.get("id").or_else(|| block.get("call_id")).cloned().unwrap_or(Value::String("tool".to_string())),
                             "name": block.get("name").cloned().unwrap_or(Value::String("tool".to_string())),
-                            "input": block.get("input").cloned().unwrap_or_else(|| json!({}))
+                            "input": input
                         }));
                     }
                     _ => {}
@@ -819,11 +834,14 @@ pub fn anthropic_response_to_openai_response(body: &Value, model: &str) -> Value
                 }
             }
             "tool_use" => {
+                let arguments = serde_json::to_string(block.get("input").unwrap_or(&json!({})))
+                    .unwrap_or_else(|_| "{}".to_string());
                 output_content.push(json!({
-                    "type": "tool_use",
+                    "type": "function_call",
                     "id": block.get("id").cloned().unwrap_or(Value::String("tool".to_string())),
+                    "call_id": block.get("id").cloned().unwrap_or(Value::String("tool".to_string())),
                     "name": block.get("name").cloned().unwrap_or(Value::String("tool".to_string())),
-                    "input": block.get("input").cloned().unwrap_or_else(|| json!({}))
+                    "arguments": arguments
                 }));
             }
             _ => {}
@@ -912,6 +930,33 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_request_to_openai_chat_maps_required_tool_choice_without_downgrading() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": "hello" }]
+            }],
+            "tool_choice": { "type": "any" }
+        }));
+
+        assert_eq!(converted.get("tool_choice"), Some(&json!("required")));
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_chat_maps_stop_sequences_to_stop() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": "hello" }]
+            }],
+            "stop_sequences": ["END"]
+        }));
+
+        assert_eq!(converted.get("stop"), Some(&json!(["END"])));
+        assert!(converted.get("stop_sequences").is_none());
+    }
+
+    #[test]
     fn openai_chat_request_to_anthropic_preserves_metadata() {
         let converted = openai_chat_request_to_anthropic(&json!({
             "messages": [{ "role": "user", "content": "hello" }],
@@ -986,5 +1031,81 @@ mod tests {
         );
 
         assert_eq!(converted["usage"]["cached_tokens"], 5);
+    }
+
+    #[test]
+    fn anthropic_response_to_openai_response_emits_function_call_items() {
+        let converted = anthropic_response_to_openai_response(
+            &json!({
+                "id": "msg_tool",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "tool_1",
+                    "name": "weather",
+                    "input": { "city": "Paris" }
+                }],
+                "stop_reason": "tool_use",
+                "usage": {
+                    "input_tokens": 9,
+                    "output_tokens": 2
+                }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(
+            converted["output"][0]["content"][0]["type"].as_str(),
+            Some("function_call")
+        );
+        assert_eq!(
+            converted["output"][0]["content"][0]["call_id"].as_str(),
+            Some("tool_1")
+        );
+        assert_eq!(
+            converted["output"][0]["content"][0]["arguments"].as_str(),
+            Some("{\"city\":\"Paris\"}")
+        );
+    }
+
+    #[test]
+    fn openai_responses_response_to_anthropic_parses_function_call_arguments() {
+        let converted = openai_responses_response_to_anthropic(
+            &json!({
+                "id": "resp_tool",
+                "status": "requires_action",
+                "output": [{
+                    "id": "out_1",
+                    "type": "output_message",
+                    "role": "assistant",
+                    "content": [{
+                        "type": "function_call",
+                        "id": "call_1",
+                        "call_id": "call_1",
+                        "name": "weather",
+                        "arguments": "{\"city\":\"Paris\"}"
+                    }]
+                }],
+                "usage": {
+                    "input_tokens": 8,
+                    "output_tokens": 1
+                }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(
+            converted["content"][0]["type"].as_str(),
+            Some("tool_use")
+        );
+        assert_eq!(
+            converted["content"][0]["id"].as_str(),
+            Some("call_1")
+        );
+        assert_eq!(
+            converted["content"][0]["name"].as_str(),
+            Some("weather")
+        );
+        assert_eq!(converted["content"][0]["input"], json!({ "city": "Paris" }));
+        assert_eq!(converted["stop_reason"].as_str(), Some("tool_use"));
     }
 }

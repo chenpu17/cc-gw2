@@ -1572,6 +1572,163 @@ async fn anthropic_to_openai_retry_drops_metadata_and_tool_choice() {
 }
 
 #[tokio::test]
+async fn openai_responses_from_anthropic_provider_emits_function_call_items() {
+    let upstream = Router::new().route(
+        "/v1/messages",
+        post(|| async {
+            Json(json!({
+                "id": "msg_tool",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-test",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "tool_1",
+                    "name": "weather",
+                    "input": { "city": "Paris" }
+                }],
+                "stop_reason": "tool_use",
+                "stop_sequence": Value::Null,
+                "usage": {
+                    "input_tokens": 9,
+                    "output_tokens": 2
+                }
+            }))
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "responses-function-call-shape").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "model": "claude-test",
+            "input": "hello"
+        }))
+        .send()
+        .await
+        .expect("send non-stream responses request")
+        .json()
+        .await
+        .expect("decode non-stream responses response");
+
+    assert_eq!(
+        response["output"][0]["content"][0]["type"].as_str(),
+        Some("function_call")
+    );
+    assert_eq!(
+        response["output"][0]["content"][0]["call_id"].as_str(),
+        Some("tool_1")
+    );
+    assert_eq!(
+        response["output"][0]["content"][0]["arguments"].as_str(),
+        Some("{\"city\":\"Paris\"}")
+    );
+    assert_eq!(response["status"].as_str(), Some("requires_action"));
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_to_openai_maps_required_tool_choice_and_stop_sequences() {
+    let attempts = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let attempts_for_route = Arc::clone(&attempts);
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let attempts = Arc::clone(&attempts_for_route);
+            async move {
+                record_payload(&attempts, &payload);
+                Json(json!({
+                    "choices": [{
+                        "message": { "content": "ok" },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 4,
+                        "completion_tokens": 2
+                    }
+                }))
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mapped-openai".to_string(),
+        label: "Mapped OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("mapped-openai:gpt-test".to_string());
+    if let Some(anthropic) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic.defaults.completion = Some("mapped-openai:gpt-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-openai-stop-mapping").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 128,
+            "tool_choice": { "type": "any" },
+            "stop_sequences": ["END"],
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": "hello" }]
+            }]
+        }))
+        .send()
+        .await
+        .expect("send anthropic request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let recorded = attempts.lock().expect("lock attempts");
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].get("tool_choice"), Some(&json!("required")));
+    assert_eq!(recorded[0].get("stop"), Some(&json!(["END"])));
+    assert!(recorded[0].get("stop_sequences").is_none());
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn anthropic_to_custom_provider_strips_tooling_and_metadata() {
     let attempts = Arc::new(Mutex::new(Vec::<Value>::new()));
     let attempts_for_route = Arc::clone(&attempts);
