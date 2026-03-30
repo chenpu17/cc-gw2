@@ -131,8 +131,8 @@ pnpm publish:packed -- --dir artifacts --dry-run
 ```bash
 pnpm pack:dry-run
 pnpm --dir packages/native/darwin-arm64 pack --pack-destination ../../../.pack/native
-npm install -g ./.pack/native/chenpu17-cc-gw-darwin-arm64-0.8.2.tgz
-npm install -g ./.pack/chenpu17-cc-gw-0.8.2.tgz
+npm install -g ./.pack/native/chenpu17-cc-gw-darwin-arm64-0.8.3.tgz
+npm install -g ./.pack/chenpu17-cc-gw-0.8.3.tgz
 ```
 
 ## Latest Dry Run Snapshot
@@ -141,7 +141,7 @@ npm install -g ./.pack/chenpu17-cc-gw-0.8.2.tgz
 
 - `pnpm smoke:cli`：通过
 - `pnpm pack:dry-run`：通过
-- 产物：`.pack/chenpu17-cc-gw-0.8.2.tgz`
+- 产物：`.pack/chenpu17-cc-gw-0.8.3.tgz`
 - 大小：`466900 bytes`
 
 已抽查根包内容：
@@ -167,6 +167,6 @@ npm install -g ./.pack/chenpu17-cc-gw-0.8.2.tgz
 - `build-root-package` 打包根 npm 包
 - `build-native-packages` 矩阵构建四个平台 native 包
 - `publish-npm` 先发布 native 子包，再发布根包
-- 默认根据根包版本号推导 npm dist-tag；如 `0.8.0-alpha.12` 会发布到 `alpha`，`0.8.2` 会发布到 `latest`
+- 默认根据根包版本号推导 npm dist-tag；如 `0.8.0-alpha.12` 会发布到 `alpha`，`0.8.3` 会发布到 `latest`
 
 另外，`prepack` 会自动触发 `pnpm run build:package`，只打包 CLI 与 Web 资源；native 二进制由独立平台包承载。

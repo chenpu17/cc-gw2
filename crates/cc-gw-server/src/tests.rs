@@ -341,10 +341,10 @@ async fn api_version_check_reports_update_state_from_registry() {
     let registry = Router::new().fallback(get(|| async {
         Json(json!({
             "dist-tags": {
-                "latest": "0.8.3"
+                "latest": "0.8.4"
             },
             "time": {
-                "0.8.3": "2026-03-30T03:45:32.000Z"
+                "0.8.4": "2026-03-30T03:45:32.000Z"
             }
         }))
     }));
@@ -369,11 +369,11 @@ async fn api_version_check_reports_update_state_from_registry() {
 
     assert_eq!(
         response.get("currentVersion").and_then(Value::as_str),
-        Some("0.8.2")
+        Some("0.8.3")
     );
     assert_eq!(
         response.get("latestVersion").and_then(Value::as_str),
-        Some("0.8.3")
+        Some("0.8.4")
     );
     assert_eq!(
         response.get("channel").and_then(Value::as_str),

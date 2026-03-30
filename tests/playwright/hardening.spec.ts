@@ -70,5 +70,5 @@ test('about page keeps manual refresh semantics and checks npm updates through t
   await expect(page.locator('#main-content').getByText('运行状态', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: '检查更新' }).click()
-  await expect(page.locator('#main-content').getByText(/当前已是最新版本 v0\.8\.2/)).toBeVisible()
+  await expect(page.locator('#main-content').getByText(/当前已是最新版本 v0\.8\.3/)).toBeVisible()
 })
