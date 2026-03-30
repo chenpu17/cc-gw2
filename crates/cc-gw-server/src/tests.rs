@@ -1392,6 +1392,16 @@ async fn api_status_reports_live_and_recent_client_activity() {
             .and_then(Value::as_u64),
         Some(1)
     );
+    assert_eq!(
+        live_status.get("requestsPerMinute").and_then(Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        live_status
+            .get("outputTokensPerMinute")
+            .and_then(Value::as_u64),
+        Some(0)
+    );
     assert!(
         live_status
             .get("cpuUsagePercent")
@@ -1450,6 +1460,18 @@ async fn api_status_reports_live_and_recent_client_activity() {
             .get("activeClientSessions")
             .and_then(Value::as_u64),
         Some(0)
+    );
+    assert_eq!(
+        settled_status
+            .get("requestsPerMinute")
+            .and_then(Value::as_u64),
+        Some(3)
+    );
+    assert_eq!(
+        settled_status
+            .get("outputTokensPerMinute")
+            .and_then(Value::as_u64),
+        Some(6)
     );
     assert_eq!(
         settled_status
@@ -2133,11 +2155,13 @@ async fn api_key_concurrency_limit_returns_429_and_records_event() {
             .and_then(Value::as_str),
         Some("concurrency_limit_exceeded")
     );
-    assert!(rejected_body
-        .get("error")
-        .and_then(|e| e.get("message"))
-        .and_then(Value::as_str)
-        .is_some_and(|msg| msg.contains("maximum concurrency limit of 1")));
+    assert!(
+        rejected_body
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(Value::as_str)
+            .is_some_and(|msg| msg.contains("maximum concurrency limit of 1"))
+    );
 
     // Wait for the first request to complete
     let first_response = in_flight.await.expect("join first request");

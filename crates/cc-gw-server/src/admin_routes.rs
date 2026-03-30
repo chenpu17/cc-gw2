@@ -31,13 +31,18 @@ pub(super) async fn api_status(
     Query(query): Query<StatusQuery>,
 ) -> Json<StatusResponse> {
     let config = config_snapshot(&state);
-    let last_hour = chrono::Utc::now().timestamp_millis() - 60 * 60 * 1000;
+    let now = chrono::Utc::now().timestamp_millis();
+    let last_hour = now - 60 * 60 * 1000;
+    let last_minute = now - 60 * 1000;
     let endpoint = query
         .endpoint
         .as_deref()
         .filter(|value| !value.trim().is_empty());
     let recent_activity =
         get_recent_client_activity(&state.paths.db_path, last_hour, endpoint).unwrap_or_default();
+    let recent_throughput =
+        get_recent_throughput_metrics(&state.paths.db_path, last_minute, endpoint)
+            .unwrap_or_default();
     let active_requests = if let Some(endpoint) = endpoint {
         count_active_requests_for_endpoint(&state.active_requests_by_endpoint, endpoint)
     } else {
@@ -67,6 +72,8 @@ pub(super) async fn api_status(
         active_client_sessions,
         unique_client_addresses_last_hour: recent_activity.unique_source_ips.max(0) as u64,
         unique_client_sessions_last_hour: recent_activity.unique_session_ids.max(0) as u64,
+        requests_per_minute: recent_throughput.requests_per_minute.max(0) as u64,
+        output_tokens_per_minute: recent_throughput.output_tokens_per_minute.max(0) as u64,
         runtime: "rust",
         backend_version: env!("CARGO_PKG_VERSION"),
         platform: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),

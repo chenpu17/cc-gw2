@@ -122,6 +122,8 @@ const resources = {
           uniqueClientSessionsLastHour: '1小时会话',
           todayRequests: '今日请求',
           activeRequests: '活跃转发连接',
+          requestsPerMinute: 'RPM',
+          outputTokensPerMinute: 'TPM',
           cpu: 'CPU 占用率',
           database: '数据库',
           memory: '内存占用'
@@ -1424,6 +1426,8 @@ const resources = {
           uniqueClientSessionsLastHour: '1h sessions',
           todayRequests: 'Today requests',
           activeRequests: 'Active forwarded connections',
+          requestsPerMinute: 'RPM',
+          outputTokensPerMinute: 'TPM',
           cpu: 'CPU usage',
           database: 'Database',
           memory: 'Memory'

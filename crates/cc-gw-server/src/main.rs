@@ -42,7 +42,8 @@ use cc_gw_core::{
         UsageStats, cleanup_logs_before, clear_all_logs, compact_database, export_logs,
         finalize_request_log, get_daily_metrics, get_database_info, get_log_detail,
         get_metrics_overview, get_model_usage_metrics, get_recent_client_activity,
-        increment_daily_metrics, insert_request_log, query_logs, upsert_request_payload,
+        get_recent_throughput_metrics, increment_daily_metrics, insert_request_log, query_logs,
+        upsert_request_payload,
     },
     provider::{ProviderProtocol, ProxyRequest, forward_request},
     routing::{GatewayEndpoint, resolve_route},
@@ -99,6 +100,10 @@ struct StatusResponse {
     unique_client_addresses_last_hour: u64,
     #[serde(rename = "uniqueClientSessionsLastHour")]
     unique_client_sessions_last_hour: u64,
+    #[serde(rename = "requestsPerMinute")]
+    requests_per_minute: u64,
+    #[serde(rename = "outputTokensPerMinute")]
+    output_tokens_per_minute: u64,
     #[serde(rename = "runtime")]
     runtime: &'static str,
     #[serde(rename = "backendVersion")]

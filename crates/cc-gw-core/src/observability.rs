@@ -199,6 +199,13 @@ pub struct ClientActivityMetrics {
     pub unique_session_ids: i64,
 }
 
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentThroughputMetrics {
+    pub requests_per_minute: i64,
+    pub output_tokens_per_minute: i64,
+}
+
 #[derive(Debug, Default)]
 pub struct LogQuery {
     pub limit: i64,
@@ -939,6 +946,41 @@ pub fn get_recent_client_activity(
     })
 }
 
+pub fn get_recent_throughput_metrics(
+    db_path: &Path,
+    since: i64,
+    endpoint: Option<&str>,
+) -> Result<RecentThroughputMetrics> {
+    let conn = open_db(db_path)?;
+    let (requests_per_minute, output_tokens_per_minute): (i64, i64) =
+        if let Some(endpoint) = endpoint {
+            conn.query_row(
+                "SELECT
+                   COUNT(*),
+                   COALESCE(SUM(COALESCE(output_tokens, 0)), 0)
+                 FROM request_logs
+                 WHERE timestamp >= ?1 AND endpoint = ?2",
+                params![since, endpoint],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?
+        } else {
+            conn.query_row(
+                "SELECT
+                   COUNT(*),
+                   COALESCE(SUM(COALESCE(output_tokens, 0)), 0)
+                 FROM request_logs
+                 WHERE timestamp >= ?1",
+                params![since],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?
+        };
+
+    Ok(RecentThroughputMetrics {
+        requests_per_minute,
+        output_tokens_per_minute,
+    })
+}
+
 pub fn compact_database(db_path: &Path) -> Result<()> {
     let conn = open_db(db_path)?;
     conn.execute_batch("VACUUM;")?;
@@ -1074,6 +1116,69 @@ mod tests {
         assert_eq!(overview.today.cache_read_tokens, 7);
         assert_eq!(overview.today.cache_creation_tokens, 3);
         assert_eq!(overview.today.avg_latency_ms, 100);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn recent_throughput_metrics_counts_recent_requests_and_output_tokens() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-throughput-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let now = chrono::Utc::now().timestamp_millis();
+        for (timestamp, endpoint, output_tokens) in [
+            (now, "openai", Some(12)),
+            (now - 5_000, "openai", Some(8)),
+            (now - 15_000, "anthropic", Some(3)),
+            (now - 120_000, "openai", Some(100)),
+            (now - 30_000, "openai", None),
+        ] {
+            let request_id = insert_request_log(
+                &db_path,
+                &RequestLogInput {
+                    timestamp,
+                    session_id: None,
+                    source_ip: None,
+                    endpoint: endpoint.to_string(),
+                    provider: "mock".to_string(),
+                    model: "mock-model".to_string(),
+                    client_model: None,
+                    stream: false,
+                    api_key_id: None,
+                    api_key_name: None,
+                    api_key_value: None,
+                },
+            )
+            .expect("insert request log");
+
+            if let Some(output_tokens) = output_tokens {
+                finalize_request_log(
+                    &db_path,
+                    request_id,
+                    &RequestLogUpdate {
+                        status_code: Some(200),
+                        output_tokens: Some(output_tokens),
+                        ..RequestLogUpdate::default()
+                    },
+                )
+                .expect("finalize request log");
+            }
+        }
+
+        let all_metrics = get_recent_throughput_metrics(&db_path, now - 60_000, None)
+            .expect("query all throughput metrics");
+        assert_eq!(all_metrics.requests_per_minute, 4);
+        assert_eq!(all_metrics.output_tokens_per_minute, 23);
+
+        let openai_metrics = get_recent_throughput_metrics(&db_path, now - 60_000, Some("openai"))
+            .expect("query openai throughput metrics");
+        assert_eq!(openai_metrics.requests_per_minute, 3);
+        assert_eq!(openai_metrics.output_tokens_per_minute, 20);
 
         let _ = std::fs::remove_dir_all(root);
     }

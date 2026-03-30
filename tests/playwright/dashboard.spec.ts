@@ -83,6 +83,8 @@ test('dashboard supports refresh, endpoint filters, compaction, and recent reque
   await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
   await expect(page.getByText('最新请求')).toBeVisible()
   await expect(page.getByText('今日请求数')).toBeVisible()
+  await expect(page.getByText('RPM')).toBeVisible()
+  await expect(page.getByText('TPM')).toBeVisible()
   await expect(page.getByText('stub').first()).toBeVisible()
 
   const endpointSelect = page.getByRole('combobox').first()

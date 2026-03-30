@@ -46,6 +46,8 @@ export interface ServiceStatus {
   host?: string
   providers: number
   activeRequests?: number
+  requestsPerMinute?: number
+  outputTokensPerMinute?: number
   cpuUsagePercent?: number
   activeClientAddresses?: number
   activeClientSessions?: number
