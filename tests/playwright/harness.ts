@@ -61,7 +61,18 @@ async function findFreePort(): Promise<number> {
 }
 
 async function startStubProvider(port: number): Promise<http.Server> {
+  const rootPackage = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as { version?: string }
+  const currentVersion = rootPackage.version ?? '0.0.0'
   const server = http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url?.includes('cc-gw')) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        'dist-tags': { latest: currentVersion },
+        time: { [currentVersion]: '2026-03-30T03:45:32.000Z' },
+      }))
+      return
+    }
+
     if (req.method === 'GET' && req.url === '/v1/models') {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({
@@ -247,6 +258,35 @@ async function startGateway(tempHome: string, gatewayPort: number): Promise<Chil
   return child
 }
 
+async function startGatewayWithStubRegistry(
+  tempHome: string,
+  gatewayPort: number,
+  stubPort: number
+): Promise<ChildProcessWithoutNullStreams> {
+  const cliPath = path.join(process.cwd(), 'src/cli/dist/index.js')
+  const serverBinary = resolveBuiltServerBinary()
+  const child = spawn(process.execPath, [cliPath, 'start', '--foreground', '--port', String(gatewayPort)], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      HOME: tempHome,
+      NODE_ENV: 'test',
+      CC_GW_VERSION_CHECK_REGISTRY_BASE_URL: `http://127.0.0.1:${stubPort}`,
+      ...(serverBinary ? { CC_GW_SERVER_BIN: serverBinary } : {}),
+    },
+    stdio: 'pipe',
+  })
+
+  child.stdout.on('data', (chunk) => {
+    process.stdout.write(`[gateway] ${chunk}`)
+  })
+  child.stderr.on('data', (chunk) => {
+    process.stderr.write(`[gateway-err] ${chunk}`)
+  })
+
+  return child
+}
+
 export function createGatewayHarness(options: GatewayHarnessOptions = {}): GatewayHarness {
   const harness: GatewayHarness = {
     tempHome: '',
@@ -261,7 +301,7 @@ export function createGatewayHarness(options: GatewayHarnessOptions = {}): Gatew
       harness.tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-gw-web-e2e-'))
       harness.stubServer = await startStubProvider(harness.stubPort)
       writeConfig(harness.tempHome, harness.gatewayPort, harness.stubPort, options)
-      harness.gatewayProcess = await startGateway(harness.tempHome, harness.gatewayPort)
+      harness.gatewayProcess = await startGatewayWithStubRegistry(harness.tempHome, harness.gatewayPort, harness.stubPort)
       await waitForServer(harness.gatewayPort)
     },
     stop: async () => {

@@ -1590,6 +1590,8 @@ mod tests {
             active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
             runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
             http_client: reqwest::Client::builder().build().expect("client"),
+            version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
+            version_check_package_name: "@chenpu17/cc-gw".to_string(),
             sessions: auth::SessionStore::default(),
             profiling_active: Arc::new(AtomicU64::new(0)),
         }

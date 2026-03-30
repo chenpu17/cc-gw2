@@ -1121,14 +1121,30 @@ const resources = {
           description: '通过 Web UI 管理 Provider、模型路由与日志，高级配置可直接编辑 ~/.cc-gw/config.json。',
           tip: '高级配置建议结合 CLI 使用，可将 ~/.cc-gw/config.json 纳入版本管理或自动化脚本。',
           actions: {
-            checkUpdates: '检查更新'
+            checkUpdates: '检查更新',
+            checkingUpdates: '检查中...'
           }
+        },
+        update: {
+          available: '发现新版本 v{{version}}',
+          current: '当前已是最新版本 v{{version}}',
+          channel: '更新通道：{{channel}}'
         },
         toast: {
           statusError: {
             title: '状态加载失败'
           },
-          updatesPlanned: '检查更新功能将在后续版本提供。'
+          upToDate: {
+            title: '当前已是最新版本 v{{version}}',
+            description: 'npm registry 中没有发现更高版本。'
+          },
+          updateAvailable: {
+            title: '发现新版本 v{{version}}',
+            description: '可通过 npm install -g {{packageName}} 更新。'
+          },
+          updateError: {
+            title: '检查更新失败'
+          }
         }
       },
       apiKeys: {
@@ -2523,14 +2539,30 @@ const resources = {
           description: 'Manage providers, routing, and logs in the Web UI; advanced settings live in ~/.cc-gw/config.json.',
           tip: 'Consider keeping ~/.cc-gw/config.json under version control or managing it via automation scripts.',
           actions: {
-            checkUpdates: 'Check for updates'
+            checkUpdates: 'Check for updates',
+            checkingUpdates: 'Checking...'
           }
+        },
+        update: {
+          available: 'Update available: v{{version}}',
+          current: 'You are on the latest version: v{{version}}',
+          channel: 'Channel: {{channel}}'
         },
         toast: {
           statusError: {
             title: 'Failed to load status'
           },
-          updatesPlanned: 'Update checks will arrive in a future release.'
+          upToDate: {
+            title: 'You are on the latest version: v{{version}}',
+            description: 'No newer release was found on npm.'
+          },
+          updateAvailable: {
+            title: 'Update available: v{{version}}',
+            description: 'Upgrade with npm install -g {{packageName}}.'
+          },
+          updateError: {
+            title: 'Failed to check for updates'
+          }
         }
       },
       endpoints: {

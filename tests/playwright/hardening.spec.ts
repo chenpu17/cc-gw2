@@ -55,7 +55,7 @@ test('help page code blocks can be copied end-to-end', async ({ page, context })
   expect(copiedText.trim()).toBe(expectedCode)
 })
 
-test('about page keeps manual refresh semantics and update action feedback', async ({ page }) => {
+test('about page keeps manual refresh semantics and checks npm updates through the backend', async ({ page }) => {
   const baseUrl = harness.baseUrl()
 
   await page.goto(`${baseUrl}/ui/about`)
@@ -70,5 +70,5 @@ test('about page keeps manual refresh semantics and update action feedback', asy
   await expect(page.locator('#main-content').getByText('运行状态', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: '检查更新' }).click()
-  await expect(page.getByText('检查更新功能将在后续版本提供。')).toBeVisible()
+  await expect(page.locator('#main-content').getByText(/当前已是最新版本 v0\.8\.2/)).toBeVisible()
 })

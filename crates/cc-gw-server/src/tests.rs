@@ -95,6 +95,8 @@ fn build_test_state(
         active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
         runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
         http_client: reqwest::Client::builder().build().expect("client"),
+        version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
+        version_check_package_name: "@chenpu17/cc-gw".to_string(),
         sessions: auth::SessionStore::default(),
         profiling_active: Arc::new(AtomicU64::new(0)),
     }
@@ -332,6 +334,63 @@ async fn provider_test_matches_key_node_behaviors() {
     gateway_handle.abort();
     upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn api_version_check_reports_update_state_from_registry() {
+    let registry = Router::new().fallback(get(|| async {
+        Json(json!({
+            "dist-tags": {
+                "latest": "0.8.3"
+            },
+            "time": {
+                "0.8.3": "2026-03-30T03:45:32.000Z"
+            }
+        }))
+    }));
+    let (registry_addr, registry_handle) = spawn_router(registry).await;
+
+    let paths = test_paths("version-check");
+    initialize_database(&paths.db_path).expect("init db");
+    let mut state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    state.version_check_registry_base_url = format!("http://{registry_addr}");
+
+    let (gateway_addr, gateway_handle) = spawn_router(build_router(state)).await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .get(format!("http://{gateway_addr}/api/version/check"))
+        .send()
+        .await
+        .expect("request version check")
+        .json()
+        .await
+        .expect("decode version check");
+
+    assert_eq!(
+        response.get("currentVersion").and_then(Value::as_str),
+        Some("0.8.2")
+    );
+    assert_eq!(
+        response.get("latestVersion").and_then(Value::as_str),
+        Some("0.8.3")
+    );
+    assert_eq!(
+        response.get("channel").and_then(Value::as_str),
+        Some("latest")
+    );
+    assert_eq!(
+        response.get("updateAvailable").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        response.get("publishedAt").and_then(Value::as_str),
+        Some("2026-03-30T03:45:32.000Z")
+    );
+
+    gateway_handle.abort();
+    registry_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
 }
 
 #[tokio::test]

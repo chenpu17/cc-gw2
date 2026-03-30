@@ -81,6 +81,8 @@ struct AppState {
     active_requests_by_api_key: Arc<Mutex<HashMap<i64, u64>>>,
     runtime_metrics: Arc<Mutex<RuntimeMetricsSampler>>,
     http_client: reqwest::Client,
+    version_check_registry_base_url: String,
+    version_check_package_name: String,
     sessions: auth::SessionStore,
     profiling_active: Arc<AtomicU64>,
 }
@@ -277,6 +279,10 @@ async fn main() -> Result<()> {
         http_client: reqwest::Client::builder()
             .build()
             .context("failed to build reqwest client")?,
+        version_check_registry_base_url: std::env::var("CC_GW_VERSION_CHECK_REGISTRY_BASE_URL")
+            .unwrap_or_else(|_| "https://registry.npmjs.org".to_string()),
+        version_check_package_name: std::env::var("CC_GW_VERSION_CHECK_PACKAGE_NAME")
+            .unwrap_or_else(|_| "@chenpu17/cc-gw".to_string()),
         sessions: auth::SessionStore::default(),
         profiling_active: Arc::new(AtomicU64::new(0)),
     };
@@ -384,6 +390,7 @@ fn build_router(state: AppState) -> Router {
         .route("/api/logs/{id}", get(admin_routes::api_log_detail))
         .route("/api/db/info", get(admin_routes::api_db_info))
         .route("/api/db/compact", post(admin_routes::api_db_compact))
+        .route("/api/version/check", get(admin_routes::api_version_check))
         .route("/api/stats/overview", get(admin_routes::api_stats_overview))
         .route("/api/stats/daily", get(admin_routes::api_stats_daily))
         .route("/api/stats/model", get(admin_routes::api_stats_model))

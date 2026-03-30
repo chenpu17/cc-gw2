@@ -1,4 +1,25 @@
 use super::*;
+use semver::Version;
+use std::time::Duration;
+
+#[derive(Debug, Deserialize)]
+struct NpmRegistryPackageResponse {
+    #[serde(rename = "dist-tags")]
+    dist_tags: HashMap<String, String>,
+    time: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VersionCheckResponse {
+    current_version: String,
+    latest_version: String,
+    channel: String,
+    update_available: bool,
+    package_name: String,
+    release_url: String,
+    published_at: Option<String>,
+}
 
 fn count_active_entries(entries: &Mutex<HashMap<String, u64>>) -> u64 {
     entries.lock().map(|items| items.len() as u64).unwrap_or(0)
@@ -24,6 +45,113 @@ fn count_active_requests_for_endpoint(
         .ok()
         .and_then(|items| items.get(endpoint).copied())
         .unwrap_or(0)
+}
+
+fn update_channel_for_version(version: &str) -> String {
+    let normalized = version.trim().trim_start_matches('v');
+    let Ok(version) = Version::parse(normalized) else {
+        return "latest".to_string();
+    };
+
+    let Some(identifier) = version.pre.as_str().split('.').next() else {
+        return "latest".to_string();
+    };
+
+    match identifier {
+        "alpha" | "beta" | "rc" => identifier.to_string(),
+        _ => "latest".to_string(),
+    }
+}
+
+fn encode_package_name(package_name: &str) -> String {
+    package_name.replace('@', "%40").replace('/', "%2F")
+}
+
+pub(super) async fn api_version_check(State(state): State<AppState>) -> Response {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let channel = update_channel_for_version(&current_version);
+    let package_name = state.version_check_package_name.clone();
+    let registry_url = format!(
+        "{}/{}",
+        state.version_check_registry_base_url.trim_end_matches('/'),
+        encode_package_name(&package_name)
+    );
+
+    let registry_response = match state
+        .http_client
+        .get(&registry_url)
+        .timeout(Duration::from_secs(5))
+        .header(header::ACCEPT, "application/json")
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "error": format!("failed to query npm registry: {error}") })),
+            )
+                .into_response();
+        }
+    };
+
+    if !registry_response.status().is_success() {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({
+                "error": format!("npm registry returned status {}", registry_response.status())
+            })),
+        )
+            .into_response();
+    }
+
+    let registry_payload = match registry_response.json::<NpmRegistryPackageResponse>().await {
+        Ok(payload) => payload,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "error": format!("invalid npm registry response: {error}") })),
+            )
+                .into_response();
+        }
+    };
+
+    let latest_version = registry_payload
+        .dist_tags
+        .get(&channel)
+        .or_else(|| registry_payload.dist_tags.get("latest"))
+        .cloned();
+    let Some(latest_version) = latest_version else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": format!("npm dist-tag not found for channel {channel}") })),
+        )
+            .into_response();
+    };
+
+    let update_available = match (
+        Version::parse(current_version.trim_start_matches('v')),
+        Version::parse(latest_version.trim_start_matches('v')),
+    ) {
+        (Ok(current), Ok(latest)) => latest > current,
+        _ => latest_version != current_version,
+    };
+
+    let published_at = registry_payload
+        .time
+        .as_ref()
+        .and_then(|entries| entries.get(&latest_version).cloned());
+
+    Json(VersionCheckResponse {
+        current_version,
+        latest_version,
+        channel,
+        update_available,
+        package_name: package_name.clone(),
+        release_url: format!("https://www.npmjs.com/package/{package_name}"),
+        published_at,
+    })
+    .into_response()
 }
 
 pub(super) async fn api_status(

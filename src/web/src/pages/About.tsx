@@ -1,12 +1,13 @@
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Info, LifeBuoy, RefreshCw, ServerCog, Sparkles } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
 import { PageLoadingState, PageState } from '@/components/PageState'
+import { useAppMutation } from '@/hooks/useAppMutation'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
-import type { ApiError } from '@/services/api'
+import { requestJson, type ApiError } from '@/services/api'
 import { queryKeys } from '@/services/queryKeys'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,9 +31,20 @@ interface InfoGridItem {
   hint?: ReactNode
 }
 
+interface VersionCheckResponse {
+  currentVersion: string
+  latestVersion: string
+  channel: string
+  updateAvailable: boolean
+  packageName: string
+  releaseUrl: string
+  publishedAt?: string | null
+}
+
 export default function AboutPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
+  const [versionCheck, setVersionCheck] = useState<VersionCheckResponse | null>(null)
 
   const statusQuery = useApiQuery<StatusResponse, ApiError>(
     queryKeys.status.gateway(),
@@ -49,6 +61,32 @@ export default function AboutPage() {
       })
     }
   }, [pushToast, statusQuery.error, statusQuery.isError, t])
+
+  const versionCheckMutation = useAppMutation<VersionCheckResponse, void>({
+    mutationFn: async () => requestJson<VersionCheckResponse>({ url: '/api/version/check', method: 'GET' }),
+    successToast: (data) => {
+      if (data.updateAvailable) {
+        return {
+          title: t('about.toast.updateAvailable.title', { version: data.latestVersion }),
+          description: t('about.toast.updateAvailable.description', {
+            packageName: data.packageName
+          })
+        }
+      }
+
+      return {
+        title: t('about.toast.upToDate.title', { version: data.currentVersion }),
+        description: t('about.toast.upToDate.description')
+      }
+    },
+    errorToast: (error) => ({
+      title: t('about.toast.updateError.title'),
+      description: error.message
+    }),
+    onSuccess: async (data) => {
+      setVersionCheck(data)
+    }
+  })
 
   const appVersion = (packageJson as { version?: string }).version ?? '0.0.0'
   const buildTime = import.meta.env.VITE_BUILD_TIME ?? '-'
@@ -98,9 +136,9 @@ export default function AboutPage() {
             <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
               manual refresh only
             </div>
-            <Button onClick={() => pushToast({ title: t('about.toast.updatesPlanned'), variant: 'info' })} className="w-full sm:w-auto">
-              <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
-              {t('about.support.actions.checkUpdates')}
+            <Button onClick={() => versionCheckMutation.mutate()} disabled={versionCheckMutation.isPending} className="w-full sm:w-auto">
+              <Sparkles className={`mr-2 h-4 w-4${versionCheckMutation.isPending ? ' animate-spin' : ''}`} aria-hidden="true" />
+              {versionCheckMutation.isPending ? t('about.support.actions.checkingUpdates') : t('about.support.actions.checkUpdates')}
             </Button>
           </div>
         }
@@ -136,6 +174,19 @@ export default function AboutPage() {
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Build</p>
               <p data-visual-volatile="true" className="font-mono text-lg text-primary">v{appVersion}</p>
               <p data-visual-volatile="true" className="text-sm text-muted-foreground">{buildTime}</p>
+              {versionCheck ? (
+                <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground">
+                    {versionCheck.updateAvailable
+                      ? t('about.update.available', { version: versionCheck.latestVersion })
+                      : t('about.update.current', { version: versionCheck.currentVersion })}
+                  </p>
+                  <p className="mt-1">
+                    {t('about.update.channel', { channel: versionCheck.channel })}
+                    {versionCheck.publishedAt ? ` · ${new Date(versionCheck.publishedAt).toLocaleString()}` : ''}
+                  </p>
+                </div>
+              ) : null}
               <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-sm text-muted-foreground">
                 {t('about.support.tip')}
               </div>
