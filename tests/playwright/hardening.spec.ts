@@ -81,9 +81,10 @@ test('about page keeps manual refresh semantics and checks npm updates through t
   const displayedVersion = versionCheckPayload.updateAvailable
     ? versionCheckPayload.latestVersion
     : versionCheckPayload.currentVersion
+  const displayedLabel = versionCheckPayload.updateAvailable
+    ? `发现新版本 v${displayedVersion}`
+    : `当前已是最新版本 v${displayedVersion}`
   await expect(
-    page.locator('#main-content').getByText(
-      new RegExp(`v${String(displayedVersion).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`)
-    )
+    page.locator('#main-content').getByText(displayedLabel, { exact: true })
   ).toBeVisible()
 })
