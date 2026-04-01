@@ -69,6 +69,21 @@ test('about page keeps manual refresh semantics and checks npm updates through t
   await refreshResponse
   await expect(page.locator('#main-content').getByText('运行状态', { exact: true })).toBeVisible()
 
+  const versionCheckResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return response.request().method() === 'GET' && url.pathname.endsWith('/api/version/check')
+  })
   await page.getByRole('button', { name: '检查更新' }).click()
-  await expect(page.locator('#main-content').getByText(/当前已是最新版本 v0\.8\.3/)).toBeVisible()
+  const versionCheckPayload = await (await versionCheckResponse).json()
+  expect(typeof versionCheckPayload.updateAvailable).toBe('boolean')
+  expect(versionCheckPayload.currentVersion).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
+  expect(versionCheckPayload.latestVersion).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
+  const displayedVersion = versionCheckPayload.updateAvailable
+    ? versionCheckPayload.latestVersion
+    : versionCheckPayload.currentVersion
+  await expect(
+    page.locator('#main-content').getByText(
+      new RegExp(`v${String(displayedVersion).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`)
+    )
+  ).toBeVisible()
 })
