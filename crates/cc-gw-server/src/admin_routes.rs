@@ -47,6 +47,14 @@ fn count_active_requests_for_endpoint(
         .unwrap_or(0)
 }
 
+fn count_network_bytes_for_endpoint(entries: &Mutex<HashMap<String, u64>>, endpoint: &str) -> u64 {
+    entries
+        .lock()
+        .ok()
+        .and_then(|items| items.get(endpoint).copied())
+        .unwrap_or(0)
+}
+
 fn update_channel_for_version(version: &str) -> String {
     let normalized = version.trim().trim_start_matches('v');
     let Ok(version) = Version::parse(normalized) else {
@@ -186,11 +194,30 @@ pub(super) async fn api_status(
     } else {
         count_active_entries(&state.active_client_sessions)
     };
-    let cpu_usage_percent = state
-        .runtime_metrics
-        .lock()
-        .ok()
-        .and_then(|mut metrics| metrics.current_process_cpu_usage_percent());
+    let cpu_usage_percent = state.runtime_metrics.lock().ok().map(|mut metrics| {
+        let key = endpoint.unwrap_or("__all__");
+        let ingress_total = if let Some(endpoint) = endpoint {
+            count_network_bytes_for_endpoint(&state.network_ingress_bytes_by_endpoint, endpoint)
+        } else {
+            state.network_ingress_bytes.load(Ordering::Relaxed)
+        };
+        let egress_total = if let Some(endpoint) = endpoint {
+            count_network_bytes_for_endpoint(&state.network_egress_bytes_by_endpoint, endpoint)
+        } else {
+            state.network_egress_bytes.load(Ordering::Relaxed)
+        };
+        (
+            metrics.current_process_cpu_usage_percent(),
+            metrics.current_bandwidth_metrics(key, ingress_total, egress_total),
+        )
+    });
+    let (cpu_usage_percent, bandwidth_metrics) = match cpu_usage_percent {
+        Some((cpu_usage_percent, bandwidth_metrics)) => (cpu_usage_percent, bandwidth_metrics),
+        None => (
+            None,
+            cc_gw_core::observability::RuntimeBandwidthMetrics::default(),
+        ),
+    };
     Json(StatusResponse {
         port: config.port,
         host: config.host.clone(),
@@ -206,6 +233,8 @@ pub(super) async fn api_status(
         backend_version: env!("CARGO_PKG_VERSION"),
         platform: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
         cpu_usage_percent,
+        network_ingress_bytes_per_second: Some(bandwidth_metrics.ingress_bytes_per_second),
+        network_egress_bytes_per_second: Some(bandwidth_metrics.egress_bytes_per_second),
         pid: std::process::id(),
     })
 }

@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Activity,
+  ArrowDownToLine,
+  ArrowUpToLine,
   BarChart3,
   Cpu,
   Database,
@@ -28,7 +30,8 @@ import {
 } from '@/components/ui/table'
 import type { LogRecord } from '@/types/logs'
 import { cn } from '@/lib/utils'
-import { formatLatencyValue, formatPercent, type DailyMetric, type ModelUsageMetric, type OverviewStats, type ServiceStatus } from './types'
+import { getLogStatusMeta } from '@/pages/logs/utils'
+import { formatByteRate, formatLatencyValue, formatPercent, type DailyMetric, type ModelUsageMetric, type OverviewStats, type ServiceStatus } from './types'
 
 export function DashboardLoading() {
   return (
@@ -102,6 +105,8 @@ export function DashboardSpotlight({
               <SpotlightMetric icon={<Activity className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.requestsPerMinute')} value={(status?.requestsPerMinute ?? 0).toLocaleString()} />
               <SpotlightMetric icon={<Zap className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.outputTokensPerMinute')} value={(status?.outputTokensPerMinute ?? 0).toLocaleString()} />
               <SpotlightMetric icon={<Cpu className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.cpu')} value={formatPercent(status?.cpuUsagePercent)} />
+              <SpotlightMetric icon={<ArrowDownToLine className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.networkIngress')} value={formatByteRate(status?.networkIngressBytesPerSecond)} />
+              <SpotlightMetric icon={<ArrowUpToLine className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.networkEgress')} value={formatByteRate(status?.networkEgressBytesPerSecond)} />
               <SpotlightMetric icon={<Database className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.database')} value={dbSizeDisplay} />
               <SpotlightMetric icon={<MemoryStick className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.memory')} value={memoryDisplay} />
             </div>
@@ -277,8 +282,10 @@ export function ModelMetricsTable({ models, loading }: { models: ModelUsageMetri
 
 export function RecentRequestsTable({ records, loading }: { records: LogRecord[]; loading?: boolean }) {
   const { t } = useTranslation()
-  const successCount = records.filter((item) => !item.error && (item.status_code ?? 200) < 400).length
-  const errorCount = records.filter((item) => item.error || (item.status_code ?? 200) >= 400).length
+  const statusMeta = records.map((item) => getLogStatusMeta(item, t))
+  const successCount = statusMeta.filter((item) => item.tone === 'success').length
+  const errorCount = statusMeta.filter((item) => item.tone === 'error').length
+  const pendingCount = statusMeta.filter((item) => item.tone === 'pending').length
 
   return (
     <PageSection
@@ -294,6 +301,11 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
             <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive">
               {t('common.status.error')}: {errorCount}
             </Badge>
+            {pendingCount > 0 ? (
+              <Badge variant="outline" className="border-amber-300/60 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-300">
+                {t('common.status.pending')}: {pendingCount}
+              </Badge>
+            ) : null}
           </div>
         ) : null
       }
@@ -316,47 +328,51 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
               </TableRow>
             </TableHeader>
             <TableBody>
-              {records.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="text-xs font-medium">{new Date(item.timestamp).toLocaleString()}</span>
-                      <span className="text-[11px] text-muted-foreground">#{item.id}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-[11px]">
-                      {item.endpoint === 'anthropic'
-                        ? t('logs.endpointAnthropic')
-                        : item.endpoint === 'openai'
-                          ? t('logs.endpointOpenAI')
-                          : item.endpoint}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{item.provider}</span>
-                      <span className="text-[11px] text-muted-foreground">{item.stream ? 'stream' : 'sync'}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1 text-xs">
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <span>{item.client_model ?? t('dashboard.recent.routePlaceholder')}</span>
-                        <span>{'->'}</span>
-                        <span className="font-medium text-foreground">{item.model}</span>
+              {records.map((item) => {
+                const itemStatus = getLogStatusMeta(item, t)
+
+                return (
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-medium">{new Date(item.timestamp).toLocaleString()}</span>
+                        <span className="text-[11px] text-muted-foreground">#{item.id}</span>
                       </div>
-                      {item.error ? <span className="truncate text-destructive">{item.error}</span> : null}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right font-medium">{formatLatencyValue(item.latency_ms, t('common.units.ms'))}</TableCell>
-                  <TableCell>
-                    <Badge variant={item.error ? 'destructive' : 'default'} className="min-w-14 justify-center">
-                      {(item.status_code ?? (item.error ? 500 : 200)).toString()}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[11px]">
+                        {item.endpoint === 'anthropic'
+                          ? t('logs.endpointAnthropic')
+                          : item.endpoint === 'openai'
+                            ? t('logs.endpointOpenAI')
+                            : item.endpoint}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{item.provider}</span>
+                        <span className="text-[11px] text-muted-foreground">{item.stream ? 'stream' : 'sync'}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1 text-xs">
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <span>{item.client_model ?? t('dashboard.recent.routePlaceholder')}</span>
+                          <span>{'->'}</span>
+                          <span className="font-medium text-foreground">{item.model}</span>
+                        </div>
+                        {item.error ? <span className="truncate text-destructive">{item.error}</span> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-medium">{formatLatencyValue(item.latency_ms, t('common.units.ms'))}</TableCell>
+                    <TableCell>
+                      <Badge variant={itemStatus.variant} className="min-w-14 justify-center">
+                        {itemStatus.label}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </div>

@@ -71,6 +71,7 @@ const resources = {
         },
         status: {
           success: '成功',
+          pending: '进行中',
           error: '失败',
           enabled: '已启用',
           disabled: '已禁用'
@@ -125,6 +126,8 @@ const resources = {
           requestsPerMinute: 'RPM',
           outputTokensPerMinute: 'TPM',
           cpu: 'CPU 占用率',
+          networkIngress: '入口带宽',
+          networkEgress: '出口带宽',
           database: '数据库',
           memory: '内存占用'
         },
@@ -538,6 +541,7 @@ const resources = {
           modelsTitle: '支持模型',
           noModels: '尚未配置模型。',
           authMode: '认证方式',
+          providerDefault: 'Provider 默认',
           modelCount: '{{count}} 个模型',
           passthrough: '透传模式'
         },
@@ -584,7 +588,8 @@ const resources = {
             apiKeyPlaceholder: '可留空以从环境变量读取',
             authMode: '认证方式',
             authModeHint: '选择 API 认证方式，填写对应的密钥值。',
-            authModeApiKey: '默认方式（Anthropic: x-api-key / OpenAI: Bearer）',
+            authModeApiKey: 'X-API-Key',
+            authModeProviderDefault: 'Provider 默认',
             authModeAuthToken: 'Authorization: Bearer',
             authModeXAuthToken: 'X-Auth-Token',
             models: '模型配置',
@@ -1391,6 +1396,7 @@ const resources = {
         },
         status: {
           success: 'Success',
+          pending: 'In progress',
           error: 'Error',
           enabled: 'Enabled',
           disabled: 'Disabled'
@@ -1445,6 +1451,8 @@ const resources = {
           requestsPerMinute: 'RPM',
           outputTokensPerMinute: 'TPM',
           cpu: 'CPU usage',
+          networkIngress: 'Ingress bandwidth',
+          networkEgress: 'Egress bandwidth',
           database: 'Database',
           memory: 'Memory'
         },
@@ -1858,6 +1866,7 @@ const resources = {
           modelsTitle: 'Supported models',
           noModels: 'No models configured yet.',
           authMode: 'Auth mode',
+          providerDefault: 'Provider default',
           modelCount: '{{count}} models',
           passthrough: 'Pass-through'
         },
@@ -1904,7 +1913,8 @@ const resources = {
             apiKeyPlaceholder: 'Leave blank to read from environment',
             authMode: 'Authentication mode',
             authModeHint: 'Select the API authentication method and fill in the corresponding key.',
-            authModeApiKey: 'Default (Anthropic: x-api-key / OpenAI: Bearer)',
+            authModeApiKey: 'X-API-Key',
+            authModeProviderDefault: 'Provider default',
             authModeAuthToken: 'Authorization: Bearer',
             authModeXAuthToken: 'X-Auth-Token',
             models: 'Model configuration',

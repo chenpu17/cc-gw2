@@ -37,7 +37,7 @@ export function LogDetailsDrawer({
     providerLabel,
     refetch,
     record,
-    statusCode
+    statusMeta
   } = useLogDetailState({
     apiKeyMap,
     logId,
@@ -143,8 +143,8 @@ export function LogDetailsDrawer({
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={record.error ? 'destructive' : 'default'}>
-                      {statusCode?.toString()}
+                    <Badge variant={statusMeta?.variant}>
+                      {statusMeta?.label ?? '-'}
                     </Badge>
                     <Badge variant="outline">
                       {record.stream ? t('logs.stream.streaming') : t('logs.stream.single')}
@@ -156,7 +156,7 @@ export function LogDetailsDrawer({
                   <DetailStatCard label={t('logs.detail.info.latency')} value={formatLatency(record.latency_ms, t('common.units.ms'))} />
                   <DetailStatCard label={t('logs.detail.info.ttft')} value={formatLatency(record.ttft_ms, t('common.units.ms'))} />
                   <DetailStatCard label={t('logs.detail.info.tpot')} value={formatLatency(record.tpot_ms, t('common.units.msPerToken'))} />
-                  <DetailStatCard label={t('logs.detail.info.status')} value={statusCode?.toString() ?? '-'} />
+                  <DetailStatCard label={t('logs.detail.info.status')} value={statusMeta?.label ?? '-'} />
                 </div>
 
                 <dl className="grid gap-x-4 gap-y-3 md:grid-cols-2 xl:grid-cols-4">
@@ -167,7 +167,7 @@ export function LogDetailsDrawer({
                   <DetailItem label={t('logs.detail.info.requestedModel')} value={record.client_model ?? t('logs.detail.info.noRequestedModel')} />
                   <DetailItem label={t('logs.detail.info.model')} value={record.model} />
                   <DetailItem label={t('logs.detail.info.stream')} value={formatStreamLabel(record.stream)} />
-                  <DetailItem label={t('logs.detail.info.status')} value={statusCode} />
+                  <DetailItem label={t('logs.detail.info.status')} value={statusMeta?.label ?? '-'} />
                 </dl>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

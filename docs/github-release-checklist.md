@@ -36,7 +36,7 @@ pnpm docs:readme-screenshots
 
 - `pnpm smoke:cli` 通过
 - `pnpm pack:dry-run` 通过
-- 根包 dry-run 产物：`.pack/chenpu17-cc-gw-0.8.3.tgz`
+- 根包 dry-run 产物：`.pack/chenpu17-cc-gw-0.8.4.tgz`
 - 根包 tarball 大小：`466900 bytes`
 - 已确认根包包含 `src/cli/dist`、`src/web/dist`、`README.md`、`LICENSE`
 
@@ -81,8 +81,8 @@ pnpm run sync:native-versions
 确认版本号一致后打 tag：
 
 ```bash
-git tag v0.8.3
-git push origin v0.8.3
+git tag v0.8.4
+git push origin v0.8.4
 ```
 
 `release.yml` 会按下面顺序执行：
@@ -94,7 +94,7 @@ git push origin v0.8.3
 
 dist-tag 规则：
 
-- `0.8.3` -> `latest`
+- `0.8.4` -> `latest`
 - `0.8.0-alpha.12` -> `alpha`
 - `0.8.0-beta.1` -> `beta`
 - `0.8.0-rc.0` -> `rc`

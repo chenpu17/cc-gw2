@@ -49,6 +49,8 @@ export interface ServiceStatus {
   requestsPerMinute?: number
   outputTokensPerMinute?: number
   cpuUsagePercent?: number
+  networkIngressBytesPerSecond?: number
+  networkEgressBytesPerSecond?: number
   activeClientAddresses?: number
   activeClientSessions?: number
   uniqueClientAddressesLastHour?: number
@@ -110,6 +112,21 @@ export function formatBytes(value: number | null | undefined): string {
   }
 
   return `${bytes.toFixed(bytes >= 100 ? 0 : bytes >= 10 ? 1 : 2)} ${units[unitIndex]}`
+}
+
+export function formatByteRate(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return '-'
+  }
+
+  const normalized = value < 1 ? 0 : value
+  if (normalized < 1024) {
+    return `${normalized.toLocaleString(undefined, {
+      maximumFractionDigits: normalized >= 100 ? 0 : normalized >= 10 ? 1 : 2
+    })} B/s`
+  }
+
+  return `${formatBytes(normalized)}/s`
 }
 
 export function formatPercent(value: number | null | undefined): string {

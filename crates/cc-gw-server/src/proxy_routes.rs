@@ -3,6 +3,25 @@ use cc_gw_core::profiler::{AppendProfilerTurnInput, append_profiler_turn};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+#[derive(Clone)]
+struct NetworkByteRecorder {
+    state: AppState,
+    endpoint_id: String,
+}
+
+impl NetworkByteRecorder {
+    fn new(state: &AppState, endpoint_id: &str) -> Self {
+        Self {
+            state: state.clone(),
+            endpoint_id: endpoint_id.to_string(),
+        }
+    }
+
+    fn record_egress(&self, bytes: usize) {
+        record_network_egress(&self.state, &self.endpoint_id, bytes);
+    }
+}
+
 #[derive(Debug)]
 struct RequestActivityGuard {
     active_requests: Arc<AtomicU64>,
@@ -85,19 +104,38 @@ impl RequestActivityGuard {
                         return Err(current);
                     }
                     // Reserve the slot immediately while still holding the lock
-                    entries.entry(api_key_id).and_modify(|c| *c += 1).or_insert(1);
+                    entries
+                        .entry(api_key_id)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
                 } else {
                     // Lock poisoned — fail open
-                    return Ok(Self::new(state, endpoint_id, source_ip, session_id, Some(api_key_id)));
+                    return Ok(Self::new(
+                        state,
+                        endpoint_id,
+                        source_ip,
+                        session_id,
+                        Some(api_key_id),
+                    ));
                 }
                 // Counter already incremented; build the guard without re-incrementing
                 return Ok(Self::build_without_api_key_increment(
-                    state, endpoint_id, source_ip, session_id, Some(api_key_id),
+                    state,
+                    endpoint_id,
+                    source_ip,
+                    session_id,
+                    Some(api_key_id),
                 ));
             }
         }
         // No concurrency limit or no API key — use the normal path
-        Ok(Self::new(state, endpoint_id, source_ip, session_id, api_key_id))
+        Ok(Self::new(
+            state,
+            endpoint_id,
+            source_ip,
+            session_id,
+            api_key_id,
+        ))
     }
 
     /// Build a guard assuming the API key counter was already incremented by the caller.
@@ -283,10 +321,11 @@ pub(super) async fn anthropic_count_tokens(
     if let Err(response) = authorize_request(&state, &headers, "anthropic") {
         return response;
     }
-    let body = match read_json_request(&state, request.into_body()).await {
-        Ok(value) => value,
+    let (body, body_len) = match read_json_request_with_size(&state, request.into_body()).await {
+        Ok(result) => result,
         Err(response) => return response,
     };
+    record_network_ingress(&state, "anthropic", body_len);
 
     fn walk(value: &Value) -> usize {
         match value {
@@ -299,7 +338,12 @@ pub(super) async fn anthropic_count_tokens(
         }
     }
 
-    Json(json!({ "input_tokens": walk(&body) })).into_response()
+    json_response_with_network(
+        &state,
+        "anthropic",
+        StatusCode::OK,
+        &json!({ "input_tokens": walk(&body) }),
+    )
 }
 
 pub(super) async fn anthropic_messages(
@@ -307,15 +351,17 @@ pub(super) async fn anthropic_messages(
     ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
     request: Request,
 ) -> Response {
+    let query = request.uri().query().map(ToString::to_string);
     let headers = request.headers().clone();
     let api_key_context = match authorize_request_with_context(&state, &headers, "anthropic") {
         Ok(context) => context,
         Err(response) => return response,
     };
-    let body = match read_json_request(&state, request.into_body()).await {
-        Ok(value) => value,
+    let (body, body_len) = match read_json_request_with_size(&state, request.into_body()).await {
+        Ok(result) => result,
         Err(response) => return response,
     };
+    record_network_ingress(&state, "anthropic", body_len);
     let source_ip = extract_client_ip(&headers, Some(connect_info));
     proxy_standard_request(
         state,
@@ -323,6 +369,7 @@ pub(super) async fn anthropic_messages(
         headers,
         source_ip,
         body,
+        query,
         GatewayEndpoint::Anthropic,
         ProviderProtocol::AnthropicMessages,
     )
@@ -334,15 +381,17 @@ pub(super) async fn openai_chat_completions(
     ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
     request: Request,
 ) -> Response {
+    let query = request.uri().query().map(ToString::to_string);
     let headers = request.headers().clone();
     let api_key_context = match authorize_request_with_context(&state, &headers, "openai") {
         Ok(context) => context,
         Err(response) => return response,
     };
-    let body = match read_json_request(&state, request.into_body()).await {
-        Ok(value) => value,
+    let (body, body_len) = match read_json_request_with_size(&state, request.into_body()).await {
+        Ok(result) => result,
         Err(response) => return response,
     };
+    record_network_ingress(&state, "openai", body_len);
     let source_ip = extract_client_ip(&headers, Some(connect_info));
     proxy_standard_request(
         state,
@@ -350,6 +399,7 @@ pub(super) async fn openai_chat_completions(
         headers,
         source_ip,
         body,
+        query,
         GatewayEndpoint::OpenAi,
         ProviderProtocol::OpenAiChatCompletions,
     )
@@ -361,15 +411,17 @@ pub(super) async fn openai_responses(
     ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
     request: Request,
 ) -> Response {
+    let query = request.uri().query().map(ToString::to_string);
     let headers = request.headers().clone();
     let api_key_context = match authorize_request_with_context(&state, &headers, "openai") {
         Ok(context) => context,
         Err(response) => return response,
     };
-    let body = match read_json_request(&state, request.into_body()).await {
-        Ok(value) => value,
+    let (body, body_len) = match read_json_request_with_size(&state, request.into_body()).await {
+        Ok(result) => result,
         Err(response) => return response,
     };
+    record_network_ingress(&state, "openai", body_len);
     let source_ip = extract_client_ip(&headers, Some(connect_info));
     proxy_standard_request(
         state,
@@ -377,6 +429,7 @@ pub(super) async fn openai_responses(
         headers,
         source_ip,
         body,
+        query,
         GatewayEndpoint::OpenAi,
         ProviderProtocol::OpenAiResponses,
     )
@@ -547,17 +600,233 @@ fn retry_body_without_metadata_or_tool_choice(body: &Value) -> Option<Value> {
     if before == after { None } else { Some(retry) }
 }
 
+fn validation_config_for_endpoint<'a>(
+    config: &'a GatewayConfig,
+    endpoint: GatewayEndpoint<'_>,
+    protocol: ProviderProtocol,
+) -> Option<&'a cc_gw_core::config::EndpointValidationConfig> {
+    let default_endpoint_key = match protocol {
+        ProviderProtocol::AnthropicMessages => "anthropic",
+        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => "openai",
+    };
+
+    match endpoint {
+        GatewayEndpoint::Anthropic => config
+            .endpoint_routing
+            .get("anthropic")
+            .and_then(|routing| routing.validation.as_ref()),
+        GatewayEndpoint::OpenAi => config
+            .endpoint_routing
+            .get("openai")
+            .and_then(|routing| routing.validation.as_ref()),
+        GatewayEndpoint::Custom(id) => config
+            .custom_endpoints
+            .iter()
+            .find(|item| item.id == id)
+            .and_then(|item| item.routing.as_ref())
+            .and_then(|routing| routing.validation.as_ref())
+            .or_else(|| {
+                config
+                    .endpoint_routing
+                    .get(id)
+                    .and_then(|routing| routing.validation.as_ref())
+            })
+            .or_else(|| {
+                config
+                    .endpoint_routing
+                    .get(default_endpoint_key)
+                    .and_then(|routing| routing.validation.as_ref())
+            }),
+    }
+}
+
+fn block_type_allowed(block_type: &str, mode: &str, allow_experimental_blocks: bool) -> bool {
+    match block_type {
+        "text" | "image" | "document" | "tool_use" | "tool_result" => true,
+        "thinking" | "redacted_thinking" => allow_experimental_blocks,
+        _ => mode != "anthropic-strict",
+    }
+}
+
+fn validate_content_blocks(
+    blocks: &[Value],
+    mode: &str,
+    allow_experimental_blocks: bool,
+    context: &str,
+) -> Result<(), String> {
+    if blocks.is_empty() {
+        return Err(format!("{context} must not be empty"));
+    }
+
+    for (index, block) in blocks.iter().enumerate() {
+        let Some(object) = block.as_object() else {
+            return Err(format!("{context}[{index}] must be an object"));
+        };
+        let Some(block_type) = object.get("type").and_then(Value::as_str) else {
+            return Err(format!("{context}[{index}].type is required"));
+        };
+        if !block_type_allowed(block_type, mode, allow_experimental_blocks) {
+            return Err(format!(
+                "{context}[{index}] uses unsupported block type {block_type}"
+            ));
+        }
+
+        match block_type {
+            "text" => {
+                if object.get("text").and_then(Value::as_str).is_none() {
+                    return Err(format!("{context}[{index}].text is required"));
+                }
+            }
+            "image" | "document" => {
+                if object.get("source").is_none() {
+                    return Err(format!("{context}[{index}].source is required"));
+                }
+            }
+            "tool_use" => {
+                if object.get("id").and_then(Value::as_str).is_none() {
+                    return Err(format!("{context}[{index}].id is required"));
+                }
+                if object.get("name").and_then(Value::as_str).is_none() {
+                    return Err(format!("{context}[{index}].name is required"));
+                }
+                if !object.contains_key("input") {
+                    return Err(format!("{context}[{index}].input is required"));
+                }
+            }
+            "tool_result" => {
+                if object.get("tool_use_id").and_then(Value::as_str).is_none() {
+                    return Err(format!("{context}[{index}].tool_use_id is required"));
+                }
+                if !object.contains_key("content") {
+                    return Err(format!("{context}[{index}].content is required"));
+                }
+            }
+            "thinking" => {
+                if !allow_experimental_blocks {
+                    return Err(format!(
+                        "{context}[{index}] experimental blocks are disabled"
+                    ));
+                }
+            }
+            "redacted_thinking" => {
+                if !allow_experimental_blocks {
+                    return Err(format!(
+                        "{context}[{index}] experimental blocks are disabled"
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_message_content(
+    content: &Value,
+    mode: &str,
+    allow_experimental_blocks: bool,
+    context: &str,
+) -> Result<(), String> {
+    match content {
+        Value::Array(blocks) => {
+            validate_content_blocks(blocks, mode, allow_experimental_blocks, context)
+        }
+        Value::String(_) if mode == "anthropic-strict" => Ok(()),
+        Value::String(_) if mode == "claude-code" => {
+            Err(format!("{context} must use block content arrays"))
+        }
+        _ => Err(format!("{context} must be a string or array")),
+    }
+}
+
+fn validate_anthropic_request_body(
+    body: &Value,
+    validation: &cc_gw_core::config::EndpointValidationConfig,
+) -> Result<(), String> {
+    let mode = validation.mode.trim();
+    if mode.is_empty() || mode == "off" {
+        return Ok(());
+    }
+
+    let allow_experimental_blocks = validation.allow_experimental_blocks.unwrap_or(true);
+    let Some(object) = body.as_object() else {
+        return Err("request body must be a JSON object".to_string());
+    };
+
+    if object.get("model").and_then(Value::as_str).is_none() {
+        return Err("model is required".to_string());
+    }
+    if object
+        .get("messages")
+        .and_then(Value::as_array)
+        .filter(|messages| !messages.is_empty())
+        .is_none()
+    {
+        return Err("messages must be a non-empty array".to_string());
+    }
+
+    if mode == "claude-code" {
+        match object.get("thinking") {
+            Some(Value::Object(map)) if !allow_experimental_blocks && !map.is_empty() => {
+                return Err("thinking blocks are disabled".to_string());
+            }
+            Some(Value::Bool(true)) if !allow_experimental_blocks => {
+                return Err("thinking blocks are disabled".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(system) = object.get("system") {
+        match system {
+            Value::String(_) => {}
+            Value::Array(blocks) => {
+                validate_content_blocks(blocks, mode, allow_experimental_blocks, "system")?
+            }
+            _ => return Err("system must be a string or array".to_string()),
+        }
+    }
+
+    if let Some(messages) = object.get("messages").and_then(Value::as_array) {
+        for (index, message) in messages.iter().enumerate() {
+            let Some(message_object) = message.as_object() else {
+                return Err(format!("messages[{index}] must be an object"));
+            };
+            let Some(role) = message_object.get("role").and_then(Value::as_str) else {
+                return Err(format!("messages[{index}].role is required"));
+            };
+            if !matches!(role, "user" | "assistant") {
+                return Err(format!("messages[{index}].role is invalid"));
+            }
+            let Some(content) = message_object.get("content") else {
+                return Err(format!("messages[{index}].content is required"));
+            };
+            validate_message_content(
+                content,
+                mode,
+                allow_experimental_blocks,
+                &format!("messages[{index}].content"),
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
 pub(super) async fn proxy_standard_request(
     state: AppState,
     api_key_context: cc_gw_core::api_keys::ResolvedApiKey,
     headers: HeaderMap,
     source_ip: Option<String>,
     body: Value,
+    query: Option<String>,
     endpoint: GatewayEndpoint<'_>,
     protocol: ProviderProtocol,
 ) -> Response {
     let started_at = chrono::Utc::now().timestamp_millis();
     let endpoint_id = endpoint_name(endpoint, protocol);
+    let network_recorder = NetworkByteRecorder::new(&state, &endpoint_id);
     let user_agent = header_value(&headers, header::USER_AGENT.as_str());
     let session_id = extract_session_id(&body);
 
@@ -617,6 +886,23 @@ pub(super) async fn proxy_standard_request(
         encrypt_secret(&state.paths.home_dir, &api_key_context.provided_key).ok()
     };
     let config = config_snapshot(&state);
+    if protocol == ProviderProtocol::AnthropicMessages {
+        if let Some(validation) = validation_config_for_endpoint(&config, endpoint, protocol) {
+            if let Err(error) = validate_anthropic_request_body(&body, validation) {
+                return json_response_with_network(
+                    &state,
+                    &endpoint_id,
+                    StatusCode::from_u16(430).expect("valid 430 status"),
+                    &json!({
+                        "error": {
+                            "code": "invalid_claude_code_request",
+                            "message": error
+                        }
+                    }),
+                );
+            }
+        }
+    }
     let request_payload_storage = request_payload_storage_enabled(&config);
     let client_request_payload = if request_payload_storage {
         serde_json::to_string(&body).ok()
@@ -635,15 +921,16 @@ pub(super) async fn proxy_standard_request(
     ) {
         Ok(target) => target,
         Err(error) => {
-            return (
+            return json_response_with_network(
+                &state,
+                &endpoint_id,
                 StatusCode::BAD_REQUEST,
-                Json(json!({
+                &json!({
                     "error": {
                         "message": error.to_string()
                     }
-                })),
-            )
-                .into_response();
+                }),
+            );
         }
     };
 
@@ -716,6 +1003,7 @@ pub(super) async fn proxy_standard_request(
     );
 
     let target_model_id = target.model_id.clone();
+    let upstream_query = query.clone();
     let proxy_result = forward_request(
         &state.http_client,
         &target.provider,
@@ -726,7 +1014,7 @@ pub(super) async fn proxy_standard_request(
             stream,
             incoming_headers: headers.clone(),
             passthrough_headers: HeaderMap::new(),
-            query: None,
+            query: upstream_query.clone(),
         },
     )
     .await;
@@ -750,7 +1038,7 @@ pub(super) async fn proxy_standard_request(
                             stream,
                             incoming_headers: headers.clone(),
                             passthrough_headers: HeaderMap::new(),
-                            query: None,
+                            query: upstream_query.clone(),
                         },
                     )
                     .await
@@ -782,6 +1070,7 @@ pub(super) async fn proxy_standard_request(
                     protocol,
                     target_protocol,
                     requested_model.unwrap_or(""),
+                    network_recorder.clone(),
                     streaming_log_context,
                     Some(activity_guard),
                 )
@@ -790,6 +1079,7 @@ pub(super) async fn proxy_standard_request(
                 into_streaming_proxy_response(
                     response,
                     target_protocol,
+                    network_recorder.clone(),
                     streaming_log_context,
                     Some(activity_guard),
                 )
@@ -803,6 +1093,7 @@ pub(super) async fn proxy_standard_request(
                         protocol,
                         target_protocol,
                         requested_model.unwrap_or(""),
+                        network_recorder.clone(),
                     )
                     .await;
                 if let Some(log_id) = request_log_id {
@@ -868,7 +1159,7 @@ pub(super) async fn proxy_standard_request(
                 let status_code = response.status().as_u16() as i64;
                 let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
                 let (result, usage, response_payload) =
-                    into_proxy_response(response, !stream).await;
+                    into_proxy_response(response, !stream, network_recorder.clone()).await;
                 if let Some(log_id) = request_log_id {
                     let update = RequestLogUpdate {
                         latency_ms: Some(latency_ms),
@@ -952,7 +1243,7 @@ pub(super) async fn proxy_standard_request(
                     source: Some("proxy".to_string()),
                     title: Some("Provider request failed".to_string()),
                     message: Some(error.to_string()),
-                    endpoint: Some(endpoint_id),
+                    endpoint: Some(endpoint_id.clone()),
                     api_key_id: Some(api_key_context.id),
                     api_key_name: Some(api_key_context.name),
                     api_key_value: encrypted_api_key_value,
@@ -961,16 +1252,17 @@ pub(super) async fn proxy_standard_request(
                     ..RecordEventInput::default()
                 },
             );
-            (
+            json_response_with_network(
+                &state,
+                &endpoint_id,
                 StatusCode::BAD_GATEWAY,
-                Json(json!({
+                &json!({
                     "error": {
                         "message": error.to_string(),
                         "provider": target.provider_id
                     }
-                })),
+                }),
             )
-                .into_response()
         }
     }
 }
@@ -980,13 +1272,16 @@ async fn into_converted_response(
     request_protocol: ProviderProtocol,
     target_protocol: ProviderProtocol,
     requested_model: &str,
+    network_recorder: NetworkByteRecorder,
 ) -> (Response, UsageStats, Option<String>, Option<String>) {
     let status = response.status();
     if !status.is_success() {
-        let (result, usage, response_payload) = into_proxy_response(response, true).await;
+        let (result, usage, response_payload) =
+            into_proxy_response(response, true, network_recorder).await;
         return (result, usage, None, response_payload);
     }
 
+    let headers = response.headers().clone();
     let body_bytes = match response.bytes().await {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -997,15 +1292,16 @@ async fn into_converted_response(
             }))
             .ok();
             return (
-                (
+                json_response_with_network(
+                    &network_recorder.state,
+                    &network_recorder.endpoint_id,
                     StatusCode::BAD_GATEWAY,
-                    Json(json!({
+                    &json!({
                         "error": {
                             "message": format!("failed to read upstream response: {error}")
                         }
-                    })),
-                )
-                    .into_response(),
+                    }),
+                ),
                 UsageStats::default(),
                 None,
                 client_payload,
@@ -1024,15 +1320,16 @@ async fn into_converted_response(
             }))
             .ok();
             return (
-                (
+                json_response_with_network(
+                    &network_recorder.state,
+                    &network_recorder.endpoint_id,
                     StatusCode::BAD_GATEWAY,
-                    Json(json!({
+                    &json!({
                         "error": {
                             "message": format!("failed to decode upstream JSON: {error}")
                         }
-                    })),
-                )
-                    .into_response(),
+                    }),
+                ),
                 UsageStats::default(),
                 upstream_payload,
                 client_payload,
@@ -1067,8 +1364,22 @@ async fn into_converted_response(
     };
 
     let response_payload = serde_json::to_string(&converted).ok();
+    if let Some(payload) = response_payload.as_deref() {
+        network_recorder.record_egress(payload.len());
+    }
+    let mut builder = Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "application/json");
+    for (name, value) in headers.iter() {
+        if should_forward_upstream_observability_header(name) {
+            builder = builder.header(name, value);
+        }
+    }
     (
-        Json(converted).into_response(),
+        match builder.body(Body::from(response_payload.clone().unwrap_or_default())) {
+            Ok(response) => response,
+            Err(_) => (StatusCode::BAD_GATEWAY, "invalid converted response").into_response(),
+        },
         usage,
         upstream_payload,
         response_payload,
@@ -1080,6 +1391,7 @@ async fn into_streaming_converted_response(
     request_protocol: ProviderProtocol,
     target_protocol: ProviderProtocol,
     requested_model: &str,
+    network_recorder: NetworkByteRecorder,
     log_context: Option<StreamingLogContext>,
     activity_guard: Option<RequestActivityGuard>,
 ) -> Response {
@@ -1089,7 +1401,8 @@ async fn into_streaming_converted_response(
             .as_ref()
             .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
             .unwrap_or_default();
-        let (result, usage, response_payload) = into_proxy_response(response, true).await;
+        let (result, usage, response_payload) =
+            into_proxy_response(response, true, network_recorder).await;
         finalize_stream_logging(
             log_context,
             target_protocol,
@@ -1100,6 +1413,7 @@ async fn into_streaming_converted_response(
             None,
             None,
             response_payload,
+            None,
         );
         drop(activity_guard);
         return result;
@@ -1111,35 +1425,40 @@ async fn into_streaming_converted_response(
         requested_model.to_string()
     };
 
+    let headers = response.headers().clone();
     let mut upstream = response.bytes_stream();
     let mut transformer =
         CrossProtocolStreamTransformer::new(request_protocol, target_protocol, model);
     let mut observer = SseStreamObserver::new(target_protocol);
-    let mut first_token_at = None::<i64>;
     let status_code = status.as_u16() as i64;
     let capture_response = log_context
         .as_ref()
         .is_some_and(|context| context.store_response_payload);
+    let mut finalizer = StreamingResponseFinalizer::new(
+        log_context,
+        request_protocol,
+        status_code,
+        capture_response,
+        capture_response,
+        capture_response.then_some(target_protocol),
+    );
 
     let stream = stream! {
         let _activity_guard = activity_guard;
-        let mut captured_upstream_response = String::new();
-        let mut captured_response = String::new();
         loop {
             match upstream.try_next().await {
                 Ok(Some(chunk)) => {
                     let text = String::from_utf8_lossy(&chunk).to_string();
                     let observation = observer.push(&text);
-                    if first_token_at.is_none() && observation.saw_first_token {
-                        first_token_at = Some(chrono::Utc::now().timestamp_millis());
+                    finalizer.record_usage(observer.usage_stats());
+                    if observation.saw_first_token {
+                        let seen_at = chrono::Utc::now().timestamp_millis();
+                        finalizer.record_first_token_at(seen_at);
                     }
-                    if capture_response {
-                        captured_upstream_response.push_str(&text);
-                    }
+                    finalizer.push_upstream_response(&text);
                     for transformed in transformer.push(&text) {
-                        if capture_response {
-                            captured_response.push_str(&transformed);
-                        }
+                        network_recorder.record_egress(transformed.len());
+                        finalizer.push_client_response(&transformed);
                         yield Ok::<Bytes, std::io::Error>(Bytes::from(transformed));
                     }
                 }
@@ -1149,43 +1468,31 @@ async fn into_streaming_converted_response(
         }
 
         let observation = observer.finish();
-        if first_token_at.is_none() && observation.saw_first_token {
-            first_token_at = Some(chrono::Utc::now().timestamp_millis());
+        if observation.saw_first_token {
+            let seen_at = chrono::Utc::now().timestamp_millis();
+            finalizer.record_first_token_at(seen_at);
         }
         for transformed in transformer.finish() {
-            if capture_response {
-                captured_response.push_str(&transformed);
-            }
+            network_recorder.record_egress(transformed.len());
+            finalizer.push_client_response(&transformed);
             yield Ok::<Bytes, std::io::Error>(Bytes::from(transformed));
         }
 
-        let usage = observer.usage_stats();
-        let latency_ms = log_context
-            .as_ref()
-            .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
-            .unwrap_or_default();
-        let ttft_ms = first_token_at.zip(log_context.as_ref()).map(|(first_token_at, context)| {
-            first_token_at - context.started_at
-        });
-        finalize_stream_logging(
-            log_context,
-            request_protocol,
-            status_code,
-            latency_ms,
-            usage,
-            ttft_ms,
-            if capture_response { Some(target_protocol) } else { None },
-            if capture_response { Some(captured_upstream_response) } else { None },
-            if capture_response { Some(captured_response) } else { None },
-        );
+        finalizer.record_usage(observer.usage_stats());
+        finalizer.finish();
     };
 
-    match Response::builder()
+    let mut builder = Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, "text/event-stream")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .body(Body::from_stream(stream))
-    {
+        .header(header::CACHE_CONTROL, "no-cache");
+    for (name, value) in headers.iter() {
+        if should_forward_upstream_observability_header(name) {
+            builder = builder.header(name, value);
+        }
+    }
+
+    match builder.body(Body::from_stream(stream)) {
         Ok(response) => response,
         Err(_) => (StatusCode::BAD_GATEWAY, "invalid transformed stream").into_response(),
     }
@@ -1194,6 +1501,7 @@ async fn into_streaming_converted_response(
 async fn into_proxy_response(
     response: reqwest::Response,
     inspect_body: bool,
+    network_recorder: NetworkByteRecorder,
 ) -> (Response, UsageStats, Option<String>) {
     let status = response.status();
     let headers = response.headers().clone();
@@ -1209,16 +1517,14 @@ async fn into_proxy_response(
             }
         };
         let response_payload = Some(String::from_utf8_lossy(&body_bytes).to_string());
+        network_recorder.record_egress(body_bytes.len());
         let usage = serde_json::from_slice::<Value>(&body_bytes)
             .ok()
             .map(|value| extract_usage_stats(&value))
             .unwrap_or_default();
         let mut builder = Response::builder().status(status);
         for (name, value) in headers.iter() {
-            if name == header::CONTENT_LENGTH
-                || name == header::CONNECTION
-                || name.as_str().eq_ignore_ascii_case("transfer-encoding")
-            {
+            if !should_forward_upstream_response_header(name) {
                 continue;
             }
             builder = builder.header(name, value);
@@ -1232,17 +1538,19 @@ async fn into_proxy_response(
             response_payload,
         );
     }
+    let network_recorder_stream = network_recorder.clone();
     let stream = response
         .bytes_stream()
+        .map_ok(move |chunk| {
+            network_recorder_stream.record_egress(chunk.len());
+            chunk
+        })
         .map_err(|error| std::io::Error::other(error.to_string()));
     let body = Body::from_stream(stream);
 
     let mut builder = Response::builder().status(status);
     for (name, value) in headers.iter() {
-        if name == header::CONTENT_LENGTH
-            || name == header::CONNECTION
-            || name.as_str().eq_ignore_ascii_case("transfer-encoding")
-        {
+        if !should_forward_upstream_response_header(name) {
             continue;
         }
         builder = builder.header(name, value);
@@ -1261,6 +1569,7 @@ async fn into_proxy_response(
 async fn into_streaming_proxy_response(
     response: reqwest::Response,
     protocol: ProviderProtocol,
+    network_recorder: NetworkByteRecorder,
     log_context: Option<StreamingLogContext>,
     activity_guard: Option<RequestActivityGuard>,
 ) -> Response {
@@ -1270,7 +1579,8 @@ async fn into_streaming_proxy_response(
             .as_ref()
             .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
             .unwrap_or_default();
-        let (result, usage, response_payload) = into_proxy_response(response, true).await;
+        let (result, usage, response_payload) =
+            into_proxy_response(response, true, network_recorder).await;
         finalize_stream_logging(
             log_context,
             protocol,
@@ -1281,6 +1591,7 @@ async fn into_streaming_proxy_response(
             None,
             None,
             response_payload,
+            None,
         );
         drop(activity_guard);
         return result;
@@ -1293,22 +1604,29 @@ async fn into_streaming_proxy_response(
         .is_some_and(|context| context.store_response_payload);
     let mut upstream = response.bytes_stream();
     let mut observer = SseStreamObserver::new(protocol);
-    let mut first_token_at = None::<i64>;
+    let mut finalizer = StreamingResponseFinalizer::new(
+        log_context,
+        protocol,
+        status_code,
+        false,
+        capture_response,
+        None,
+    );
 
     let stream = stream! {
         let _activity_guard = activity_guard;
-        let mut captured_response = String::new();
         loop {
             match upstream.try_next().await {
                 Ok(Some(chunk)) => {
                     let text = String::from_utf8_lossy(&chunk).to_string();
                     let observation = observer.push(&text);
-                    if first_token_at.is_none() && observation.saw_first_token {
-                        first_token_at = Some(chrono::Utc::now().timestamp_millis());
+                    finalizer.record_usage(observer.usage_stats());
+                    if observation.saw_first_token {
+                        let seen_at = chrono::Utc::now().timestamp_millis();
+                        finalizer.record_first_token_at(seen_at);
                     }
-                    if capture_response {
-                        captured_response.push_str(&text);
-                    }
+                    finalizer.push_client_response(&text);
+                    network_recorder.record_egress(chunk.len());
                     yield Ok::<Bytes, std::io::Error>(chunk);
                 }
                 Ok(None) => break,
@@ -1317,36 +1635,17 @@ async fn into_streaming_proxy_response(
         }
 
         let observation = observer.finish();
-        if first_token_at.is_none() && observation.saw_first_token {
-            first_token_at = Some(chrono::Utc::now().timestamp_millis());
+        if observation.saw_first_token {
+            let seen_at = chrono::Utc::now().timestamp_millis();
+            finalizer.record_first_token_at(seen_at);
         }
-        let usage = observer.usage_stats();
-        let latency_ms = log_context
-            .as_ref()
-            .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
-            .unwrap_or_default();
-        let ttft_ms = first_token_at.zip(log_context.as_ref()).map(|(first_token_at, context)| {
-            first_token_at - context.started_at
-        });
-        finalize_stream_logging(
-            log_context,
-            protocol,
-            status_code,
-            latency_ms,
-            usage,
-            ttft_ms,
-            None,
-            None,
-            if capture_response { Some(captured_response) } else { None },
-        );
+        finalizer.record_usage(observer.usage_stats());
+        finalizer.finish();
     };
 
     let mut builder = Response::builder().status(status);
     for (name, value) in headers.iter() {
-        if name == header::CONTENT_LENGTH
-            || name == header::CONNECTION
-            || name.as_str().eq_ignore_ascii_case("transfer-encoding")
-        {
+        if !should_forward_upstream_response_header(name) {
             continue;
         }
         builder = builder.header(name, value);
@@ -1364,6 +1663,21 @@ fn endpoint_name(endpoint: GatewayEndpoint<'_>, _protocol: ProviderProtocol) -> 
         GatewayEndpoint::OpenAi => "openai".to_string(),
         GatewayEndpoint::Custom(id) => id.to_string(),
     }
+}
+
+fn should_forward_upstream_response_header(name: &header::HeaderName) -> bool {
+    name != header::CONTENT_LENGTH
+        && name != header::CONNECTION
+        && name != header::SET_COOKIE
+        && !name.as_str().eq_ignore_ascii_case("transfer-encoding")
+}
+
+fn should_forward_upstream_observability_header(name: &header::HeaderName) -> bool {
+    matches!(
+        name.as_str(),
+        "x-request-id" | "request-id" | "openai-processing-ms" | "retry-after"
+    ) || name.as_str().starts_with("anthropic-ratelimit-")
+        || name.as_str().starts_with("x-ratelimit-")
 }
 
 fn record_profiler_turn(
@@ -1469,6 +1783,117 @@ fn compute_tpot_ms(total_latency_ms: i64, output_tokens: i64, ttft_ms: Option<i6
     Some((raw * 100.0).round() / 100.0)
 }
 
+struct StreamingResponseFinalizer {
+    log_context: Option<StreamingLogContext>,
+    client_response_protocol: ProviderProtocol,
+    status_code: i64,
+    usage: UsageStats,
+    ttft_ms: Option<i64>,
+    upstream_response_protocol: Option<ProviderProtocol>,
+    upstream_response_payload: Option<String>,
+    client_response_payload: Option<String>,
+    completed: bool,
+}
+
+impl StreamingResponseFinalizer {
+    fn new(
+        log_context: Option<StreamingLogContext>,
+        client_response_protocol: ProviderProtocol,
+        status_code: i64,
+        capture_upstream_response: bool,
+        capture_client_response: bool,
+        upstream_response_protocol: Option<ProviderProtocol>,
+    ) -> Self {
+        Self {
+            log_context,
+            client_response_protocol,
+            status_code,
+            usage: UsageStats::default(),
+            ttft_ms: None,
+            upstream_response_protocol: if capture_upstream_response {
+                upstream_response_protocol
+            } else {
+                None
+            },
+            upstream_response_payload: capture_upstream_response.then(String::new),
+            client_response_payload: capture_client_response.then(String::new),
+            completed: false,
+        }
+    }
+
+    fn record_usage(&mut self, usage: UsageStats) {
+        self.usage = usage;
+    }
+
+    fn record_first_token_at(&mut self, first_token_at: i64) {
+        if self.ttft_ms.is_some() {
+            return;
+        }
+        if let Some(context) = self.log_context.as_ref() {
+            self.ttft_ms = Some(first_token_at - context.started_at);
+        }
+    }
+
+    fn push_upstream_response(&mut self, chunk: &str) {
+        if let Some(payload) = self.upstream_response_payload.as_mut() {
+            payload.push_str(chunk);
+        }
+    }
+
+    fn push_client_response(&mut self, chunk: &str) {
+        if let Some(payload) = self.client_response_payload.as_mut() {
+            payload.push_str(chunk);
+        }
+    }
+
+    fn finish(mut self) {
+        let latency_ms = self
+            .log_context
+            .as_ref()
+            .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
+            .unwrap_or_default();
+        self.completed = true;
+        finalize_stream_logging(
+            self.log_context.take(),
+            self.client_response_protocol,
+            self.status_code,
+            latency_ms,
+            self.usage.clone(),
+            self.ttft_ms,
+            self.upstream_response_protocol,
+            self.upstream_response_payload.take(),
+            self.client_response_payload.take(),
+            None,
+        );
+    }
+}
+
+impl Drop for StreamingResponseFinalizer {
+    fn drop(&mut self) {
+        if self.completed {
+            return;
+        }
+
+        let latency_ms = self
+            .log_context
+            .as_ref()
+            .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
+            .unwrap_or_default();
+        finalize_stream_logging(
+            self.log_context.take(),
+            self.client_response_protocol,
+            499,
+            latency_ms,
+            self.usage.clone(),
+            self.ttft_ms,
+            self.upstream_response_protocol,
+            self.upstream_response_payload.take(),
+            self.client_response_payload.take(),
+            Some("stream terminated before completion".to_string()),
+        );
+    }
+}
+
 fn finalize_stream_logging(
     log_context: Option<StreamingLogContext>,
     client_response_protocol: ProviderProtocol,
@@ -1479,6 +1904,7 @@ fn finalize_stream_logging(
     upstream_response_protocol: Option<ProviderProtocol>,
     upstream_response_payload: Option<String>,
     client_response_payload: Option<String>,
+    error: Option<String>,
 ) {
     let Some(context) = log_context else {
         return;
@@ -1494,6 +1920,7 @@ fn finalize_stream_logging(
         cache_creation_tokens: Some(usage.cache_creation_tokens),
         ttft_ms,
         tpot_ms: compute_tpot_ms(latency_ms, usage.output_tokens, ttft_ms),
+        error: error.clone(),
         ..RequestLogUpdate::default()
     };
     let _ = finalize_request_log(&context.db_path, context.log_id, &update);
@@ -1588,6 +2015,10 @@ mod tests {
             active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
             active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
             active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
+            network_ingress_bytes: Arc::new(AtomicU64::new(0)),
+            network_egress_bytes: Arc::new(AtomicU64::new(0)),
+            network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+            network_egress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
             runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
             http_client: reqwest::Client::builder().build().expect("client"),
             version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
@@ -1712,7 +2143,11 @@ mod tests {
         );
         {
             let entries = state.active_requests_by_api_key.lock().unwrap();
-            assert_eq!(*entries.get(&42).unwrap(), 1, "counter should be 1 after acquiring slot");
+            assert_eq!(
+                *entries.get(&42).unwrap(),
+                1,
+                "counter should be 1 after acquiring slot"
+            );
         }
     }
 

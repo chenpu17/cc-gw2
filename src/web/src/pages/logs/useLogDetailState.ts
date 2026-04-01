@@ -8,6 +8,7 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { logsApi } from '@/services/logs'
 import { queryKeys } from '@/services/queryKeys'
 import type { ApiError } from '@/services/api'
+import { getLogStatusMeta } from './utils'
 
 interface UseLogDetailStateOptions {
   apiKeyMap: Map<number, ApiKeySummary>
@@ -68,7 +69,7 @@ export function useLogDetailState({
   const record = logDetailQuery.data
   const providerLabel = record ? providerLabelMap.get(record.provider) ?? record.provider : ''
   const apiKeyMeta = record && record.api_key_id != null ? apiKeyMap.get(record.api_key_id) : undefined
-  const statusCode = record ? record.status_code ?? (record.error ? 500 : 200) : null
+  const statusMeta = record ? getLogStatusMeta(record, t) : null
 
   return {
     apiKeyMeta,
@@ -79,6 +80,6 @@ export function useLogDetailState({
     providerLabel,
     refetch: logDetailQuery.refetch,
     record,
-    statusCode
+    statusMeta
   }
 }

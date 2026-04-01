@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { LogColumnId, RowDensity } from './shared'
-import { formatDateTime, formatLatency, formatNumber, getSessionRowTone } from './utils'
+import { formatDateTime, formatLatency, formatNumber, getLogStatusMeta, getSessionRowTone } from './utils'
 
 interface LogRowProps {
   record: LogRecord
@@ -30,8 +30,7 @@ export function LogRow({
   const { t } = useTranslation()
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
   const endpointLabel = record.endpoint || '-'
-  const isError = Boolean(record.error)
-  const statusCode = record.status_code
+  const statusMeta = getLogStatusMeta(record, t)
   const requestedModel = record.client_model ?? t('logs.table.requestedModelFallback')
   const apiKeyMeta = record.api_key_id != null ? apiKeyMap.get(record.api_key_id) : undefined
   const apiKeyLabel = (() => {
@@ -127,8 +126,8 @@ export function LogRow({
       )}
       {visibleColumnSet.has('status') && (
         <td className={cn(cellPadding, 'text-center')}>
-          <Badge variant={isError ? 'destructive' : 'default'} className="text-xs">
-            {statusCode ?? (isError ? 500 : 200)}
+          <Badge variant={statusMeta.variant} className="text-xs">
+            {statusMeta.label}
           </Badge>
         </td>
       )}

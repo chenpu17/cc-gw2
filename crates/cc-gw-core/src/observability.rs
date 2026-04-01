@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use brotli::{CompressorWriter, Decompressor};
@@ -159,6 +161,20 @@ pub struct RuntimeMetricsSampler {
     pid: Pid,
     system: System,
     cpu_count: f32,
+    bandwidth_samples: HashMap<String, RuntimeBandwidthSample>,
+}
+
+struct RuntimeBandwidthSample {
+    captured_at: Instant,
+    ingress_bytes: u64,
+    egress_bytes: u64,
+}
+
+#[derive(Debug, Serialize, Clone, Copy, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeBandwidthMetrics {
+    pub ingress_bytes_per_second: f64,
+    pub egress_bytes_per_second: f64,
 }
 
 impl RuntimeMetricsSampler {
@@ -175,6 +191,7 @@ impl RuntimeMetricsSampler {
             pid,
             system,
             cpu_count,
+            bandwidth_samples: HashMap::new(),
         }
     }
 
@@ -189,6 +206,41 @@ impl RuntimeMetricsSampler {
             let normalized = process.cpu_usage() / self.cpu_count.max(1.0);
             normalized.clamp(0.0, 100.0) as f64
         })
+    }
+
+    pub fn current_bandwidth_metrics(
+        &mut self,
+        key: &str,
+        ingress_bytes: u64,
+        egress_bytes: u64,
+    ) -> RuntimeBandwidthMetrics {
+        let now = Instant::now();
+        let previous = self.bandwidth_samples.insert(
+            key.to_string(),
+            RuntimeBandwidthSample {
+                captured_at: now,
+                ingress_bytes,
+                egress_bytes,
+            },
+        );
+
+        let Some(previous) = previous else {
+            return RuntimeBandwidthMetrics::default();
+        };
+
+        let elapsed = now
+            .saturating_duration_since(previous.captured_at)
+            .as_secs_f64();
+        if elapsed <= f64::EPSILON {
+            return RuntimeBandwidthMetrics::default();
+        }
+
+        RuntimeBandwidthMetrics {
+            ingress_bytes_per_second: ingress_bytes.saturating_sub(previous.ingress_bytes) as f64
+                / elapsed,
+            egress_bytes_per_second: egress_bytes.saturating_sub(previous.egress_bytes) as f64
+                / elapsed,
+        }
     }
 }
 
@@ -420,9 +472,11 @@ fn build_log_filters(query: &LogQuery) -> (String, Vec<String>) {
     }
     if let Some(status) = &query.status {
         if status == "success" {
+            conditions.push("status_code IS NOT NULL".to_string());
+            conditions.push("status_code < 400".to_string());
             conditions.push("error IS NULL".to_string());
         } else if status == "error" {
-            conditions.push("error IS NOT NULL".to_string());
+            conditions.push("(error IS NOT NULL OR status_code >= 400)".to_string());
         }
     }
     if let Some(from) = query.from {
@@ -1179,6 +1233,119 @@ mod tests {
             .expect("query openai throughput metrics");
         assert_eq!(openai_metrics.requests_per_minute, 3);
         assert_eq!(openai_metrics.output_tokens_per_minute, 20);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn log_status_filters_exclude_unfinished_records() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-status-filter-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let pending_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now,
+                session_id: None,
+                source_ip: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "pending-model".to_string(),
+                client_model: None,
+                stream: true,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert pending request log");
+
+        let success_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now - 1,
+                session_id: None,
+                source_ip: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "success-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert success request log");
+        finalize_request_log(
+            &db_path,
+            success_id,
+            &RequestLogUpdate {
+                status_code: Some(200),
+                ..RequestLogUpdate::default()
+            },
+        )
+        .expect("finalize success request log");
+
+        let failure_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now - 2,
+                session_id: None,
+                source_ip: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "failure-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert failure request log");
+        finalize_request_log(
+            &db_path,
+            failure_id,
+            &RequestLogUpdate {
+                status_code: Some(499),
+                error: Some("stream terminated before completion".to_string()),
+                ..RequestLogUpdate::default()
+            },
+        )
+        .expect("finalize failure request log");
+
+        let success_logs = query_logs(
+            &db_path,
+            &LogQuery {
+                status: Some("success".to_string()),
+                limit: 20,
+                ..LogQuery::default()
+            },
+        )
+        .expect("query success logs");
+        assert_eq!(success_logs.total, 1);
+        assert_eq!(success_logs.items[0].id, success_id);
+        assert_ne!(success_logs.items[0].id, pending_id);
+
+        let error_logs = query_logs(
+            &db_path,
+            &LogQuery {
+                status: Some("error".to_string()),
+                limit: 20,
+                ..LogQuery::default()
+            },
+        )
+        .expect("query error logs");
+        assert_eq!(error_logs.total, 1);
+        assert_eq!(error_logs.items[0].id, failure_id);
+        assert_ne!(error_logs.items[0].id, pending_id);
 
         let _ = std::fs::remove_dir_all(root);
     }

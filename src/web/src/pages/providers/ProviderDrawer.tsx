@@ -80,6 +80,10 @@ const PROVIDER_TYPE_OPTIONS: Array<{ value: ProviderConfig['type']; label: strin
   { value: 'custom', label: 'Custom' }
 ]
 
+function defaultAuthModeForType(type: ProviderConfig['type']): FormState['authMode'] {
+  return type === 'anthropic' ? 'authToken' : 'apiKey'
+}
+
 function buildInitialState(provider?: ProviderConfig): FormState {
   if (!provider) {
     return {
@@ -90,7 +94,7 @@ function buildInitialState(provider?: ProviderConfig): FormState {
       type: 'custom',
       defaultModel: '',
       models: [],
-      authMode: 'apiKey'
+      authMode: defaultAuthModeForType('custom')
     }
   }
 
@@ -105,7 +109,7 @@ function buildInitialState(provider?: ProviderConfig): FormState {
       ...model,
       _key: createKey()
     })),
-    authMode: provider.authMode ?? 'apiKey'
+    authMode: provider.authMode ?? defaultAuthModeForType(provider.type ?? 'custom')
   }
 }
 
@@ -176,6 +180,12 @@ export function ProviderDrawer({
     () => PROVIDER_TYPE_OPTIONS.find((item) => item.value === form.type)?.label ?? 'Custom',
     [form.type]
   )
+  const describeAuthMode = (type: ProviderConfig['type'], authMode: FormState['authMode']) => {
+    if (authMode === 'authToken') return t('providers.drawer.fields.authModeAuthToken')
+    if (authMode === 'xAuthToken') return t('providers.drawer.fields.authModeXAuthToken')
+    if (type === 'anthropic') return t('providers.drawer.fields.authModeApiKey')
+    return t('providers.drawer.fields.authModeProviderDefault')
+  }
   const draftProviderName = form.label.trim() || form.id.trim() || t('providers.drawer.summary.untitled')
   const providerSummaryItems = useMemo(
     () => [
@@ -185,19 +195,14 @@ export function ProviderDrawer({
       },
       {
         label: t('providers.drawer.summary.auth'),
-        value:
-          form.authMode === 'apiKey'
-            ? t('providers.drawer.fields.authModeApiKey')
-            : form.authMode === 'authToken'
-              ? t('providers.drawer.fields.authModeAuthToken')
-              : t('providers.drawer.fields.authModeXAuthToken')
+        value: describeAuthMode(form.type, form.authMode)
       },
       {
         label: t('providers.drawer.summary.models'),
         value: availableDefaultModels.length.toLocaleString()
       }
     ],
-    [availableDefaultModels.length, form.authMode, selectedTypeLabel, t]
+    [availableDefaultModels.length, form.authMode, form.type, selectedTypeLabel, t]
   )
 
   const handleInputChange = (field: keyof FormState) => (value: string) => {
@@ -217,6 +222,8 @@ export function ProviderDrawer({
     setForm((prev) => {
       const presetKey = value ?? 'custom'
       const preset = PROVIDER_TYPE_PRESETS[presetKey] ?? PROVIDER_TYPE_PRESETS.custom
+      const previousDefaultAuthMode = defaultAuthModeForType(prev.type)
+      const nextDefaultAuthMode = defaultAuthModeForType(value)
       const knownBaseUrls = Object.values(PROVIDER_TYPE_PRESETS)
         .map((item) => item.baseUrl)
         .filter((item): item is string => Boolean(item))
@@ -227,7 +234,7 @@ export function ProviderDrawer({
       const next: FormState = {
         ...prev,
         type: value,
-        authMode: prev.authMode ?? 'apiKey'
+        authMode: prev.authMode === previousDefaultAuthMode ? nextDefaultAuthMode : prev.authMode
       }
 
       if (preset?.baseUrl && shouldReplaceBaseUrl) {
@@ -361,7 +368,10 @@ export function ProviderDrawer({
       .filter((model) => model.id.length > 0)
 
     const extraHeaders = provider?.extraHeaders && Object.keys(provider.extraHeaders).length > 0 ? provider.extraHeaders : undefined
-    const authMode = form.authMode !== 'apiKey' ? form.authMode : undefined
+    const authMode =
+      form.authMode === 'apiKey' && form.type !== 'anthropic'
+        ? undefined
+        : form.authMode
 
     return {
       id: form.id.trim(),
@@ -405,7 +415,7 @@ export function ProviderDrawer({
         aria-modal="true"
         aria-labelledby="provider-drawer-title"
         aria-describedby="provider-drawer-desc"
-        className="flex h-full w-full max-w-5xl flex-col border-l border-border bg-background shadow-lg"
+        className="flex h-full min-h-0 w-full max-w-5xl flex-col border-l border-border bg-background shadow-lg"
       >
         <header className="border-b border-border bg-secondary px-6 py-5">
           <div className="flex items-start justify-between gap-4">
@@ -449,8 +459,8 @@ export function ProviderDrawer({
           </div>
         </header>
 
-        <div className="grid flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="overflow-y-auto px-6 py-5">
+        <div className="grid min-h-0 flex-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="min-h-0 overflow-y-auto px-6 py-5 pb-10">
             <section className="space-y-5" aria-labelledby="provider-type-fields">
               <div className="space-y-1">
                 <h3 id="provider-type-fields" className="text-sm font-semibold">{t('providers.drawer.sections.type')}</h3>
@@ -569,7 +579,7 @@ export function ProviderDrawer({
                     onChange={() => handleAuthModeChange('apiKey')}
                     className="mt-0.5"
                   />
-                  <span>{t('providers.drawer.fields.authModeApiKey')}</span>
+                  <span>{describeAuthMode(form.type, 'apiKey')}</span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:bg-primary/5">
                   <input
@@ -696,7 +706,7 @@ export function ProviderDrawer({
             </section>
           </div>
 
-          <aside className="hidden border-l border-border bg-secondary px-5 py-5 xl:block">
+          <aside className="hidden min-h-0 overflow-y-auto border-l border-border bg-secondary px-5 py-5 xl:block">
             <div className="sticky top-0 space-y-5">
               <div className="rounded-lg border border-border bg-card p-4">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">

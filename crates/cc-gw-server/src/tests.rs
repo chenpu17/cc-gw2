@@ -1,5 +1,6 @@
 use super::*;
 use axum::extract::{Json as AxumJson, Query};
+use futures_util::StreamExt;
 use std::fs as stdfs;
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
@@ -93,6 +94,10 @@ fn build_test_state(
         active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
+        network_ingress_bytes: Arc::new(AtomicU64::new(0)),
+        network_egress_bytes: Arc::new(AtomicU64::new(0)),
+        network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        network_egress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
         http_client: reqwest::Client::builder().build().expect("client"),
         version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
@@ -177,6 +182,35 @@ async fn mock_anthropic_stream() -> Response {
              data: {\"type\":\"message_stop\"}\n\n",
         ))
         .expect("build anthropic stream response")
+}
+
+async fn mock_anthropic_slow_stream() -> Response {
+    let stream = stream! {
+        yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-test\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+        ));
+        sleep(Duration::from_millis(200)).await;
+        yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(
+            "event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n",
+        ));
+        sleep(Duration::from_millis(400)).await;
+        yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(
+            "event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":11,\"output_tokens\":2,\"cache_read_input_tokens\":1}}\n\n\
+             event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        ));
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .body(Body::from_stream(stream))
+        .expect("build slow anthropic stream response")
 }
 
 fn record_payload(recorder: &Arc<Mutex<Vec<Value>>>, payload: &Value) {
@@ -337,14 +371,428 @@ async fn provider_test_matches_key_node_behaviors() {
 }
 
 #[tokio::test]
+async fn direct_proxy_responses_do_not_forward_upstream_set_cookie() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::SET_COOKIE, "provider_session=abc; Path=/; HttpOnly")
+                .header("x-request-id", "req_123")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "choices": [{
+                            "message": { "content": "ok" }
+                        }],
+                        "usage": {
+                            "prompt_tokens": 1,
+                            "completion_tokens": 1
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("build upstream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("gpt-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("gpt-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "proxy-response-header-filter").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-test",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send openai request");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().get(header::SET_COOKIE).is_none());
+    assert_eq!(
+        response
+            .headers()
+            .get("x-request-id")
+            .and_then(|value| value.to_str().ok()),
+        Some("req_123")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_messages_forward_query_and_identity_headers_to_anthropic_provider() {
+    let captures = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captures_for_route = Arc::clone(&captures);
+    let upstream = Router::new().route(
+        "/v1/messages",
+        post(
+            move |headers: HeaderMap, Query(query): Query<HashMap<String, String>>, AxumJson(payload): AxumJson<Value>| {
+                let captures = Arc::clone(&captures_for_route);
+                async move {
+                    captures.lock().expect("lock captures").push(json!({
+                        "query": query,
+                        "accept": headers.get("accept").and_then(|value| value.to_str().ok()),
+                        "anthropic_beta": headers.get("anthropic-beta").and_then(|value| value.to_str().ok()),
+                        "anthropic_version": headers.get("anthropic-version").and_then(|value| value.to_str().ok()),
+                        "authorization": headers.get("authorization").and_then(|value| value.to_str().ok()),
+                        "cookie": headers.get("cookie").and_then(|value| value.to_str().ok()),
+                        "x_api_key": headers.get("x-api-key").and_then(|value| value.to_str().ok()),
+                        "x_app": headers.get("x-app").and_then(|value| value.to_str().ok()),
+                        "payload": payload,
+                    }));
+                    Json(json!({
+                        "id": "msg_query",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "claude-test",
+                        "content": [{
+                            "type": "text",
+                            "text": "query-ok"
+                        }],
+                        "stop_reason": "end_turn",
+                        "stop_sequence": Value::Null,
+                        "usage": {
+                            "input_tokens": 5,
+                            "output_tokens": 2
+                        }
+                    }))
+                }
+            },
+        ),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        api_key: Some("provider-secret".to_string()),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-query-forward").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!(
+            "http://{gateway_addr}/v1/messages?trace=1&source=cli"
+        ))
+        .header("accept", "application/json")
+        .header("authorization", "Bearer caller-key")
+        .header("anthropic-beta", "fine-grained-tool-streaming-2025-05-14")
+        .header("cookie", "session=abc")
+        .header("x-app", "claude-code")
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 64,
+            "metadata": {
+                "session_id": "session-1",
+                "trace_id": "trace-1"
+            },
+            "system": [{
+                "type": "text",
+                "text": "system prompt"
+            }],
+            "tools": [{
+                "name": "echo",
+                "description": "Echo input",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "value": { "type": "string" }
+                    }
+                }
+            }],
+            "tool_choice": {
+                "type": "tool",
+                "name": "echo"
+            },
+            "temperature": 0.2,
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": "hello" }]
+            }]
+        }))
+        .send()
+        .await
+        .expect("send anthropic request with query")
+        .json()
+        .await
+        .expect("decode anthropic response");
+
+    assert_eq!(
+        response
+            .get("content")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("text"))
+            .and_then(Value::as_str),
+        Some("query-ok")
+    );
+
+    let recorded = captures.lock().expect("lock captures");
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0]["query"]["trace"].as_str(), Some("1"));
+    assert_eq!(recorded[0]["query"]["source"].as_str(), Some("cli"));
+    assert_eq!(
+        recorded[0]["anthropic_beta"].as_str(),
+        Some("fine-grained-tool-streaming-2025-05-14")
+    );
+    assert_eq!(recorded[0]["accept"].as_str(), Some("application/json"));
+    assert_eq!(
+        recorded[0]["anthropic_version"].as_str(),
+        Some("2023-06-01")
+    );
+    assert_eq!(
+        recorded[0]["authorization"].as_str(),
+        Some("Bearer provider-secret")
+    );
+    assert_eq!(recorded[0]["cookie"], Value::Null);
+    assert_eq!(recorded[0]["x_api_key"], Value::Null);
+    assert_eq!(recorded[0]["x_app"].as_str(), Some("claude-code"));
+    assert_eq!(
+        recorded[0]["payload"]["metadata"]["session_id"].as_str(),
+        Some("session-1")
+    );
+    assert_eq!(
+        recorded[0]["payload"]["metadata"]["trace_id"].as_str(),
+        Some("trace-1")
+    );
+    assert_eq!(
+        recorded[0]["payload"]["system"][0]["text"].as_str(),
+        Some("system prompt")
+    );
+    assert_eq!(
+        recorded[0]["payload"]["tools"][0]["name"].as_str(),
+        Some("echo")
+    );
+    assert_eq!(
+        recorded[0]["payload"]["tool_choice"]["name"].as_str(),
+        Some("echo")
+    );
+    assert_eq!(recorded[0]["payload"]["temperature"].as_f64(), Some(0.2));
+    assert_eq!(
+        recorded[0]["payload"]["messages"][0]["content"][0]["text"].as_str(),
+        Some("hello")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_endpoint_accepts_bearer_auth_for_gateway_api_keys() {
+    let upstream = Router::new().route("/v1/messages", post(mock_anthropic_test));
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(anthropic) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-bearer-auth").await;
+    let client = reqwest::Client::new();
+
+    let created_key: Value = client
+        .post(format!("http://{gateway_addr}/api/keys"))
+        .json(&json!({ "name": "anthropic-bearer" }))
+        .send()
+        .await
+        .expect("create api key")
+        .json()
+        .await
+        .expect("decode created api key");
+    let api_key = created_key
+        .get("key")
+        .and_then(Value::as_str)
+        .expect("created key");
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("authorization", format!("Bearer {api_key}"))
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 64,
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": "hello" }]
+            }]
+        }))
+        .send()
+        .await
+        .expect("send bearer-auth anthropic request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_messages_validation_rejects_non_claude_code_payloads() {
+    let attempts = Arc::new(Mutex::new(0usize));
+    let attempts_for_route = Arc::clone(&attempts);
+    let upstream = Router::new().route(
+        "/v1/messages",
+        post(move || {
+            let attempts = Arc::clone(&attempts_for_route);
+            async move {
+                *attempts.lock().expect("lock attempts") += 1;
+                Json(json!({
+                    "id": "msg_ok",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-test",
+                    "content": [{
+                        "type": "text",
+                        "text": "ok"
+                    }],
+                    "stop_reason": "end_turn",
+                    "stop_sequence": Value::Null,
+                    "usage": {
+                        "input_tokens": 4,
+                        "output_tokens": 2
+                    }
+                }))
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.defaults.completion = Some("claude-test".to_string());
+        anthropic_routing.validation = Some(cc_gw_core::config::EndpointValidationConfig {
+            mode: "claude-code".to_string(),
+            allow_experimental_blocks: Some(true),
+        });
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-validation").await;
+    let client = reqwest::Client::new();
+
+    let invalid = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 64,
+            "messages": [{
+                "role": "user",
+                "content": "hello"
+            }]
+        }))
+        .send()
+        .await
+        .expect("send invalid claude-code request");
+    assert_eq!(
+        invalid.status(),
+        StatusCode::from_u16(430).expect("430 status")
+    );
+    let invalid_body: Value = invalid.json().await.expect("decode invalid response");
+    assert_eq!(
+        invalid_body
+            .get("error")
+            .and_then(|error| error.get("code"))
+            .and_then(Value::as_str),
+        Some("invalid_claude_code_request")
+    );
+
+    let valid = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 64,
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": "hello" }]
+            }]
+        }))
+        .send()
+        .await
+        .expect("send valid claude-code request");
+    assert_eq!(valid.status(), StatusCode::OK);
+
+    assert_eq!(*attempts.lock().expect("lock attempts"), 1);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn api_version_check_reports_update_state_from_registry() {
     let registry = Router::new().fallback(get(|| async {
         Json(json!({
             "dist-tags": {
-                "latest": "0.8.4"
+                "latest": "0.8.5"
             },
             "time": {
-                "0.8.4": "2026-03-30T03:45:32.000Z"
+                "0.8.5": "2026-03-30T03:45:32.000Z"
             }
         }))
     }));
@@ -369,11 +817,11 @@ async fn api_version_check_reports_update_state_from_registry() {
 
     assert_eq!(
         response.get("currentVersion").and_then(Value::as_str),
-        Some("0.8.3")
+        Some("0.8.4")
     );
     assert_eq!(
         response.get("latestVersion").and_then(Value::as_str),
-        Some("0.8.4")
+        Some("0.8.5")
     );
     assert_eq!(
         response.get("channel").and_then(Value::as_str),
@@ -445,6 +893,196 @@ async fn openai_responses_stream_from_anthropic_provider_emits_richer_events() {
     assert!(body.contains("\"type\":\"response.completed\""));
     assert!(body.contains("\"output_text\":\"hello\""));
     assert!(body.contains("data: [DONE]"));
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn cross_protocol_non_stream_responses_preserve_observability_headers() {
+    let upstream = Router::new().route(
+        "/v1/messages",
+        post(|| async {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("x-request-id", "anth_req_123")
+                .header("anthropic-ratelimit-remaining", "42")
+                .header("retry-after", "3")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "msg_headers",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "claude-test",
+                        "content": [{
+                            "type": "text",
+                            "text": "headers-ok"
+                        }],
+                        "stop_reason": "end_turn",
+                        "stop_sequence": Value::Null,
+                        "usage": {
+                            "input_tokens": 5,
+                            "output_tokens": 2
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("build anthropic response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "responses-header-forward").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "input": "hello"
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send non-stream responses request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("x-request-id")
+            .and_then(|value| value.to_str().ok()),
+        Some("anth_req_123")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("anthropic-ratelimit-remaining")
+            .and_then(|value| value.to_str().ok()),
+        Some("42")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("retry-after")
+            .and_then(|value| value.to_str().ok()),
+        Some("3")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn cross_protocol_stream_responses_preserve_observability_headers() {
+    let upstream = Router::new().route(
+        "/v1/messages",
+        post(|| async {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("request-id", "anth_req_stream")
+                .header("anthropic-ratelimit-remaining", "41")
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from(
+                    "event: message_start\n\
+                     data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-test\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+                     event: content_block_start\n\
+                     data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+                     event: content_block_delta\n\
+                     data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n\
+                     event: message_delta\n\
+                     data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":11,\"output_tokens\":2}}\n\n\
+                     event: message_stop\n\
+                     data: {\"type\":\"message_stop\"}\n\n",
+                ))
+                .expect("build anthropic stream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "responses-stream-header-forward").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "stream": true,
+                "input": "hello"
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send streaming responses request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("request-id")
+            .and_then(|value| value.to_str().ok()),
+        Some("anth_req_stream")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("anthropic-ratelimit-remaining")
+            .and_then(|value| value.to_str().ok()),
+        Some("41")
+    );
+
+    let body = response
+        .text()
+        .await
+        .expect("read streaming responses response");
+    assert!(body.contains("\"type\":\"response.completed\""));
 
     gateway_handle.abort();
     upstream_handle.abort();
@@ -1467,6 +2105,18 @@ async fn api_status_reports_live_and_recent_client_activity() {
             .and_then(Value::as_f64)
             .is_some()
     );
+    assert!(
+        live_status
+            .get("networkIngressBytesPerSecond")
+            .and_then(Value::as_f64)
+            .is_some()
+    );
+    assert!(
+        live_status
+            .get("networkEgressBytesPerSecond")
+            .and_then(Value::as_f64)
+            .is_some()
+    );
 
     let response = in_flight.await.expect("join in-flight request");
     assert_eq!(response.status(), StatusCode::OK);
@@ -1550,6 +2200,133 @@ async fn api_status_reports_live_and_recent_client_activity() {
             .and_then(Value::as_f64)
             .is_some()
     );
+    assert!(
+        settled_status
+            .get("networkIngressBytesPerSecond")
+            .and_then(Value::as_f64)
+            .is_some_and(|value| value > 0.0)
+    );
+    assert!(
+        settled_status
+            .get("networkEgressBytesPerSecond")
+            .and_then(Value::as_f64)
+            .is_some_and(|value| value > 0.0)
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn dropped_streams_finalize_logs_as_interrupted() {
+    let upstream = Router::new().route("/v1/messages", post(mock_anthropic_slow_stream));
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "stream-drop-finalize").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "stream": true,
+                "input": "hello"
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send streaming request");
+
+    let mut stream = response.bytes_stream();
+    let first_chunk = stream
+        .next()
+        .await
+        .expect("first chunk available")
+        .expect("first chunk bytes");
+    assert!(!first_chunk.is_empty());
+    drop(stream);
+
+    sleep(Duration::from_millis(250)).await;
+
+    let status: Value = client
+        .get(format!("http://{gateway_addr}/api/status?endpoint=openai"))
+        .send()
+        .await
+        .expect("request status after dropped stream")
+        .json()
+        .await
+        .expect("decode status after dropped stream");
+    assert_eq!(
+        status.get("activeRequests").and_then(Value::as_u64),
+        Some(0)
+    );
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs after dropped stream")
+        .json()
+        .await
+        .expect("decode logs after dropped stream");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("stream log item");
+    assert_eq!(item.get("status_code").and_then(Value::as_i64), Some(499));
+    assert_eq!(
+        item.get("error").and_then(Value::as_str),
+        Some("stream terminated before completion")
+    );
+    assert!(item.get("latency_ms").and_then(Value::as_i64).is_some());
+
+    let success_logs: Value = client
+        .get(format!(
+            "http://{gateway_addr}/api/logs?status=success&limit=10"
+        ))
+        .send()
+        .await
+        .expect("request success logs")
+        .json()
+        .await
+        .expect("decode success logs");
+    assert_eq!(success_logs.get("total").and_then(Value::as_u64), Some(0));
+
+    let error_logs: Value = client
+        .get(format!(
+            "http://{gateway_addr}/api/logs?status=error&limit=10"
+        ))
+        .send()
+        .await
+        .expect("request error logs")
+        .json()
+        .await
+        .expect("decode error logs");
+    assert_eq!(error_logs.get("total").and_then(Value::as_u64), Some(1));
 
     gateway_handle.abort();
     upstream_handle.abort();

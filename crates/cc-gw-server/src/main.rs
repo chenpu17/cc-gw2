@@ -79,6 +79,10 @@ struct AppState {
     active_client_addresses_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_client_sessions_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_requests_by_api_key: Arc<Mutex<HashMap<i64, u64>>>,
+    network_ingress_bytes: Arc<AtomicU64>,
+    network_egress_bytes: Arc<AtomicU64>,
+    network_ingress_bytes_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
+    network_egress_bytes_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
     runtime_metrics: Arc<Mutex<RuntimeMetricsSampler>>,
     http_client: reqwest::Client,
     version_check_registry_base_url: String,
@@ -114,6 +118,10 @@ struct StatusResponse {
     platform: String,
     #[serde(rename = "cpuUsagePercent")]
     cpu_usage_percent: Option<f64>,
+    #[serde(rename = "networkIngressBytesPerSecond")]
+    network_ingress_bytes_per_second: Option<f64>,
+    #[serde(rename = "networkEgressBytesPerSecond")]
+    network_egress_bytes_per_second: Option<f64>,
     pid: u32,
 }
 
@@ -275,6 +283,10 @@ async fn main() -> Result<()> {
         active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
+        network_ingress_bytes: Arc::new(AtomicU64::new(0)),
+        network_egress_bytes: Arc::new(AtomicU64::new(0)),
+        network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        network_egress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
         http_client: reqwest::Client::builder()
             .build()
@@ -522,15 +534,42 @@ async fn read_request_body_with_limit(state: &AppState, body: Body) -> Result<By
     })
 }
 
-async fn read_json_request(state: &AppState, body: Body) -> Result<Value, Response> {
+async fn read_json_request_with_size(
+    state: &AppState,
+    body: Body,
+) -> Result<(Value, usize), Response> {
     let body = read_request_body_with_limit(state, body).await?;
-    serde_json::from_slice(&body).map_err(|error| {
+    let body_len = body.len();
+    let value = serde_json::from_slice(&body).map_err(|error| {
         (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": format!("invalid JSON body: {error}") })),
         )
             .into_response()
-    })
+    })?;
+    Ok((value, body_len))
+}
+
+fn json_response_with_network(
+    state: &AppState,
+    endpoint: &str,
+    status: StatusCode,
+    payload: &Value,
+) -> Response {
+    let body = serde_json::to_vec(payload)
+        .unwrap_or_else(|_| b"{\"error\":\"serialization failed\"}".to_vec());
+    record_network_egress(state, endpoint, body.len());
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body))
+        .unwrap_or_else(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to build JSON response",
+            )
+                .into_response()
+        })
 }
 
 fn normalize_path(path: &str) -> String {
@@ -664,10 +703,12 @@ async fn dynamic_fallback(
             if let Err(response) = authorize_request(&state, &headers, &endpoint_id) {
                 return response;
             }
-            let payload = match read_json_request(&state, request.into_body()).await {
-                Ok(value) => value,
-                Err(response) => return response,
-            };
+            let (payload, body_len) =
+                match read_json_request_with_size(&state, request.into_body()).await {
+                    Ok(result) => result,
+                    Err(response) => return response,
+                };
+            record_network_ingress(&state, &endpoint_id, body_len);
             fn walk(value: &Value) -> usize {
                 match value {
                     Value::Null => 0,
@@ -678,12 +719,18 @@ async fn dynamic_fallback(
                     Value::Object(map) => map.values().map(walk).sum(),
                 }
             }
-            Json(json!({ "input_tokens": walk(&payload) })).into_response()
+            json_response_with_network(
+                &state,
+                &endpoint_id,
+                StatusCode::OK,
+                &json!({ "input_tokens": walk(&payload) }),
+            )
         }
         (Method::POST, CustomRouteMatch::AnthropicMessages(endpoint_id))
         | (Method::POST, CustomRouteMatch::OpenAiChat(endpoint_id))
         | (Method::POST, CustomRouteMatch::OpenAiResponses(endpoint_id)) => {
             let gateway_endpoint = GatewayEndpoint::Custom(endpoint_id.as_str());
+            let query = uri.query().map(ToString::to_string);
             let protocol = if uri.path().ends_with("/v1/messages")
                 || uri.path().ends_with("/v1/v1/messages")
             {
@@ -698,10 +745,12 @@ async fn dynamic_fallback(
                     Ok(context) => context,
                     Err(response) => return response,
                 };
-            let payload = match read_json_request(&state, request.into_body()).await {
-                Ok(value) => value,
-                Err(response) => return response,
-            };
+            let (payload, body_len) =
+                match read_json_request_with_size(&state, request.into_body()).await {
+                    Ok(result) => result,
+                    Err(response) => return response,
+                };
+            record_network_ingress(&state, &endpoint_id, body_len);
             let source_ip = extract_client_ip(&headers, Some(connect_info));
             proxy_routes::proxy_standard_request(
                 state,
@@ -709,6 +758,7 @@ async fn dynamic_fallback(
                 headers,
                 source_ip,
                 payload,
+                query,
                 gateway_endpoint,
                 protocol,
             )
@@ -742,6 +792,34 @@ fn extract_client_ip(headers: &HeaderMap, connect_info: Option<SocketAddr>) -> O
         .and_then(normalize_forwarded_ip)
         .or_else(|| header_value(headers, "x-real-ip"))
         .or_else(|| connect_info.map(|info| info.ip().to_string()))
+}
+
+fn increment_network_bytes(entries: &Mutex<HashMap<String, u64>>, endpoint: &str, bytes: u64) {
+    if bytes == 0 {
+        return;
+    }
+    if let Ok(mut entries) = entries.lock() {
+        entries
+            .entry(endpoint.to_string())
+            .and_modify(|total| *total = total.saturating_add(bytes))
+            .or_insert(bytes);
+    }
+}
+
+fn record_network_ingress(state: &AppState, endpoint: &str, bytes: usize) {
+    let bytes = bytes as u64;
+    state
+        .network_ingress_bytes
+        .fetch_add(bytes, Ordering::Relaxed);
+    increment_network_bytes(&state.network_ingress_bytes_by_endpoint, endpoint, bytes);
+}
+
+fn record_network_egress(state: &AppState, endpoint: &str, bytes: usize) {
+    let bytes = bytes as u64;
+    state
+        .network_egress_bytes
+        .fetch_add(bytes, Ordering::Relaxed);
+    increment_network_bytes(&state.network_egress_bytes_by_endpoint, endpoint, bytes);
 }
 
 fn extract_api_key_from_headers(headers: &HeaderMap) -> Option<String> {

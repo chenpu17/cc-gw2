@@ -1093,18 +1093,9 @@ mod tests {
             "test-model",
         );
 
-        assert_eq!(
-            converted["content"][0]["type"].as_str(),
-            Some("tool_use")
-        );
-        assert_eq!(
-            converted["content"][0]["id"].as_str(),
-            Some("call_1")
-        );
-        assert_eq!(
-            converted["content"][0]["name"].as_str(),
-            Some("weather")
-        );
+        assert_eq!(converted["content"][0]["type"].as_str(), Some("tool_use"));
+        assert_eq!(converted["content"][0]["id"].as_str(), Some("call_1"));
+        assert_eq!(converted["content"][0]["name"].as_str(), Some("weather"));
         assert_eq!(converted["content"][0]["input"], json!({ "city": "Paris" }));
         assert_eq!(converted["stop_reason"].as_str(), Some("tool_use"));
     }

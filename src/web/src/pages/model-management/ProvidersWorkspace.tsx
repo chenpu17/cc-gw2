@@ -49,6 +49,13 @@ export function ProvidersWorkspace({
   onResetFilters: () => void
 }) {
   const { t } = useTranslation()
+  const describeAuthMode = (provider: ProviderConfig) => {
+    const effectiveAuthMode = provider.authMode ?? (provider.type === 'anthropic' ? 'authToken' : 'apiKey')
+    if (effectiveAuthMode === 'authToken') return 'Bearer'
+    if (effectiveAuthMode === 'xAuthToken') return 'X-Auth-Token'
+    if (provider.type === 'anthropic') return 'X-API-Key'
+    return t('providers.card.providerDefault')
+  }
 
   return (
     <Card>
@@ -185,11 +192,7 @@ export function ProvidersWorkspace({
                   <div className="grid gap-2 sm:grid-cols-3">
                     <ProviderMetaCard
                       label={t('providers.card.authMode')}
-                      value={provider.authMode === 'authToken'
-                        ? 'Bearer'
-                        : provider.authMode === 'xAuthToken'
-                          ? 'X-Auth-Token'
-                          : 'API Key'}
+                      value={describeAuthMode(provider)}
                     />
                     <ProviderMetaCard
                       label={t('providers.card.modelsTitle')}

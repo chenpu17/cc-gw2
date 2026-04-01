@@ -10,6 +10,13 @@ use crate::config::ProviderConfig;
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AuthStyle {
+    AuthorizationBearer,
+    XApiKey,
+    XAuthToken,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderProtocol {
     AnthropicMessages,
     OpenAiChatCompletions,
@@ -112,12 +119,9 @@ fn should_forward_client_header(name: &HeaderName) -> bool {
             | "connection"
             | "authorization"
             | "x-api-key"
-            | "content-length"
-            | "content-type"
-            | "accept"
-            | "accept-encoding"
             | "cookie"
-            | "referer"
+            | "content-length"
+            | "content-encoding"
             | "transfer-encoding"
             | "keep-alive"
             | "upgrade"
@@ -128,6 +132,45 @@ fn should_forward_client_header(name: &HeaderName) -> bool {
             | "trailer"
             | "upgrade-insecure-requests"
     )
+}
+
+fn should_forward_passthrough_header(name: &HeaderName) -> bool {
+    !matches!(
+        name.as_str(),
+        "host"
+            | "connection"
+            | "cookie"
+            | "content-length"
+            | "content-encoding"
+            | "transfer-encoding"
+            | "keep-alive"
+            | "upgrade"
+            | "proxy-connection"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "upgrade-insecure-requests"
+    )
+}
+
+fn resolve_auth_style(provider: &ProviderConfig, protocol: ProviderProtocol) -> AuthStyle {
+    match provider.auth_mode.as_deref() {
+        Some("authToken") => AuthStyle::AuthorizationBearer,
+        Some("xAuthToken") => AuthStyle::XAuthToken,
+        Some("apiKey") => match protocol {
+            ProviderProtocol::AnthropicMessages => AuthStyle::XApiKey,
+            ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => {
+                AuthStyle::AuthorizationBearer
+            }
+        },
+        Some(_) | None => match protocol {
+            ProviderProtocol::AnthropicMessages => AuthStyle::AuthorizationBearer,
+            ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => {
+                AuthStyle::AuthorizationBearer
+            }
+        },
+    }
 }
 
 fn build_headers(
@@ -145,7 +188,9 @@ fn build_headers(
     }
 
     for (name, value) in passthrough_headers {
-        headers.insert(name.clone(), value.clone());
+        if should_forward_passthrough_header(name) {
+            headers.insert(name.clone(), value.clone());
+        }
     }
 
     for (name, value) in incoming_headers {
@@ -176,18 +221,15 @@ fn build_headers(
     }
 
     if let Some(api_key) = provider.api_key.as_deref() {
-        match (protocol, provider.auth_mode.as_deref()) {
-            (ProviderProtocol::AnthropicMessages, Some("authToken")) => {
+        match resolve_auth_style(provider, protocol) {
+            AuthStyle::AuthorizationBearer => {
                 set_header(&mut headers, "authorization", &format!("Bearer {api_key}"));
             }
-            (_, Some("xAuthToken")) => {
+            AuthStyle::XAuthToken => {
                 set_header(&mut headers, "x-auth-token", api_key);
             }
-            (ProviderProtocol::AnthropicMessages, _) => {
+            AuthStyle::XApiKey => {
                 set_header(&mut headers, "x-api-key", api_key);
-            }
-            (_, _) => {
-                set_header(&mut headers, "authorization", &format!("Bearer {api_key}"));
             }
         }
     }
@@ -218,8 +260,12 @@ pub async fn forward_request(
 
     let mut payload = request.body;
     if let Some(object) = payload.as_object_mut() {
-        object.insert("model".to_string(), Value::String(request.model));
-        object.insert("stream".to_string(), Value::Bool(request.stream));
+        if object.get("model").and_then(Value::as_str) != Some(request.model.as_str()) {
+            object.insert("model".to_string(), Value::String(request.model));
+        }
+        if request.stream || object.contains_key("stream") {
+            object.insert("stream".to_string(), Value::Bool(request.stream));
+        }
     }
 
     let headers = build_headers(
@@ -317,6 +363,14 @@ mod tests {
             HeaderName::from_static("authorization"),
             HeaderValue::from_static("Bearer caller-key"),
         );
+        incoming.insert(
+            HeaderName::from_static("cookie"),
+            HeaderValue::from_static("session=abc"),
+        );
+        incoming.insert(
+            HeaderName::from_static("content-encoding"),
+            HeaderValue::from_static("gzip"),
+        );
 
         let headers = build_headers(
             &provider,
@@ -342,12 +396,20 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("fine-grained-tool-streaming-2025-05-14")
         );
-        assert!(headers.get("authorization").is_none());
         assert_eq!(
             headers
-                .get("x-api-key")
+                .get("authorization")
                 .and_then(|value| value.to_str().ok()),
-            Some("provider-secret")
+            Some("Bearer provider-secret")
+        );
+        assert!(headers.get("x-api-key").is_none());
+        assert!(headers.get("cookie").is_none());
+        assert!(headers.get("content-encoding").is_none());
+        assert_eq!(
+            headers
+                .get("content-type")
+                .and_then(|value| value.to_str().ok()),
+            Some("application/json")
         );
     }
 
@@ -403,6 +465,16 @@ mod tests {
             Some("Bearer provider-secret")
         );
         assert!(headers.get("x-api-key").is_none());
+        assert_eq!(
+            headers.get("accept").and_then(|value| value.to_str().ok()),
+            Some("text/event-stream")
+        );
+        assert_eq!(
+            headers
+                .get("content-type")
+                .and_then(|value| value.to_str().ok()),
+            Some("application/json")
+        );
     }
 
     #[test]
