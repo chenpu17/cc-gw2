@@ -640,11 +640,11 @@ fn validation_config_for_endpoint<'a>(
     }
 }
 
-fn block_type_allowed(block_type: &str, mode: &str, allow_experimental_blocks: bool) -> bool {
+fn block_type_allowed(block_type: &str, _mode: &str, allow_experimental_blocks: bool) -> bool {
     match block_type {
         "text" | "image" | "document" | "tool_use" | "tool_result" => true,
         "thinking" | "redacted_thinking" => allow_experimental_blocks,
-        _ => mode != "anthropic-strict",
+        _ => false,
     }
 }
 
@@ -732,10 +732,7 @@ fn validate_message_content(
         Value::Array(blocks) => {
             validate_content_blocks(blocks, mode, allow_experimental_blocks, context)
         }
-        Value::String(_) if mode == "anthropic-strict" => Ok(()),
-        Value::String(_) if mode == "claude-code" => {
-            Err(format!("{context} must use block content arrays"))
-        }
+        Value::String(_) if mode == "anthropic-strict" || mode == "claude-code" => Ok(()),
         _ => Err(format!("{context} must be a string or array")),
     }
 }

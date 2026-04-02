@@ -742,11 +742,23 @@ const resources = {
           selectTarget: '请选择目标 Provider:模型'
         },
         claudeValidation: {
-          title: 'Claude Code 请求校验防护（实验特性）',
-          description: '开启后，仅允许符合 Claude Code 协议的 /anthropic 请求；不合规请求会直接返回 430。',
-          toggleLabel: '启用校验',
-          statusEnabled: '已启用 Claude Code 校验',
-          statusDisabled: '当前未启用（默认）'
+          title: 'Anthropic 请求校验',
+          description: '在转发前校验 /anthropic 请求体。建议默认使用更宽松的 Anthropic strict；只有确认客户端完全遵循 Claude Code 约定时再使用 Claude Code 模式。',
+          modeLabel: '校验模式',
+          options: {
+            off: {
+              label: '关闭',
+              description: '不做请求体结构校验。'
+            },
+            'anthropic-strict': {
+              label: 'Anthropic strict',
+              description: '校验基础 Anthropic Messages 结构，并拒绝未知 block type。'
+            },
+            'claude-code': {
+              label: 'Claude Code',
+              description: '在 Anthropic strict 基础上保留 Claude Code 专属校验。'
+            }
+          }
         },
         toast: {
           routesSaved: '模型路由已更新。',
@@ -757,9 +769,8 @@ const resources = {
           presetApplyFailure: '应用模板失败：{{message}}',
           presetDeleteSuccess: '模板 "{{name}}" 已删除。',
           presetDeleteFailure: '删除模板失败：{{message}}',
-          claudeValidationEnabled: 'Claude Code 请求校验防护（实验特性）已启用。',
-          claudeValidationDisabled: 'Claude Code 请求校验防护（实验特性）已关闭。',
-          claudeValidationFailure: '更新 Claude 校验防护状态失败：{{message}}'
+          validationModeSaved: 'Anthropic 请求校验模式已更新为：{{mode}}。',
+          validationModeFailure: '更新请求校验模式失败：{{message}}'
         },
         presets: {
           title: '路由模板',
@@ -2089,11 +2100,23 @@ const resources = {
           selectTarget: 'Select provider:model'
         },
         claudeValidation: {
-          title: 'Claude Code request validation',
-          description: 'When enabled, /anthropic requests must follow the Claude Code schema; invalid payloads are rejected with 430.',
-          toggleLabel: 'Enable validation',
-          statusEnabled: 'Claude Code validation enabled',
-          statusDisabled: 'Disabled by default'
+          title: 'Anthropic request validation',
+          description: 'Validate /anthropic payloads before forwarding. Use Anthropic strict for general schema checks, and Claude Code mode only when the client fully matches the Claude Code request shape.',
+          modeLabel: 'Validation mode',
+          options: {
+            off: {
+              label: 'Off',
+              description: 'Disable request-body validation.'
+            },
+            'anthropic-strict': {
+              label: 'Anthropic strict',
+              description: 'Validate the base Anthropic Messages schema and reject unknown block types.'
+            },
+            'claude-code': {
+              label: 'Claude Code',
+              description: 'Keep the Claude Code-specific checks on top of Anthropic strict.'
+            }
+          }
         },
         toast: {
           routesSaved: 'Model routes updated successfully.',
@@ -2104,9 +2127,8 @@ const resources = {
           presetApplyFailure: 'Failed to apply preset: {{message}}',
           presetDeleteSuccess: 'Preset "{{name}}" deleted.',
           presetDeleteFailure: 'Failed to delete preset: {{message}}',
-          claudeValidationEnabled: 'Claude Code request validation enabled.',
-          claudeValidationDisabled: 'Claude Code request validation disabled.',
-          claudeValidationFailure: 'Failed to update Claude validation: {{message}}'
+          validationModeSaved: 'Anthropic request validation updated to: {{mode}}.',
+          validationModeFailure: 'Failed to update request validation: {{message}}'
         },
         presets: {
           title: 'Routing presets',

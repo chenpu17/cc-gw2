@@ -10,6 +10,7 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import type { CustomEndpoint } from '@/types/endpoints'
 import type {
+  EndpointValidationMode,
   EndpointRoutingConfig,
   GatewayConfig,
   ProviderConfig,
@@ -788,7 +789,7 @@ export function useModelManagementState() {
     setRouteError((previous) => ({ ...previous, [endpoint]: null }))
   }
 
-  const handleToggleClaudeValidation = async (endpoint: string, enabled: boolean) => {
+  const handleValidationModeChange = async (endpoint: string, mode: EndpointValidationMode) => {
     if (!ensureConfig()) return
 
     setSavingClaudeValidation(true)
@@ -806,21 +807,22 @@ export function useModelManagementState() {
           modelRoutes: currentEndpointRouting.modelRoutes ?? {}
         }
 
-        const validation: EndpointRoutingConfig['validation'] = enabled
-          ? {
-              ...(currentEndpointRouting.validation ?? {}),
-              mode: 'claude-code' as const,
-              allowExperimentalBlocks:
-                currentEndpointRouting.validation?.allowExperimentalBlocks ?? true
-            }
-          : undefined
+        const nextValidation: EndpointRoutingConfig['validation'] =
+          mode === 'off'
+            ? undefined
+            : {
+                ...(currentEndpointRouting.validation ?? {}),
+                mode,
+                allowExperimentalBlocks:
+                  currentEndpointRouting.validation?.allowExperimentalBlocks ?? true
+              }
 
         const nextConfig: GatewayConfig = {
           ...config!,
           endpointRouting: {
             ...currentRouting,
-            [systemEndpoint]: validation
-              ? { ...baseRouting, validation }
+            [systemEndpoint]: nextValidation
+              ? { ...baseRouting, validation: nextValidation }
               : { ...baseRouting }
           }
         }
@@ -839,18 +841,19 @@ export function useModelManagementState() {
           defaults: config!.defaults,
           modelRoutes: {}
         }
-        const validation: EndpointRoutingConfig['validation'] = enabled
-          ? {
-              ...(currentRouting.validation ?? {}),
-              mode: 'claude-code' as const,
-              allowExperimentalBlocks: currentRouting.validation?.allowExperimentalBlocks ?? true
-            }
-          : undefined
+        const nextValidation: EndpointRoutingConfig['validation'] =
+          mode === 'off'
+            ? undefined
+            : {
+                ...(currentRouting.validation ?? {}),
+                mode,
+                allowExperimentalBlocks: currentRouting.validation?.allowExperimentalBlocks ?? true
+              }
 
         nextEndpoints[endpointIndex] = {
           ...customEndpoint,
-          routing: validation
-            ? { ...currentRouting, validation }
+          routing: nextValidation
+            ? { ...currentRouting, validation: nextValidation }
             : {
                 defaults: currentRouting.defaults,
                 modelRoutes: currentRouting.modelRoutes
@@ -867,16 +870,16 @@ export function useModelManagementState() {
       }
 
       pushToast({
-        title: enabled
-          ? t('modelManagement.toast.claudeValidationEnabled')
-          : t('modelManagement.toast.claudeValidationDisabled'),
+        title: t('modelManagement.toast.validationModeSaved', {
+          mode: t(`modelManagement.claudeValidation.options.${mode}.label`)
+        }),
         variant: 'success'
       })
       void configQuery.refetch()
     } catch (error) {
       const apiError = toApiError(error)
       pushToast({
-        title: t('modelManagement.toast.claudeValidationFailure', { message: apiError.message }),
+        title: t('modelManagement.toast.validationModeFailure', { message: apiError.message }),
         variant: 'error'
       })
     } finally {
@@ -1137,7 +1140,7 @@ export function useModelManagementState() {
     handleRouteChange,
     handleSavePreset,
     handleSaveRoutes,
-    handleToggleClaudeValidation,
+    handleValidationModeChange,
     initiateTestConnection,
     isDirtyByEndpoint,
     presetDiffDialog,

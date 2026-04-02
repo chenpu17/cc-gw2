@@ -258,3 +258,39 @@ test('model management supports provider edit, delete, route reset, and preset d
   await confirmDialog.getByRole('button', { name: '删除' }).click()
   await expect(page.getByText(`已删除 Provider：${providerId}-edited`)).toBeVisible()
 })
+
+test('routing management can switch anthropic validation modes', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+
+  await page.goto(`${baseUrl}/ui/routing`)
+  await expect(page.getByRole('heading', { name: '路由管理', level: 1 })).toBeVisible()
+
+  const validationMode = page.getByRole('combobox').first()
+
+  await validationMode.click()
+  await page.getByRole('option', { name: 'Anthropic strict' }).click()
+  await expect(page.getByText('Anthropic 请求校验模式已更新为：Anthropic strict。')).toBeVisible()
+
+  let configResponse = await request.get(`${baseUrl}/api/config`)
+  expect(configResponse.status()).toBe(200)
+  let config = await configResponse.json()
+  expect(config.endpointRouting.anthropic.validation.mode).toBe('anthropic-strict')
+
+  await validationMode.click()
+  await page.getByRole('option', { name: 'Claude Code' }).click()
+  await expect(page.getByText('Anthropic 请求校验模式已更新为：Claude Code。')).toBeVisible()
+
+  configResponse = await request.get(`${baseUrl}/api/config`)
+  expect(configResponse.status()).toBe(200)
+  config = await configResponse.json()
+  expect(config.endpointRouting.anthropic.validation.mode).toBe('claude-code')
+
+  await validationMode.click()
+  await page.getByRole('option', { name: '关闭' }).click()
+  await expect(page.getByText('Anthropic 请求校验模式已更新为：关闭。')).toBeVisible()
+
+  configResponse = await request.get(`${baseUrl}/api/config`)
+  expect(configResponse.status()).toBe(200)
+  config = await configResponse.json()
+  expect(config.endpointRouting.anthropic.validation).toBeNull()
+})

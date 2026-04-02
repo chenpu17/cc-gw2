@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { CustomEndpoint } from '@/types/endpoints'
-import type { GatewayConfig, RoutingPreset } from '@/types/providers'
+import type { EndpointValidationMode, GatewayConfig, RoutingPreset } from '@/types/providers'
 import { TargetCombobox } from './TargetCombobox'
 import {
   CLAUDE_MODEL_SUGGESTIONS,
@@ -43,7 +43,7 @@ export function RoutingWorkspace({
   onSavePreset,
   onRequestPresetDiff,
   onRequestDeletePreset,
-  onToggleClaudeValidation,
+  onValidationModeChange,
   onRouteChange,
   onRemoveRoute,
   onAddSuggestion,
@@ -73,7 +73,7 @@ export function RoutingWorkspace({
   onSavePreset: () => void
   onRequestPresetDiff: (preset: RoutingPreset) => void
   onRequestDeletePreset: (preset: RoutingPreset) => void
-  onToggleClaudeValidation: (enabled: boolean) => void
+  onValidationModeChange: (mode: EndpointValidationMode) => void
   onRouteChange: (id: string, field: 'source' | 'target', value: string) => void
   onRemoveRoute: (id: string) => void
   onAddSuggestion: (model: string) => void
@@ -92,8 +92,11 @@ export function RoutingWorkspace({
   const sourceListId = `route-source-${endpoint}`
   const anthropicProtocol = isAnthropicEndpoint(endpoint, customEndpoints)
   const validation = getEndpointValidation(endpoint, config, customEndpoints)
-  const claudeValidationEnabled = anthropicProtocol && validation?.mode === 'claude-code'
+  const validationMode: EndpointValidationMode = anthropicProtocol
+    ? ((validation?.mode as EndpointValidationMode | undefined) ?? 'off')
+    : 'off'
   const existingSources = new Set(routes.map((entry) => entry.source.trim()).filter(Boolean))
+  const validationModeDescriptionKey = `modelManagement.claudeValidation.options.${validationMode}.description`
 
   return (
     <Card>
@@ -113,16 +116,29 @@ export function RoutingWorkspace({
                   {t('modelManagement.claudeValidation.description')}
                 </p>
               </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <Switch
-                  checked={claudeValidationEnabled}
-                  onCheckedChange={onToggleClaudeValidation}
+              <div className="flex w-full max-w-xs flex-col gap-2 self-start sm:self-auto">
+                <Label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/70">
+                  {t('modelManagement.claudeValidation.modeLabel')}
+                </Label>
+                <Select
+                  value={validationMode}
+                  onValueChange={(value) => onValidationModeChange(value as EndpointValidationMode)}
                   disabled={savingClaudeValidation}
-                />
-                <span className={cn('text-xs font-medium', claudeValidationEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
-                  {claudeValidationEnabled
-                    ? t('modelManagement.claudeValidation.statusEnabled')
-                    : t('modelManagement.claudeValidation.statusDisabled')}
+                >
+                  <SelectTrigger className="bg-card">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="off">{t('modelManagement.claudeValidation.options.off.label')}</SelectItem>
+                    <SelectItem value="anthropic-strict">{t('modelManagement.claudeValidation.options.anthropic-strict.label')}</SelectItem>
+                    <SelectItem value="claude-code">{t('modelManagement.claudeValidation.options.claude-code.label')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className={cn(
+                  'text-xs',
+                  validationMode === 'off' ? 'text-muted-foreground' : 'text-primary/80'
+                )}>
+                  {t(validationModeDescriptionKey)}
                 </span>
               </div>
             </div>

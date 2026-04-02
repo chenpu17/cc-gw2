@@ -680,7 +680,7 @@ async fn anthropic_endpoint_accepts_bearer_auth_for_gateway_api_keys() {
 }
 
 #[tokio::test]
-async fn anthropic_messages_validation_rejects_non_claude_code_payloads() {
+async fn anthropic_messages_validation_accepts_string_or_block_content_in_claude_code_mode() {
     let attempts = Arc::new(Mutex::new(0usize));
     let attempts_for_route = Arc::clone(&attempts);
     let upstream = Router::new().route(
@@ -736,7 +736,7 @@ async fn anthropic_messages_validation_rejects_non_claude_code_payloads() {
         spawn_test_gateway(config, "anthropic-validation").await;
     let client = reqwest::Client::new();
 
-    let invalid = client
+    let string_content = client
         .post(format!("http://{gateway_addr}/v1/messages"))
         .json(&json!({
             "model": "claude-test",
@@ -748,19 +748,8 @@ async fn anthropic_messages_validation_rejects_non_claude_code_payloads() {
         }))
         .send()
         .await
-        .expect("send invalid claude-code request");
-    assert_eq!(
-        invalid.status(),
-        StatusCode::from_u16(430).expect("430 status")
-    );
-    let invalid_body: Value = invalid.json().await.expect("decode invalid response");
-    assert_eq!(
-        invalid_body
-            .get("error")
-            .and_then(|error| error.get("code"))
-            .and_then(Value::as_str),
-        Some("invalid_claude_code_request")
-    );
+        .expect("send string-content claude-code request");
+    assert_eq!(string_content.status(), StatusCode::OK);
 
     let valid = client
         .post(format!("http://{gateway_addr}/v1/messages"))
@@ -777,7 +766,99 @@ async fn anthropic_messages_validation_rejects_non_claude_code_payloads() {
         .expect("send valid claude-code request");
     assert_eq!(valid.status(), StatusCode::OK);
 
-    assert_eq!(*attempts.lock().expect("lock attempts"), 1);
+    assert_eq!(*attempts.lock().expect("lock attempts"), 2);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_messages_validation_rejects_unknown_block_types_in_claude_code_mode() {
+    let attempts = Arc::new(Mutex::new(0usize));
+    let attempts_for_route = Arc::clone(&attempts);
+    let upstream = Router::new().route(
+        "/v1/messages",
+        post(move || {
+            let attempts = Arc::clone(&attempts_for_route);
+            async move {
+                *attempts.lock().expect("lock attempts") += 1;
+                Json(json!({
+                    "id": "msg_ok",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-test",
+                    "content": [{
+                        "type": "text",
+                        "text": "ok"
+                    }],
+                    "stop_reason": "end_turn",
+                    "stop_sequence": Value::Null,
+                    "usage": {
+                        "input_tokens": 4,
+                        "output_tokens": 2
+                    }
+                }))
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.defaults.completion = Some("claude-test".to_string());
+        anthropic_routing.validation = Some(cc_gw_core::config::EndpointValidationConfig {
+            mode: "claude-code".to_string(),
+            allow_experimental_blocks: Some(true),
+        });
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-validation-unknown-block").await;
+    let client = reqwest::Client::new();
+
+    let invalid = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 64,
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "server_tool_use",
+                    "name": "search"
+                }]
+            }]
+        }))
+        .send()
+        .await
+        .expect("send invalid claude-code block request");
+    assert_eq!(
+        invalid.status(),
+        StatusCode::from_u16(430).expect("430 status")
+    );
+    let invalid_body: Value = invalid.json().await.expect("decode invalid response");
+    assert_eq!(
+        invalid_body
+            .get("error")
+            .and_then(|error| error.get("code"))
+            .and_then(Value::as_str),
+        Some("invalid_claude_code_request")
+    );
+    assert_eq!(*attempts.lock().expect("lock attempts"), 0);
 
     gateway_handle.abort();
     upstream_handle.abort();

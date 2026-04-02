@@ -76,7 +76,7 @@ export default function RoutingManagementPage() {
         onRouteChange={(id, field, value) => state.handleRouteChange(currentEndpoint, id, field, value)}
         onSavePreset={() => void state.handleSavePreset(currentEndpoint)}
         onSaveRoutes={() => void state.handleSaveRoutes(currentEndpoint)}
-        onToggleClaudeValidation={(enabled) => void state.handleToggleClaudeValidation(currentEndpoint, enabled)}
+        onValidationModeChange={(mode) => void state.handleValidationModeChange(currentEndpoint, mode)}
         onTogglePresetsExpanded={() => state.setPresetsExpanded((previous) => ({ ...previous, [currentEndpoint]: !previous[currentEndpoint] }))}
         presetError={state.presetErrorByEndpoint[currentEndpoint]}
         presetName={state.presetNameByEndpoint[currentEndpoint] ?? ''}
