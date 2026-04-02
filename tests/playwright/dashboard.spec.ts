@@ -86,6 +86,11 @@ test('dashboard supports refresh, endpoint filters, compaction, and recent reque
   await expect(page.getByText('RPM')).toBeVisible()
   await expect(page.getByText('TPM')).toBeVisible()
   await expect(page.getByText('stub').first()).toBeVisible()
+  await expect(page.getByTestId('dashboard-runtime-strip')).toHaveCount(0)
+  await expect(page.getByTestId('dashboard-overview-panel')).toBeVisible()
+  await expect(page.getByTestId('dashboard-runtime-address')).toContainText('127.0.0.1:')
+  await expect(page.getByTestId('dashboard-spotlight-grid')).toBeVisible()
+  await expect(page.locator('[data-testid^="dashboard-spotlight-value-"]')).toHaveCount(8)
 
   const endpointSelect = page.getByRole('combobox').first()
   const filterResponse = page.waitForResponse((response) => {

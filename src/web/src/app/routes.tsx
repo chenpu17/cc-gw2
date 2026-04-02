@@ -1,12 +1,13 @@
 import { lazy } from 'react'
 import type { LazyExoticComponent, ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Activity, AlertTriangle, BarChart3, Cog, FileText, Key, Layers, LifeBuoy, Settings } from 'lucide-react'
+import { Activity, AlertTriangle, BarChart3, Cog, FileText, GitBranch, Key, Layers, LifeBuoy, Settings } from 'lucide-react'
 
 const DashboardPage = lazy(() => import('@/pages/Dashboard'))
 const LogsPage = lazy(() => import('@/pages/Logs'))
 const EventsPage = lazy(() => import('@/pages/Events'))
 const ModelManagementPage = lazy(() => import('@/pages/ModelManagement'))
+const RoutingManagementPage = lazy(() => import('@/pages/RoutingManagement'))
 const ApiKeysPage = lazy(() => import('@/pages/ApiKeys'))
 const SettingsPage = lazy(() => import('@/pages/Settings'))
 const AboutPage = lazy(() => import('@/pages/About'))
@@ -55,13 +56,22 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: Layers,
       labelKey: 'nav.models',
-      descriptionKey: 'modelManagement.description',
+      descriptionKey: 'providers.description',
       matchPaths: ['/models', '/providers']
     }
   },
   {
     path: '/providers',
     element: ModelManagementPage
+  },
+  {
+    path: '/routing',
+    element: RoutingManagementPage,
+    nav: {
+      icon: GitBranch,
+      labelKey: 'nav.routing',
+      descriptionKey: 'routingManagement.description'
+    }
   },
   {
     path: '/events',

@@ -65,8 +65,14 @@ test('logs visual shell stays aligned with redesign baseline', async ({ page }) 
 
 test('model management visual shell stays aligned with redesign baseline', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/models`)
-  await waitForVisualReady(page, page.getByRole('heading', { name: '模型与路由管理', level: 1 }))
+  await waitForVisualReady(page, page.getByRole('heading', { name: '模型提供商', level: 1 }))
   await expectPageSnapshot(page, 'model-management-page.png')
+})
+
+test('routing management visual shell stays aligned with redesign baseline', async ({ page }) => {
+  await page.goto(`${harness.baseUrl()}/ui/routing`)
+  await waitForVisualReady(page, page.getByRole('heading', { name: '路由管理', level: 1 }))
+  await expectPageSnapshot(page, 'routing-management-page.png')
 })
 
 test('api keys visual shell stays aligned with redesign baseline', async ({ page }) => {

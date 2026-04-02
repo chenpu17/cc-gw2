@@ -1,6 +1,6 @@
 {
   "name": "@chenpu17/cc-gw",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "private": false,
   "type": "module",
   "description": "Rust-backed local Claude Code compatible gateway with web console and CLI daemon.",

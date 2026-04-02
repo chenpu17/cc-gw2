@@ -75,65 +75,105 @@ export function DashboardSpotlight({
   const { t } = useTranslation()
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl space-y-3">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-accent px-3 py-1 text-xs font-semibold text-primary">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                Live Gateway
+    <Card className="overflow-hidden border-primary/15 bg-[linear-gradient(145deg,hsl(var(--card))_0%,hsl(var(--accent)/0.55)_100%)]">
+      <CardContent className="relative overflow-hidden pt-6">
+        <div className="pointer-events-none absolute -right-14 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-0 left-0 h-32 w-32 rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="relative">
+          <div className="grid gap-6 xl:grid-cols-[minmax(360px,0.94fr)_minmax(0,1.06fr)] xl:items-start">
+            <div
+              className="flex h-full flex-col justify-between rounded-[28px] border border-border/70 bg-background/30 p-5 shadow-[0_20px_48px_-36px_rgba(15,23,42,0.6)] backdrop-blur-sm"
+              data-testid="dashboard-overview-panel"
+            >
+              <div className="space-y-5">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-accent px-3 py-1 text-xs font-semibold text-primary">
+                  <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                  Live Gateway
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-[clamp(1.85rem,1.55rem+1vw,2.75rem)] font-semibold tracking-tight text-foreground">
+                    {selectedEndpointLabel}
+                  </h2>
+                  <p className="max-w-xl text-sm leading-6 text-muted-foreground">
+                    {t('dashboard.description')}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {t('dashboard.status.listeningLabel')}
+                  </p>
+                  <p
+                    className="text-[clamp(1.2rem,1rem+0.8vw,1.9rem)] font-semibold leading-tight text-foreground"
+                    data-testid="dashboard-runtime-address"
+                  >
+                    {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success-bg))] text-[hsl(var(--success)/1)]">
+                    {t('dashboard.status.listeningLabel')}
+                  </Badge>
+                  <Badge variant="secondary">{selectedEndpointLabel}</Badge>
+                  <Badge variant="outline">{t('dashboard.labels.todayRequests')}: {todayRequests.toLocaleString()}</Badge>
+                </div>
               </div>
-              <div className="space-y-1">
-                <h2 className="text-xl font-semibold text-foreground">
-                  {selectedEndpointLabel}
-                </h2>
-                <p className="max-w-xl text-sm text-muted-foreground">
-                  {t('dashboard.description')}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success-bg))] text-[hsl(var(--success)/1)]">
-                  {t('dashboard.status.listeningLabel')}
-                </Badge>
-                <Badge variant="secondary">{selectedEndpointLabel}</Badge>
-                <Badge variant="outline">{t('dashboard.labels.todayRequests')}: {todayRequests.toLocaleString()}</Badge>
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 lg:min-w-[420px] lg:flex-1">
-              <SpotlightMetric icon={<Gauge className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.activeRequests')} value={(status?.activeRequests ?? 0).toLocaleString()} />
-              <SpotlightMetric icon={<Activity className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.requestsPerMinute')} value={(status?.requestsPerMinute ?? 0).toLocaleString()} />
-              <SpotlightMetric icon={<Zap className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.outputTokensPerMinute')} value={(status?.outputTokensPerMinute ?? 0).toLocaleString()} />
-              <SpotlightMetric icon={<Cpu className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.cpu')} value={formatPercent(status?.cpuUsagePercent)} />
-              <SpotlightMetric icon={<ArrowDownToLine className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.networkIngress')} value={formatByteRate(status?.networkIngressBytesPerSecond)} />
-              <SpotlightMetric icon={<ArrowUpToLine className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.networkEgress')} value={formatByteRate(status?.networkEgressBytesPerSecond)} />
-              <SpotlightMetric icon={<Database className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.database')} value={dbSizeDisplay} />
-              <SpotlightMetric icon={<MemoryStick className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.memory')} value={memoryDisplay} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Gateway runtime</p>
-              <p className="mt-1.5 text-xl font-semibold text-foreground">
-                {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
-              </p>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <InfoMetric label={t('dashboard.labels.providers')} value={(status?.providers ?? 0).toLocaleString()} />
+                <InfoMetric label={t('dashboard.labels.activeClientAddresses')} value={(status?.activeClientAddresses ?? 0).toLocaleString()} />
+                <InfoMetric label={t('dashboard.labels.activeClientSessions')} value={(status?.activeClientSessions ?? 0).toLocaleString()} />
+                <InfoMetric label={t('dashboard.labels.uniqueClientAddressesLastHour')} value={(status?.uniqueClientAddressesLastHour ?? 0).toLocaleString()} />
+                <InfoMetric label={t('dashboard.labels.uniqueClientSessionsLastHour')} value={(status?.uniqueClientSessionsLastHour ?? 0).toLocaleString()} />
+              </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <InfoMetric label={t('dashboard.labels.providers')} value={(status?.providers ?? 0).toLocaleString()} />
-              <InfoMetric label={t('dashboard.labels.activeClientAddresses')} value={(status?.activeClientAddresses ?? 0).toLocaleString()} />
-              <InfoMetric label={t('dashboard.labels.activeClientSessions')} value={(status?.activeClientSessions ?? 0).toLocaleString()} />
-              <InfoMetric label={t('dashboard.labels.uniqueClientAddressesLastHour')} value={(status?.uniqueClientAddressesLastHour ?? 0).toLocaleString()} />
-              <InfoMetric label={t('dashboard.labels.uniqueClientSessionsLastHour')} value={(status?.uniqueClientSessionsLastHour ?? 0).toLocaleString()} />
+
+            <div
+              className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:auto-rows-[minmax(168px,auto)]"
+              data-testid="dashboard-spotlight-grid"
+            >
+              <SpotlightMetric
+                icon={<Gauge className="h-4 w-4" aria-hidden="true" />}
+                label={t('dashboard.labels.activeRequests')}
+                value={(status?.activeRequests ?? 0).toLocaleString()}
+                valueTestId="dashboard-spotlight-value-active"
+              />
+              <SpotlightMetric
+                icon={<Activity className="h-4 w-4" aria-hidden="true" />}
+                label={t('dashboard.labels.requestsPerMinute')}
+                value={(status?.requestsPerMinute ?? 0).toLocaleString()}
+                valueTestId="dashboard-spotlight-value-rpm"
+              />
+              <SpotlightMetric
+                icon={<Zap className="h-4 w-4" aria-hidden="true" />}
+                label={t('dashboard.labels.outputTokensPerMinute')}
+                value={(status?.outputTokensPerMinute ?? 0).toLocaleString()}
+                valueTestId="dashboard-spotlight-value-tpm"
+              />
+              <SpotlightMetric
+                icon={<Cpu className="h-4 w-4" aria-hidden="true" />}
+                label={t('dashboard.labels.cpu')}
+                value={formatPercent(status?.cpuUsagePercent)}
+                valueTestId="dashboard-spotlight-value-cpu"
+              />
+              <SpotlightMetric
+                icon={<ArrowDownToLine className="h-4 w-4" aria-hidden="true" />}
+                label={t('dashboard.labels.networkIngress')}
+                value={formatByteRate(status?.networkIngressBytesPerSecond)}
+                valueTestId="dashboard-spotlight-value-ingress"
+              />
+              <SpotlightMetric
+                icon={<ArrowUpToLine className="h-4 w-4" aria-hidden="true" />}
+                label={t('dashboard.labels.networkEgress')}
+                value={formatByteRate(status?.networkEgressBytesPerSecond)}
+                valueTestId="dashboard-spotlight-value-egress"
+              />
+              <SpotlightMetric icon={<Database className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.database')} value={dbSizeDisplay} valueTestId="dashboard-spotlight-value-database" />
+              <SpotlightMetric icon={<MemoryStick className="h-4 w-4" aria-hidden="true" />} label={t('dashboard.labels.memory')} value={memoryDisplay} valueTestId="dashboard-spotlight-value-memory" />
             </div>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -381,23 +421,107 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
   )
 }
 
-function SpotlightMetric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function SpotlightMetric({
+  icon,
+  label,
+  value,
+  valueTestId
+}: {
+  icon: ReactNode
+  label: string
+  value: string
+  valueTestId?: string
+}) {
+  const parts = splitMetricValue(value)
+
   return (
-    <div className="rounded-lg border border-border bg-secondary px-4 py-3">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <div className="flex min-h-[168px] min-w-0 flex-col rounded-2xl border border-border/80 bg-background/78 px-4 py-4 shadow-[0_14px_32px_-26px_rgba(15,23,42,0.5)] backdrop-blur">
+      <div className="min-w-0 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary">{icon}</span>
-        {label}
+        <span className="min-w-0 break-words">{label}</span>
       </div>
-      <p className="mt-2 text-lg font-semibold text-foreground">{value}</p>
+      <div className="mt-auto pt-6">
+        <MetricValueDisplay parts={parts} testId={valueTestId} compact={false} />
+      </div>
     </div>
   )
 }
 
+function MetricValueDisplay({
+  parts,
+  testId,
+  compact
+}: {
+  parts: ReturnType<typeof splitMetricValue>
+  testId?: string
+  compact: boolean
+}) {
+  if (!parts.unit) {
+    return (
+      <p
+        className={cn(
+          'mt-2 overflow-hidden font-semibold leading-tight text-foreground [overflow-wrap:anywhere]',
+          compact ? 'text-[clamp(1rem,0.9rem+0.45vw,1.2rem)]' : 'text-[clamp(1.5rem,1.1rem+1vw,2rem)]'
+        )}
+        data-testid={testId}
+      >
+        {parts.primary}
+      </p>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        'mt-2 flex min-w-0 flex-wrap items-end gap-x-1.5 gap-y-1 text-foreground [overflow-wrap:anywhere]',
+        compact ? 'min-h-[2.5rem]' : 'min-h-[2.75rem]'
+      )}
+      data-testid={testId}
+    >
+      <span
+        className={cn(
+          'min-w-0 overflow-hidden font-semibold leading-none [overflow-wrap:anywhere]',
+          compact ? 'text-[clamp(1rem,0.9rem+0.45vw,1.2rem)]' : 'text-[clamp(1.5rem,1.1rem+1vw,2rem)]'
+        )}
+      >
+        {parts.primary}
+      </span>
+      <span className={cn('shrink-0 whitespace-nowrap text-muted-foreground', compact ? 'text-xs' : 'pb-0.5 text-sm')}>
+        {parts.unit}
+      </span>
+    </div>
+  )
+}
+
+function splitMetricValue(value: string) {
+  if (value === '-') {
+    return { primary: value, unit: '' }
+  }
+
+  const spacedUnit = value.match(/^(.+?)\s+([A-Za-z]+(?:\/[A-Za-z]+)?)$/)
+  if (spacedUnit) {
+    return {
+      primary: spacedUnit[1],
+      unit: spacedUnit[2]
+    }
+  }
+
+  const trailingPercent = value.match(/^(.+?)(%)$/)
+  if (trailingPercent) {
+    return {
+      primary: trailingPercent[1],
+      unit: trailingPercent[2]
+    }
+  }
+
+  return { primary: value, unit: '' }
+}
+
 function InfoMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border bg-secondary px-3 py-2.5">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
+    <div className="rounded-2xl border border-border/65 bg-background/58 px-3.5 py-3 shadow-[0_12px_28px_-28px_rgba(15,23,42,0.55)]">
+      <p className="text-[11px] leading-5 text-muted-foreground">{label}</p>
+      <p className="mt-1.5 text-base font-semibold leading-tight text-foreground">{value}</p>
     </div>
   )
 }

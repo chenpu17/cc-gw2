@@ -40,9 +40,9 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   const presetName = 'playwright-preset'
 
   await page.goto(`${baseUrl}/ui/models`)
-  await expect(page.getByRole('heading', { name: '模型与路由管理', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '模型提供商', level: 1 })).toBeVisible()
 
-  await page.getByRole('button', { name: '新增提供商' }).click()
+  await page.getByRole('button', { name: '新增提供商' }).first().click()
 
   const providerDrawer = page.locator('aside').filter({ hasText: '新增 Provider' })
   await expect(providerDrawer).toBeVisible()
@@ -87,6 +87,9 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   expect(providerTest.ok).toBe(true)
   expect(providerTest.status).toBe(200)
 
+  await page.getByRole('link', { name: '路由管理' }).first().click()
+  await expect(page.getByRole('heading', { name: '路由管理', level: 1 })).toBeVisible()
+
   await page.getByRole('button', { name: '添加端点' }).first().click()
   await page.getByPlaceholder('如 custom-api').fill(endpointId)
   await page.getByPlaceholder('如 我的自定义 API').fill(endpointLabel)
@@ -101,7 +104,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   expect(createdEndpoint.paths[0].path).toBe('/playwright/v1/chat/completions')
 
   await page.getByRole('button', { name: endpointLabel }).click()
-  await expect(page.getByRole('heading', { name: `${endpointLabel} 路由配置`, level: 2 })).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增映射' })).toBeVisible()
 
   await page.getByRole('button', { name: '新增映射' }).click()
   await page.getByLabel('route-source-1').fill(sourceModel)
@@ -165,7 +168,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   await deletePresetDialog.getByRole('button', { name: '删除' }).click()
   await expect(page.getByText(`模板 "${presetName}" 已删除。`)).toBeVisible()
 
-  await page.getByRole('button', { name: /模型提供商/ }).click()
+  await page.getByRole('link', { name: '模型供应商' }).first().click()
   const updatedProviderCard = page.locator(
     'xpath=//h3[normalize-space()="Playwright Provider Updated"]/ancestor::div[@data-testid="provider-card"][1]'
   )
@@ -184,11 +187,11 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
 test('model management supports provider edit, delete, route reset, and preset delete', async ({ page }) => {
   const baseUrl = harness.baseUrl()
   await page.goto(`${baseUrl}/ui/models`)
-  await expect(page.getByRole('heading', { name: '模型与路由管理', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '模型提供商', level: 1 })).toBeVisible()
 
   const providerId = `pm-edit-${Date.now()}`
   const providerBaseUrl = `http://127.0.0.1:${harness.stubPort}`
-  await page.getByRole('button', { name: '新增提供商' }).click()
+  await page.getByRole('button', { name: '新增提供商' }).first().click()
   const drawer = page.locator('aside').filter({ hasText: '新增 Provider' })
   await drawer.getByPlaceholder('如 openai').fill(providerId)
   await drawer.getByRole('button', { name: /OpenAI/ }).click()
@@ -211,6 +214,9 @@ test('model management supports provider edit, delete, route reset, and preset d
     `xpath=//h3[normalize-space()="${providerId}-edited"]/ancestor::div[@data-testid="provider-card"][1]`
   )
   await editedProviderCard.getByRole('button', { name: '测试连接' }).click()
+
+  await page.getByRole('link', { name: '路由管理' }).first().click()
+  await expect(page.getByRole('heading', { name: '路由管理', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '添加端点' }).first().click()
   const endpointId = `pm-edit-endpoint-${Date.now()}`
@@ -246,7 +252,7 @@ test('model management supports provider edit, delete, route reset, and preset d
   await deleteDialog.getByRole('button', { name: '删除' }).click()
   await expect(page.getByText('模板 "preset-delete-test" 已删除。')).toBeVisible()
 
-  await page.getByRole('button', { name: /模型提供商/ }).click()
+  await page.getByRole('link', { name: '模型供应商' }).first().click()
   await editedProviderCard.getByRole('button', { name: '删除' }).click()
   const confirmDialog = page.getByRole('dialog', { name: '删除' })
   await confirmDialog.getByRole('button', { name: '删除' }).click()

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Menu, X, ChevronRight } from 'lucide-react'
+import { ChevronRight, Menu, X } from 'lucide-react'
 import { getActiveNavigationRoute, navigationRoutes } from '@/app/routes'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
@@ -18,8 +18,28 @@ function isNavigationItemActive(pathname: string, item: (typeof navigationRoutes
   })
 }
 
-const overviewPaths = ['/', '/logs', '/models', '/events', '/profiler']
+const overviewPaths = ['/', '/logs', '/models', '/routing', '/events', '/profiler']
 const adminPaths = ['/api-keys', '/settings', '/help', '/about']
+
+function GatewayBrandMark({ compact }: { compact?: boolean }) {
+  return (
+    <div
+      className={cn(
+        'relative shrink-0 overflow-hidden rounded-[1.35rem] border border-primary/15 bg-[linear-gradient(145deg,hsl(var(--accent))_0%,hsl(var(--card))_52%,hsl(var(--secondary))_100%)] shadow-[0_18px_40px_-24px_hsl(var(--primary)/0.45)]',
+        compact ? 'h-9 w-9' : 'h-11 w-11'
+      )}
+      aria-hidden="true"
+    >
+      <div className="absolute inset-[5px] rounded-[1rem] border border-white/60 bg-white/60 dark:border-white/10 dark:bg-white/5" />
+      <div className="absolute left-[9px] top-1/2 h-[2px] w-[18px] -translate-y-1/2 rounded-full bg-primary/35" />
+      <div className="absolute left-1/2 top-[9px] h-[18px] w-[2px] -translate-x-1/2 rounded-full bg-primary/25" />
+      <span className="absolute left-[7px] top-[7px] h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_0_3px_hsl(var(--accent))]" />
+      <span className="absolute bottom-[7px] left-[7px] h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" />
+      <span className="absolute right-[7px] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.15)]" />
+      <span className="absolute right-[10px] top-[8px] h-1.5 w-1.5 rounded-full bg-primary/35" />
+    </div>
+  )
+}
 
 function NavGroup({
   label,
@@ -105,15 +125,18 @@ function SidebarContent({ compact, onNavigate }: { compact?: boolean; onNavigate
     <div className={cn('flex h-full flex-col', compact ? 'items-center' : '')}>
       {/* Logo */}
       <div className={cn(
-        'flex shrink-0 items-center border-b border-border',
-        compact ? 'h-16 w-full justify-center' : 'h-16 gap-3 px-5'
+        'flex shrink-0 items-center border-b border-border/80',
+        compact ? 'h-16 w-full justify-center' : 'h-20 gap-3 px-5'
       )}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
-          GW
-        </div>
+        <GatewayBrandMark compact={compact} />
         {!compact && (
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground">{t('app.title')}</p>
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-semibold text-foreground">{t('app.title')}</p>
+              <span className="whitespace-nowrap rounded-full border border-[hsl(var(--success)/0.18)] bg-[hsl(var(--success-bg))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--success)/1)]">
+                {t('app.online')}
+              </span>
+            </div>
             <p className="truncate text-xs text-muted-foreground">{t('app.consoleSubtitle')}</p>
           </div>
         )}
@@ -174,7 +197,7 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,hsl(var(--accent))_0,transparent_28%),radial-gradient(circle_at_bottom_right,hsl(var(--secondary))_0,transparent_24%)] bg-background">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-4 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
@@ -183,19 +206,19 @@ export function AppLayout() {
       </a>
 
       {/* Compact sidebar (md–lg) */}
-      <aside className="hidden w-16 shrink-0 flex-col border-r border-border bg-card md:flex lg:hidden">
+      <aside className="hidden w-16 shrink-0 flex-col border-r border-border bg-card/95 backdrop-blur md:flex lg:hidden">
         <SidebarContent compact />
       </aside>
 
       {/* Full sidebar (lg+) */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-card lg:flex">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-card/95 backdrop-blur lg:flex">
         <SidebarContent />
       </aside>
 
       {/* Main area */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 lg:px-6">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-card/92 px-4 backdrop-blur lg:px-6">
           <div className="flex items-center gap-3">
             {/* Mobile menu button */}
             <Button

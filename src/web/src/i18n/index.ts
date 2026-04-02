@@ -16,7 +16,8 @@ const resources = {
         dashboard: '仪表盘',
         logs: '请求日志',
         events: '事件',
-        models: '模型与路由管理',
+        models: '模型供应商',
+        routing: '路由管理',
         apiKeys: 'API 密钥',
         settings: '设置',
         help: '使用指南',
@@ -123,9 +124,11 @@ const resources = {
           uniqueClientSessionsLastHour: '1小时会话',
           todayRequests: '今日请求',
           activeRequests: '活跃转发连接',
+          throughput: '实时吞吐',
           requestsPerMinute: 'RPM',
           outputTokensPerMinute: 'TPM',
           cpu: 'CPU 占用率',
+          bandwidth: '网络带宽',
           networkIngress: '入口带宽',
           networkEgress: '出口带宽',
           database: '数据库',
@@ -626,9 +629,23 @@ const resources = {
       modelManagement: {
         title: '模型与路由管理',
         description: '统一维护模型提供商配置、模型路由映射与自定义端点。',
+        providersEyebrow: '供应池',
         header: {
-          providersHelper: '先维护 Provider 供应池，再为内置端点和自定义端点配置路由规则。',
+          providersHelper: '先维护上游 Provider 供应池，再进入路由管理为内置端点和自定义端点配置映射规则。',
           routingHelper: '当前工作区正在编辑「{{name}}」的路由规则，保持单工作区上下文以减少切换混淆。'
+        },
+        guide: {
+          title: '配置导览',
+          subtitle: '将资源池与流量入口拆开维护，减少信息混排。',
+          description: '先把上游 Provider 配完整，再去路由管理为 /anthropic、/openai 与自定义端点分配模型映射。',
+          endpointBadge: '{{count}} 个路由工作区',
+          providersDescription: '维护 Base URL、鉴权方式、默认模型与模型别名。这一层只定义上游资源。',
+          providersMeta: '当前已配置 {{count}} 个 Provider',
+          routingDescription: '分别管理内置端点与自定义端点的映射、模板和校验策略。这一层决定对外入口如何分流。',
+          routingMeta: '{{count}} 个工作区，{{dirty}} 个未保存',
+          current: '当前步骤',
+          currentAction: '当前页',
+          openAction: '打开'
         },
         overview: {
           synced: '工作区已同步',
@@ -773,6 +790,11 @@ const resources = {
         confirm: {
           deletePreset: '确定要删除模板 "{{name}}" 吗？'
         }
+      },
+      routingManagement: {
+        title: '路由管理',
+        description: '按端点管理模型映射、模板与自定义入口，避免和 Provider 资源池混在一起。',
+        eyebrow: '流量入口'
       },
       events: {
         title: '安全事件',
@@ -1007,7 +1029,7 @@ const resources = {
             title: '🚀 基础配置流程',
             items: [
               '📦 **安装并启动服务**：运行 `npm install -g @chenpu17/cc-gw && cc-gw start --daemon --port 4100`，然后访问 http://127.0.0.1:4100/ui',
-              '🔧 **配置模型提供商**：在"模型管理 → 模型提供商"中添加至少一个 Provider，配置 Base URL、API Key 和默认模型',
+              '🔧 **配置模型提供商**：在"模型供应商"页面中添加至少一个 Provider，配置 Base URL、API Key 和默认模型',
               '🔑 **生成网关 API Key（可选）**：在"API 密钥"页面创建 API 密钥，为不同客户端创建独立密钥。默认情况下，所有请求都可以通过网关访问。'
             ]
           },
@@ -1032,7 +1054,7 @@ const resources = {
             items: [
               '📈 **仪表盘监控**：实时查看请求量、Token 使用量、缓存命中率和响应时间（TTFT/TPOT）等关键指标',
               '📋 **日志分析**：使用"请求日志"页面筛选和分析请求记录；详情抽屉会按客户端/上游链路分开展示 payload 区块，便于定位协议改写问题',
-              '🔄 **模型路由管理**：在"模型管理 → 路由配置"中设置模型映射规则，实现不同模型的智能路由',
+              '🔄 **模型路由管理**：在"路由管理"页面中设置模型映射规则，实现不同模型的智能路由',
               '🎛️ **系统配置**：在"设置"页面中调整日志保留策略、数据存储设置和运行参数',
               '🔐 **安全配置**：启用 Web UI 登录保护，设置用户名密码，确保管理接口安全'
             ]
@@ -1041,7 +1063,7 @@ const resources = {
             title: '💡 高级技巧与最佳实践',
             items: [
               '📦 **环境变量管理**：推荐使用 direnv 管理环境变量，创建 .envrc 文件自动加载配置',
-              '🔌 **自定义接入点**：创建额外的 API 端点以支持不同的协议和独立路由配置。在"模型管理"页面可以创建和管理自定义接入点。\n\n**主要特性**：\n• 只需配置基础路径（如 `/my-endpoint`），系统会根据协议自动注册完整 API 路径\n• 支持 Anthropic 和 OpenAI 协议（Chat Completions / Responses API）\n• 每个端点可配置独立的模型路由规则\n• 一个端点可注册多个路径，支持多种协议\n\n**示例配置**：\n```json\n{\n  "id": "claude-api",\n  "label": "Claude 专用接入点",\n  "path": "/claude",\n  "protocol": "anthropic"\n}\n```\n配置后，客户端通过 `http://127.0.0.1:4100/claude/v1/messages` 访问（路径自动扩展）。',
+              '🔌 **自定义接入点**：创建额外的 API 端点以支持不同的协议和独立路由配置。在"路由管理"页面可以创建和管理自定义接入点。\n\n**主要特性**：\n• 只需配置基础路径（如 `/my-endpoint`），系统会根据协议自动注册完整 API 路径\n• 支持 Anthropic 和 OpenAI 协议（Chat Completions / Responses API）\n• 每个端点可配置独立的模型路由规则\n• 一个端点可注册多个路径，支持多种协议\n\n**示例配置**：\n```json\n{\n  "id": "claude-api",\n  "label": "Claude 专用接入点",\n  "path": "/claude",\n  "protocol": "anthropic"\n}\n```\n配置后，客户端通过 `http://127.0.0.1:4100/claude/v1/messages` 访问（路径自动扩展）。',
               '🗃️ **数据备份**：定期备份 ~/.cc-gw/ 目录（包含配置、日志和数据库）',
               '🧹 **日志清理**：根据需要调整日志保留天数，或使用"日志清理"功能手动清理',
               '🔍 **问题排查**：开启"保存请求内容 / 保存响应内容"后，可在日志详情里复制客户端与上游 payload，用于调试兼容性问题',
@@ -1060,7 +1082,7 @@ const resources = {
             },
             {
               q: '如何使用自定义接入点？',
-              a: '在"模型管理"页面创建自定义接入点，配置基础路径（如 `/my-endpoint`）和协议类型。系统会自动根据协议注册完整的 API 路径。例如，配置 `/claude` + `anthropic` 协议后，客户端通过 `http://127.0.0.1:4100/claude/v1/messages` 访问。\n\n如果遇到 404 错误，检查：\n1) 端点是否已启用\n2) 客户端使用的是完整路径（包括协议子路径）\n3) 查看服务器日志确认路由是否注册成功'
+              a: '在"路由管理"页面创建自定义接入点，配置基础路径（如 `/my-endpoint`）和协议类型。系统会自动根据协议注册完整的 API 路径。例如，配置 `/claude` + `anthropic` 协议后，客户端通过 `http://127.0.0.1:4100/claude/v1/messages` 访问。\n\n如果遇到 404 错误，检查：\n1) 端点是否已启用\n2) 客户端使用的是完整路径（包括协议子路径）\n3) 查看服务器日志确认路由是否注册成功'
             },
             {
               q: '为什么没有缓存命中数据？',
@@ -1068,7 +1090,7 @@ const resources = {
             },
             {
               q: '如何配置多个客户端使用不同模型？',
-              a: '为每个客户端创建独立的 API Key，在"模型管理 → 路由配置"中设置不同的路由规则，或使用不同的环境变量配置。也可以为不同客户端创建专用的自定义接入点。'
+              a: '为每个客户端创建独立的 API Key，在"路由管理"页面中设置不同的路由规则，或使用不同的环境变量配置。也可以为不同客户端创建专用的自定义接入点。'
             },
             {
               q: 'Codex CLI 如何连接到 cc-gw？',
@@ -1341,7 +1363,8 @@ const resources = {
         dashboard: 'Dashboard',
         logs: 'Logs',
         events: 'Events',
-        models: 'Models & Routing',
+        models: 'Model Providers',
+        routing: 'Routing',
         apiKeys: 'API Keys',
         settings: 'Settings',
         help: 'Help',
@@ -1448,9 +1471,11 @@ const resources = {
           uniqueClientSessionsLastHour: '1h sessions',
           todayRequests: 'Today requests',
           activeRequests: 'Active forwarded connections',
+          throughput: 'Throughput',
           requestsPerMinute: 'RPM',
           outputTokensPerMinute: 'TPM',
           cpu: 'CPU usage',
+          bandwidth: 'Bandwidth',
           networkIngress: 'Ingress bandwidth',
           networkEgress: 'Egress bandwidth',
           database: 'Database',
@@ -1951,9 +1976,23 @@ const resources = {
       modelManagement: {
         title: 'Models & Routing',
         description: 'Configure providers, routing rules, and custom endpoints.',
+        providersEyebrow: 'Supply Pool',
         header: {
-          providersHelper: 'Maintain the provider pool first, then define routing for built-in and custom endpoints.',
+          providersHelper: 'Maintain the upstream provider pool first, then move to Routing to map built-in and custom endpoints.',
           routingHelper: 'You are editing routing rules for "{{name}}" in a single focused workspace.'
+        },
+        guide: {
+          title: 'Guided setup',
+          subtitle: 'Separate upstream resources from public traffic entry points.',
+          description: 'Configure providers first, then move to Routing to map /anthropic, /openai, and custom endpoints with focused context.',
+          endpointBadge: '{{count}} routing workspaces',
+          providersDescription: 'Manage Base URL, auth strategy, default model, and aliases. This layer only defines upstream resources.',
+          providersMeta: '{{count}} providers configured',
+          routingDescription: 'Control built-in endpoints, custom endpoints, presets, and validation policies. This layer decides how public traffic is routed.',
+          routingMeta: '{{count}} workspaces, {{dirty}} unsaved',
+          current: 'Current step',
+          currentAction: 'Current page',
+          openAction: 'Open'
         },
         overview: {
           synced: 'Workspace synced',
@@ -2332,7 +2371,7 @@ const resources = {
             title: '1. Initial Setup',
             items: [
               'Install the service and start it with `npm install -g @chenpu17/cc-gw && cc-gw start --daemon --port 4100`, then open http://127.0.0.1:4100/ui.',
-              'Go to "Model Management → Providers" to add upstream providers including base URL, API key, and default model.',
+              'Go to "Model Providers" to add upstream providers including base URL, API key, and default model.',
               'Generate Gateway API Keys (Optional): Create API keys on the "API Keys" page for different clients. By default, all requests can pass through the gateway.'
             ]
           },
@@ -2357,7 +2396,7 @@ const resources = {
             items: [
               'Use the dashboard to keep an eye on request volume, token usage, cache hits, and TTFT/TPOT trends.',
               '“Request Logs” provides rich filters plus separated client/upstream payload blocks, which makes protocol-rewrite debugging much easier.',
-              '“Model Management” lets you switch defaults or update mappings without redeploying IDE extensions or automation scripts.',
+              'Use “Routing” to switch mappings and presets without redeploying IDE extensions or automation scripts.',
               '“Settings” controls log retention, payload storage, and runtime parameters to suit your operations.'
             ]
           },
@@ -2365,7 +2404,7 @@ const resources = {
             title: '5. Practical Tips',
             items: [
               'Use **direnv** to manage environment variables — create a .envrc file for automatic configuration loading.',
-              '🔌 **Custom Endpoints**: Create additional API endpoints with different protocols and independent routing. Manage them in the "Model Management" page.\n\n**Key Features**:\n• Configure only the base path (e.g., `/my-endpoint`), the system automatically registers full API paths based on protocol\n• Support for Anthropic and OpenAI protocols (Chat Completions / Responses API)\n• Each endpoint can have independent model routing rules\n• One endpoint can register multiple paths with different protocols\n\n**Example Configuration**:\n```json\n{\n  "id": "claude-api",\n  "label": "Claude Dedicated Endpoint",\n  "path": "/claude",\n  "protocol": "anthropic"\n}\n```\nAfter configuration, clients access via `http://127.0.0.1:4100/claude/v1/messages` (path auto-expansion).',
+              '🔌 **Custom Endpoints**: Create additional API endpoints with different protocols and independent routing. Manage them from the "Routing" page.\n\n**Key Features**:\n• Configure only the base path (e.g., `/my-endpoint`), the system automatically registers full API paths based on protocol\n• Support for Anthropic and OpenAI protocols (Chat Completions / Responses API)\n• Each endpoint can have independent model routing rules\n• One endpoint can register multiple paths with different protocols\n\n**Example Configuration**:\n```json\n{\n  "id": "claude-api",\n  "label": "Claude Dedicated Endpoint",\n  "path": "/claude",\n  "protocol": "anthropic"\n}\n```\nAfter configuration, clients access via `http://127.0.0.1:4100/claude/v1/messages` (path auto-expansion).',
               'Enable "Store request bodies" / "Store response bodies" to inspect and copy client-side and upstream payloads from the log drawer when troubleshooting.',
               'If you do not need payload-level troubleshooting, turn off payload storage to reduce local disk usage and privacy exposure.',
               'Use **routing presets** to save common routing configurations and quickly switch between different provider setups.',
@@ -2378,11 +2417,11 @@ const resources = {
           items: [
             {
               q: 'How can I change the default model for each endpoint?',
-              a: 'Go to "Model Management → Routing" and choose defaults for /anthropic and /openai. Saving applies the change right away.'
+              a: 'Go to "Routing" and edit the routing workspace for /anthropic or /openai. Saving applies the change right away.'
             },
             {
               q: 'How do I use custom endpoints?',
-              a: 'Create a custom endpoint in the "Model Management" page by configuring a base path (e.g., `/my-endpoint`) and protocol type. The system automatically registers full API paths based on the protocol. For example, after configuring `/claude` + `anthropic` protocol, clients access via `http://127.0.0.1:4100/claude/v1/messages`.\n\nIf you encounter 404 errors, check:\n1) Is the endpoint enabled?\n2) Are clients using the complete path (including protocol subpath)?\n3) Check server logs to confirm route registration'
+              a: 'Create a custom endpoint in the "Routing" page by configuring a base path (e.g., `/my-endpoint`) and protocol type. The system automatically registers full API paths based on the protocol. For example, after configuring `/claude` + `anthropic` protocol, clients access via `http://127.0.0.1:4100/claude/v1/messages`.\n\nIf you encounter 404 errors, check:\n1) Is the endpoint enabled?\n2) Are clients using the complete path (including protocol subpath)?\n3) Check server logs to confirm route registration'
             },
             {
               q: 'Why are cached token numbers missing?',
@@ -2390,10 +2429,15 @@ const resources = {
             },
             {
               q: 'How can I use different models for different clients?',
-              a: 'Create separate API keys for each client and configure different routing rules in "Model Management → Routing". You can also create dedicated custom endpoints for different clients.'
+              a: 'Create separate API keys for each client and configure different routing rules in "Routing". You can also create dedicated custom endpoints for different clients.'
             }
           ]
         }
+      },
+      routingManagement: {
+        title: 'Routing',
+        description: 'Manage endpoint-specific mappings, presets, and custom entry points without mixing them into the provider inventory.',
+        eyebrow: 'Traffic Entry'
       },
 
       apiKeys: {

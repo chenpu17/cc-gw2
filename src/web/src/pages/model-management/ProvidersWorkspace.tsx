@@ -1,4 +1,3 @@
-import { Plus, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,21 +7,16 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { ProviderConfig } from '@/types/providers'
-import { SectionIntro } from './SectionIntro'
 import { resolveModelLabel } from './shared'
 
 export function ProvidersWorkspace({
-  providerCount,
   providersLength,
   filteredProviders,
   defaultLabels,
   providerSearch,
   providerTypeFilter,
   configPending,
-  configFetching,
   testingProviderId,
-  onRefresh,
-  onOpenCreate,
   onOpenEdit,
   onTestConnection,
   onRequestDelete,
@@ -30,17 +24,13 @@ export function ProvidersWorkspace({
   onProviderTypeChange,
   onResetFilters
 }: {
-  providerCount: number
   providersLength: number
   filteredProviders: ProviderConfig[]
   defaultLabels: Map<string, string>
   providerSearch: string
   providerTypeFilter: string
   configPending: boolean
-  configFetching: boolean
   testingProviderId: string | null
-  onRefresh: () => void
-  onOpenCreate: () => void
   onOpenEdit: (provider: ProviderConfig) => void
   onTestConnection: (provider: ProviderConfig) => void
   onRequestDelete: (provider: ProviderConfig) => void
@@ -60,52 +50,6 @@ export function ProvidersWorkspace({
   return (
     <Card>
       <CardContent className="space-y-6 pt-6">
-        <SectionIntro
-          eyebrow="Model Access"
-          title={t('providers.title')}
-          description={t('providers.description')}
-          breadcrumb={[t('modelManagement.title'), t('modelManagement.tabs.providers')]}
-          aside={(
-            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
-              <Badge variant="secondary">{t('providers.count', { count: providerCount })}</Badge>
-              <Button variant="outline" size="sm" onClick={onRefresh} disabled={configFetching} className="w-full sm:w-auto">
-                <RefreshCw className={cn('mr-2 h-4 w-4', configFetching && 'animate-spin')} />
-                {configFetching ? t('common.actions.refreshing') : t('providers.actions.refresh')}
-              </Button>
-              <Button size="sm" onClick={onOpenCreate} className="w-full sm:w-auto">
-                <Plus className="mr-2 h-4 w-4" />
-                {t('providers.actions.add')}
-              </Button>
-            </div>
-          )}
-        />
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <ProviderWorkspaceStat
-            label="Configured"
-            value={providerCount.toString()}
-            helper="Total providers in supply pool"
-            tone="blue"
-          />
-          <ProviderWorkspaceStat
-            label="Visible"
-            value={filteredProviders.length.toString()}
-            helper="Providers matching current filter"
-            tone="emerald"
-          />
-          <ProviderWorkspaceStat
-            label="Connection Status"
-            value={testingProviderId ? 'Testing' : 'Idle'}
-            helper={testingProviderId ? `Testing ${testingProviderId}` : 'Ready for diagnostics'}
-            tone="amber"
-          />
-        </div>
-
-        <div className="rounded-lg border border-border bg-accent px-4 py-3 text-sm text-primary">
-          <p className="font-medium">{t('modelManagement.providersSemantics.title')}</p>
-          <p className="mt-1 leading-6 text-primary/80">{t('modelManagement.providersSemantics.description')}</p>
-        </div>
-
         <div className="grid gap-3 rounded-lg border border-border bg-secondary p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_220px_auto]">
           <div className="space-y-2">
             <Label className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
@@ -259,25 +203,6 @@ export function ProvidersWorkspace({
         )}
       </CardContent>
     </Card>
-  )
-}
-
-function ProviderWorkspaceStat({
-  helper,
-  label,
-  value
-}: {
-  helper: string
-  label: string
-  tone?: string
-  value: string
-}) {
-  return (
-    <div className="rounded-lg border border-border bg-card px-4 py-3">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-2 text-base font-semibold text-foreground">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
-    </div>
   )
 }
 

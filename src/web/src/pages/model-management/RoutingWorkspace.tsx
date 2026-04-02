@@ -10,7 +10,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { cn } from '@/lib/utils'
 import type { CustomEndpoint } from '@/types/endpoints'
 import type { GatewayConfig, RoutingPreset } from '@/types/providers'
-import { SectionIntro } from './SectionIntro'
 import { TargetCombobox } from './TargetCombobox'
 import {
   CLAUDE_MODEL_SUGGESTIONS,
@@ -99,37 +98,6 @@ export function RoutingWorkspace({
   return (
     <Card>
       <CardContent className="space-y-6 pt-6">
-        <SectionIntro
-          eyebrow="Routing Workspace"
-          title={t('settings.routing.titleByEndpoint', { endpoint: endpointLabel })}
-          description={endpointDescription}
-          breadcrumb={[t('modelManagement.title'), endpointLabel]}
-          aside={(
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{routes.length} rules</Badge>
-              {isDirty ? (
-                <Badge variant="outline" className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300">
-                  {t('modelManagement.actions.unsaved')}
-                </Badge>
-              ) : (
-                <Badge variant="secondary">{t('common.status.success')}</Badge>
-              )}
-            </div>
-          )}
-        />
-
-        <div className="grid gap-3 md:grid-cols-4">
-          <RoutingWorkspaceStat label="Rules" value={routes.length.toString()} helper="Current model routes" tone="blue" />
-          <RoutingWorkspaceStat label="Presets" value={presets.length.toString()} helper="Reusable routing templates" tone="emerald" />
-          <RoutingWorkspaceStat label="Protocols" value={(tabInfo?.protocols?.length ?? 0).toString()} helper="Bound to this endpoint" tone="amber" />
-          <RoutingWorkspaceStat
-            label="Validation"
-            value={anthropicProtocol ? (claudeValidationEnabled ? 'Claude Code' : 'Disabled') : 'Standard'}
-            helper={anthropicProtocol ? 'Anthropic compatibility mode' : 'Default endpoint routing'}
-            tone="rose"
-          />
-        </div>
-
         <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">
           {t('settings.routing.wildcardHint')}
         </div>
@@ -162,6 +130,21 @@ export function RoutingWorkspace({
         ) : null}
 
         {routeError ? <p className="text-sm text-destructive">{routeError}</p> : null}
+
+        <RoutingPresetsSection
+          presets={presets}
+          presetName={presetName}
+          presetError={presetError}
+          savingPreset={savingPreset}
+          applyingPreset={applyingPreset}
+          deletingPreset={deletingPreset}
+          expanded={presetsExpanded}
+          onToggleExpanded={onTogglePresetsExpanded}
+          onPresetNameChange={onPresetNameChange}
+          onSavePreset={onSavePreset}
+          onRequestPresetDiff={onRequestPresetDiff}
+          onRequestDeletePreset={onRequestDeletePreset}
+        />
 
         <div className="space-y-3 rounded-lg border border-border bg-secondary p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -249,33 +232,6 @@ export function RoutingWorkspace({
           )}
         </div>
 
-        <div className="space-y-3 rounded-lg border border-border bg-secondary p-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Label className="text-sm font-semibold text-foreground">{t('settings.routing.suggested')}</Label>
-              <Badge variant="outline">{suggestions.length} presets</Badge>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{t('modelManagement.overview.suggestionHint')}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {suggestions.map((model) => {
-              const alreadyAdded = existingSources.has(model)
-              return (
-                <Button
-                  key={`${endpoint}-${model}`}
-                  variant={alreadyAdded ? 'ghost' : 'outline'}
-                  size="sm"
-                  onClick={() => onAddSuggestion(model)}
-                  disabled={savingRoute || alreadyAdded}
-                  className={alreadyAdded ? 'opacity-50' : ''}
-                >
-                  {model}
-                </Button>
-              )
-            })}
-          </div>
-        </div>
-
         <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <p className="text-sm font-medium">{t('modelManagement.actions.footerTitle')}</p>
@@ -297,20 +253,35 @@ export function RoutingWorkspace({
           </div>
         </div>
 
-        <RoutingPresetsSection
-          presets={presets}
-          presetName={presetName}
-          presetError={presetError}
-          savingPreset={savingPreset}
-          applyingPreset={applyingPreset}
-          deletingPreset={deletingPreset}
-          expanded={presetsExpanded}
-          onToggleExpanded={onTogglePresetsExpanded}
-          onPresetNameChange={onPresetNameChange}
-          onSavePreset={onSavePreset}
-          onRequestPresetDiff={onRequestPresetDiff}
-          onRequestDeletePreset={onRequestDeletePreset}
-        />
+        <div className="space-y-3 rounded-lg border border-border/70 bg-secondary/55 p-4">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="text-sm font-medium text-foreground">{t('settings.routing.suggested')}</Label>
+              <Badge variant="outline" className="text-[11px]">{suggestions.length}</Badge>
+            </div>
+            <p className="text-[11px] text-muted-foreground">{t('modelManagement.overview.suggestionHint')}</p>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {suggestions.map((model) => {
+              const alreadyAdded = existingSources.has(model)
+              return (
+                <Button
+                  key={`${endpoint}-${model}`}
+                  variant={alreadyAdded ? 'ghost' : 'outline'}
+                  size="sm"
+                  onClick={() => onAddSuggestion(model)}
+                  disabled={savingRoute || alreadyAdded}
+                  className={cn(
+                    'h-7 rounded-md px-2.5 text-[11px] font-normal',
+                    alreadyAdded ? 'opacity-45' : 'bg-background/70'
+                  )}
+                >
+                  {model}
+                </Button>
+              )
+            })}
+          </div>
+        </div>
 
         <datalist id={sourceListId}>
           {suggestions.map((model) => (
@@ -319,25 +290,6 @@ export function RoutingWorkspace({
         </datalist>
       </CardContent>
     </Card>
-  )
-}
-
-function RoutingWorkspaceStat({
-  helper,
-  label,
-  value
-}: {
-  helper: string
-  label: string
-  tone?: string
-  value: string
-}) {
-  return (
-    <div className="rounded-lg border border-border bg-card px-4 py-3">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-2 truncate text-base font-semibold text-foreground">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
-    </div>
   )
 }
 

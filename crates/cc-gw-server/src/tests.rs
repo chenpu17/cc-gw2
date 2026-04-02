@@ -786,13 +786,15 @@ async fn anthropic_messages_validation_rejects_non_claude_code_payloads() {
 
 #[tokio::test]
 async fn api_version_check_reports_update_state_from_registry() {
-    let registry = Router::new().fallback(get(|| async {
+    let current_version = env!("CARGO_PKG_VERSION");
+    let latest_version = "999.0.0";
+    let registry = Router::new().fallback(get(move || async move {
         Json(json!({
             "dist-tags": {
-                "latest": "0.8.5"
+                "latest": latest_version
             },
             "time": {
-                "0.8.5": "2026-03-30T03:45:32.000Z"
+                latest_version: "2026-03-30T03:45:32.000Z"
             }
         }))
     }));
@@ -817,11 +819,11 @@ async fn api_version_check_reports_update_state_from_registry() {
 
     assert_eq!(
         response.get("currentVersion").and_then(Value::as_str),
-        Some("0.8.4")
+        Some(current_version)
     );
     assert_eq!(
         response.get("latestVersion").and_then(Value::as_str),
-        Some("0.8.5")
+        Some(latest_version)
     );
     assert_eq!(
         response.get("channel").and_then(Value::as_str),
