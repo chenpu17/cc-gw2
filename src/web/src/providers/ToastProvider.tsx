@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 export interface ToastOptions {
   id?: string
@@ -26,10 +26,26 @@ function buildId() {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<InternalToast[]>([])
+  const toastsRef = useRef<InternalToast[]>([])
+  const dismissTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  useEffect(() => {
+    toastsRef.current = toasts
+  }, [toasts])
+
+  const clearDismissTimer = useCallback((id: string) => {
+    const timer = dismissTimersRef.current[id]
+    if (!timer) {
+      return
+    }
+    clearTimeout(timer)
+    delete dismissTimersRef.current[id]
+  }, [])
 
   const removeToast = useCallback((id: string) => {
+    clearDismissTimer(id)
     setToasts((prev) => prev.filter((item) => item.id !== id))
-  }, [])
+  }, [clearDismissTimer])
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) =>
@@ -38,16 +54,40 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => removeToast(id), 200)
   }, [removeToast])
 
+  const scheduleDismiss = useCallback((id: string, duration: number) => {
+    clearDismissTimer(id)
+    if (duration <= 0) {
+      return
+    }
+    dismissTimersRef.current[id] = setTimeout(() => dismissToast(id), duration)
+  }, [clearDismissTimer, dismissToast])
+
+  useEffect(() => {
+    return () => {
+      Object.values(dismissTimersRef.current).forEach((timer) => clearTimeout(timer))
+      dismissTimersRef.current = {}
+    }
+  }, [])
+
   const pushToast = useCallback(
     (toast: ToastOptions) => {
-      const id = toast.id ?? buildId()
-      setToasts((prev) => [...prev, { ...toast, id }])
       const duration = toast.durationMs ?? 3000
-      if (duration > 0) {
-        setTimeout(() => dismissToast(id), duration)
-      }
+      const existingToast = toastsRef.current.find((item) =>
+        toast.id
+          ? item.id === toast.id
+          : item.title === toast.title &&
+            item.description === toast.description &&
+            item.variant === toast.variant
+      )
+      const id = existingToast?.id ?? toast.id ?? buildId()
+      setToasts((prev) =>
+        existingToast
+          ? prev.map((item) => (item.id === id ? { ...item, ...toast, id, dismissing: false } : item))
+          : [...prev, { ...toast, id }]
+      )
+      scheduleDismiss(id, duration)
     },
-    [dismissToast]
+    [scheduleDismiss]
   )
 
   const value = useMemo(() => ({ toasts, pushToast, dismissToast }), [toasts, dismissToast, pushToast])
