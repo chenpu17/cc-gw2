@@ -568,6 +568,9 @@ fn build_request_body_for_target(
         (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions) => {
             anthropic_request_to_openai_chat(original_body)
         }
+        (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiResponses) => {
+            anthropic_request_to_openai_response(original_body)
+        }
         (ProviderProtocol::OpenAiChatCompletions, ProviderProtocol::AnthropicMessages) => {
             openai_chat_request_to_anthropic(original_body)
         }
@@ -1729,7 +1732,7 @@ fn extract_usage_stats(payload: &Value) -> UsageStats {
         .or_else(|| payload.get("response").and_then(|value| value.get("usage")))
         .or_else(|| payload.get("message").and_then(|value| value.get("usage")))
         .unwrap_or(payload);
-    let input_tokens = usage
+    let raw_input_tokens = usage
         .get("input_tokens")
         .or_else(|| usage.get("prompt_tokens"))
         .and_then(Value::as_i64)
@@ -1760,7 +1763,21 @@ fn extract_usage_stats(payload: &Value) -> UsageStats {
         .or_else(|| usage.get("cache_creation_tokens"))
         .and_then(Value::as_i64)
         .unwrap_or(0);
-    let cached_tokens = cache_read_tokens + cache_creation_tokens;
+    let has_anthropic_cache_fields = usage.get("cache_read_input_tokens").is_some()
+        || usage.get("cache_creation_input_tokens").is_some();
+    let has_openai_usage_markers = usage.get("prompt_tokens").is_some()
+        || usage.get("completion_tokens").is_some()
+        || usage.get("cached_tokens").is_some()
+        || usage.get("cache_read_tokens").is_some()
+        || usage.get("cache_creation_tokens").is_some()
+        || usage.get("prompt_tokens_details").is_some()
+        || usage.get("input_tokens_details").is_some();
+    let input_tokens = if has_anthropic_cache_fields && !has_openai_usage_markers {
+        raw_input_tokens + cache_read_tokens + cache_creation_tokens
+    } else {
+        raw_input_tokens
+    };
+    let cached_tokens = cache_read_tokens;
     UsageStats {
         input_tokens,
         output_tokens,
@@ -2149,7 +2166,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_usage_stats_sums_cache_read_and_creation_tokens() {
+    fn extract_usage_stats_keeps_cached_tokens_as_cache_read_only() {
         let usage = extract_usage_stats(&json!({
             "usage": {
                 "input_tokens": 11,
@@ -2159,11 +2176,29 @@ mod tests {
             }
         }));
 
-        assert_eq!(usage.input_tokens, 11);
+        assert_eq!(usage.input_tokens, 16);
         assert_eq!(usage.output_tokens, 7);
         assert_eq!(usage.cache_read_tokens, 3);
         assert_eq!(usage.cache_creation_tokens, 2);
-        assert_eq!(usage.cached_tokens, 5);
+        assert_eq!(usage.cached_tokens, 3);
+    }
+
+    #[test]
+    fn extract_usage_stats_normalizes_anthropic_input_tokens_with_cache_breakdown() {
+        let usage = extract_usage_stats(&json!({
+            "usage": {
+                "input_tokens": 5,
+                "output_tokens": 7,
+                "cache_read_input_tokens": 3,
+                "cache_creation_input_tokens": 2
+            }
+        }));
+
+        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.output_tokens, 7);
+        assert_eq!(usage.cache_read_tokens, 3);
+        assert_eq!(usage.cache_creation_tokens, 2);
+        assert_eq!(usage.cached_tokens, 3);
     }
 
     #[test]

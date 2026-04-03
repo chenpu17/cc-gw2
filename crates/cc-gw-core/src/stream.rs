@@ -12,18 +12,20 @@ struct UsageState {
     cached_tokens: i64,
     cache_read_tokens: i64,
     cache_creation_tokens: i64,
+    anthropic_input_tokens: i64,
 }
 
 impl UsageState {
     fn update_from_openai(&mut self, usage: Option<&Value>) {
         let Some(usage) = usage else { return };
-        if let Some(value) = usage.get("prompt_tokens").and_then(Value::as_i64) {
-            self.input_tokens = value;
-        }
         if let Some(value) = usage.get("completion_tokens").and_then(Value::as_i64) {
             self.output_tokens = value;
         }
-        if let Some(value) = usage.get("input_tokens").and_then(Value::as_i64) {
+        if let Some(value) = usage
+            .get("input_tokens")
+            .or_else(|| usage.get("prompt_tokens"))
+            .and_then(Value::as_i64)
+        {
             self.input_tokens = value;
         }
         if let Some(value) = usage.get("output_tokens").and_then(Value::as_i64) {
@@ -61,13 +63,17 @@ impl UsageState {
         {
             self.cache_read_tokens = value;
         }
-        self.cached_tokens = self.cache_read_tokens + self.cache_creation_tokens;
+        self.anthropic_input_tokens = self
+            .input_tokens
+            .saturating_sub(self.cache_read_tokens)
+            .saturating_sub(self.cache_creation_tokens);
+        self.cached_tokens = self.cache_read_tokens;
     }
 
     fn update_from_anthropic(&mut self, usage: Option<&Value>) {
         let Some(usage) = usage else { return };
         if let Some(value) = usage.get("input_tokens").and_then(Value::as_i64) {
-            self.input_tokens = value;
+            self.anthropic_input_tokens = value;
         }
         if let Some(value) = usage.get("output_tokens").and_then(Value::as_i64) {
             self.output_tokens = value;
@@ -81,7 +87,9 @@ impl UsageState {
         {
             self.cache_creation_tokens = value;
         }
-        self.cached_tokens = self.cache_read_tokens + self.cache_creation_tokens;
+        self.input_tokens =
+            self.anthropic_input_tokens + self.cache_read_tokens + self.cache_creation_tokens;
+        self.cached_tokens = self.cache_read_tokens;
     }
 
     fn to_usage_stats(&self) -> UsageStats {
@@ -96,7 +104,7 @@ impl UsageState {
 
     fn anthropic_usage_value(&self) -> Value {
         let mut usage = json!({
-            "input_tokens": self.input_tokens,
+            "input_tokens": self.anthropic_input_tokens,
             "output_tokens": self.output_tokens
         });
         if let Some(map) = usage.as_object_mut() {
@@ -1862,11 +1870,11 @@ mod tests {
 
         assert!(observation.saw_first_token);
         let usage = observer.usage_stats();
-        assert_eq!(usage.input_tokens, 12);
+        assert_eq!(usage.input_tokens, 15);
         assert_eq!(usage.output_tokens, 3);
         assert_eq!(usage.cache_read_tokens, 2);
         assert_eq!(usage.cache_creation_tokens, 1);
-        assert_eq!(usage.cached_tokens, 3);
+        assert_eq!(usage.cached_tokens, 2);
     }
 
     #[test]
@@ -1941,7 +1949,7 @@ mod tests {
         assert!(joined.contains("event: content_block_start"));
         assert!(joined.contains("\"text\":\"hello\""));
         assert!(joined.contains("event: message_delta"));
-        assert!(joined.contains("\"input_tokens\":10"));
+        assert!(joined.contains("\"input_tokens\":7"));
         assert!(joined.contains("\"output_tokens\":4"));
         assert!(joined.contains("\"cache_read_input_tokens\":2"));
         assert!(joined.contains("\"cache_creation_input_tokens\":1"));
@@ -2017,6 +2025,7 @@ mod tests {
         assert!(joined.contains("\"type\":\"response.output_text.delta\""));
         assert!(joined.contains("\"type\":\"response.completed\""));
         assert!(joined.contains("\"output_text\":\"hello\""));
+        assert!(joined.contains("\"input_tokens\":12"));
         assert!(joined.contains("\"cached_tokens\":1"));
     }
 

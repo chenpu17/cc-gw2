@@ -1140,7 +1140,7 @@ mod tests {
             &UsageStats {
                 input_tokens: 10,
                 output_tokens: 5,
-                cached_tokens: 4,
+                cached_tokens: 3,
                 cache_read_tokens: 3,
                 cache_creation_tokens: 1,
                 ..UsageStats::default()
@@ -1154,7 +1154,7 @@ mod tests {
             &UsageStats {
                 input_tokens: 6,
                 output_tokens: 4,
-                cached_tokens: 6,
+                cached_tokens: 4,
                 cache_read_tokens: 4,
                 cache_creation_tokens: 2,
                 ..UsageStats::default()
@@ -1166,7 +1166,7 @@ mod tests {
         assert_eq!(overview.today.requests, 2);
         assert_eq!(overview.today.input_tokens, 16);
         assert_eq!(overview.today.output_tokens, 9);
-        assert_eq!(overview.today.cached_tokens, 10);
+        assert_eq!(overview.today.cached_tokens, 7);
         assert_eq!(overview.today.cache_read_tokens, 7);
         assert_eq!(overview.today.cache_creation_tokens, 3);
         assert_eq!(overview.today.avg_latency_ms, 100);
