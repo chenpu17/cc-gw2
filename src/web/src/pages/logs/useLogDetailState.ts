@@ -31,7 +31,9 @@ export function useLogDetailState({
     logsApi.detailRequest(logId),
     {
       enabled: open && logId !== null,
-      staleTime: 30_000
+      staleTime: 30_000,
+      gcTime: 15_000,
+      placeholderData: undefined
     }
   )
 

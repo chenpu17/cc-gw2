@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next'
 import type { LogRecord } from '@/types/logs'
 
 const SESSION_ROW_HUES = [12, 28, 48, 88, 112, 152, 184, 208, 228, 262, 292, 332] as const
+const MAX_PRETTY_PRINT_PAYLOAD_LENGTH = 200_000
 
 export function formatDateTime(timestamp: number): string {
   const date = new Date(timestamp)
@@ -25,6 +26,10 @@ export function formatStreamLabel(stream: boolean): string {
 export function formatPayloadDisplay(value: string | null | undefined, fallback: string): string {
   if (!value || value.trim().length === 0) {
     return fallback
+  }
+  // Avoid allocating another large parsed object plus a reformatted copy for very large payloads.
+  if (value.length > MAX_PRETTY_PRINT_PAYLOAD_LENGTH) {
+    return value
   }
   try {
     const parsed = JSON.parse(value)

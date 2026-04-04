@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import { AppDialogBody, AppDialogContent, AppDialogHeader } from '@/components/DialogShell'
@@ -45,42 +46,51 @@ export function LogDetailsDrawer({
     providerLabelMap
   })
 
-  const payloadSections = record
-    ? [
-        {
-          key: 'client-request',
-          title: t('logs.detail.payload.clientRequest'),
-          value: record.payload?.client_request ?? null,
-          emptyLabel: t('logs.detail.payload.emptyRequest'),
-          copyToast: 'logs.detail.copy.requestSuccess'
-        },
-        ...(record.payload?.upstream_request
-          ? [{
-              key: 'upstream-request',
-              title: t('logs.detail.payload.upstreamRequest'),
-              value: record.payload.upstream_request,
-              emptyLabel: t('logs.detail.payload.emptyRequest'),
-              copyToast: 'logs.detail.copy.requestSuccess'
-            }]
-          : []),
-        ...(record.payload?.upstream_response
-          ? [{
-              key: 'upstream-response',
-              title: t('logs.detail.payload.upstreamResponse'),
-              value: record.payload.upstream_response,
-              emptyLabel: t('logs.detail.payload.emptyResponse'),
-              copyToast: 'logs.detail.copy.responseSuccess'
-            }]
-          : []),
-        {
-          key: 'client-response',
-          title: t('logs.detail.payload.clientResponse'),
-          value: record.payload?.client_response ?? null,
-          emptyLabel: t('logs.detail.payload.emptyResponse'),
-          copyToast: 'logs.detail.copy.responseSuccess'
-        }
-      ]
-    : []
+  const payloadSections = useMemo(() => {
+    if (!record) {
+      return []
+    }
+
+    const sections = [
+      {
+        key: 'client-request',
+        title: t('logs.detail.payload.clientRequest'),
+        value: record.payload?.client_request ?? null,
+        emptyLabel: t('logs.detail.payload.emptyRequest'),
+        copyToast: 'logs.detail.copy.requestSuccess'
+      },
+      ...(record.payload?.upstream_request
+        ? [{
+            key: 'upstream-request',
+            title: t('logs.detail.payload.upstreamRequest'),
+            value: record.payload.upstream_request,
+            emptyLabel: t('logs.detail.payload.emptyRequest'),
+            copyToast: 'logs.detail.copy.requestSuccess'
+          }]
+        : []),
+      ...(record.payload?.upstream_response
+        ? [{
+            key: 'upstream-response',
+            title: t('logs.detail.payload.upstreamResponse'),
+            value: record.payload.upstream_response,
+            emptyLabel: t('logs.detail.payload.emptyResponse'),
+            copyToast: 'logs.detail.copy.responseSuccess'
+          }]
+        : []),
+      {
+        key: 'client-response',
+        title: t('logs.detail.payload.clientResponse'),
+        value: record.payload?.client_response ?? null,
+        emptyLabel: t('logs.detail.payload.emptyResponse'),
+        copyToast: 'logs.detail.copy.responseSuccess'
+      }
+    ]
+
+    return sections.map((section) => ({
+      ...section,
+      displayValue: formatPayloadDisplay(section.value, section.emptyLabel)
+    }))
+  }, [record, t])
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
@@ -247,7 +257,7 @@ export function LogDetailsDrawer({
                         key={section.key}
                         title={section.title}
                         value={section.value}
-                        emptyLabel={section.emptyLabel}
+                        displayValue={section.displayValue}
                         onCopy={() => handleCopy(section.title, section.value, section.copyToast)}
                         t={t}
                       />
@@ -284,13 +294,13 @@ function DetailItem({ label, value }: { label: string; value: string | number | 
 }
 
 function PayloadPanel({
-  emptyLabel,
+  displayValue,
   onCopy,
   title,
   value,
   t
 }: {
-  emptyLabel: string
+  displayValue: string
   onCopy: () => void
   title: string
   value: string | null
@@ -307,7 +317,7 @@ function PayloadPanel({
         </Button>
       </div>
       <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-secondary p-3 text-xs">
-        {formatPayloadDisplay(value, emptyLabel)}
+        {displayValue}
       </pre>
     </div>
   )

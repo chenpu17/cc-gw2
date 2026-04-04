@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '@/providers/ToastProvider'
 import { useApiQuery } from '@/hooks/useApiQuery'
@@ -29,6 +30,7 @@ import {
 export function useLogsPageState() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
+  const queryClient = useQueryClient()
   const [providerFilter, setProviderFilter] = usePersistentState<string>(
     storageKeys.logs.providerFilter,
     'all'
@@ -86,10 +88,12 @@ export function useLogsPageState() {
     visibleColumns,
     visibleColumnSet
   } = useLogsTablePreferences()
+  const deferredModelFilter = useDeferredValue(modelFilter)
+  const appliedModelFilter = modelFilter === '' ? '' : deferredModelFilter
 
   useEffect(() => {
     setPage(1)
-  }, [providerFilter, endpointFilter, modelFilter, statusFilter, fromDate, toDate, pageSize, selectedApiKeys])
+  }, [providerFilter, endpointFilter, appliedModelFilter, statusFilter, fromDate, toDate, pageSize, selectedApiKeys])
 
   const queryParams = useMemo(() => {
     const params: Record<string, unknown> = {
@@ -103,8 +107,8 @@ export function useLogsPageState() {
     if (endpointFilter !== 'all') {
       params.endpoint = endpointFilter
     }
-    if (modelFilter.trim().length > 0) {
-      params.model = modelFilter.trim()
+    if (appliedModelFilter.trim().length > 0) {
+      params.model = appliedModelFilter.trim()
     }
     if (statusFilter !== 'all') {
       params.status = statusFilter
@@ -123,11 +127,12 @@ export function useLogsPageState() {
     }
 
     return params
-  }, [endpointFilter, fromDate, modelFilter, page, pageSize, providerFilter, selectedApiKeys, statusFilter, toDate])
+  }, [appliedModelFilter, endpointFilter, fromDate, page, pageSize, providerFilter, selectedApiKeys, statusFilter, toDate])
 
   const logsQuery = useApiQuery<LogListResponse, ApiError>(
     queryKeys.logs.list(queryParams),
-    logsApi.listRequest(queryParams)
+    logsApi.listRequest(queryParams),
+    { gcTime: 60_000 }
   )
   const providersQuery = useApiQuery<ProviderSummary[], ApiError>(
     queryKeys.providers.all(),
@@ -221,10 +226,10 @@ export function useLogsPageState() {
         onRemove: () => setEndpointFilter('all')
       })
     }
-    if (modelFilter.trim()) {
+    if (appliedModelFilter.trim()) {
       filters.push({
         key: 'model',
-        label: `${t('logs.filters.modelId')}: ${modelFilter.trim()}`,
+        label: `${t('logs.filters.modelId')}: ${appliedModelFilter.trim()}`,
         onRemove: () => setModelFilter('')
       })
     }
@@ -260,7 +265,7 @@ export function useLogsPageState() {
       })
     }
     return filters
-  }, [endpointFilter, endpointLabelMap, fromDate, modelFilter, providerFilter, providerLabelMap, selectedApiKeys.length, statusFilter, t, toDate])
+  }, [appliedModelFilter, endpointFilter, endpointLabelMap, fromDate, providerFilter, providerLabelMap, selectedApiKeys.length, statusFilter, t, toDate])
 
   const apiKeys = apiKeysQuery.data ?? []
   const apiKeyMap = useMemo(() => {
@@ -284,7 +289,7 @@ export function useLogsPageState() {
     if (
       providerFilter === 'all' &&
       endpointFilter === 'all' &&
-      modelFilter.trim() === '' &&
+      appliedModelFilter.trim() === '' &&
       statusFilter === 'all' &&
       fromDate === '' &&
       toDate === '' &&
@@ -296,7 +301,7 @@ export function useLogsPageState() {
       statusFilter === 'error' &&
       endpointFilter === 'all' &&
       providerFilter === 'all' &&
-      modelFilter.trim() === '' &&
+      appliedModelFilter.trim() === '' &&
       fromDate === '' &&
       toDate === '' &&
       selectedApiKeys.length === 0
@@ -307,7 +312,7 @@ export function useLogsPageState() {
       isSameDateFilter(fromDate, toDate, todayString) &&
       endpointFilter === 'all' &&
       providerFilter === 'all' &&
-      modelFilter.trim() === '' &&
+      appliedModelFilter.trim() === '' &&
       statusFilter === 'all' &&
       selectedApiKeys.length === 0
     ) {
@@ -316,7 +321,7 @@ export function useLogsPageState() {
     if (
       endpointFilter === 'anthropic' &&
       providerFilter === 'all' &&
-      modelFilter.trim() === '' &&
+      appliedModelFilter.trim() === '' &&
       statusFilter === 'all' &&
       fromDate === '' &&
       toDate === '' &&
@@ -327,7 +332,7 @@ export function useLogsPageState() {
     if (
       endpointFilter === 'openai' &&
       providerFilter === 'all' &&
-      modelFilter.trim() === '' &&
+      appliedModelFilter.trim() === '' &&
       statusFilter === 'all' &&
       fromDate === '' &&
       toDate === '' &&
@@ -336,7 +341,7 @@ export function useLogsPageState() {
       return 'openai'
     }
     return null
-  }, [endpointFilter, fromDate, modelFilter, providerFilter, selectedApiKeys.length, statusFilter, toDate, todayString])
+  }, [appliedModelFilter, endpointFilter, fromDate, providerFilter, selectedApiKeys.length, statusFilter, toDate, todayString])
 
   const handleResetFilters = useCallback(() => {
     setProviderFilter('all')
@@ -378,14 +383,23 @@ export function useLogsPageState() {
   })
 
   const handleOpenDetail = useCallback((id: number) => {
+    queryClient.removeQueries({ queryKey: ['logs', 'detail'], type: 'inactive' })
     setSelectedLogId(id)
     setIsDetailOpen(true)
-  }, [])
+  }, [queryClient])
 
   const handleCloseDetail = useCallback(() => {
     setIsDetailOpen(false)
-    setSelectedLogId(null)
   }, [])
+
+  useEffect(() => {
+    if (isDetailOpen || selectedLogId === null) {
+      return
+    }
+
+    queryClient.removeQueries({ queryKey: queryKeys.logs.detail(selectedLogId), exact: true })
+    setSelectedLogId(null)
+  }, [isDetailOpen, queryClient, selectedLogId])
 
   return {
     activeFilters,
