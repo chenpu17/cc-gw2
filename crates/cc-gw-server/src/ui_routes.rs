@@ -1,6 +1,12 @@
 use super::*;
 
-pub(super) async fn root_redirect() -> Response {
+pub(super) async fn root_entry(State(state): State<AppState>) -> Response {
+    if state.ui_root.is_some() {
+        let response = serve_from_ui(&state, "landing.html", false).await;
+        if response.status() != StatusCode::NOT_FOUND {
+            return response;
+        }
+    }
     legacy_redirect("/ui/")
 }
 
@@ -14,6 +20,48 @@ pub(super) fn legacy_redirect(location: &str) -> Response {
 
 pub(super) async fn health() -> Json<serde_json::Value> {
     Json(json!({ "status": "ok" }))
+}
+
+pub(super) async fn robots_txt() -> Response {
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        "User-agent: *\nAllow: /\nSitemap: /sitemap.xml\n",
+    )
+        .into_response()
+}
+
+pub(super) async fn sitemap_xml(headers: HeaderMap) -> Response {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("127.0.0.1");
+    let base = format!("http://{host}");
+    let body = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n\
+  <url>\n\
+    <loc>{base}/</loc>\n\
+  </url>\n\
+  <url>\n\
+    <loc>{base}/ui/</loc>\n\
+  </url>\n\
+</urlset>\n"
+    );
+
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/xml; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        body,
+    )
+        .into_response()
 }
 
 pub(super) async fn anthropic_event_logging_batch() -> StatusCode {
@@ -54,6 +102,22 @@ pub(super) async fn favicon(State(state): State<AppState>) -> Response {
         return StatusCode::NO_CONTENT.into_response();
     }
     response
+}
+
+pub(super) async fn manifest(State(state): State<AppState>) -> Response {
+    serve_from_ui(&state, "site.webmanifest", false).await
+}
+
+pub(super) async fn root_public_file(
+    State(state): State<AppState>,
+    AxumPath(filename): AxumPath<String>,
+) -> Response {
+    let trimmed = filename.trim();
+    if trimmed.is_empty() || trimmed.contains('/') || trimmed.contains('\\') {
+        return (StatusCode::BAD_REQUEST, "invalid path").into_response();
+    }
+
+    serve_from_ui(&state, trimmed, false).await
 }
 
 pub(super) async fn serve_from_ui(
@@ -128,7 +192,7 @@ pub(super) async fn serve_file(path: &Path) -> Response {
                 }
                 Some("js") | Some("css") | Some("woff") | Some("woff2") | Some("ttf")
                 | Some("otf") | Some("ico") | Some("svg") | Some("png") | Some("jpg")
-                | Some("jpeg") | Some("webp") => {
+                | Some("jpeg") | Some("webp") | Some("webmanifest") => {
                     headers.insert(
                         header::CACHE_CONTROL,
                         HeaderValue::from_static("public, max-age=31536000, immutable"),

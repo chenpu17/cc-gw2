@@ -30,9 +30,10 @@ use cc_gw_core::{
         GatewayConfig, GatewayPaths, RoutingPreset, load_or_init_config, save_config,
     },
     convert::{
-        anthropic_request_to_openai_chat, anthropic_request_to_openai_response,
-        anthropic_response_to_openai_chat, anthropic_response_to_openai_response,
-        openai_chat_request_to_anthropic, openai_chat_response_to_anthropic,
+        anthropic_error_to_openai, anthropic_request_to_openai_chat,
+        anthropic_request_to_openai_response, anthropic_response_to_openai_chat,
+        anthropic_response_to_openai_response, openai_chat_request_to_anthropic,
+        openai_chat_response_to_anthropic, openai_error_to_anthropic,
         openai_responses_request_to_anthropic, openai_responses_response_to_anthropic,
     },
     events::{RecordEventInput, list_events, record_event},
@@ -45,10 +46,15 @@ use cc_gw_core::{
         get_recent_throughput_metrics, increment_daily_metrics, insert_request_log, query_logs,
         upsert_request_payload,
     },
-    provider::{ProviderProtocol, ProxyRequest, forward_request},
+    provider::{
+        ProviderProtocol, ProxyRequest, forward_request, provider_prefers_anthropic_protocol,
+    },
     routing::{GatewayEndpoint, resolve_route},
     storage::initialize_database,
-    stream::{CrossProtocolStreamTransformer, SseStreamObserver, materialize_stream_response},
+    stream::{
+        CrossProtocolStreamTransformer, SseStreamObserver, materialize_stream_response,
+        usage_stats_from_payload,
+    },
     ui::resolve_web_dist,
 };
 use futures_util::TryStreamExt;
@@ -194,8 +200,11 @@ struct StreamingLogContext {
     stream: bool,
 }
 
-fn extract_provider_test_sample(provider_type: Option<&str>, payload: &Value) -> Option<String> {
-    let sample = if matches!(provider_type, Some("anthropic")) {
+fn extract_provider_test_sample(
+    prefers_anthropic_protocol: bool,
+    payload: &Value,
+) -> Option<String> {
+    let sample = if prefers_anthropic_protocol {
         payload
             .get("content")
             .and_then(Value::as_array)
@@ -344,8 +353,11 @@ async fn main() -> Result<()> {
 
 fn build_router(state: AppState) -> Router {
     Router::new()
-        .route("/", get(ui_routes::root_redirect))
+        .route("/", get(ui_routes::root_entry))
         .route("/health", get(ui_routes::health))
+        .route("/robots.txt", get(ui_routes::robots_txt))
+        .route("/sitemap.xml", get(ui_routes::sitemap_xml))
+        .route("/site.webmanifest", get(ui_routes::manifest))
         .route("/auth/session", get(auth_routes::auth_session))
         .route("/auth/login", post(auth_routes::auth_login))
         .route("/auth/logout", post(auth_routes::auth_logout))
@@ -482,6 +494,7 @@ fn build_router(state: AppState) -> Router {
         .route("/ui", get(ui_routes::ui_redirect))
         .route("/ui/", get(ui_routes::ui_index))
         .route("/favicon.ico", get(ui_routes::favicon))
+        .route("/{filename}", get(ui_routes::root_public_file))
         .route("/ui/{*path}", get(ui_routes::ui_path))
         .route("/assets/{*path}", get(ui_routes::asset_path))
         .fallback(dynamic_fallback)

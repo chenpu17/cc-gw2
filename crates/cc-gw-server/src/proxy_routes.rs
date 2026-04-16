@@ -558,6 +558,110 @@ fn downgrade_openai_chat_body_for_custom_provider(body: &mut Value) {
     summarize_tool_messages_for_custom_provider(body);
 }
 
+fn summarize_response_input_items_for_custom_provider(body: &mut Value) {
+    let Some(items) = body.get("input").and_then(Value::as_array).cloned() else {
+        return;
+    };
+
+    let mut next_items = Vec::with_capacity(items.len());
+    for item in items {
+        let Some(object) = item.as_object() else {
+            next_items.push(item);
+            continue;
+        };
+
+        match object.get("type").and_then(Value::as_str) {
+            Some("function_call_output") => {
+                let mut content = String::new();
+                if let Some(call_id) = object.get("call_id").and_then(Value::as_str) {
+                    append_text_with_spacing(&mut content, call_id);
+                }
+                if let Some(output) = object.get("output") {
+                    append_text_with_spacing(&mut content, &stringify_value(output));
+                }
+                next_items.push(json!({
+                    "type": "message",
+                    "role": "user",
+                    "content": [{
+                        "type": "input_text",
+                        "text": content
+                    }]
+                }));
+            }
+            Some("function_call") => {
+                let name = object.get("name").and_then(Value::as_str).unwrap_or("tool");
+                let arguments = object
+                    .get("arguments")
+                    .map(stringify_value)
+                    .unwrap_or_else(|| "{}".to_string());
+                next_items.push(json!({
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{
+                        "type": "output_text",
+                        "text": format!("Requested tool {name}\n{arguments}")
+                    }]
+                }));
+            }
+            Some("message") => {
+                let role = object.get("role").and_then(Value::as_str).unwrap_or("user");
+                let mut content = String::new();
+                for part in object
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    match part.get("type").and_then(Value::as_str) {
+                        Some("input_text") | Some("output_text") | Some("text") => {
+                            let text = part.get("text").and_then(Value::as_str).unwrap_or_default();
+                            append_text_with_spacing(&mut content, text);
+                        }
+                        Some("function_call") | Some("tool_use") => {
+                            let name = part.get("name").and_then(Value::as_str).unwrap_or("tool");
+                            let arguments = part
+                                .get("arguments")
+                                .or_else(|| part.get("input"))
+                                .map(stringify_value)
+                                .unwrap_or_else(|| "{}".to_string());
+                            append_text_with_spacing(
+                                &mut content,
+                                &format!("Requested tool {name}\n{arguments}"),
+                            );
+                        }
+                        Some("function_call_output") => {
+                            let output =
+                                part.get("output").map(stringify_value).unwrap_or_default();
+                            append_text_with_spacing(&mut content, &output);
+                        }
+                        _ => {}
+                    }
+                }
+                next_items.push(json!({
+                    "type": "message",
+                    "role": role,
+                    "content": [{
+                        "type": if role == "assistant" { "output_text" } else { "input_text" },
+                        "text": content
+                    }]
+                }));
+            }
+            _ => next_items.push(Value::Object(object.clone())),
+        }
+    }
+
+    if let Some(object) = body.as_object_mut() {
+        object.insert("input".to_string(), Value::Array(next_items));
+    }
+}
+
+fn downgrade_openai_responses_body_for_custom_provider(body: &mut Value) {
+    remove_top_level_key(body, "tools");
+    remove_top_level_key(body, "tool_choice");
+    remove_top_level_key(body, "metadata");
+    summarize_response_input_items_for_custom_provider(body);
+}
+
 fn build_request_body_for_target(
     original_body: &Value,
     request_protocol: ProviderProtocol,
@@ -584,11 +688,16 @@ fn build_request_body_for_target(
         remove_top_level_key(&mut converted, "metadata");
     }
 
-    if request_protocol == ProviderProtocol::AnthropicMessages
-        && target_protocol == ProviderProtocol::OpenAiChatCompletions
-        && !provider_supports_tools(provider_type)
-    {
-        downgrade_openai_chat_body_for_custom_provider(&mut converted);
+    if !provider_supports_tools(provider_type) {
+        match target_protocol {
+            ProviderProtocol::OpenAiChatCompletions => {
+                downgrade_openai_chat_body_for_custom_provider(&mut converted);
+            }
+            ProviderProtocol::OpenAiResponses => {
+                downgrade_openai_responses_body_for_custom_provider(&mut converted);
+            }
+            ProviderProtocol::AnthropicMessages => {}
+        }
     }
 
     converted
@@ -958,8 +1067,7 @@ pub(super) async fn proxy_standard_request(
     )
     .ok();
     let provider_type = provider_type_name(&target.provider);
-    let provider_is_anthropic = provider_type == "anthropic";
-    let target_protocol = if provider_is_anthropic {
+    let target_protocol = if provider_prefers_anthropic_protocol(&target.provider) {
         ProviderProtocol::AnthropicMessages
     } else {
         match protocol {
@@ -1021,9 +1129,10 @@ pub(super) async fn proxy_standard_request(
 
     match proxy_result {
         Ok(mut response) => {
-            if protocol == ProviderProtocol::AnthropicMessages
-                && target_protocol == ProviderProtocol::OpenAiChatCompletions
-                && response.status().as_u16() >= 400
+            if matches!(
+                target_protocol,
+                ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
+            ) && response.status().as_u16() >= 400
             {
                 if let Some(retry_body) =
                     retry_body_without_metadata_or_tool_choice(&converted_request_body)
@@ -1275,37 +1384,21 @@ async fn into_converted_response(
     network_recorder: NetworkByteRecorder,
 ) -> (Response, UsageStats, Option<String>, Option<String>) {
     let status = response.status();
-    if !status.is_success() {
-        let (result, usage, response_payload) =
-            into_proxy_response(response, true, network_recorder).await;
-        return (result, usage, None, response_payload);
-    }
-
     let headers = response.headers().clone();
     let body_bytes = match response.bytes().await {
         Ok(bytes) => bytes,
         Err(error) => {
-            let client_payload = serde_json::to_string(&json!({
-                "error": {
-                    "message": format!("failed to read upstream response: {error}")
-                }
-            }))
-            .ok();
-            return (
-                json_response_with_network(
-                    &network_recorder.state,
-                    &network_recorder.endpoint_id,
-                    StatusCode::BAD_GATEWAY,
-                    &json!({
-                        "error": {
-                            "message": format!("failed to read upstream response: {error}")
-                        }
-                    }),
-                ),
-                UsageStats::default(),
-                None,
-                client_payload,
+            let payload = protocol_error_payload(
+                request_protocol,
+                &format!("failed to read upstream response: {error}"),
             );
+            let (result, client_payload) = build_json_response(
+                StatusCode::BAD_GATEWAY,
+                &headers,
+                &payload,
+                &network_recorder,
+            );
+            return (result, UsageStats::default(), None, client_payload);
         }
     };
     let upstream_payload = Some(String::from_utf8_lossy(&body_bytes).to_string());
@@ -1313,23 +1406,18 @@ async fn into_converted_response(
     let payload: Value = match serde_json::from_slice(&body_bytes) {
         Ok(payload) => payload,
         Err(error) => {
-            let client_payload = serde_json::to_string(&json!({
-                "error": {
-                    "message": format!("failed to decode upstream JSON: {error}")
-                }
-            }))
-            .ok();
+            let payload = protocol_error_payload(
+                request_protocol,
+                &format!("failed to decode upstream JSON: {error}"),
+            );
+            let (result, client_payload) = build_json_response(
+                StatusCode::BAD_GATEWAY,
+                &headers,
+                &payload,
+                &network_recorder,
+            );
             return (
-                json_response_with_network(
-                    &network_recorder.state,
-                    &network_recorder.endpoint_id,
-                    StatusCode::BAD_GATEWAY,
-                    &json!({
-                        "error": {
-                            "message": format!("failed to decode upstream JSON: {error}")
-                        }
-                    }),
-                ),
+                result,
                 UsageStats::default(),
                 upstream_payload,
                 client_payload,
@@ -1347,43 +1435,29 @@ async fn into_converted_response(
     };
 
     let usage = extract_usage_stats(&payload);
-    let converted = match (request_protocol, target_protocol) {
-        (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions) => {
-            openai_chat_response_to_anthropic(&payload, model)
+    let converted = if status.is_success() {
+        match (request_protocol, target_protocol) {
+            (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions) => {
+                openai_chat_response_to_anthropic(&payload, model)
+            }
+            (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiResponses) => {
+                openai_responses_response_to_anthropic(&payload, model)
+            }
+            (ProviderProtocol::OpenAiChatCompletions, ProviderProtocol::AnthropicMessages) => {
+                anthropic_response_to_openai_chat(&payload, model)
+            }
+            (ProviderProtocol::OpenAiResponses, ProviderProtocol::AnthropicMessages) => {
+                anthropic_response_to_openai_response(&payload, model)
+            }
+            _ => payload.clone(),
         }
-        (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiResponses) => {
-            openai_responses_response_to_anthropic(&payload, model)
-        }
-        (ProviderProtocol::OpenAiChatCompletions, ProviderProtocol::AnthropicMessages) => {
-            anthropic_response_to_openai_chat(&payload, model)
-        }
-        (ProviderProtocol::OpenAiResponses, ProviderProtocol::AnthropicMessages) => {
-            anthropic_response_to_openai_response(&payload, model)
-        }
-        _ => payload,
+    } else {
+        convert_error_payload(&payload, request_protocol, target_protocol)
     };
 
-    let response_payload = serde_json::to_string(&converted).ok();
-    if let Some(payload) = response_payload.as_deref() {
-        network_recorder.record_egress(payload.len());
-    }
-    let mut builder = Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, "application/json");
-    for (name, value) in headers.iter() {
-        if should_forward_upstream_observability_header(name) {
-            builder = builder.header(name, value);
-        }
-    }
-    (
-        match builder.body(Body::from(response_payload.clone().unwrap_or_default())) {
-            Ok(response) => response,
-            Err(_) => (StatusCode::BAD_GATEWAY, "invalid converted response").into_response(),
-        },
-        usage,
-        upstream_payload,
-        response_payload,
-    )
+    let (result, response_payload) =
+        build_json_response(status, &headers, &converted, &network_recorder);
+    (result, usage, upstream_payload, response_payload)
 }
 
 async fn into_streaming_converted_response(
@@ -1401,18 +1475,25 @@ async fn into_streaming_converted_response(
             .as_ref()
             .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
             .unwrap_or_default();
-        let (result, usage, response_payload) =
-            into_proxy_response(response, true, network_recorder).await;
+        let (result, usage, upstream_response_payload, client_response_payload) =
+            into_converted_response(
+                response,
+                request_protocol,
+                target_protocol,
+                requested_model,
+                network_recorder,
+            )
+            .await;
         finalize_stream_logging(
             log_context,
-            target_protocol,
+            request_protocol,
             status.as_u16() as i64,
             latency_ms,
             usage,
             None,
-            None,
-            None,
-            response_payload,
+            Some(target_protocol),
+            upstream_response_payload,
+            client_response_payload,
             None,
         );
         drop(activity_guard);
@@ -1428,7 +1509,39 @@ async fn into_streaming_converted_response(
     let headers = response.headers().clone();
     let mut upstream = response.bytes_stream();
     let mut transformer =
-        CrossProtocolStreamTransformer::new(request_protocol, target_protocol, model);
+        match CrossProtocolStreamTransformer::new(request_protocol, target_protocol, model) {
+            Ok(transformer) => transformer,
+            Err(error) => {
+                let latency_ms = log_context
+                    .as_ref()
+                    .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
+                    .unwrap_or_default();
+                let payload = protocol_error_payload(
+                    request_protocol,
+                    &format!("failed to initialize streaming transformer: {error}"),
+                );
+                let (result, client_response_payload) = build_json_response(
+                    StatusCode::BAD_GATEWAY,
+                    &headers,
+                    &payload,
+                    &network_recorder,
+                );
+                finalize_stream_logging(
+                    log_context,
+                    request_protocol,
+                    StatusCode::BAD_GATEWAY.as_u16() as i64,
+                    latency_ms,
+                    UsageStats::default(),
+                    None,
+                    Some(target_protocol),
+                    None,
+                    client_response_payload,
+                    Some(error.to_string()),
+                );
+                drop(activity_guard);
+                return result;
+            }
+        };
     let mut observer = SseStreamObserver::new(target_protocol);
     let status_code = status.as_u16() as i64;
     let capture_response = log_context
@@ -1564,6 +1677,72 @@ async fn into_proxy_response(
         UsageStats::default(),
         None,
     )
+}
+
+fn protocol_error_payload(protocol: ProviderProtocol, message: &str) -> Value {
+    match protocol {
+        ProviderProtocol::AnthropicMessages => json!({
+            "type": "error",
+            "error": {
+                "type": "api_error",
+                "message": message
+            }
+        }),
+        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => json!({
+            "error": {
+                "message": message,
+                "type": "api_error",
+                "code": Value::Null,
+                "param": Value::Null
+            }
+        }),
+    }
+}
+
+fn convert_error_payload(
+    payload: &Value,
+    request_protocol: ProviderProtocol,
+    target_protocol: ProviderProtocol,
+) -> Value {
+    match (request_protocol, target_protocol) {
+        (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions)
+        | (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiResponses) => {
+            openai_error_to_anthropic(payload)
+        }
+        (ProviderProtocol::OpenAiChatCompletions, ProviderProtocol::AnthropicMessages)
+        | (ProviderProtocol::OpenAiResponses, ProviderProtocol::AnthropicMessages) => {
+            anthropic_error_to_openai(payload)
+        }
+        _ => payload.clone(),
+    }
+}
+
+fn build_json_response(
+    status: StatusCode,
+    headers: &HeaderMap,
+    payload: &Value,
+    network_recorder: &NetworkByteRecorder,
+) -> (Response, Option<String>) {
+    let response_payload = serde_json::to_string(payload).ok();
+    if let Some(serialized) = response_payload.as_deref() {
+        network_recorder.record_egress(serialized.len());
+    }
+
+    let mut builder = Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "application/json");
+    for (name, value) in headers.iter() {
+        if should_forward_upstream_observability_header(name) {
+            builder = builder.header(name, value);
+        }
+    }
+
+    let response = match builder.body(Body::from(response_payload.clone().unwrap_or_default())) {
+        Ok(response) => response,
+        Err(_) => (StatusCode::BAD_GATEWAY, "invalid converted response").into_response(),
+    };
+
+    (response, response_payload)
 }
 
 async fn into_streaming_proxy_response(
@@ -1727,64 +1906,7 @@ fn record_profiler_turn(
 }
 
 fn extract_usage_stats(payload: &Value) -> UsageStats {
-    let usage = payload
-        .get("usage")
-        .or_else(|| payload.get("response").and_then(|value| value.get("usage")))
-        .or_else(|| payload.get("message").and_then(|value| value.get("usage")))
-        .unwrap_or(payload);
-    let raw_input_tokens = usage
-        .get("input_tokens")
-        .or_else(|| usage.get("prompt_tokens"))
-        .and_then(Value::as_i64)
-        .unwrap_or(0);
-    let output_tokens = usage
-        .get("output_tokens")
-        .or_else(|| usage.get("completion_tokens"))
-        .and_then(Value::as_i64)
-        .unwrap_or(0);
-    let cache_read_tokens = usage
-        .get("cache_read_input_tokens")
-        .or_else(|| usage.get("cache_read_tokens"))
-        .or_else(|| usage.get("cached_tokens"))
-        .or_else(|| {
-            usage
-                .get("prompt_tokens_details")
-                .and_then(|details| details.get("cached_tokens"))
-        })
-        .or_else(|| {
-            usage
-                .get("input_tokens_details")
-                .and_then(|details| details.get("cached_tokens"))
-        })
-        .and_then(Value::as_i64)
-        .unwrap_or(0);
-    let cache_creation_tokens = usage
-        .get("cache_creation_input_tokens")
-        .or_else(|| usage.get("cache_creation_tokens"))
-        .and_then(Value::as_i64)
-        .unwrap_or(0);
-    let has_anthropic_cache_fields = usage.get("cache_read_input_tokens").is_some()
-        || usage.get("cache_creation_input_tokens").is_some();
-    let has_openai_usage_markers = usage.get("prompt_tokens").is_some()
-        || usage.get("completion_tokens").is_some()
-        || usage.get("cached_tokens").is_some()
-        || usage.get("cache_read_tokens").is_some()
-        || usage.get("cache_creation_tokens").is_some()
-        || usage.get("prompt_tokens_details").is_some()
-        || usage.get("input_tokens_details").is_some();
-    let input_tokens = if has_anthropic_cache_fields && !has_openai_usage_markers {
-        raw_input_tokens + cache_read_tokens + cache_creation_tokens
-    } else {
-        raw_input_tokens
-    };
-    let cached_tokens = cache_read_tokens;
-    UsageStats {
-        input_tokens,
-        output_tokens,
-        cached_tokens,
-        cache_read_tokens,
-        cache_creation_tokens,
-    }
+    usage_stats_from_payload(payload)
 }
 
 fn compute_tpot_ms(total_latency_ms: i64, output_tokens: i64, ttft_ms: Option<i64>) -> Option<f64> {

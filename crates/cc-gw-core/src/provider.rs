@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use reqwest::{
     Client,
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -237,15 +237,19 @@ fn build_headers(
     headers
 }
 
-fn protocol_allowed(provider: &ProviderConfig, protocol: ProviderProtocol) -> bool {
-    match protocol {
-        ProviderProtocol::AnthropicMessages => {
-            matches!(provider.provider_type.as_deref(), Some("anthropic"))
-        }
-        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => {
-            !matches!(provider.provider_type.as_deref(), Some("anthropic"))
-        }
+pub fn provider_prefers_anthropic_protocol(provider: &ProviderConfig) -> bool {
+    if matches!(provider.provider_type.as_deref(), Some("anthropic")) {
+        return true;
     }
+
+    if provider
+        .extra_headers
+        .keys()
+        .any(|key| key.eq_ignore_ascii_case("anthropic-version"))
+    {
+        return true;
+    }
+    false
 }
 
 pub async fn forward_request(
@@ -254,10 +258,6 @@ pub async fn forward_request(
     protocol: ProviderProtocol,
     request: ProxyRequest,
 ) -> Result<reqwest::Response> {
-    if !protocol_allowed(provider, protocol) {
-        bail!("当前 provider 暂不支持该协议，后续需通过跨协议转换适配");
-    }
-
     let mut payload = request.body;
     if let Some(object) = payload.as_object_mut() {
         if object.get("model").and_then(Value::as_str) != Some(request.model.as_str()) {
@@ -293,7 +293,8 @@ pub async fn forward_request(
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderConfig, ProviderProtocol, apply_query_string, build_headers, resolve_endpoint,
+        ProviderConfig, ProviderProtocol, apply_query_string, build_headers,
+        provider_prefers_anthropic_protocol, resolve_endpoint,
     };
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
@@ -505,5 +506,35 @@ mod tests {
             resolve_endpoint("http://localhost/v4", ProviderProtocol::AnthropicMessages),
             "http://localhost/v4/messages"
         );
+    }
+
+    #[test]
+    fn provider_prefers_anthropic_protocol_for_explicit_anthropic_signals() {
+        let mut provider = ProviderConfig {
+            base_url: "https://example.com/proxy".to_string(),
+            extra_headers: [("Anthropic-Version".to_string(), "2023-06-01".to_string())]
+                .into_iter()
+                .collect(),
+            ..ProviderConfig::default()
+        };
+        assert!(provider_prefers_anthropic_protocol(&provider));
+
+        provider = ProviderConfig {
+            provider_type: Some("anthropic".to_string()),
+            base_url: "https://example.com".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert!(provider_prefers_anthropic_protocol(&provider));
+    }
+
+    #[test]
+    fn provider_prefers_openai_protocol_without_anthropic_hints() {
+        let provider = ProviderConfig {
+            provider_type: Some("openai".to_string()),
+            base_url: "https://example.com/v1".to_string(),
+            ..ProviderConfig::default()
+        };
+
+        assert!(!provider_prefers_anthropic_protocol(&provider));
     }
 }

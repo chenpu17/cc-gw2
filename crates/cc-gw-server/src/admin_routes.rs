@@ -318,8 +318,8 @@ pub(super) async fn api_provider_test(
         }
     }
 
-    let (protocol, request_body) = if matches!(provider.provider_type.as_deref(), Some("anthropic"))
-    {
+    let prefers_anthropic_protocol = provider_prefers_anthropic_protocol(&provider);
+    let (protocol, request_body) = if prefers_anthropic_protocol {
         (
             ProviderProtocol::AnthropicMessages,
             json!({
@@ -390,8 +390,8 @@ pub(super) async fn api_provider_test(
             }
             let parsed_json = serde_json::from_str::<Value>(&text).ok();
             let sample = if let Some(payload) = parsed_json.as_ref() {
-                extract_provider_test_sample(provider.provider_type.as_deref(), payload)
-            } else if !matches!(provider.provider_type.as_deref(), Some("anthropic")) {
+                extract_provider_test_sample(prefers_anthropic_protocol, payload)
+            } else if !prefers_anthropic_protocol {
                 let fallback = text.trim();
                 if fallback.is_empty() {
                     None

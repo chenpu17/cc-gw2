@@ -104,6 +104,283 @@ fn stringify_value(value: &Value) -> String {
     }
 }
 
+fn anthropic_source_to_openai_image_url(source: &Value) -> Option<String> {
+    match source.get("type").and_then(Value::as_str) {
+        Some("url") => source
+            .get("url")
+            .and_then(Value::as_str)
+            .map(ToString::to_string),
+        Some("base64") => {
+            let media_type = source.get("media_type").and_then(Value::as_str)?;
+            let data = source.get("data").and_then(Value::as_str)?;
+            Some(format!("data:{media_type};base64,{data}"))
+        }
+        _ => None,
+    }
+}
+
+fn anthropic_source_to_openai_file(source: &Value, filename: Option<&str>) -> Option<Value> {
+    let mut file = Map::new();
+    match source.get("type").and_then(Value::as_str) {
+        Some("url") => {
+            let url = source.get("url").and_then(Value::as_str)?;
+            file.insert("file_url".to_string(), Value::String(url.to_string()));
+        }
+        Some("base64") => {
+            let data = source.get("data").and_then(Value::as_str)?;
+            file.insert("file_data".to_string(), Value::String(data.to_string()));
+        }
+        Some("file") => {
+            let file_id = source.get("file_id").and_then(Value::as_str)?;
+            file.insert("file_id".to_string(), Value::String(file_id.to_string()));
+        }
+        _ => return None,
+    }
+    if let Some(filename) = filename.filter(|value| !value.trim().is_empty()) {
+        file.insert("filename".to_string(), Value::String(filename.to_string()));
+    }
+    Some(Value::Object(file))
+}
+
+fn anthropic_block_to_openai_chat_part(block: &Value) -> Option<Value> {
+    match block.get("type").and_then(Value::as_str) {
+        Some("text") | Some("input_text") | Some("output_text") => Some(json!({
+            "type": "text",
+            "text": extract_text(block)
+        })),
+        Some("image") => {
+            let source = block.get("source")?;
+            let url = anthropic_source_to_openai_image_url(source)?;
+            Some(json!({
+                "type": "image_url",
+                "image_url": {
+                    "url": url,
+                    "detail": "auto"
+                }
+            }))
+        }
+        Some("document") => {
+            let source = block.get("source")?;
+            let file = anthropic_source_to_openai_file(
+                source,
+                block.get("title").and_then(Value::as_str),
+            )?;
+            Some(json!({
+                "type": "file",
+                "file": file
+            }))
+        }
+        _ => None,
+    }
+}
+
+fn anthropic_block_to_openai_response_content_part(block: &Value) -> Option<Value> {
+    match block.get("type").and_then(Value::as_str) {
+        Some("text") | Some("input_text") => Some(json!({
+            "type": "input_text",
+            "text": extract_text(block)
+        })),
+        Some("output_text") => Some(json!({
+            "type": "output_text",
+            "text": extract_text(block)
+        })),
+        Some("image") => {
+            let source = block.get("source")?;
+            let image_url = anthropic_source_to_openai_image_url(source)?;
+            Some(json!({
+                "type": "input_image",
+                "image_url": image_url,
+                "detail": "auto"
+            }))
+        }
+        Some("document") => {
+            let source = block.get("source")?;
+            let file = anthropic_source_to_openai_file(
+                source,
+                block.get("title").and_then(Value::as_str),
+            )?;
+            let mut object = Map::new();
+            object.insert("type".to_string(), Value::String("input_file".to_string()));
+            if let Some(file_id) = file.get("file_id").and_then(Value::as_str) {
+                object.insert("file_id".to_string(), Value::String(file_id.to_string()));
+            }
+            if let Some(file_url) = file.get("file_url").and_then(Value::as_str) {
+                object.insert("file_url".to_string(), Value::String(file_url.to_string()));
+            }
+            if let Some(file_data) = file.get("file_data").and_then(Value::as_str) {
+                object.insert(
+                    "file_data".to_string(),
+                    Value::String(file_data.to_string()),
+                );
+            }
+            if let Some(filename) = file.get("filename").and_then(Value::as_str) {
+                object.insert("filename".to_string(), Value::String(filename.to_string()));
+            }
+            Some(Value::Object(object))
+        }
+        _ => None,
+    }
+}
+
+fn openai_image_url_to_anthropic_source(image_url: &Value) -> Option<Value> {
+    let url = image_url.get("url").and_then(Value::as_str)?;
+    if let Some((prefix, data)) = url.split_once(";base64,") {
+        let media_type = prefix.strip_prefix("data:")?;
+        Some(json!({
+            "type": "base64",
+            "media_type": media_type,
+            "data": data
+        }))
+    } else {
+        Some(json!({
+            "type": "url",
+            "url": url
+        }))
+    }
+}
+
+fn openai_file_to_anthropic_document(file: &Value) -> Option<Value> {
+    let filename = file.get("filename").and_then(Value::as_str);
+    let source = if let Some(file_id) = file.get("file_id").and_then(Value::as_str) {
+        Some(json!({
+            "type": "file",
+            "file_id": file_id
+        }))
+    } else if let Some(file_url) = file.get("file_url").and_then(Value::as_str) {
+        Some(json!({
+            "type": "url",
+            "url": file_url
+        }))
+    } else if let Some(file_data) = file.get("file_data").and_then(Value::as_str) {
+        let media_type = filename
+            .and_then(|name| {
+                name.to_ascii_lowercase()
+                    .ends_with(".pdf")
+                    .then_some("application/pdf")
+            })
+            .unwrap_or("application/pdf");
+        Some(json!({
+            "type": "base64",
+            "media_type": media_type,
+            "data": file_data
+        }))
+    } else {
+        None
+    }?;
+
+    let mut block = Map::new();
+    block.insert("type".to_string(), Value::String("document".to_string()));
+    block.insert("source".to_string(), source);
+    if let Some(filename) = filename {
+        block.insert("title".to_string(), Value::String(filename.to_string()));
+    }
+    Some(Value::Object(block))
+}
+
+fn openai_chat_content_part_to_anthropic_block(part: &Value) -> Option<Value> {
+    match part.get("type").and_then(Value::as_str) {
+        Some("text") => Some(json!({
+            "type": "text",
+            "text": part.get("text").and_then(Value::as_str).unwrap_or_default()
+        })),
+        Some("image_url") => Some(json!({
+            "type": "image",
+            "source": openai_image_url_to_anthropic_source(part.get("image_url")?)?
+        })),
+        Some("file") => openai_file_to_anthropic_document(part.get("file")?),
+        _ => None,
+    }
+}
+
+fn openai_response_content_part_to_anthropic_block(part: &Value) -> Option<Value> {
+    match part.get("type").and_then(Value::as_str) {
+        Some("input_text") | Some("output_text") | Some("text") => Some(json!({
+            "type": "text",
+            "text": part.get("text").and_then(Value::as_str).unwrap_or_default()
+        })),
+        Some("input_image") => Some(json!({
+            "type": "image",
+            "source": openai_image_url_to_anthropic_source(&json!({
+                "url": part.get("image_url").and_then(Value::as_str).unwrap_or_default()
+            }))?
+        })),
+        Some("input_file") => {
+            let mut file = Map::new();
+            if let Some(value) = part.get("file_id").cloned() {
+                file.insert("file_id".to_string(), value);
+            }
+            if let Some(value) = part.get("file_url").cloned() {
+                file.insert("file_url".to_string(), value);
+            }
+            if let Some(value) = part.get("file_data").cloned() {
+                file.insert("file_data".to_string(), value);
+            }
+            if let Some(value) = part.get("filename").cloned() {
+                file.insert("filename".to_string(), value);
+            }
+            openai_file_to_anthropic_document(&Value::Object(file))
+        }
+        _ => None,
+    }
+}
+
+fn anthropic_reasoning_text(block: &Value) -> Option<String> {
+    match block.get("type").and_then(Value::as_str) {
+        Some("thinking") => block
+            .get("thinking")
+            .or_else(|| block.get("text"))
+            .and_then(Value::as_str)
+            .map(ToString::to_string),
+        Some("redacted_thinking") => Some("[redacted thinking]".to_string()),
+        _ => None,
+    }
+}
+
+pub fn openai_error_to_anthropic(body: &Value) -> Value {
+    let error = body.get("error").unwrap_or(body);
+    let message = error
+        .get("message")
+        .and_then(Value::as_str)
+        .or_else(|| error.as_str())
+        .unwrap_or("upstream request failed");
+    let error_type = error
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("api_error");
+
+    json!({
+        "type": "error",
+        "error": {
+            "type": error_type,
+            "message": message
+        }
+    })
+}
+
+pub fn anthropic_error_to_openai(body: &Value) -> Value {
+    let error = body.get("error").unwrap_or(body);
+    let message = error
+        .get("message")
+        .and_then(Value::as_str)
+        .or_else(|| body.get("message").and_then(Value::as_str))
+        .or_else(|| error.as_str())
+        .unwrap_or("upstream request failed");
+    let error_type = error
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("api_error");
+    let code = error.get("code").cloned().unwrap_or(Value::Null);
+
+    json!({
+        "error": {
+            "message": message,
+            "type": error_type,
+            "code": code,
+            "param": Value::Null
+        }
+    })
+}
+
 fn anthropic_tool_choice_to_openai(value: Option<&Value>) -> Option<Value> {
     let tool_choice = value?;
     match tool_choice {
@@ -308,6 +585,7 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
         match role {
             "user" => {
                 let mut text_parts = Vec::new();
+                let mut content_parts = Vec::new();
                 let mut tool_results = Vec::new();
 
                 for block in &content_blocks {
@@ -316,7 +594,16 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
                         "text" | "input_text" => {
                             let text = extract_text(block);
                             if !text.is_empty() {
-                                text_parts.push(text);
+                                text_parts.push(text.clone());
+                                content_parts.push(json!({
+                                    "type": "text",
+                                    "text": text
+                                }));
+                            }
+                        }
+                        "image" | "document" => {
+                            if let Some(part) = anthropic_block_to_openai_chat_part(block) {
+                                content_parts.push(part);
                             }
                         }
                         "tool_result" => {
@@ -333,7 +620,12 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
 
                 messages.extend(tool_results);
                 let user_text = text_parts.join("\n");
-                if !user_text.trim().is_empty() || content_blocks.is_empty() {
+                if !content_parts.is_empty() {
+                    messages.push(json!({
+                        "role": "user",
+                        "content": content_parts
+                    }));
+                } else if !user_text.trim().is_empty() || content_blocks.is_empty() {
                     messages.push(json!({
                         "role": "user",
                         "content": user_text
@@ -342,6 +634,7 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
             }
             "assistant" => {
                 let mut text_parts = Vec::new();
+                let mut reasoning_parts = Vec::new();
                 let mut tool_calls = Vec::new();
 
                 for block in &content_blocks {
@@ -351,6 +644,11 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
                             let text = extract_text(block);
                             if !text.is_empty() {
                                 text_parts.push(text);
+                            }
+                        }
+                        "thinking" | "redacted_thinking" => {
+                            if let Some(text) = anthropic_reasoning_text(block) {
+                                reasoning_parts.push(text);
                             }
                         }
                         "tool_use" => {
@@ -376,6 +674,12 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
                 let mut assistant = Map::new();
                 assistant.insert("role".to_string(), Value::String("assistant".to_string()));
                 assistant.insert("content".to_string(), content);
+                if !reasoning_parts.is_empty() {
+                    assistant.insert(
+                        "reasoning_content".to_string(),
+                        Value::String(reasoning_parts.join("\n")),
+                    );
+                }
                 if !tool_calls.is_empty() {
                     assistant.insert("tool_calls".to_string(), Value::Array(tool_calls));
                 }
@@ -476,9 +780,22 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
             }
             "assistant" => {
                 let mut blocks = Vec::<Value>::new();
-                let text = message.get("content").map(extract_text).unwrap_or_default();
-                if !text.trim().is_empty() {
-                    blocks.push(json!({ "type": "text", "text": text }));
+                if let Some(parts) = message.get("content").and_then(Value::as_array) {
+                    for part in parts {
+                        if let Some(block) = openai_chat_content_part_to_anthropic_block(part) {
+                            blocks.push(block);
+                        }
+                    }
+                } else {
+                    let text = message.get("content").map(extract_text).unwrap_or_default();
+                    if !text.trim().is_empty() {
+                        blocks.push(json!({ "type": "text", "text": text }));
+                    }
+                }
+                if let Some(reasoning) = message.get("reasoning_content").and_then(Value::as_str) {
+                    if !reasoning.trim().is_empty() {
+                        blocks.push(json!({ "type": "thinking", "thinking": reasoning }));
+                    }
                 }
 
                 for tool_call in message
@@ -507,10 +824,21 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
                 }));
             }
             _ => {
-                let text = message.get("content").map(extract_text).unwrap_or_default();
+                let mut blocks = Vec::<Value>::new();
+                if let Some(parts) = message.get("content").and_then(Value::as_array) {
+                    for part in parts {
+                        if let Some(block) = openai_chat_content_part_to_anthropic_block(part) {
+                            blocks.push(block);
+                        }
+                    }
+                }
+                if blocks.is_empty() {
+                    let text = message.get("content").map(extract_text).unwrap_or_default();
+                    blocks.push(json!({ "type": "text", "text": text }));
+                }
                 messages.push(json!({
                     "role": "user",
-                    "content": [{ "type": "text", "text": text }]
+                    "content": blocks
                 }));
             }
         }
@@ -527,6 +855,7 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
     if let Some(max_tokens) = body
         .get("max_output_tokens")
         .cloned()
+        .or_else(|| body.get("max_completion_tokens").cloned())
         .or_else(|| body.get("max_tokens").cloned())
     {
         result.insert("max_tokens".to_string(), max_tokens);
@@ -551,6 +880,9 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
             .is_some_and(|tools| !tools.is_empty()),
     ) {
         result.insert("tool_choice".to_string(), tool_choice);
+    }
+    if let Some(stop_sequences) = body.get("stop").cloned() {
+        result.insert("stop_sequences".to_string(), stop_sequences);
     }
     Value::Object(result)
 }
@@ -614,9 +946,22 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
 
         if role == "assistant" {
             let mut blocks = Vec::<Value>::new();
-            let text = item.get("content").map(extract_text).unwrap_or_default();
-            if !text.trim().is_empty() {
-                blocks.push(json!({ "type": "text", "text": text }));
+            if let Some(parts) = item.get("content").and_then(Value::as_array) {
+                for part in parts {
+                    if let Some(block) = openai_response_content_part_to_anthropic_block(part) {
+                        blocks.push(block);
+                    }
+                }
+            } else {
+                let text = item.get("content").map(extract_text).unwrap_or_default();
+                if !text.trim().is_empty() {
+                    blocks.push(json!({ "type": "text", "text": text }));
+                }
+            }
+            if let Some(reasoning) = item.get("reasoning_content").and_then(Value::as_str) {
+                if !reasoning.trim().is_empty() {
+                    blocks.push(json!({ "type": "thinking", "thinking": reasoning }));
+                }
             }
             for tool_call in item
                 .get("tool_calls")
@@ -644,9 +989,23 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
             continue;
         }
 
+        let mut blocks = Vec::<Value>::new();
+        if let Some(parts) = item.get("content").and_then(Value::as_array) {
+            for part in parts {
+                if let Some(block) = openai_response_content_part_to_anthropic_block(part) {
+                    blocks.push(block);
+                }
+            }
+        }
+        if blocks.is_empty() {
+            blocks.push(json!({
+                "type": "text",
+                "text": item.get("content").map(extract_text).unwrap_or_default()
+            }));
+        }
         messages.push(json!({
             "role": "user",
-            "content": [{ "type": "text", "text": item.get("content").map(extract_text).unwrap_or_default() }]
+            "content": blocks
         }));
     }
 
@@ -668,6 +1027,7 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
     if let Some(max_tokens) = body
         .get("max_output_tokens")
         .cloned()
+        .or_else(|| body.get("max_completion_tokens").cloned())
         .or_else(|| body.get("max_tokens").cloned())
     {
         result.insert("max_tokens".to_string(), max_tokens);
@@ -693,6 +1053,9 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
     ) {
         result.insert("tool_choice".to_string(), tool_choice);
     }
+    if let Some(stop_sequences) = body.get("stop").cloned() {
+        result.insert("stop_sequences".to_string(), stop_sequences);
+    }
     Value::Object(result)
 }
 
@@ -717,37 +1080,30 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
 
         match role {
             "user" => {
-                let mut pending_text_parts = Vec::new();
-                let flush_user_text = |input: &mut Vec<Value>, text_parts: &mut Vec<String>| {
-                    if text_parts.is_empty() {
-                        return;
-                    }
-                    let content = text_parts
-                        .drain(..)
-                        .map(|text| {
-                            json!({
-                                "type": "input_text",
-                                "text": text
-                            })
-                        })
-                        .collect::<Vec<_>>();
-                    input.push(json!({
-                        "type": "message",
-                        "role": "user",
-                        "content": content
-                    }));
-                };
+                let mut pending_content_parts = Vec::<Value>::new();
+                let flush_user_message =
+                    |input: &mut Vec<Value>, content_parts: &mut Vec<Value>| {
+                        if content_parts.is_empty() {
+                            return;
+                        }
+                        input.push(json!({
+                            "type": "message",
+                            "role": "user",
+                            "content": content_parts.drain(..).collect::<Vec<_>>()
+                        }));
+                    };
 
                 for block in &content_blocks {
                     match block.get("type").and_then(Value::as_str).unwrap_or("") {
-                        "text" | "input_text" => {
-                            let text = extract_text(block);
-                            if !text.is_empty() {
-                                pending_text_parts.push(text);
+                        "text" | "input_text" | "image" | "document" => {
+                            if let Some(part) =
+                                anthropic_block_to_openai_response_content_part(block)
+                            {
+                                pending_content_parts.push(part);
                             }
                         }
                         "tool_result" => {
-                            flush_user_text(&mut input, &mut pending_text_parts);
+                            flush_user_message(&mut input, &mut pending_content_parts);
                             input.push(json!({
                                 "type": "function_call_output",
                                 "call_id": block.get("tool_use_id").cloned().unwrap_or(Value::String("tool_result".to_string())),
@@ -765,11 +1121,12 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
                         "content": []
                     }));
                 } else {
-                    flush_user_text(&mut input, &mut pending_text_parts);
+                    flush_user_message(&mut input, &mut pending_content_parts);
                 }
             }
             "assistant" => {
                 let mut pending_text_parts = Vec::new();
+                let mut reasoning_parts = Vec::<String>::new();
                 let flush_assistant_text =
                     |input: &mut Vec<Value>, text_parts: &mut Vec<String>| {
                         if text_parts.is_empty() {
@@ -799,6 +1156,11 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
                                 pending_text_parts.push(text);
                             }
                         }
+                        "thinking" | "redacted_thinking" => {
+                            if let Some(text) = anthropic_reasoning_text(block) {
+                                reasoning_parts.push(text);
+                            }
+                        }
                         "tool_use" => {
                             flush_assistant_text(&mut input, &mut pending_text_parts);
                             let arguments =
@@ -824,6 +1186,18 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
                     }));
                 } else {
                     flush_assistant_text(&mut input, &mut pending_text_parts);
+                    if !reasoning_parts.is_empty() {
+                        let reasoning_content = reasoning_parts.join("\n");
+                        input.push(json!({
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{
+                                "type": "output_text",
+                                "text": reasoning_content
+                            }],
+                            "reasoning_content": reasoning_content
+                        }));
+                    }
                 }
             }
             _ => {}
@@ -904,14 +1278,33 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
         .unwrap_or_else(|| json!({}));
 
     let mut content = Vec::<Value>::new();
-    let text = message
-        .get("content")
-        .map(extract_text)
-        .filter(|text| !text.trim().is_empty())
-        .or_else(|| message.get("refusal").map(extract_text))
-        .unwrap_or_default();
-    if !text.trim().is_empty() {
-        content.push(json!({ "type": "text", "text": text }));
+    let mut reasoning = Vec::<String>::new();
+    if let Some(parts) = message.get("content").and_then(Value::as_array) {
+        for part in parts {
+            if let Some(block) = openai_chat_content_part_to_anthropic_block(part) {
+                content.push(block);
+            }
+        }
+    } else {
+        let text = message
+            .get("content")
+            .map(extract_text)
+            .filter(|text| !text.trim().is_empty())
+            .or_else(|| message.get("refusal").map(extract_text))
+            .unwrap_or_default();
+        if !text.trim().is_empty() {
+            content.push(json!({ "type": "text", "text": text }));
+        }
+    }
+    if let Some(refusal) = message.get("refusal").map(extract_text) {
+        if !refusal.trim().is_empty() {
+            content.push(json!({ "type": "text", "text": refusal }));
+        }
+    }
+    if let Some(reasoning_content) = message.get("reasoning_content").and_then(Value::as_str) {
+        if !reasoning_content.trim().is_empty() {
+            reasoning.push(reasoning_content.to_string());
+        }
     }
     for tool_call in message
         .get("tool_calls")
@@ -930,6 +1323,12 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
             "id": tool_call.get("id").cloned().unwrap_or(Value::String("tool".to_string())),
             "name": tool_call.get("function").and_then(|value| value.get("name")).cloned().unwrap_or(Value::String("tool".to_string())),
             "input": arguments
+        }));
+    }
+    if !reasoning.is_empty() {
+        content.push(json!({
+            "type": "thinking",
+            "thinking": reasoning.join("\n")
         }));
     }
 
@@ -977,6 +1376,7 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
 pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Value {
     let mut content = Vec::<Value>::new();
     let mut saw_refusal = false;
+    let mut reasoning = Vec::<String>::new();
 
     if let Some(output) = body.get("output").and_then(Value::as_array) {
         for item in output {
@@ -1015,6 +1415,32 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
                             "input": input
                         }));
                     }
+                    "input_image" | "input_file" => {
+                        if let Some(content_block) =
+                            openai_response_content_part_to_anthropic_block(block)
+                        {
+                            content.push(content_block);
+                        }
+                    }
+                    "image_url" | "file" => {
+                        if let Some(content_block) =
+                            openai_chat_content_part_to_anthropic_block(block)
+                        {
+                            content.push(content_block);
+                        }
+                    }
+                    "reasoning" => {
+                        let summary = block
+                            .get("summary")
+                            .and_then(Value::as_array)
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|item| item.get("text").and_then(Value::as_str))
+                            .collect::<Vec<_>>();
+                        if !summary.is_empty() {
+                            reasoning.push(summary.join("\n"));
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1030,6 +1456,17 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
         if !text.trim().is_empty() {
             content.push(json!({ "type": "text", "text": text }));
         }
+    }
+    if let Some(reasoning_content) = body.get("reasoning_content").and_then(Value::as_str) {
+        if !reasoning_content.trim().is_empty() {
+            reasoning.push(reasoning_content.to_string());
+        }
+    }
+    if !reasoning.is_empty() {
+        content.push(json!({
+            "type": "thinking",
+            "thinking": reasoning.join("\n")
+        }));
     }
 
     let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
@@ -1087,6 +1524,7 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
 
 pub fn anthropic_response_to_openai_chat(body: &Value, model: &str) -> Value {
     let mut content = String::new();
+    let mut reasoning_content = Vec::<String>::new();
     let mut tool_calls = Vec::<Value>::new();
     for block in body
         .get("content")
@@ -1102,6 +1540,11 @@ pub fn anthropic_response_to_openai_chat(body: &Value, model: &str) -> Value {
                         content.push('\n');
                     }
                     content.push_str(&text);
+                }
+            }
+            "thinking" | "redacted_thinking" => {
+                if let Some(text) = anthropic_reasoning_text(block) {
+                    reasoning_content.push(text);
                 }
             }
             "tool_use" => {
@@ -1129,6 +1572,12 @@ pub fn anthropic_response_to_openai_chat(body: &Value, model: &str) -> Value {
     if !tool_calls.is_empty() {
         message.insert("tool_calls".to_string(), Value::Array(tool_calls));
     }
+    if !reasoning_content.is_empty() {
+        message.insert(
+            "reasoning_content".to_string(),
+            Value::String(reasoning_content.join("\n")),
+        );
+    }
 
     let (_, cache_read_tokens, _, total_input_tokens) = anthropic_cache_usage(&usage);
     let cached_tokens = cache_read_tokens;
@@ -1155,6 +1604,7 @@ pub fn anthropic_response_to_openai_chat(body: &Value, model: &str) -> Value {
 pub fn anthropic_response_to_openai_response(body: &Value, model: &str) -> Value {
     let mut output_content = Vec::<Value>::new();
     let mut output_text = String::new();
+    let mut reasoning_content = Vec::<String>::new();
     for block in body
         .get("content")
         .and_then(Value::as_array)
@@ -1173,6 +1623,11 @@ pub fn anthropic_response_to_openai_response(body: &Value, model: &str) -> Value
                         output_text.push('\n');
                     }
                     output_text.push_str(&text);
+                }
+            }
+            "thinking" | "redacted_thinking" => {
+                if let Some(text) = anthropic_reasoning_text(block) {
+                    reasoning_content.push(text);
                 }
             }
             "tool_use" => {
@@ -1213,6 +1668,11 @@ pub fn anthropic_response_to_openai_response(body: &Value, model: &str) -> Value
             "content": body.get("content").cloned().unwrap_or_else(|| Value::Array(Vec::new()))
         },
         "output_text": output_text,
+        "reasoning_content": if reasoning_content.is_empty() {
+            Value::Null
+        } else {
+            Value::String(reasoning_content.join("\n"))
+        },
         "usage": {
             "input_tokens": total_input_tokens,
             "output_tokens": usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
@@ -1292,6 +1752,49 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_request_to_openai_chat_preserves_reasoning_and_multimodal_parts() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        { "type": "text", "text": "look" },
+                        {
+                            "type": "image",
+                            "source": { "type": "url", "url": "https://example.com/cat.png" }
+                        },
+                        {
+                            "type": "document",
+                            "title": "spec.pdf",
+                            "source": { "type": "url", "url": "https://example.com/spec.pdf" }
+                        }
+                    ]
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        { "type": "thinking", "thinking": "considering options" },
+                        { "type": "text", "text": "done" }
+                    ]
+                }
+            ]
+        }));
+
+        assert_eq!(
+            converted["messages"][0]["content"][1]["type"].as_str(),
+            Some("image_url")
+        );
+        assert_eq!(
+            converted["messages"][0]["content"][2]["type"].as_str(),
+            Some("file")
+        );
+        assert_eq!(
+            converted["messages"][1]["reasoning_content"].as_str(),
+            Some("considering options")
+        );
+    }
+
+    #[test]
     fn openai_chat_request_to_anthropic_preserves_metadata() {
         let converted = openai_chat_request_to_anthropic(&json!({
             "messages": [{ "role": "user", "content": "hello" }],
@@ -1330,6 +1833,61 @@ mod tests {
                 "disable_parallel_tool_use": true
             }))
         );
+    }
+
+    #[test]
+    fn openai_chat_request_to_anthropic_preserves_reasoning_and_multimodal_parts() {
+        let converted = openai_chat_request_to_anthropic(&json!({
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        { "type": "text", "text": "look" },
+                        {
+                            "type": "image_url",
+                            "image_url": { "url": "https://example.com/cat.png" }
+                        },
+                        {
+                            "type": "file",
+                            "file": {
+                                "file_url": "https://example.com/spec.pdf",
+                                "filename": "spec.pdf"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "role": "assistant",
+                    "content": "done",
+                    "reasoning_content": "considering options"
+                }
+            ]
+        }));
+
+        assert_eq!(
+            converted["messages"][0]["content"][1]["type"].as_str(),
+            Some("image")
+        );
+        assert_eq!(
+            converted["messages"][0]["content"][2]["type"].as_str(),
+            Some("document")
+        );
+        assert_eq!(
+            converted["messages"][1]["content"][1]["type"].as_str(),
+            Some("thinking")
+        );
+    }
+
+    #[test]
+    fn openai_chat_request_to_anthropic_maps_stop_and_max_completion_tokens() {
+        let converted = openai_chat_request_to_anthropic(&json!({
+            "messages": [{ "role": "user", "content": "hello" }],
+            "max_completion_tokens": 321,
+            "stop": ["END"]
+        }));
+
+        assert_eq!(converted.get("max_tokens"), Some(&json!(321)));
+        assert_eq!(converted.get("stop_sequences"), Some(&json!(["END"])));
     }
 
     #[test]
@@ -1375,6 +1933,50 @@ mod tests {
     }
 
     #[test]
+    fn openai_responses_request_to_anthropic_preserves_reasoning_and_multimodal_parts() {
+        let converted = openai_responses_request_to_anthropic(&json!({
+            "input": [{
+                "role": "assistant",
+                "content": [
+                    { "type": "input_text", "text": "look" },
+                    { "type": "input_image", "image_url": "https://example.com/cat.png" },
+                    {
+                        "type": "input_file",
+                        "file_url": "https://example.com/spec.pdf",
+                        "filename": "spec.pdf"
+                    }
+                ],
+                "reasoning_content": "considering options"
+            }]
+        }));
+
+        assert_eq!(
+            converted["messages"][0]["content"][1]["type"].as_str(),
+            Some("image")
+        );
+        assert_eq!(
+            converted["messages"][0]["content"][2]["type"].as_str(),
+            Some("document")
+        );
+        assert_eq!(
+            converted["messages"][0]["content"][3]["type"].as_str(),
+            Some("thinking")
+        );
+    }
+
+    #[test]
+    fn openai_responses_request_to_anthropic_maps_stop_and_max_completion_tokens() {
+        let converted = openai_responses_request_to_anthropic(&json!({
+            "input": [{ "role": "user", "content": "hello" }],
+            "max_completion_tokens": 123,
+            "stop": "END"
+        }));
+
+        assert_eq!(converted.get("max_tokens"), Some(&json!(123)));
+        assert_eq!(converted.get("stop_sequences"), Some(&json!("END")));
+    }
+
+    #[test]
     fn anthropic_request_to_openai_response_builds_responses_input_items() {
         let converted = anthropic_request_to_openai_response(&json!({
             "system": "You are helpful.",
@@ -1413,6 +2015,46 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_request_to_openai_response_preserves_reasoning_and_multimodal_parts() {
+        let converted = anthropic_request_to_openai_response(&json!({
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        { "type": "text", "text": "look" },
+                        {
+                            "type": "image",
+                            "source": { "type": "url", "url": "https://example.com/cat.png" }
+                        },
+                        {
+                            "type": "document",
+                            "title": "spec.pdf",
+                            "source": { "type": "url", "url": "https://example.com/spec.pdf" }
+                        }
+                    ]
+                },
+                {
+                    "role": "assistant",
+                    "content": [{ "type": "thinking", "thinking": "considering options" }]
+                }
+            ]
+        }));
+
+        assert_eq!(
+            converted["input"][0]["content"][1]["type"].as_str(),
+            Some("input_image")
+        );
+        assert_eq!(
+            converted["input"][0]["content"][2]["type"].as_str(),
+            Some("input_file")
+        );
+        assert_eq!(
+            converted["input"][1]["reasoning_content"].as_str(),
+            Some("considering options")
+        );
+    }
+
+    #[test]
     fn openai_chat_response_to_anthropic_preserves_cache_breakdown() {
         let converted = openai_chat_response_to_anthropic(
             &json!({
@@ -1434,6 +2076,67 @@ mod tests {
 
         assert_eq!(converted["usage"]["cache_read_input_tokens"], 4);
         assert_eq!(converted["usage"]["cache_creation_input_tokens"], 2);
+    }
+
+    #[test]
+    fn openai_chat_response_to_anthropic_preserves_reasoning_content() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "choices": [{
+                    "message": {
+                        "content": "done",
+                        "reasoning_content": "considering options"
+                    }
+                }]
+            }),
+            "claude-test",
+        );
+
+        assert_eq!(converted["content"][1]["type"].as_str(), Some("thinking"));
+        assert_eq!(
+            converted["content"][1]["thinking"].as_str(),
+            Some("considering options")
+        );
+    }
+
+    #[test]
+    fn openai_chat_response_to_anthropic_preserves_multimodal_content() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "choices": [{
+                    "message": {
+                        "content": [
+                            { "type": "text", "text": "see attachment" },
+                            {
+                                "type": "image_url",
+                                "image_url": { "url": "https://example.com/cat.png" }
+                            },
+                            {
+                                "type": "file",
+                                "file": {
+                                    "file_url": "https://example.com/spec.pdf",
+                                    "filename": "spec.pdf"
+                                }
+                            }
+                        ]
+                    }
+                }]
+            }),
+            "claude-test",
+        );
+
+        assert_eq!(converted["content"][0]["type"].as_str(), Some("text"));
+        assert_eq!(converted["content"][1]["type"].as_str(), Some("image"));
+        assert_eq!(
+            converted["content"][1]["source"]["url"].as_str(),
+            Some("https://example.com/cat.png")
+        );
+        assert_eq!(converted["content"][2]["type"].as_str(), Some("document"));
+        assert_eq!(
+            converted["content"][2]["source"]["url"].as_str(),
+            Some("https://example.com/spec.pdf")
+        );
+        assert_eq!(converted["content"][2]["title"].as_str(), Some("spec.pdf"));
     }
 
     #[test]
@@ -1512,6 +2215,25 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_response_to_openai_chat_preserves_reasoning_content() {
+        let converted = anthropic_response_to_openai_chat(
+            &json!({
+                "content": [
+                    { "type": "thinking", "thinking": "considering options" },
+                    { "type": "text", "text": "hello" }
+                ],
+                "usage": { "input_tokens": 5, "output_tokens": 2 }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(
+            converted["choices"][0]["message"]["reasoning_content"].as_str(),
+            Some("considering options")
+        );
+    }
+
+    #[test]
     fn anthropic_response_to_openai_response_emits_cache_read_as_cached_tokens() {
         let converted = anthropic_response_to_openai_response(
             &json!({
@@ -1530,6 +2252,25 @@ mod tests {
 
         assert_eq!(converted["usage"]["input_tokens"], json!(16));
         assert_eq!(converted["usage"]["cached_tokens"], 3);
+    }
+
+    #[test]
+    fn anthropic_response_to_openai_response_preserves_reasoning_content() {
+        let converted = anthropic_response_to_openai_response(
+            &json!({
+                "content": [
+                    { "type": "thinking", "thinking": "considering options" },
+                    { "type": "text", "text": "hello" }
+                ],
+                "usage": { "input_tokens": 5, "output_tokens": 2 }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(
+            converted["reasoning_content"].as_str(),
+            Some("considering options")
+        );
     }
 
     #[test]
@@ -1657,5 +2398,46 @@ mod tests {
             json!("I can't comply with that request.")
         );
         assert_eq!(converted["stop_reason"], json!("refusal"));
+    }
+
+    #[test]
+    fn openai_responses_response_to_anthropic_preserves_multimodal_content() {
+        let converted = openai_responses_response_to_anthropic(
+            &json!({
+                "id": "resp_multimodal",
+                "status": "completed",
+                "output": [{
+                    "id": "out_1",
+                    "type": "output_message",
+                    "role": "assistant",
+                    "content": [
+                        { "type": "output_text", "text": "see outputs" },
+                        {
+                            "type": "input_image",
+                            "image_url": "https://example.com/cat.png"
+                        },
+                        {
+                            "type": "input_file",
+                            "file_url": "https://example.com/spec.pdf",
+                            "filename": "spec.pdf"
+                        }
+                    ]
+                }]
+            }),
+            "test-model",
+        );
+
+        assert_eq!(converted["content"][0]["type"].as_str(), Some("text"));
+        assert_eq!(converted["content"][1]["type"].as_str(), Some("image"));
+        assert_eq!(
+            converted["content"][1]["source"]["url"].as_str(),
+            Some("https://example.com/cat.png")
+        );
+        assert_eq!(converted["content"][2]["type"].as_str(), Some("document"));
+        assert_eq!(
+            converted["content"][2]["source"]["url"].as_str(),
+            Some("https://example.com/spec.pdf")
+        );
+        assert_eq!(converted["content"][2]["title"].as_str(), Some("spec.pdf"));
     }
 }
