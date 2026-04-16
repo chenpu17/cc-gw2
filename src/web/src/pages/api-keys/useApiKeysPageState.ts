@@ -54,6 +54,14 @@ export function useApiKeysPageState() {
       deserialize: (raw) => (raw === 'enabled' || raw === 'disabled' ? raw : 'all')
     }
   )
+  const [viewMode, setViewMode] = usePersistentState<'cards' | 'compact'>(
+    storageKeys.apiKeys.viewMode,
+    'compact',
+    {
+      serialize: (value) => value,
+      deserialize: (raw) => (raw === 'cards' ? 'cards' : 'compact')
+    }
+  )
 
   const availableEndpoints = useAvailableEndpoints()
 
@@ -367,6 +375,8 @@ export function useApiKeysPageState() {
     unrestrictedCount,
     usage,
     usageQuery,
-    wildcardCount
+    viewMode,
+    wildcardCount,
+    setViewMode
   }
 }

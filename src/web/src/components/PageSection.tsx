@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface PageSectionProps {
   title?: ReactNode
@@ -21,33 +20,28 @@ export function PageSection({
   contentClassName,
   children
 }: PageSectionProps) {
-  const hasHeader = title || description || actions
+  const hasHeader = title || description || eyebrow || actions
 
   return (
-    <Card
-      className={cn(
-        'overflow-hidden',
-        className
-      )}
-    >
+    <div className={cn('rounded-[1.35rem] border border-white/70 bg-card/95 shadow-[0_22px_56px_-46px_rgba(15,23,42,0.24)] backdrop-blur', className)}>
       {hasHeader && (
-        <CardHeader className="flex flex-col gap-4 border-b border-border bg-secondary sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
+        <div className="flex flex-col gap-4 p-6 pb-0 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1.5">
             {eyebrow ? (
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/78">
                 {eyebrow}
               </div>
             ) : null}
             {typeof title === 'string' ? (
-              <CardTitle className="text-base font-semibold">{title}</CardTitle>
+              <h2 className="text-base font-semibold text-foreground">{title}</h2>
             ) : (
               title
             )}
             {description && (
               typeof description === 'string' ? (
-                <CardDescription>{description}</CardDescription>
+                <p className="text-sm text-muted-foreground/70">{description}</p>
               ) : (
-                <div className="text-sm text-muted-foreground">{description}</div>
+                <div className="text-sm text-muted-foreground/70">{description}</div>
               )
             )}
           </div>
@@ -56,11 +50,11 @@ export function PageSection({
               {actions}
             </div>
           )}
-        </CardHeader>
+        </div>
       )}
-      <CardContent className={cn(!hasHeader && 'pt-6', hasHeader && 'pt-5', contentClassName)}>
+      <div className={cn('p-6', !hasHeader && 'pt-6', contentClassName)}>
         {children}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

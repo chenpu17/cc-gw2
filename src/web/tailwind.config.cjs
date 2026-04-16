@@ -12,7 +12,8 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ['"Inter"', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont']
+        sans: ['"Inter"', '"SF Pro Display"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"Inter"', '"SF Mono"', '"IBM Plex Mono"', '"JetBrains Mono"', 'ui-monospace', 'monospace']
       },
       screens: {
         'xs': '475px',

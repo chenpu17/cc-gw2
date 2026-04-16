@@ -128,7 +128,7 @@ export default function RoutingManagementPage() {
         onConfirm={state.handleConfirmDialog}
       >
         {state.confirmDialogName ? (
-          <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-3 py-2 font-mono text-xs text-foreground">
+          <div className="rounded-lg bg-destructive/5 px-3 py-2 font-mono text-xs text-foreground ring-1 ring-destructive/20">
             {state.confirmDialogName}
           </div>
         ) : null}

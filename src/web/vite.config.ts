@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [react()],
   build: {
     rollupOptions: {
+      input: {
+        app: path.resolve(__dirname, 'index.html'),
+        landing: path.resolve(__dirname, 'landing.html')
+      },
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined

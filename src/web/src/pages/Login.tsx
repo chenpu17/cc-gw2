@@ -79,7 +79,7 @@ export default function LoginPage() {
       <div className="mx-auto grid w-full max-w-5xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(400px,0.8fr)]">
         <div className="hidden lg:block">
           <div className="max-w-lg space-y-6">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-accent px-3 py-1 text-xs font-semibold text-primary">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
               Secure Gateway Control
             </div>
             <div className="space-y-3">
@@ -140,7 +140,7 @@ export default function LoginPage() {
               </div>
 
               {formError || error ? (
-                <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
                   {formError || error}
                 </div>
               ) : null}
@@ -162,7 +162,7 @@ export default function LoginPage() {
 
 function FeatureCard({ description, icon, title }: { description: string; icon: ReactNode; title: string }) {
   return (
-    <div className="rounded-lg border border-border bg-card px-4 py-4">
+    <div className="rounded-lg bg-card px-4 py-4 shadow-[var(--surface-shadow)]">
       <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">{icon}</div>
       <p className="mt-3 text-sm font-semibold text-foreground">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>

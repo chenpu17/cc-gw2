@@ -47,6 +47,22 @@ pnpm test:e2e:web:update-snapshots
 git diff -- tests/playwright/visual.spec.ts-snapshots
 ```
 
+如果本轮修改涉及 landing 官网、分享图或产品定位，再额外执行：
+
+```bash
+npx playwright test tests/playwright/landing.spec.ts --reporter=line
+```
+
+并人工核对：
+
+- `GET /` 可正常展示产品官网
+- `GET /ui/` 仍进入控制台
+- `/cc-gw-social-card.png` 可访问
+- `/cc-gw-social-card.svg` 可访问
+- `/site.webmanifest` 可访问
+- `/robots.txt` 与 `/sitemap.xml` 可访问
+- `docs/demo-script.md` 和 `docs/launch-copy.md` 仍符合本次发布能力边界
+
 ## 3. 初始化 Git 仓库
 
 如果当前目录还没初始化：

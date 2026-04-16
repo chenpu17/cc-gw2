@@ -13,9 +13,9 @@ interface PageStateProps {
 }
 
 const toneClasses: Record<NonNullable<PageStateProps['tone']>, string> = {
-  default: 'border-border bg-secondary',
-  primary: 'border-primary/15 bg-accent',
-  danger: 'border-destructive/20 bg-destructive/10'
+  default: 'border-border/30 bg-card shadow-sm',
+  primary: 'border-primary/10 bg-card shadow-sm',
+  danger: 'border-destructive/15 bg-card shadow-sm'
 }
 
 const iconToneClasses: Record<NonNullable<PageStateProps['tone']>, string> = {
@@ -36,7 +36,7 @@ export function PageState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center rounded-lg border border-dashed px-6 text-center',
+        'flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 text-center',
         compact ? 'min-h-[180px] py-8' : 'min-h-[260px] py-12',
         toneClasses[tone],
         className

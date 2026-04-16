@@ -37,7 +37,7 @@ export default function ApiKeysPage() {
         badge={headerBadge}
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
+            <div className="rounded-full bg-secondary px-3.5 py-2 text-xs text-muted-foreground">
               {t('apiKeys.summary.wildcard', { count: state.wildcardCount })}
               {' / '}
               {t('apiKeys.summary.restricted', { count: state.restrictedCount })}
@@ -86,7 +86,10 @@ export default function ApiKeysPage() {
         search={state.search}
         statusFilter={state.statusFilter}
         unrestrictedCount={state.unrestrictedCount}
+        viewMode={state.viewMode}
         wildcardCount={state.wildcardCount}
+        onViewModeChange={state.setViewMode}
+        onCreateKey={() => state.handleCreateDialogChange(true)}
       />
 
       <CreateApiKeyDialog

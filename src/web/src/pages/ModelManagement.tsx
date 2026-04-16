@@ -97,7 +97,7 @@ export default function ModelManagementPage() {
         onConfirm={state.handleConfirmDialog}
       >
         {state.confirmDialogName ? (
-          <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 px-3 py-2 font-mono text-xs text-foreground">
+          <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 font-mono text-xs text-foreground">
             {state.confirmDialogName}
           </div>
         ) : null}

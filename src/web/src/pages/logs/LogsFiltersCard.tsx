@@ -72,23 +72,30 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
   } = props
 
   return (
-    <Card data-testid="logs-filters-card" className="overflow-hidden">
-      <CardContent className="pt-4">
-        <div className="flex flex-col gap-4">
+    <Card
+      data-testid="logs-filters-card"
+      className="overflow-hidden rounded-[1.25rem] border border-white/70 bg-card/95 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.24)]"
+    >
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold text-foreground">{t('logs.filtersTitle')}</p>
-                <Badge variant="outline">{t('logs.summary.total', { value: total.toLocaleString() })}</Badge>
+                <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
+                  {t('logs.summary.total', { value: total.toLocaleString() })}
+                </Badge>
                 {activeFilters.length > 0 && (
-                  <Badge variant="secondary">{t('common.filters.activeCount', { count: activeFilters.length })}</Badge>
+                  <Badge variant="outline" className="rounded-full border-transparent bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
+                    {t('common.filters.activeCount', { count: activeFilters.length })}
+                  </Badge>
                 )}
               </div>
               <p className="text-xs text-muted-foreground">{t('logs.filtersDescription')}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {activeFilters.length > 0 && (
-                <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+                <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-8 rounded-full px-3 text-xs">
                   {t('common.actions.reset')}
                 </Button>
               )}
@@ -96,6 +103,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
                 variant="ghost"
                 size="sm"
                 onClick={() => setFiltersExpanded((prev) => !prev)}
+                className="h-8 rounded-full px-3 text-xs"
               >
                 {filtersExpanded ? (
                   <>
@@ -112,17 +120,17 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             </div>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="flex min-h-[52px] items-center rounded-lg border border-border bg-secondary px-3 py-2">
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="flex min-h-10 items-center rounded-[0.9rem] bg-secondary/70 px-3 py-2">
               {activeFilters.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-2">
                   {activeFilters.map((f) => (
                     <Badge
                       key={f.key}
-                      variant="secondary"
+                      variant="outline"
                       role="button"
                       tabIndex={0}
-                      className="cursor-pointer gap-1 border border-transparent bg-primary/10 text-primary hover:bg-destructive/10 hover:text-destructive"
+                      className="flex cursor-pointer items-center gap-1 rounded-full border border-border bg-card/90 px-2.5 py-1 text-[11px] font-semibold text-foreground/90 transition hover:bg-secondary/80"
                       onClick={f.onRemove}
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f.onRemove() } }}
                     >
@@ -132,30 +140,26 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
                   ))}
                 </div>
               ) : (
-                <span className="text-sm text-muted-foreground">{t('common.filters.allRequests')}</span>
+                <span className="text-xs text-muted-foreground">{t('common.filters.allRequests')}</span>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[360px]">
-              <SummaryChip label={t('common.filters.activeCount', { count: activeFilters.length })} value={activeFilters.length.toString()} />
-              <SummaryChip label={t('logs.filters.apiKey')} value={selectedApiKeys.length.toString()} />
-              <SummaryChip label={t('logs.filters.provider')} value={providerFilter === 'all' ? t('common.noData') : '1'} />
-              <SummaryChip label={t('logs.filters.endpoint')} value={endpointFilter === 'all' ? t('common.noData') : '1'} />
+            <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
+              <FilterSummary label={t('logs.filters.apiKey')} value={selectedApiKeys.length.toString()} />
+              <FilterSummary label={t('logs.filters.provider')} value={providerFilter === 'all' ? '0' : '1'} />
+              <FilterSummary label={t('logs.filters.endpoint')} value={endpointFilter === 'all' ? '0' : '1'} />
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary p-2">
+          <div className="flex flex-wrap items-center gap-1.5 rounded-[0.9rem] bg-secondary/70 px-2 py-1.5">
             {(['all', 'errors', 'today', 'anthropic', 'openai'] as QuickView[]).map((view) => (
               <Button
                 key={view}
-                variant={activeQuickView === view ? 'default' : 'outline'}
+                variant="ghost"
                 size="sm"
                 className={cn(
-                  'rounded-full border-transparent',
-                  activeQuickView === view && view === 'all' && 'bg-foreground text-background hover:bg-foreground/90',
-                  activeQuickView === view && view === 'errors' && 'bg-rose-500 text-white hover:bg-rose-500/90',
-                  activeQuickView === view && view === 'today' && 'bg-emerald-500 text-white hover:bg-emerald-500/90',
-                  activeQuickView === view && (view === 'anthropic' || view === 'openai') && 'bg-amber-500 text-white hover:bg-amber-500/90'
+                  'h-7 rounded-full px-3 text-[11px] font-semibold transition-colors',
+                  activeQuickView === view ? 'bg-card text-foreground shadow-[0_12px_28px_-24px_rgba(15,23,42,0.32)]' : 'text-muted-foreground'
                 )}
                 onClick={() => applyQuickView(view)}
               >
@@ -165,11 +169,11 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
           </div>
         </div>
         {filtersExpanded && (
-          <div className="mt-4 grid gap-4 rounded-lg border border-border bg-secondary p-4 md:grid-cols-2 xl:grid-cols-4 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="mt-3 grid gap-3 rounded-[1rem] bg-secondary/45 p-3 md:grid-cols-2 xl:grid-cols-4 animate-in fade-in slide-in-from-top-2 duration-200">
             <div className="space-y-2">
               <Label>{t('logs.filters.provider')}</Label>
               <Select value={providerFilter} onValueChange={setProviderFilter}>
-                <SelectTrigger >
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -186,7 +190,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             <div className="space-y-2">
               <Label>{t('logs.filters.endpoint')}</Label>
               <Select value={endpointFilter} onValueChange={setEndpointFilter}>
-                <SelectTrigger >
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -216,14 +220,13 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
                 value={modelFilter}
                 onChange={(e) => setModelFilter(e.target.value)}
                 placeholder={t('logs.filters.modelPlaceholder')}
-                
               />
             </div>
 
             <div className="space-y-2">
               <Label>{t('logs.filters.status')}</Label>
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-                <SelectTrigger >
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -236,12 +239,12 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
 
             <div className="space-y-2">
               <Label>{t('logs.filters.startDate')}</Label>
-              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}  />
+              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
             </div>
 
             <div className="space-y-2">
               <Label>{t('logs.filters.endDate')}</Label>
-              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}  />
+              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
             </div>
           </div>
         )}
@@ -250,18 +253,17 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
   )
 }
 
-function SummaryChip({
+function FilterSummary({
   label,
   value
 }: {
-  accent?: string
   label: string
   value: string
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/92 px-2.5 py-1 text-[11px] text-muted-foreground shadow-[0_10px_24px_-22px_rgba(15,23,42,0.28)]">
+      <span>{label}</span>
+      <span className="metric-number font-semibold text-foreground">{value}</span>
     </div>
   )
 }

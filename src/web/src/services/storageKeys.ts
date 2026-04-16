@@ -20,6 +20,7 @@ export const storageKeys = {
   apiKeys: {
     rangeDays: 'cc-gw.api-keys.range-days',
     search: 'cc-gw.api-keys.search',
-    statusFilter: 'cc-gw.api-keys.status-filter'
+    statusFilter: 'cc-gw.api-keys.status-filter',
+    viewMode: 'cc-gw.api-keys.inventory-view-mode'
   }
 } as const

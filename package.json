@@ -3,13 +3,22 @@
   "version": "0.8.8",
   "private": false,
   "type": "module",
-  "description": "Rust-backed local Claude Code compatible gateway with web console and CLI daemon.",
+  "description": "Local-first AI gateway for personal developers and small software teams, with web console and CLI daemon.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/chenpu17/cc-gw2.git"
   },
   "homepage": "https://github.com/chenpu17/cc-gw2",
+  "keywords": [
+    "ai-gateway",
+    "llm-gateway",
+    "anthropic",
+    "openai",
+    "local-first",
+    "developer-tools",
+    "small-team"
+  ],
   "bugs": {
     "url": "https://github.com/chenpu17/cc-gw2/issues"
   },
@@ -29,10 +38,11 @@
     "smoke:cli": "node scripts/smoke-cli.mjs",
     "build:package": "pnpm run sync:native-versions && pnpm run build:cli && pnpm run build:web",
     "docs:readme-screenshots": "pnpm build && node scripts/capture-readme-screenshots.mjs",
+    "docs:compare-pen-screenshots": "node scripts/capture-compare-pen-screenshots.mjs",
     "pack:dry-run": "pnpm run build:package && node scripts/pack-root-package.mjs",
     "publish:packed": "node scripts/publish-artifacts.mjs",
     "test:e2e:web": "pnpm build && playwright test",
-    "test:e2e:web:core": "pnpm build && playwright test tests/playwright/pages.spec.ts tests/playwright/auth.spec.ts tests/playwright/logs.spec.ts tests/playwright/model-management.spec.ts tests/playwright/settings.spec.ts tests/playwright/api-keys.spec.ts --reporter=line",
+    "test:e2e:web:core": "pnpm build && playwright test tests/playwright/landing.spec.ts tests/playwright/pages.spec.ts tests/playwright/auth.spec.ts tests/playwright/logs.spec.ts tests/playwright/model-management.spec.ts tests/playwright/settings.spec.ts tests/playwright/api-keys.spec.ts --reporter=line",
     "test:e2e:web:visual": "pnpm build && playwright test tests/playwright/visual.spec.ts --reporter=line",
     "test:e2e:web:hardening": "pnpm build && playwright test tests/playwright/hardening.spec.ts --reporter=line",
     "test:e2e:web:update-snapshots": "pnpm build && playwright test tests/playwright/visual.spec.ts --update-snapshots --reporter=line",

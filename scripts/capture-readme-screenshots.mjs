@@ -312,9 +312,9 @@ async function main() {
         heading: 'Dashboard',
       },
       {
-        name: 'models-en-light.png',
-        url: `http://127.0.0.1:${gatewayPort}/ui/models`,
-        heading: 'Models & Routing',
+        name: 'routing-en-light.png',
+        url: `http://127.0.0.1:${gatewayPort}/ui/routing`,
+        heading: 'Routing',
       },
     ]
 

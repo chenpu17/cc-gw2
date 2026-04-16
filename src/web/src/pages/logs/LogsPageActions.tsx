@@ -44,15 +44,15 @@ export function LogsPageActions({
   return (
     <div className="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-center">
       <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:w-auto xl:flex-nowrap">
-        <div className="flex w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-secondary p-1 sm:w-auto">
+        <div className="flex w-full items-center gap-1 overflow-x-auto rounded-full bg-secondary p-1 sm:w-auto">
           <button
             type="button"
             onClick={() => onSetDensity('comfortable')}
             className={cn(
               'inline-flex h-8 flex-1 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-xs font-medium transition-all sm:flex-none',
               rowDensity === 'comfortable'
-                ? 'bg-primary text-primary-foreground shadow-[0_8px_18px_-14px_rgba(59,130,246,0.7)]'
-                : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
             )}
           >
             {t('logs.table.density.comfortable')}
@@ -63,8 +63,8 @@ export function LogsPageActions({
             className={cn(
               'inline-flex h-8 flex-1 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-xs font-medium transition-all sm:flex-none',
               rowDensity === 'compact'
-                ? 'bg-primary text-primary-foreground shadow-[0_8px_18px_-14px_rgba(59,130,246,0.7)]'
-                : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
             )}
           >
             {t('logs.table.density.compact')}
@@ -101,7 +101,7 @@ export function LogsPageActions({
                   <label
                     key={column.id}
                     className={cn(
-                      'flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-primary/5',
+                      'flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-accent',
                       checked && 'bg-primary/10 text-primary'
                     )}
                   >

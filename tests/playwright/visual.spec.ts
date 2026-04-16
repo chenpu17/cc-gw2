@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 import { createGatewayHarness } from './harness'
 
 const harness = createGatewayHarness()
@@ -51,10 +51,21 @@ async function hideVolatileVisualValues(page: Page) {
   })
 }
 
+async function resetProfiler(request: APIRequestContext, baseUrl: string) {
+  await request.post(`${baseUrl}/api/profiler/stop`)
+  await request.post(`${baseUrl}/api/profiler/sessions/clear`)
+}
+
 test('dashboard visual shell stays aligned with redesign baseline', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/`)
   await waitForVisualReady(page, page.getByRole('heading', { name: '仪表盘', level: 1 }))
   await expectPageSnapshot(page, 'dashboard-page.png')
+})
+
+test('landing visual shell stays aligned with product-site baseline', async ({ page }) => {
+  await page.goto(`${harness.baseUrl()}/`)
+  await waitForVisualReady(page, page.locator('h1'))
+  await expectPageSnapshot(page, 'landing-page.png')
 })
 
 test('logs visual shell stays aligned with redesign baseline', async ({ page }) => {
@@ -93,10 +104,24 @@ test('events visual shell stays aligned with redesign baseline', async ({ page }
   await expectPageSnapshot(page, 'events-page.png')
 })
 
+test('profiler visual shell stays aligned with redesign baseline', async ({ page, request }) => {
+  await resetProfiler(request, harness.baseUrl())
+  await page.goto(`${harness.baseUrl()}/ui/profiler`)
+  await waitForVisualReady(page, page.getByRole('main').getByText('性能分析', { exact: true }))
+  await expect(page.getByText('暂无会话')).toBeVisible()
+  await expect(page.getByText('选择一个会话')).toBeVisible()
+  await expectPageSnapshot(page, 'profiler-page.png')
+})
+
 test('help visual shell stays aligned with redesign baseline', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/help`)
   await waitForVisualReady(page, page.getByRole('heading', { level: 1 }).filter({ hasText: /使用指南/ }))
-  await expectPageSnapshot(page, 'help-page.png')
+  await expect(page).toHaveScreenshot('help-page.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+    maxDiffPixelRatio: 0.015,
+  })
 })
 
 test('about visual shell stays aligned with redesign baseline', async ({ page }) => {

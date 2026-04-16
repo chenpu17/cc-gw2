@@ -1,0 +1,18 @@
+{
+  "name": "cc-gw",
+  "short_name": "cc-gw",
+  "description": "One local-first entry for Claude Code, OpenAI SDK, Anthropic SDK, and internal tools.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/cc-gw-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

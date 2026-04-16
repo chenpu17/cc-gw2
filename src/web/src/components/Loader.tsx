@@ -8,7 +8,7 @@ export function Loader({ label }: { label?: string }) {
   return (
     <div className="flex h-full items-center justify-center p-12" role="status" aria-live="polite">
       <div className="flex flex-col items-center gap-4 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
+        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-secondary text-primary">
           <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
         </div>
         <p className="text-sm text-muted-foreground">{label ?? t('common.loading')}</p>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AlertTriangle, ChevronLeft, ChevronRight, Filter, RefreshCw, ShieldAlert, Siren, ShieldCheck } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSection } from '@/components/PageSection'
@@ -94,7 +95,7 @@ export default function EventsPage() {
   const errorCount = events.filter((event) => event.level === 'error').length
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
         icon={<ShieldAlert className="h-5 w-5" aria-hidden="true" />}
         title={t('events.title')}
@@ -105,7 +106,7 @@ export default function EventsPage() {
         badge={events.length > 0 ? `${events.length} events` : undefined}
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
+            <div className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-muted-foreground">
               {cursor ? t('events.actions.older') : t('events.actions.newest')}
             </div>
             <Button variant="outline" size="sm" onClick={() => void eventsQuery.refetch()} disabled={isRefreshing} className="w-full sm:w-auto">
@@ -116,15 +117,18 @@ export default function EventsPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         <SummaryCard icon={<ShieldCheck className="h-4 w-4" aria-hidden="true" />} title={t('events.levels.info')} value={infoCount.toLocaleString()} tone="emerald" />
         <SummaryCard icon={<AlertTriangle className="h-4 w-4" aria-hidden="true" />} title={t('events.levels.warn')} value={warnCount.toLocaleString()} tone="amber" />
         <SummaryCard icon={<Siren className="h-4 w-4" aria-hidden="true" />} title={t('events.levels.error')} value={errorCount.toLocaleString()} tone="rose" />
       </div>
 
-      <Card data-testid="events-filters-card" className="overflow-hidden">
-        <CardContent className="pt-5">
-          <div className="flex flex-col gap-4">
+      <Card
+        data-testid="events-filters-card"
+        className="overflow-hidden rounded-[1.25rem] border border-white/70 bg-card/95 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.24)]"
+      >
+        <CardContent className="space-y-3 p-4">
+          <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -136,15 +140,15 @@ export default function EventsPage() {
               </div>
               <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
                 {activeFilters.length > 0 ? (
-                  <Button variant="ghost" size="sm" onClick={handleResetFilters} className="w-full sm:w-auto">
+                  <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-8 rounded-full px-3 text-xs sm:w-auto">
                     {t('common.actions.reset')}
                   </Button>
                 ) : null}
-                <Button variant="outline" size="sm" disabled={!cursor} onClick={() => setCursor(null)} className="w-full sm:w-auto">
+                <Button variant="outline" size="sm" disabled={!cursor} onClick={() => setCursor(null)} className="h-8 rounded-full px-3 text-xs sm:w-auto">
                   <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" />
                   {t('events.actions.newest')}
                 </Button>
-                <Button variant="outline" size="sm" disabled={!nextCursor} onClick={() => setCursor(nextCursor)} className="w-full sm:w-auto">
+                <Button variant="outline" size="sm" disabled={!nextCursor} onClick={() => setCursor(nextCursor)} className="h-8 rounded-full px-3 text-xs sm:w-auto">
                   {t('events.actions.older')}
                   <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
                 </Button>
@@ -178,7 +182,7 @@ export default function EventsPage() {
                   setFilters((prev) => ({ ...prev, type: event.target.value }))
                 }}
               />
-              <Button variant="ghost" size="sm" onClick={handleResetFilters} disabled={activeFilters.length === 0} className="w-full md:w-auto">
+              <Button variant="ghost" size="sm" onClick={handleResetFilters} disabled={activeFilters.length === 0} className="h-8 rounded-full px-3 text-xs md:w-auto">
                 {t('common.actions.reset')}
               </Button>
             </div>
@@ -197,21 +201,6 @@ export default function EventsPage() {
       <PageSection
         title={t('events.title')}
         description={cursor ? t('events.actions.older') : t('events.actions.newest')}
-        actions={
-          events.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300">
-                {t('events.levels.info')}: {infoCount}
-              </Badge>
-              <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-                {t('events.levels.warn')}: {warnCount}
-              </Badge>
-              <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300">
-                {t('events.levels.error')}: {errorCount}
-              </Badge>
-            </div>
-          ) : null
-        }
       >
         {isLoading ? (
           <PageLoadingState label={t('common.loading')} />
@@ -231,18 +220,23 @@ export default function EventsPage() {
           <PageState
             icon={<ShieldAlert className="h-5 w-5" aria-hidden="true" />}
             tone="primary"
-            title={t('events.empty.title')}
-            description={t('events.empty.subtitle')}
+            title={activeFilters.length > 0 ? t('events.empty.filteredTitle') : t('events.empty.title')}
+            description={activeFilters.length > 0 ? t('events.empty.filteredSubtitle') : t('events.empty.subtitle')}
             action={
-              activeFilters.length > 0 ? (
-                <Button variant="outline" size="sm" onClick={handleResetFilters}>
-                  {t('common.actions.reset')}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {activeFilters.length > 0 ? (
+                  <Button variant="outline" size="sm" onClick={handleResetFilters}>
+                    {t('common.actions.reset')}
+                  </Button>
+                ) : null}
+                <Button asChild variant="ghost" size="sm">
+                  <Link to="/logs">{t('events.empty.actions.logs')}</Link>
                 </Button>
-              ) : undefined
+              </div>
             }
           />
         ) : (
-          <div className="grid gap-4">
+          <div className="grid gap-3">
             {events.map((event) => (
               <EventCard key={event.id} event={event} />
             ))}
@@ -264,20 +258,14 @@ function SummaryCard({
   tone: 'emerald' | 'amber' | 'rose'
   value: string
 }) {
-  const iconClass = {
-    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
-    amber: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
-    rose: 'bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400'
-  }[tone]
-
   return (
-    <Card>
-      <CardContent className="flex items-center justify-between gap-3 pt-5">
+      <Card className="rounded-[1.15rem] border border-white/70 bg-card/95 shadow-[0_18px_42px_-38px_rgba(15,23,42,0.22)]">
+      <CardContent className="flex items-center justify-between gap-3 p-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-foreground">{value}</p>
+          <p className="metric-number mt-1 text-[1.85rem] font-bold tracking-tight text-foreground">{value}</p>
         </div>
-        <div className={cn('flex h-11 w-11 items-center justify-center rounded-xl', iconClass)}>{icon}</div>
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-muted-foreground">{icon}</div>
       </CardContent>
     </Card>
   )
@@ -294,41 +282,43 @@ function EventCard({ event }: { event: GatewayEvent }) {
         : 'border-l-emerald-500'
 
   return (
-    <Card className={cn('overflow-hidden border-l-4', borderClass)}>
-      <CardContent className="space-y-4 pt-5">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-          <div className="space-y-2">
+    <Card
+      className={cn('overflow-hidden rounded-[1.05rem] border border-white/70 border-l-2 bg-card/96 shadow-[0_18px_38px_-34px_rgba(15,23,42,0.2)]', borderClass)}
+    >
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={LEVEL_VARIANT[event.level] || 'secondary'}>
+              <Badge variant={LEVEL_VARIANT[event.level] || 'secondary'} className="rounded-full text-[10px]">
                 {t(`events.levels.${event.level}` as const)}
               </Badge>
-              <Badge variant="outline">#{event.id}</Badge>
-              {event.mode ? <Badge variant="secondary">{event.mode}</Badge> : null}
-              {event.endpoint ? <Badge variant="outline">{event.endpoint}</Badge> : null}
+              <Badge variant="outline" className="rounded-full text-[10px]">#{event.id}</Badge>
+              {event.mode ? <Badge variant="secondary" className="rounded-full text-[10px]">{event.mode}</Badge> : null}
+              {event.endpoint ? <Badge variant="outline" className="rounded-full text-[10px]">{event.endpoint}</Badge> : null}
             </div>
-            <div>
-              <h3 className="text-base font-semibold tracking-[-0.01em]">{event.title || t('events.defaultTitle')}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">{event.message || t('events.defaultMessage')}</p>
+            <div className="min-w-0">
+              <h3 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{event.title || t('events.defaultTitle')}</h3>
+              <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">{event.message || t('events.defaultMessage')}</p>
             </div>
           </div>
-          <div className="space-y-1 text-sm text-muted-foreground xl:text-right">
+          <div className="shrink-0 space-y-0.5 text-xs text-muted-foreground lg:text-right">
             <p>{formatTimestamp(event.createdAt)}</p>
             <p>{formatRelativeTime(event.createdAt)}</p>
           </div>
         </div>
 
-        <div className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+        <div className="flex flex-wrap gap-2 text-sm">
           <EventMeta label="Type" value={event.type} />
           <EventMeta label="Source" value={event.source} />
           <EventMeta label="IP" value={event.ipAddress} />
           <EventMeta label="API Key" value={event.apiKeyName} />
-          <EventMeta label="User Agent" value={event.userAgent} wide />
+          <EventMeta label="User Agent" value={event.userAgent} />
         </div>
 
         {event.details ? (
-          <details className="rounded-lg border border-border bg-secondary p-3 text-sm">
-            <summary className="cursor-pointer text-sm font-medium text-primary">{t('events.details')}</summary>
-            <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-card p-3 text-xs leading-6">
+          <details className="rounded-[0.9rem] bg-secondary/50 px-3 py-2 text-sm">
+            <summary className="cursor-pointer text-xs font-medium text-primary">{t('events.details')}</summary>
+            <pre className="mt-2.5 overflow-x-auto rounded-lg bg-secondary p-3 text-xs leading-6">
               {JSON.stringify(event.details, null, 2)}
             </pre>
           </details>
@@ -338,15 +328,15 @@ function EventCard({ event }: { event: GatewayEvent }) {
   )
 }
 
-function EventMeta({ label, value, wide = false }: { label: string; value: string | null; wide?: boolean }) {
+function EventMeta({ label, value }: { label: string; value: string | null }) {
   if (!value) {
     return null
   }
 
   return (
-    <div className={cn('rounded-lg border border-border bg-secondary px-3 py-3', wide && 'sm:col-span-2 xl:col-span-2')}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-1 break-all text-sm text-foreground">{value}</p>
+    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-secondary/55 px-2.5 py-1 text-[11px] text-muted-foreground">
+      <span className="font-medium">{label}:</span>
+      <span className="truncate text-foreground" title={value}>{value}</span>
     </div>
   )
 }

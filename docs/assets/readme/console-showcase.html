@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>cc-gw Console Showcase</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at 10% 10%, rgba(199, 210, 254, 0.78), transparent 22%),
+          radial-gradient(circle at 88% 12%, rgba(186, 230, 253, 0.85), transparent 20%),
+          radial-gradient(circle at 80% 82%, rgba(191, 219, 254, 0.82), transparent 24%),
+          linear-gradient(180deg, #f8faff 0%, #f5f7ff 54%, #ffffff 100%);
+      }
+
+      .frame {
+        width: 1600px;
+        min-height: 1220px;
+        margin: 0 auto;
+        padding: 68px 72px 72px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 16px;
+        color: #4f46e5;
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow img {
+        width: 54px;
+        height: 54px;
+        border-radius: 18px;
+        box-shadow: 0 16px 32px rgba(79, 70, 229, 0.16);
+      }
+
+      h1 {
+        margin: 28px 0 18px;
+        font-size: 68px;
+        line-height: 1.04;
+        letter-spacing: -0.04em;
+        color: #020617;
+      }
+
+      .lede {
+        max-width: 1020px;
+        margin: 0;
+        color: #475569;
+        font-size: 31px;
+        line-height: 1.5;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1.28fr 1fr;
+        gap: 28px;
+        margin-top: 42px;
+      }
+
+      .card {
+        position: relative;
+        border-radius: 34px;
+        padding: 24px;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(226, 232, 240, 0.95);
+        box-shadow: 0 22px 54px rgba(15, 23, 42, 0.10);
+        backdrop-filter: blur(14px);
+      }
+
+      .card.hero {
+        padding: 28px;
+      }
+
+      .hero .shot {
+        aspect-ratio: 1.48 / 1;
+      }
+
+      .stack {
+        display: grid;
+        gap: 28px;
+      }
+
+      .stack .shot {
+        aspect-ratio: 1.38 / 1;
+      }
+
+      .meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 18px;
+      }
+
+      .meta h2 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.2;
+        color: #0f172a;
+      }
+
+      .meta p {
+        margin: 6px 0 0;
+        color: #64748b;
+        font-size: 18px;
+        line-height: 1.55;
+      }
+
+      .pill {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #eef2ff, #ecfeff);
+        color: #312e81;
+        font-size: 15px;
+        font-weight: 800;
+      }
+
+      .pill::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #4f46e5, #22c7f2);
+      }
+
+      .shot {
+        overflow: hidden;
+        border-radius: 26px;
+        background: #e2e8f0;
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.42),
+          0 18px 42px rgba(15, 23, 42, 0.14);
+      }
+
+      .shot img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center top;
+        display: block;
+      }
+
+      .footer {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+        margin-top: 26px;
+      }
+
+      .footer-note {
+        border-radius: 24px;
+        padding: 18px 20px;
+        background: rgba(255, 255, 255, 0.84);
+        border: 1px solid rgba(226, 232, 240, 0.92);
+      }
+
+      .footer-note strong {
+        display: block;
+        color: #0f172a;
+        font-size: 18px;
+        line-height: 1.3;
+      }
+
+      .footer-note span {
+        display: block;
+        margin-top: 8px;
+        color: #64748b;
+        font-size: 16px;
+        line-height: 1.55;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="frame">
+      <div class="eyebrow">
+        <img src="../../../src/web/public/cc-gw-mark.svg" alt="" />
+        <span>Console Showcase</span>
+      </div>
+      <h1>One place to route, observe, and debug every AI request.</h1>
+      <p class="lede">
+        cc-gw keeps the console focused on the work that matters every day: seeing traffic,
+        changing model routing, and tracing failures without digging through each project.
+      </p>
+
+      <section class="grid">
+        <article class="card hero">
+          <div class="meta">
+            <div>
+              <h2>Dashboard</h2>
+              <p>One place to see traffic, latency, gateway health, and routing posture.</p>
+            </div>
+            <div class="pill">Daily overview</div>
+          </div>
+          <div class="shot">
+            <img src="../compare-pen/live-dashboard.png" alt="Dashboard preview" />
+          </div>
+        </article>
+
+        <div class="stack">
+          <article class="card">
+            <div class="meta">
+              <div>
+                <h2>Models & Routing</h2>
+                <p>Route models and providers without touching app code.</p>
+              </div>
+              <div class="pill">Control</div>
+            </div>
+            <div class="shot">
+              <img src="../compare-pen/live-model-management.png" alt="Model management preview" />
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="meta">
+              <div>
+                <h2>Logs</h2>
+                <p>Debug every request from one console instead of chasing clues per project.</p>
+              </div>
+              <div class="pill">Traceability</div>
+            </div>
+            <div class="shot">
+              <img src="../compare-pen/live-logs.png" alt="Logs preview" />
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="footer">
+        <div class="footer-note">
+          <strong>Keep the same client surface</strong>
+          <span>Claude Code, OpenAI SDK, Anthropic SDK, and internal tools still point to familiar protocols.</span>
+        </div>
+        <div class="footer-note">
+          <strong>Move switching out of app code</strong>
+          <span>Routing, provider fallback, API keys, and model policies stop living inside every repository.</span>
+        </div>
+        <div class="footer-note">
+          <strong>See issues where they happen</strong>
+          <span>Traffic, errors, and performance show up in the console before debugging turns into guesswork.</span>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

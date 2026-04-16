@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import type { ProviderConfig, ProviderModelConfig } from '@/types/providers'
 import { cn } from '@/lib/utils'
 
@@ -415,9 +418,9 @@ export function ProviderDrawer({
         aria-modal="true"
         aria-labelledby="provider-drawer-title"
         aria-describedby="provider-drawer-desc"
-        className="flex h-full min-h-0 w-full max-w-5xl flex-col border-l border-border bg-background shadow-lg"
+        className="flex h-full min-h-0 w-full max-w-5xl flex-col border-l border-border/45 bg-background/96 shadow-[var(--surface-shadow-lg)] backdrop-blur"
       >
-        <header className="border-b border-border bg-secondary px-6 py-5">
+        <header className="border-b border-border/45 bg-secondary/45 px-6 py-5 backdrop-blur-sm">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-2">
               <div className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-primary">
@@ -432,21 +435,22 @@ export function ProviderDrawer({
                 </p>
               </div>
             </div>
-            <button
+            <Button
               type="button"
               ref={closeButtonRef}
+              variant="outline"
               onClick={onClose}
-              className="rounded-full border border-border bg-card px-4 py-2 text-sm transition hover:border-primary/20 hover:bg-accent/50"
+              className="bg-card"
             >
               {t('common.actions.close')}
-            </button>
+            </Button>
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             {providerSummaryItems.map((item) => (
               <div
                 key={item.label}
-                className="rounded-lg border border-border bg-card px-4 py-3"
+                className="rounded-xl border border-transparent bg-card px-4 py-3 shadow-[var(--surface-shadow)]"
               >
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   {item.label}
@@ -476,7 +480,7 @@ export function ProviderDrawer({
                       type="button"
                       onClick={() => handleTypeChange(option.value)}
                       className={cn(
-                        'rounded-2xl border px-4 py-3 text-left transition',
+                        'rounded-2xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                         active
                           ? 'border-primary bg-primary/10 text-primary shadow-sm'
                           : 'border-border bg-card text-foreground hover:border-primary/20 hover:bg-accent/50'
@@ -498,53 +502,52 @@ export function ProviderDrawer({
                   <h3 id="provider-basic-info" className="text-sm font-semibold">{t('providers.drawer.sections.basic')}</h3>
                   <p className="text-xs text-muted-foreground">{t('providers.drawer.hints.basic')}</p>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setShowAdvanced((prev) => !prev)}
-                  className="rounded-full border border-border bg-card px-3 py-1.5 text-xs transition hover:border-primary/20 hover:bg-accent/50"
+                  className="bg-card text-xs"
                 >
                   {showAdvanced
                     ? t('providers.drawer.fields.hideAdvanced')
                     : t('providers.drawer.fields.showAdvanced')}
-                </button>
+                </Button>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <label className="flex flex-col gap-2 text-sm">
+                <Label className="flex flex-col gap-2 text-sm">
                   <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.id')}</span>
-                  <input
+                  <Input
                     value={form.id}
                     ref={providerIdRef}
                     onChange={(event) => handleProviderIdChange(event.target.value)}
                     disabled={!isCreate}
                     placeholder={t('providers.drawer.fields.idPlaceholder')}
-                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                     aria-invalid={Boolean(errors.id)}
                   />
-                  {errors.id ? <span className="text-xs text-red-500">{errors.id}</span> : null}
-                </label>
-                <label className="flex flex-col gap-2 text-sm">
+                  {errors.id ? <span className="text-xs text-destructive">{errors.id}</span> : null}
+                </Label>
+                <Label className="flex flex-col gap-2 text-sm">
                   <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.label')}</span>
-                  <input
+                  <Input
                     value={form.label}
                     onChange={(event) => handleInputChange('label')(event.target.value)}
                     placeholder={t('providers.drawer.fields.labelPlaceholder')}
-                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                   />
-                </label>
+                </Label>
               </div>
 
-              <label className="flex flex-col gap-2 text-sm">
+              <Label className="flex flex-col gap-2 text-sm">
                 <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.baseUrl')}</span>
-                <input
+                <Input
                   value={form.baseUrl}
                   onChange={(event) => handleInputChange('baseUrl')(event.target.value)}
                   placeholder={t('providers.drawer.fields.baseUrlPlaceholder')}
-                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                   aria-invalid={Boolean(errors.baseUrl)}
                 />
-                {errors.baseUrl ? <span className="text-xs text-red-500">{errors.baseUrl}</span> : null}
-              </label>
+                {errors.baseUrl ? <span className="text-xs text-destructive">{errors.baseUrl}</span> : null}
+              </Label>
             </section>
 
             <section className="mt-8 space-y-4" aria-labelledby="provider-auth-fields">
@@ -553,53 +556,52 @@ export function ProviderDrawer({
                 <p className="text-xs text-muted-foreground">{t('providers.drawer.hints.auth')}</p>
               </div>
 
-              <label className="flex flex-col gap-2 text-sm">
+              <Label className="flex flex-col gap-2 text-sm">
                 <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.apiKey')}</span>
-                <input
+                <Input
                   value={form.apiKey}
                   onChange={(event) => handleInputChange('apiKey')(event.target.value)}
                   placeholder={t('providers.drawer.fields.apiKeyPlaceholder')}
-                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                 />
-              </label>
+              </Label>
 
-              <fieldset className="grid gap-2 rounded-lg border border-border bg-card p-4 text-xs">
+              <fieldset className="grid gap-2 rounded-xl border border-transparent bg-card p-4 text-xs shadow-[var(--surface-shadow)]">
                 <legend className="px-1 text-muted-foreground">
                   {t('providers.drawer.fields.authMode')}
                 </legend>
                 <p className="text-[11px] text-muted-foreground">
                   {t('providers.drawer.fields.authModeHint')}
                 </p>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:bg-primary/5">
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:bg-accent focus-within:bg-accent">
                   <input
                     type="radio"
                     name="provider-auth-mode"
                     value="apiKey"
                     checked={form.authMode === 'apiKey'}
                     onChange={() => handleAuthModeChange('apiKey')}
-                    className="mt-0.5"
+                    className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
                   />
                   <span>{describeAuthMode(form.type, 'apiKey')}</span>
                 </label>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:bg-primary/5">
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:bg-accent focus-within:bg-accent">
                   <input
                     type="radio"
                     name="provider-auth-mode"
                     value="authToken"
                     checked={form.authMode === 'authToken'}
                     onChange={() => handleAuthModeChange('authToken')}
-                    className="mt-0.5"
+                    className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
                   />
                   <span>{t('providers.drawer.fields.authModeAuthToken')}</span>
                 </label>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:bg-primary/5">
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:bg-accent focus-within:bg-accent">
                   <input
                     type="radio"
                     name="provider-auth-mode"
                     value="xAuthToken"
                     checked={form.authMode === 'xAuthToken'}
                     onChange={() => handleAuthModeChange('xAuthToken')}
-                    className="mt-0.5"
+                    className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
                   />
                   <span>{t('providers.drawer.fields.authModeXAuthToken')}</span>
                 </label>
@@ -612,43 +614,43 @@ export function ProviderDrawer({
                   <h3 id="provider-model-fields" className="text-sm font-semibold">{t('providers.drawer.fields.models')}</h3>
                   <p className="text-xs text-muted-foreground">{t('providers.drawer.modelsDescription')}</p>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={handleAddModel}
-                  className="rounded-full border border-border bg-card px-3 py-1.5 text-xs transition hover:border-primary/20 hover:bg-accent/50"
+                  className="bg-card text-xs"
                 >
                   {t('providers.drawer.fields.addModel')}
-                </button>
+                </Button>
               </div>
 
-              {errors.models ? <p className="text-xs text-red-500">{errors.models}</p> : null}
+              {errors.models ? <p className="text-xs text-destructive">{errors.models}</p> : null}
 
               <div className="space-y-4">
                 {form.models.map((model, index) => (
                   <div
                     key={model._key}
-                    className="rounded-lg border border-border bg-card p-4"
+                    className="rounded-xl border border-transparent bg-card p-4 shadow-[var(--surface-shadow)]"
                   >
                     <div className="grid gap-4 md:grid-cols-2">
-                      <label className="flex flex-col gap-2 text-sm">
+                      <Label className="flex flex-col gap-2 text-sm">
                         <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.modelId')}</span>
-                        <input
+                        <Input
                           value={model.id}
                           onChange={(event) => handleModelIdChange(index, event.target.value)}
                           placeholder={t('providers.drawer.fields.modelIdPlaceholder')}
-                          className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                         />
-                      </label>
+                      </Label>
                       {showAdvanced ? (
-                        <label className="flex flex-col gap-2 text-sm">
+                        <Label className="flex flex-col gap-2 text-sm">
                           <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.modelLabel')}</span>
-                          <input
+                          <Input
                             value={model.label ?? ''}
                             onChange={(event) => handleModelChange(index, { label: event.target.value })}
                             placeholder={t('providers.drawer.fields.modelLabelPlaceholder')}
-                            className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted/60 disabled:text-muted-foreground"
                           />
-                        </label>
+                        </Label>
                       ) : null}
                     </div>
 
@@ -661,23 +663,26 @@ export function ProviderDrawer({
                           checked={form.defaultModel === model.id}
                           onChange={() => setForm((prev) => ({ ...prev, defaultModel: model.id }))}
                           disabled={model.id.trim().length === 0}
+                          className="h-4 w-4 accent-[hsl(var(--primary))]"
                         />
                         {t('providers.drawer.fields.setDefault')}
                       </label>
-                      <button
+                      <Button
                         type="button"
-                        className="text-red-500 transition hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto px-2 text-destructive"
                         onClick={() => handleRemoveModel(index)}
                         disabled={form.models.length === 0}
                       >
                         {t('providers.drawer.fields.removeModel')}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
 
                 {form.models.length === 0 ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-5 dark:border-amber-700/50 dark:bg-amber-900/20">
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
                     <div className="space-y-2">
                       <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
                         {t('providers.drawer.noModelsTitle')}
@@ -685,11 +690,11 @@ export function ProviderDrawer({
                       <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-300">
                         {t('providers.drawer.noModelsHint', { providerId: form.id || 'provider-id' })}
                       </p>
-                      <div className="rounded-md border border-border bg-secondary p-2.5">
+                      <div className="rounded-lg bg-secondary/50 p-2.5">
                         <p className="mb-1.5 text-xs font-medium text-foreground">
                           {t('providers.drawer.routeExample')}
                         </p>
-                        <code className="block rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground">
+                        <code className="block rounded-lg border border-transparent bg-card px-2.5 py-1.5 font-mono text-xs text-foreground shadow-[var(--surface-shadow)]">
                           &quot;claude-*&quot;: &quot;{(form.id || 'provider-id').trim() || 'provider-id'}:*&quot;
                         </code>
                       </div>
@@ -706,9 +711,9 @@ export function ProviderDrawer({
             </section>
           </div>
 
-          <aside className="hidden min-h-0 overflow-y-auto border-l border-border bg-secondary px-5 py-5 xl:block">
+          <aside className="hidden min-h-0 overflow-y-auto border-l border-border/45 bg-secondary/40 px-5 py-5 xl:block">
             <div className="sticky top-0 space-y-5">
-              <div className="rounded-lg border border-border bg-card p-4">
+              <div className="rounded-xl border border-transparent bg-card p-4 shadow-[var(--surface-shadow)]">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   {t('providers.drawer.formSummary')}
                 </p>
@@ -723,7 +728,7 @@ export function ProviderDrawer({
                 </div>
               </div>
 
-              <div className="rounded-lg border border-border bg-card p-4">
+              <div className="rounded-xl border border-transparent bg-card p-4 shadow-[var(--surface-shadow)]">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   {t('providers.drawer.sections.checklist')}
                 </p>
@@ -735,7 +740,7 @@ export function ProviderDrawer({
               </div>
 
               {showAdvanced && (
-                <div className="rounded-lg border border-primary/20 bg-accent p-4 text-sm text-foreground">
+                <div className="rounded-xl bg-accent p-4 text-sm text-foreground">
                   <p className="font-medium text-primary">{t('providers.drawer.hints.advancedTitle')}</p>
                   <p className="mt-2 text-xs text-muted-foreground">
                     {t('providers.drawer.hints.advancedBody')}
@@ -746,27 +751,23 @@ export function ProviderDrawer({
           </aside>
         </div>
 
-        <footer className="flex items-center justify-between gap-3 border-t border-border bg-secondary px-6 py-4 text-sm">
-          <div className="flex flex-col text-xs text-red-500" aria-live="polite">
+        <footer className="flex items-center justify-between gap-3 border-t border-border/45 bg-secondary/45 px-6 py-4 text-sm backdrop-blur-sm">
+          <div className="flex flex-col text-xs text-destructive" aria-live="polite">
             {submitError ? <span>{submitError}</span> : null}
           </div>
           <div className="flex gap-2">
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={onClose}
-              className="rounded-full border border-border bg-card px-4 py-2 transition hover:border-primary/20 hover:bg-accent/50"
               disabled={submitting}
+              className="bg-card"
             >
               {t('common.actions.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              className="rounded-full bg-primary px-5 py-2 text-primary-foreground shadow-[0_8px_20px_-12px_rgba(59,130,246,0.65)] transition hover:-translate-y-0.5 hover:bg-primary/95 disabled:opacity-60"
-              disabled={submitting}
-            >
+            </Button>
+            <Button type="button" onClick={handleSubmit} disabled={submitting}>
               {submitting ? t('common.actions.saving') : t('common.actions.save')}
-            </button>
+            </Button>
           </div>
         </footer>
       </aside>

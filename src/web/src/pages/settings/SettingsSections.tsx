@@ -30,28 +30,28 @@ export function SettingsSectionNav({
   return (
     <>
       <nav className="hidden xl:block">
-        <div className="sticky top-20 rounded-lg border border-border bg-card p-4">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="sticky top-20 rounded-[1.1rem] border border-white/70 bg-card/95 p-3.5 shadow-[0_20px_48px_-42px_rgba(15,23,42,0.24)]">
+          <p className="mb-2.5 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             {t('settings.sections.jump')}
           </p>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {SETTINGS_SECTIONS.map((section, index) => (
               <button
                 key={section.id}
                 type="button"
                 onClick={() => onSelectSection(section.id)}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-full px-3.5 py-2.5 text-left text-sm transition-all',
+                  'flex w-full items-center gap-2.5 rounded-[0.85rem] px-3 py-2 text-left text-sm font-semibold transition-all duration-200',
                   activeSection === section.id
-                    ? 'bg-accent font-medium text-primary'
-                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                    ? 'bg-secondary text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]'
+                    : 'text-muted-foreground hover:text-foreground'
                 )}
               >
                 <span className={cn(
-                  'flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold',
+                  'flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold',
                   activeSection === section.id
-                    ? 'border-primary/20 bg-primary text-primary-foreground'
-                    : 'border-border bg-secondary text-muted-foreground'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground'
                 )}
                 >
                   {index + 1}
@@ -64,7 +64,7 @@ export function SettingsSectionNav({
       </nav>
 
       <div className="xl:hidden">
-        <div className="-mx-1 overflow-x-auto pb-1">
+        <div className="overflow-x-auto pb-1">
           <div className="flex w-max gap-2 px-1">
           {SETTINGS_SECTIONS.map((section) => (
             <button
@@ -72,10 +72,10 @@ export function SettingsSectionNav({
               type="button"
               onClick={() => onSelectSection(section.id)}
               className={cn(
-                'rounded-full border px-3.5 py-2 text-xs font-medium transition-all',
+                'rounded-full px-4 py-2 text-xs font-semibold transition-all duration-150',
                 activeSection === section.id
-                  ? 'border-primary bg-accent text-primary'
-                  : 'border-border bg-card text-muted-foreground hover:border-primary/20 hover:bg-accent hover:text-primary'
+                  ? 'bg-secondary text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
               )}
             >
               {t(section.labelKey)}
@@ -112,11 +112,14 @@ export function SettingsOverviewPanel({
   const { t } = useTranslation()
 
   return (
-    <Card>
-      <CardContent className="space-y-4 pt-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <Card
+      variant="ghost"
+      className="rounded-[1.25rem] border border-white/70 bg-card/95 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.24)]"
+    >
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/75">
               {t('settings.overview.title')}
             </p>
             <p className="text-sm text-muted-foreground">{t('settings.overview.description')}</p>
@@ -132,7 +135,7 @@ export function SettingsOverviewPanel({
             ) : null}
           </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-3">
           <OverviewCard
             label={t('settings.overview.cards.protocols')}
             value={protocolSummaryLabel}
@@ -173,7 +176,11 @@ export function BasicsSection({
   const { t } = useTranslation()
 
   return (
-    <Card id="section-basics" ref={sectionRef}>
+    <Card
+      id="section-basics"
+      ref={sectionRef}
+      className="bg-card shadow-[var(--surface-shadow)]"
+    >
       <CardContent className="pt-6">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -256,7 +263,7 @@ export function BasicsSection({
             />
           </div>
 
-          <div className="rounded-lg border border-border bg-secondary p-4 md:col-span-2">
+          <div className="rounded-xl bg-secondary px-4 py-5 md:col-span-2">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.fields.defaults')}</Label>
             <p className="mt-2 text-sm">{defaultsSummary ?? t('settings.defaults.none')}</p>
           </div>
@@ -280,33 +287,37 @@ export function ProtocolSection({
   const { t } = useTranslation()
 
   return (
-    <Card id="section-protocol" ref={sectionRef}>
+    <Card
+      id="section-protocol"
+      ref={sectionRef}
+      className="bg-card shadow-[var(--surface-shadow)]"
+    >
       <CardContent className="space-y-6 pt-6">
         <div>
           <h3 className="text-sm font-semibold">{t('settings.sections.protocol')}</h3>
           <p className="mt-1 text-xs text-muted-foreground">{t('settings.protocol.description')}</p>
         </div>
 
-        <div className="rounded-lg border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning-bg))] p-4">
+        <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200/50 p-4 shadow-sm dark:bg-amber-950/24 dark:ring-amber-500/20">
           <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-[hsl(var(--warning)/1)]" />
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
             <div className="space-y-2">
               <p className="text-sm font-medium text-foreground">{t('settings.protocol.restartWarning')}</p>
               <p className="text-xs text-muted-foreground">{t('settings.protocol.restartHint')}</p>
-              <code className="block rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-mono text-foreground">cc-gw restart --daemon</code>
+              <code className="block rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-mono text-foreground dark:bg-secondary dark:border-border">cc-gw restart --daemon</code>
               <p className="text-xs text-muted-foreground">{t('settings.protocol.restartTip')}</p>
             </div>
           </div>
         </div>
 
         {errors.protocol ? (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          <div className="rounded-xl bg-destructive/10 ring-1 ring-destructive/30 p-4 text-sm text-destructive shadow-sm">
             <AlertCircle className="mr-2 inline h-4 w-4" />
             {errors.protocol}
           </div>
         ) : null}
 
-        <div className="rounded-lg border border-border bg-secondary p-5">
+        <div className="rounded-xl bg-secondary p-5 dark:bg-secondary">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <Label className="text-sm font-medium text-foreground">{t('settings.protocol.http.enable')}</Label>
@@ -330,7 +341,7 @@ export function ProtocolSection({
           ) : null}
         </div>
 
-        <div className="rounded-lg border border-border bg-secondary p-5">
+        <div className="rounded-xl bg-secondary p-5 dark:bg-secondary">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -360,9 +371,9 @@ export function ProtocolSection({
               <ProtocolPathField label={t('settings.protocol.https.certPath')} value={form.httpsCertPath} onChange={(value) => onSetForm((previous) => ({ ...previous, httpsCertPath: value }))} placeholder="~/.cc-gw/certs/cert.pem" />
               <ProtocolPathField label={t('settings.protocol.https.caPath')} value={form.httpsCaPath} onChange={(value) => onSetForm((previous) => ({ ...previous, httpsCaPath: value }))} placeholder="留空则不使用" />
 
-              <div className="rounded-lg border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning-bg))] p-4">
+              <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200/50 p-4 shadow-sm dark:bg-amber-950/24 dark:ring-amber-500/20">
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-[hsl(var(--warning)/1)]" />
+                  <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
                   <div className="flex-1 space-y-2">
                     <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{t('settings.protocol.https.warning')}</p>
                     <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-300"><strong>{t('settings.protocol.https.invalidCert')}</strong>{t('settings.protocol.https.invalidCertDetail')}</p>
@@ -407,7 +418,11 @@ export function SecuritySection({
   const { t } = useTranslation()
 
   return (
-    <Card id="section-security" ref={sectionRef}>
+    <Card
+      id="section-security"
+      ref={sectionRef}
+      className="bg-card shadow-[var(--surface-shadow)]"
+    >
       <CardContent className="space-y-5 pt-6">
         <div>
           <h3 className="text-sm font-semibold">{t('settings.sections.security')}</h3>
@@ -420,14 +435,14 @@ export function SecuritySection({
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="flex flex-col gap-4 rounded-lg border border-border bg-secondary p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-4 rounded-xl bg-secondary p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-2">
                 <Label className="text-sm font-medium">{t('settings.auth.enable')}</Label>
                 <p className="text-xs text-muted-foreground">{t('settings.auth.enableHint')}</p>
                 <div className="flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
-                  <span className="rounded-full border border-border bg-card px-3 py-1">/ui</span>
-                  <span className="rounded-full border border-border bg-card px-3 py-1">/api/*</span>
-                  <span className="rounded-full border border-border bg-card px-3 py-1">Cookie Session</span>
+                  <span className="rounded-full bg-secondary px-3 py-1 text-[11px] tracking-[0.08em]">/ui</span>
+                  <span className="rounded-full bg-secondary px-3 py-1 text-[11px] tracking-[0.08em]">/api/*</span>
+                  <span className="rounded-full bg-secondary px-3 py-1 text-[11px] tracking-[0.08em]">Cookie Session</span>
                 </div>
               </div>
               <div className="flex items-center gap-3 self-start sm:self-auto">
@@ -462,14 +477,14 @@ export function SecuritySection({
               </div>
 
               <div className="flex flex-col gap-4">
-                <div className="rounded-lg border border-border bg-secondary p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.auth.status')}</p>
+                <div className="rounded-xl bg-secondary p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.34em] text-muted-foreground">{t('settings.auth.status')}</p>
                   <p className="mt-2 text-base font-semibold">{authSettings?.enabled ? t('settings.auth.statusEnabled') : t('settings.auth.statusDisabled')}</p>
                   {authSettings?.username ? (
                     <div className="mt-3 rounded-lg bg-accent px-3 py-2 text-xs font-medium text-primary">{t('settings.auth.username')}: {authSettings.username}</div>
                   ) : null}
                 </div>
-                <div className="rounded-lg border border-border bg-secondary p-4 text-xs text-muted-foreground">
+                <div className="rounded-xl bg-secondary px-4 py-3 text-xs text-muted-foreground">
                   {t(needsPassword ? 'settings.auth.passwordHintRequired' : 'settings.auth.passwordHintOptional')}
                 </div>
               </div>
@@ -502,7 +517,11 @@ export function ConfigFileSection({
   const { t } = useTranslation()
 
   return (
-    <Card id="section-config-file" ref={sectionRef}>
+    <Card
+      id="section-config-file"
+      ref={sectionRef}
+      className="bg-card shadow-[var(--surface-shadow)]"
+    >
       <CardContent className="space-y-3 pt-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -514,10 +533,10 @@ export function ConfigFileSection({
             {t('common.actions.copy')}
           </Button>
         </div>
-        <code className="block break-all rounded-lg border border-border bg-secondary px-4 py-3 text-xs">
+        <code className="block break-all rounded-lg bg-secondary px-4 py-3 text-xs font-mono text-muted-foreground">
           {configPath || t('settings.file.unknown')}
         </code>
-        <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">
+        <div className="rounded-lg bg-secondary px-4 py-3 text-xs text-muted-foreground">
           {t('help.note')}
         </div>
       </CardContent>
@@ -541,17 +560,21 @@ export function CleanupSection({
   const { t } = useTranslation()
 
   return (
-    <Card id="section-cleanup" ref={sectionRef}>
+    <Card
+      id="section-cleanup"
+      ref={sectionRef}
+      className="bg-card shadow-[var(--surface-shadow)]"
+    >
       <CardContent className="space-y-4 pt-6">
         <div>
           <h3 className="text-sm font-semibold">{t('settings.sections.cleanup')}</h3>
           <p className="mt-1 text-xs text-muted-foreground">{t('settings.cleanup.description')}</p>
         </div>
-        <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">
+        <div className="rounded-lg bg-secondary px-4 py-3 text-xs text-muted-foreground">
           {t('settings.cleanup.confirmCleanup')}
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-lg border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning-bg))] p-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
             <div className="space-y-2">
               <Badge variant="warning">{t('settings.cleanup.softLabel')}</Badge>
               <p className="text-sm font-medium">{t('settings.cleanup.softTitle')}</p>
@@ -561,7 +584,7 @@ export function CleanupSection({
               </Button>
             </div>
           </div>
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-destructive">
             <div className="space-y-2">
               <Badge variant="outline" className="border-destructive/40 bg-destructive/10 text-destructive">{t('settings.cleanup.hardLabel')}</Badge>
               <p className="text-sm font-medium">{t('settings.cleanup.hardTitle')}</p>
@@ -605,7 +628,7 @@ export function StickySettingsSaveBar({
   }
 
   return (
-    <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-lg border border-primary/20 bg-card p-4 shadow-lg backdrop-blur-sm md:flex-row md:items-center md:justify-between">
+    <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-xl bg-card border border-border px-6 py-5 shadow-lg md:flex-row md:items-center md:justify-between">
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">{t('modelManagement.actions.unsaved')}</Badge>
@@ -641,18 +664,18 @@ export function StickySettingsSaveBar({
 
 function OverviewCard({ label, value, helper, mono = false }: { label: string; value: string; helper: string; mono?: boolean }) {
   return (
-    <div className="rounded-lg border border-border bg-card px-4 py-3">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className={cn('mt-2 text-sm font-semibold text-foreground', mono && 'break-all font-mono text-xs')}>{value}</p>
-      <p className="mt-2 text-xs text-muted-foreground">{helper}</p>
+    <div className="min-w-0 rounded-[0.95rem] bg-secondary/65 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{label}</p>
+      <p className={cn('mt-1.5 truncate text-xl font-semibold text-foreground', mono ? 'font-mono text-sm leading-tight' : '')} title={typeof value === 'string' ? value : undefined}>{value}</p>
+      <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{helper}</p>
     </div>
   )
 }
 
 function MiniInfoCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border bg-secondary px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+    <div className="rounded-lg bg-secondary px-3 py-2 text-center">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
   )
@@ -676,9 +699,14 @@ function ToggleCard({
   onCheckedChange: (checked: boolean) => void
 }) {
   return (
-    <div className={cn('flex flex-col gap-4 rounded-lg border border-border bg-secondary p-4 sm:flex-row sm:items-center sm:justify-between', className)}>
+    <div
+      className={cn(
+        'flex flex-col gap-3 rounded-xl bg-secondary p-4 sm:flex-row sm:items-center sm:justify-between',
+        className
+      )}
+    >
       <div className="space-y-1">
-        <Label className={cn('text-sm font-medium', labelClassName)}>{label}</Label>
+        <Label className={cn('text-sm font-semibold text-foreground', labelClassName)}>{label}</Label>
         <p className={cn('text-xs text-muted-foreground', hintClassName)}>{hint}</p>
       </div>
       <Switch checked={checked} onCheckedChange={onCheckedChange} className="self-start sm:self-auto" />

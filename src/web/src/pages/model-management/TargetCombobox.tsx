@@ -71,7 +71,7 @@ export function TargetCombobox({
         />
       </PopoverTrigger>
       <PopoverContent
-        className="max-h-60 w-[var(--radix-popover-trigger-width)] overflow-y-auto p-1"
+        className="max-h-60 w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-xl border border-[color:var(--surface-border)] bg-popover/96 p-1.5 shadow-[var(--surface-shadow-lg)] backdrop-blur"
         align="start"
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
@@ -83,8 +83,8 @@ export function TargetCombobox({
               key={option.value}
               type="button"
               className={cn(
-                'flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
-                option.value === value.trim() && 'bg-accent'
+                'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                option.value === value.trim() && 'bg-accent/90 text-accent-foreground'
               )}
               onMouseDown={(event) => {
                 event.preventDefault()

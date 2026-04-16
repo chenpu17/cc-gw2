@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="application-name" content="cc-gw" />
+    <meta name="apple-mobile-web-app-title" content="cc-gw" />
+    <meta
+      name="description"
+      content="cc-gw 帮个人开发者和小团队把 AI 调用从项目里收回来：统一 OpenAI / Anthropic 协议入口，集中管理模型路由、日志、Profiler 与 API Key。"
+    />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="icon" type="image/svg+xml" href="/cc-gw-mark.svg" />
+    <link rel="apple-touch-icon" href="/cc-gw-mark.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta property="og:title" content="cc-gw | 别再让 AI 配置散落在每个项目里" />
+    <meta
+      property="og:description"
+      content="把 Claude Code、OpenAI SDK、Anthropic SDK 和内部工具统一到一个本地优先入口，Key、路由、日志和排查回到控制台里管理。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/cc-gw-social-card.png" />
+    <meta property="og:image:alt" content="cc-gw landing share card showing a local-first AI gateway and daily control console" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="cc-gw | 别再让 AI 配置散落在每个项目里" />
+    <meta
+      name="twitter:description"
+      content="把 Claude Code、OpenAI SDK、Anthropic SDK 和内部工具统一到一个本地优先入口，Key、路由、日志和排查回到控制台里管理。"
+    />
+    <meta name="twitter:image" content="/cc-gw-social-card.png" />
+    <meta name="twitter:image:alt" content="cc-gw landing share card showing a local-first AI gateway and daily control console" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "cc-gw",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux, Windows",
+        "softwareHelp": "Web console and CLI daemon",
+        "description": "Local-first AI gateway for personal developers and small teams who want to centralize provider configuration, routing, logs, profiler, and API key management."
+      }
+    </script>
+    <title>cc-gw | 别再让 AI 配置散落在每个项目里</title>
+  </head>
+  <body class="bg-slate-50 text-slate-900">
+    <div id="landing-root"></div>
+    <script type="module" src="/src/landing/main.tsx"></script>
+  </body>
+</html>

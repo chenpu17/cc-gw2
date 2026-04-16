@@ -73,7 +73,7 @@ export function ApiKeyFilter({
         disabled={disabled || apiKeys.length === 0}
         title={t('logs.filters.apiKeyHint')}
         className={cn(
-          'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+          'flex h-10 w-full items-center justify-between rounded-lg border border-input bg-background px-3 text-sm ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
           selected.length > 0 && 'border-primary',
           open && 'ring-2 ring-ring ring-offset-2'
         )}
@@ -99,8 +99,8 @@ export function ApiKeyFilter({
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-md border bg-popover p-2 shadow-md">
-          <div className="flex items-center justify-between rounded-md bg-secondary px-3 py-2 text-xs">
+        <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-lg border bg-popover p-2 shadow-[var(--surface-shadow-lg)]">
+          <div className="flex items-center justify-between rounded-lg bg-secondary px-3 py-2 text-xs">
             <span>{summaryText}</span>
             <button
               type="button"
@@ -119,7 +119,7 @@ export function ApiKeyFilter({
                 <label
                   key={key.id}
                   className={cn(
-                    'flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm transition hover:bg-primary/5',
+                    'flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-primary/5',
                     checked && 'bg-primary/10 text-primary'
                   )}
                 >

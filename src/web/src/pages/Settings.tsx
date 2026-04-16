@@ -38,7 +38,7 @@ export default function SettingsPage() {
         actions={
           state.config ? (
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
+              <div className="rounded-full bg-secondary px-3.5 py-2 text-xs text-muted-foreground">
                 {state.protocolChangesPending ? t('settings.protocol.restartWarning') : t('common.status.success')}
               </div>
               <Button variant="outline" onClick={state.handleReset} disabled={state.saving || !state.isConfigDirty} className="w-full sm:w-auto">
@@ -53,13 +53,13 @@ export default function SettingsPage() {
       />
 
       {state.isLoading ? (
-        <Card>
+        <Card className="bg-card/82">
           <CardContent className="flex min-h-[220px] items-center justify-center">
             <Loader />
           </CardContent>
         </Card>
       ) : !state.config ? (
-        <Card>
+        <Card className="bg-card/82">
           <CardContent className="pt-6">
             <p className="text-sm font-medium text-destructive">{t('settings.toast.missingConfig')}</p>
           </CardContent>

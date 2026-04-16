@@ -319,6 +319,16 @@ const resources = {
             pageLabel: '第 {{page}} / {{total}} 页'
           }
         },
+        empty: {
+          title: '日志还没有开始积累',
+          subtitle: '发起一条真实请求后，这里会开始显示路由结果、耗时和状态。',
+          filteredTitle: '当前筛选条件下没有匹配记录',
+          filteredSubtitle: '可以重置筛选条件，或放宽时间范围、端点和状态。',
+          actions: {
+            reset: '重置筛选',
+            apiKeys: '去 API 密钥'
+          }
+        },
         endpointAnthropic: 'anthropic',
         endpointOpenAI: 'openai',
         toast: {
@@ -415,9 +425,14 @@ const resources = {
         emptyState: '暂无 Provider，请点击“新增提供商”以开始配置。',
         emptyFiltered: '当前筛选条件下没有匹配的 Provider。',
         count: '已配置：{{count}} 个 Provider',
+        groupCount: '{{count}} 个提供商',
         filters: {
           searchPlaceholder: '按名称、ID 或 Base URL 搜索',
           typeAll: '全部类型'
+        },
+        status: {
+          ready: '已就绪',
+          needsDefault: '待设默认模型'
         },
         toast: {
           createSuccess: '已添加 Provider：{{name}}',
@@ -538,6 +553,7 @@ const resources = {
           }
         },
         card: {
+          baseUrl: 'Base URL',
           defaultModelLabel: '默认模型',
           defaultModel: '默认模型：{{model}}',
           noDefault: '未设置默认模型',
@@ -666,6 +682,8 @@ const resources = {
           customEndpointsHint: '自定义端点保留紧凑横向卡片，便于快速切换、编辑和删除。',
           headerWithCustom: '优先在此处切换和维护自定义端点，避免主工作区被多列布局挤压。',
           headerWithoutCustom: '先配置提供商与内置路由，需要时再补充自定义端点。',
+          endpointPaths: '访问路径',
+          protocols: '协议路径',
           endpointEnabled: '已启用',
           endpointDisabled: '已停用',
           endpointProtocols: '{{count}} 条协议路径',
@@ -826,7 +844,12 @@ const resources = {
         },
         empty: {
           title: '暂无事件记录',
-          subtitle: '当前没有可用的安全事件。'
+          subtitle: '当前没有异常或告警事件，这通常意味着系统运行平稳。',
+          filteredTitle: '当前筛选条件下没有匹配事件',
+          filteredSubtitle: '可以重置筛选条件，或去请求日志中查看更完整的调用链。',
+          actions: {
+            logs: '查看请求日志'
+          }
         },
         details: '查看详情',
         defaultTitle: '未命名事件',
@@ -1027,6 +1050,13 @@ const resources = {
         intro: '完整的 cc-gw 配置和使用指南，帮助您从零开始搭建 AI 模型网关。',
         note: '所有配置变更都会实时生效。建议通过 Web UI 进行配置管理，CLI 主要用于服务启动和重启。',
         helper: '推荐顺序：先启动服务，再配置 Provider，然后创建 API 密钥，最后接入 Claude Code 或 Codex。',
+        meta: {
+          breadcrumb: '网关 / 使用指南',
+          guides: '{{count}} 个指南',
+          faqCount: '{{count}} 个问题',
+          claudeWorkflow: 'IDE / 桌面工作流',
+          codexWorkflow: '终端工作流'
+        },
         clientConfig: {
           title: '客户端配置指南',
           subtitle: '选择您的客户端工具，按照步骤进行配置'
@@ -1242,6 +1272,10 @@ const resources = {
           },
           requestsSeries: '请求次数',
           empty: '所选时间范围内暂无统计数据。',
+          emptyHint: '先创建并使用至少一个密钥，图表会在有真实流量后开始显示。',
+          actions: {
+            logs: '去请求日志'
+          },
           unknownKey: '未知密钥'
         },
         quickStart: {
@@ -1262,7 +1296,9 @@ const resources = {
         },
         list: {
           title: '密钥列表',
+          emptyTitle: '先创建第一把 API 密钥',
           empty: '尚未创建 API 密钥，点击右上角按钮开始创建。',
+          emptyFilteredTitle: '没有符合当前筛选条件的密钥',
           emptyFiltered: '当前筛选条件下没有匹配的 API 密钥。'
         },
         filters: {
@@ -1276,6 +1312,17 @@ const resources = {
           wildcard: '通配符密钥：{{count}}',
           restricted: '受限密钥：{{count}}',
           unrestricted: '不限制端点：{{count}}'
+        },
+        views: {
+          cards: '卡片视图',
+          compact: '紧凑列表'
+        },
+        table: {
+          name: '密钥',
+          access: '访问范围',
+          actions: '操作',
+          accessWildcard: '通配访问',
+          accessOpen: '不限制端点'
         },
         toast: {
           keyCreated: 'API 密钥创建成功',
@@ -1357,7 +1404,54 @@ const resources = {
         validationError: '请填写所有必填字段'
       },
       profiler: {
-        description: '记录并分析 LLM 会话的延迟与 token 用量。'
+        title: '性能分析',
+        eyebrow: 'Session Profiler',
+        breadcrumb: 'Gateway / Profiler',
+        description: '记录并分析 LLM 会话的延迟与 token 用量。',
+        sessionsTitle: '会话列表',
+        sessionsCount: '{{count}} 个会话',
+        searchPlaceholder: '搜索会话...',
+        loadingSession: '正在加载会话...',
+        sessionSummary: '{{turns}} 轮 · {{duration}} · {{tokens}} tokens',
+        metricTurns: '{{count}} 轮',
+        metricTokens: '{{value}} tok',
+        tabs: {
+          timeline: '时间线',
+          breakdown: '拆解视图'
+        },
+        status: {
+          recording: '录制中',
+          idle: '未录制'
+        },
+        actions: {
+          start: '开始录制',
+          stop: '停止录制',
+          export: '导出',
+          clear: '清空'
+        },
+        empty: {
+          waitingTitle: '等待请求进入...',
+          waitingDescription: '带有 session_id 的请求会显示在这里。',
+          idleTitle: '暂无会话',
+          idleDescription: '开始录制后即可捕获 LLM 会话。',
+          noTurnsTitle: '该会话还没有记录到轮次',
+          noTurnsDescription: '会话壳已创建，但还没有写入 turn 级别的请求或响应内容。',
+          selectTitle: '选择一个会话',
+          selectDescription: '从左侧选择会话，查看其时间线、消息载荷和统计数据。',
+          actions: {
+            logs: '查看请求日志'
+          }
+        },
+        errors: {
+          loadFailed: '加载会话失败',
+          notFound: '未找到会话'
+        },
+        relativeTime: {
+          justNow: '刚刚',
+          minutesAgo: '{{count}} 分钟前',
+          hoursAgo: '{{count}} 小时前',
+          daysAgo: '{{count}} 天前'
+        }
       }
     }
   },
@@ -1677,6 +1771,16 @@ const resources = {
             pageLabel: 'Page {{page}} / {{total}}'
           }
         },
+        empty: {
+          title: 'Logs have not accumulated yet',
+          subtitle: 'Send a real request and this page will start showing routes, latency, and statuses.',
+          filteredTitle: 'No logs match the current filters',
+          filteredSubtitle: 'Reset the filters or widen the time range, endpoint, or status selection.',
+          actions: {
+            reset: 'Reset filters',
+            apiKeys: 'Open API Keys'
+          }
+        },
         endpointAnthropic: 'anthropic',
         endpointOpenAI: 'openai',
         stream: {
@@ -1773,9 +1877,14 @@ const resources = {
         emptyState: 'No providers yet. Click "Add provider" to get started.',
         emptyFiltered: 'No providers match the current filters.',
         count: '{{count}} providers configured',
+        groupCount: '{{count}} providers',
         filters: {
           searchPlaceholder: 'Search by name, ID, or Base URL',
           typeAll: 'All types'
+        },
+        status: {
+          ready: 'Ready',
+          needsDefault: 'Needs default model'
         },
         toast: {
           createSuccess: 'Provider added: {{name}}',
@@ -1896,6 +2005,7 @@ const resources = {
           }
         },
         card: {
+          baseUrl: 'Base URL',
           defaultModelLabel: 'Default model',
           defaultModel: 'Default model: {{model}}',
           noDefault: 'No default model',
@@ -2024,6 +2134,8 @@ const resources = {
           customEndpointsHint: 'Keep custom endpoints in a compact horizontal strip so they remain easy to switch, edit, and remove.',
           headerWithCustom: 'Switch and maintain custom endpoints here to avoid squeezing the main workspace into a multi-column layout.',
           headerWithoutCustom: 'Set up providers and built-in routing first, then add custom endpoints when needed.',
+          endpointPaths: 'Access paths',
+          protocols: 'Protocol paths',
           endpointEnabled: 'Enabled',
           endpointDisabled: 'Disabled',
           endpointProtocols: '{{count}} protocol paths',
@@ -2179,7 +2291,12 @@ const resources = {
         },
         empty: {
           title: 'No events recorded',
-          subtitle: 'There are no security events yet.'
+          subtitle: 'No alerts or suspicious events have been recorded yet, which usually means things are healthy.',
+          filteredTitle: 'No events match the current filters',
+          filteredSubtitle: 'Reset the filters or inspect request logs for a broader view of traffic.',
+          actions: {
+            logs: 'Open request logs'
+          }
         },
         details: 'View details',
         defaultTitle: 'Untitled event',
@@ -2380,6 +2497,13 @@ const resources = {
         intro: 'This page summarises how to configure cc-gw via the Web UI and how to operate it day to day.',
         note: 'Changes are written to ~/.cc-gw/config.json immediately. Prefer editing through the Web UI; use the CLI mainly to start or restart the daemon.',
         helper: 'Recommended order: start the service, add providers, create API keys, then connect Claude Code or Codex.',
+        meta: {
+          breadcrumb: 'Gateway / Help',
+          guides: '{{count}} guides',
+          faqCount: '{{count}} FAQs',
+          claudeWorkflow: 'IDE / Desktop workflow',
+          codexWorkflow: 'Terminal workflow'
+        },
         clientConfig: {
           title: 'Client Configuration Guide',
           subtitle: 'Choose your client tool and follow the steps to configure'
@@ -2519,6 +2643,10 @@ const resources = {
           },
           requestsSeries: 'Requests',
           empty: 'No activity for the selected range.',
+          emptyHint: 'Create and use at least one key, then charts will fill in as real traffic arrives.',
+          actions: {
+            logs: 'Open request logs'
+          },
           unknownKey: 'Unknown key'
         },
         quickStart: {
@@ -2539,7 +2667,9 @@ const resources = {
         },
         list: {
           title: 'Key Inventory',
+          emptyTitle: 'Create your first API key',
           empty: 'No API keys found. Use the button above to create one.',
+          emptyFilteredTitle: 'No keys match the current filters',
           emptyFiltered: 'No API keys match the current filters.'
         },
         filters: {
@@ -2553,6 +2683,17 @@ const resources = {
           wildcard: 'Wildcard keys: {{count}}',
           restricted: 'Restricted keys: {{count}}',
           unrestricted: 'Unrestricted keys: {{count}}'
+        },
+        views: {
+          cards: 'Cards',
+          compact: 'Compact list'
+        },
+        table: {
+          name: 'Key',
+          access: 'Access',
+          actions: 'Actions',
+          accessWildcard: 'Wildcard access',
+          accessOpen: 'All endpoints'
         },
         toast: {
           keyCreated: 'API key created successfully',
@@ -2701,7 +2842,54 @@ const resources = {
         validationError: 'Please fill in all required fields'
       },
       profiler: {
-        description: 'Record and analyze LLM session latency and token usage.'
+        title: 'Profiler',
+        eyebrow: 'Session Profiler',
+        breadcrumb: 'Gateway / Profiler',
+        description: 'Record and analyze LLM session latency and token usage.',
+        sessionsTitle: 'Sessions',
+        sessionsCount: '{{count}} sessions',
+        searchPlaceholder: 'Search sessions...',
+        loadingSession: 'Loading session...',
+        sessionSummary: '{{turns}} turns · {{duration}} · {{tokens}} tokens',
+        metricTurns: '{{count}} turns',
+        metricTokens: '{{value}} tok',
+        tabs: {
+          timeline: 'Timeline',
+          breakdown: 'Breakdown'
+        },
+        status: {
+          recording: 'Recording',
+          idle: 'Not Recording'
+        },
+        actions: {
+          start: 'Start Recording',
+          stop: 'Stop Recording',
+          export: 'Export',
+          clear: 'Clear'
+        },
+        empty: {
+          waitingTitle: 'Waiting for requests…',
+          waitingDescription: 'Requests with session_id will appear here.',
+          idleTitle: 'No sessions',
+          idleDescription: 'Start recording to capture LLM sessions.',
+          noTurnsTitle: 'No turns recorded',
+          noTurnsDescription: 'The session exists, but no turn-level payloads have been captured yet.',
+          selectTitle: 'Select a session',
+          selectDescription: 'Choose a session from the left to inspect its timeline, message payloads, and stats.',
+          actions: {
+            logs: 'Open request logs'
+          }
+        },
+        errors: {
+          loadFailed: 'Failed to load session',
+          notFound: 'Session not found'
+        },
+        relativeTime: {
+          justNow: 'just now',
+          minutesAgo: '{{count}} min ago',
+          hoursAgo: '{{count}} hr ago',
+          daysAgo: '{{count}} days ago'
+        }
       }
     }
   }

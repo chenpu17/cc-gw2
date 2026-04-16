@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 import {
   Activity,
   BarChart3,
@@ -11,6 +13,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react'
+import { PageHeader } from '@/components/PageHeader'
 import { PageLoadingState, PageState } from '@/components/PageState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -57,15 +60,15 @@ function sessionLabel(session: ProfilerSession): string {
   return id.length > 18 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id
 }
 
-function relativeTimeLabel(timestamp: number): string {
+function relativeTimeLabel(timestamp: number, t: (key: string, options?: Record<string, unknown>) => string): string {
   const diffMs = Math.max(0, Date.now() - timestamp)
   const minutes = Math.floor(diffMs / 60_000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes} min ago`
+  if (minutes < 1) return t('profiler.relativeTime.justNow')
+  if (minutes < 60) return t('profiler.relativeTime.minutesAgo', { count: minutes })
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} hr ago`
+  if (hours < 24) return t('profiler.relativeTime.hoursAgo', { count: hours })
   const days = Math.floor(hours / 24)
-  return `${days} day${days === 1 ? '' : 's'} ago`
+  return t('profiler.relativeTime.daysAgo', { count: days })
 }
 
 function parseJsonPayload(payload: string | null | undefined): unknown | null {
@@ -140,8 +143,10 @@ function SessionMetricPill({
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
-        tone === 'accent' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+        'inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium',
+        tone === 'accent'
+          ? 'bg-primary/10 text-primary'
+          : 'bg-secondary text-muted-foreground'
       )}
     >
       {children}
@@ -160,6 +165,7 @@ function SessionItem({
   index: number
   onClick: () => void
 }) {
+  const { t } = useTranslation()
   const dotColors = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500']
   const dotColor = selected ? 'bg-indigo-500' : dotColors[index % dotColors.length]
   const totalTokens = (session.totalInputTokens ?? 0) + (session.totalOutputTokens ?? 0)
@@ -169,24 +175,28 @@ function SessionItem({
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full border-b border-border px-4 py-3 text-left transition-colors',
-        selected ? 'bg-indigo-50/70' : 'hover:bg-slate-50'
+        'w-full border-b border-border/45 px-4 py-3 text-left transition-colors',
+        selected
+          ? 'bg-secondary'
+          : 'hover:bg-secondary/50'
       )}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', dotColor)} />
-          <span className={cn('truncate text-sm font-semibold', selected ? 'text-indigo-700' : 'text-slate-800')}>
+          <span className={cn('truncate text-sm font-semibold', selected ? 'text-primary' : 'text-foreground')}>
             {sessionLabel(session)}
           </span>
         </div>
-        <span className="text-[10px] text-muted-foreground">{relativeTimeLabel(session.startedAt)}</span>
+        <span className="text-[11px] text-muted-foreground">{relativeTimeLabel(session.startedAt, t)}</span>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2 pl-4">
-        <SessionMetricPill tone={selected ? 'accent' : 'default'}>{session.turnCount} turns</SessionMetricPill>
+        <SessionMetricPill tone={selected ? 'accent' : 'default'}>
+          {t('profiler.metricTurns', { count: session.turnCount })}
+        </SessionMetricPill>
         <SessionMetricPill>{fmtMsCompact(totalMs(session))}</SessionMetricPill>
-        <SessionMetricPill>{fmtCompactNumber(totalTokens)} tok</SessionMetricPill>
+        <SessionMetricPill>{t('profiler.metricTokens', { value: fmtCompactNumber(totalTokens) })}</SessionMetricPill>
       </div>
     </button>
   )
@@ -208,10 +218,10 @@ function SegmentedTab({
       type="button"
       onClick={onClick}
       className={cn(
-        'inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
+        'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-all',
         active
-          ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-          : 'border-transparent bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+          ? 'border-primary/20 bg-primary/10 text-primary'
+          : 'border-transparent bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground'
       )}
     >
       <Icon className="h-3.5 w-3.5" />
@@ -236,15 +246,15 @@ function DetailTabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-colors',
+        'inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium transition-all',
         active
-          ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-          : 'border-transparent bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+          ? 'border-primary/20 bg-primary/10 text-primary'
+          : 'border-transparent bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground'
       )}
     >
       <span>{label}</span>
       {typeof count === 'number' && (
-        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">
           {count}
         </span>
       )}
@@ -261,9 +271,17 @@ function TimelineOverview({
   selectedTurn: number
   onSelectTurn: (index: number) => void
 }) {
+  const { t } = useTranslation()
   const records = detail.records
   if (records.length === 0) {
-    return <PageState compact className="min-h-[220px]" title="No turns recorded" />
+    return (
+      <PageState
+        compact
+        className="min-h-[220px]"
+        title={t('profiler.empty.noTurnsTitle')}
+        description={t('profiler.empty.noTurnsDescription')}
+      />
+    )
   }
 
   const totalDurationMs = totalMs(detail)
@@ -271,24 +289,24 @@ function TimelineOverview({
   const maxToolCalls = Math.max(1, ...records.map((record) => extractToolCalls(record).length))
 
   return (
-    <div className="border-b border-border bg-white">
-      <div className="flex items-center justify-between gap-4 px-5 py-3">
-        <p className="text-xs text-slate-500">
+    <div className="rounded-xl bg-card shadow-[var(--surface-shadow)]">
+      <div className="flex items-center justify-between gap-4 border-b border-border/45 px-5 py-3.5">
+        <p className="text-xs text-muted-foreground">
           Compressed overview · idle gaps folded · wraps as turns grow
         </p>
         <div className="flex items-center gap-2 text-[11px]">
-          <span className="text-slate-500">Mode:</span>
-          <span className="rounded border border-slate-200 bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+          <span className="text-muted-foreground">Mode:</span>
+          <span className="rounded-full border border-border bg-secondary/70 px-2.5 py-1 font-medium text-foreground">
             Compressed
           </span>
-          <span className="rounded border border-slate-200 bg-white px-2 py-0.5 font-medium text-slate-700">
+          <span className="rounded-full border border-border bg-card px-2.5 py-1 font-medium text-foreground">
             Session {fmtMsCompact(totalDurationMs)}
           </span>
         </div>
       </div>
 
       <div className="px-5 pb-4">
-        <div className="mb-3 flex items-center justify-between text-[10px] text-slate-400">
+        <div className="mb-3 flex items-center justify-between text-[11px] text-muted-foreground/70">
           <span>start</span>
           <span>{(totalDurationMs / 1000).toFixed(1)}s</span>
         </div>
@@ -314,8 +332,10 @@ function TimelineOverview({
                 type="button"
                 onClick={() => onSelectTurn(index)}
                 className={cn(
-                  'border border-transparent px-1.5 py-1 text-left transition-colors',
-                  isSelected ? 'rounded-md border-rose-300' : 'hover:bg-slate-50/40'
+                  'rounded-xl border border-transparent bg-card px-2 py-2 text-left shadow-sm transition-all',
+                  isSelected
+                    ? 'border-primary/20 bg-primary/5'
+                    : 'hover:bg-secondary/50'
                 )}
                 title={`Turn ${record.turnIndex + 1}`}
               >
@@ -325,27 +345,27 @@ function TimelineOverview({
                       className={cn(
                         'inline-flex h-5 min-w-5 items-center justify-center rounded-full border px-1.5 text-[11px] font-semibold',
                         isSelected
-                          ? 'border-indigo-300 bg-indigo-100 text-indigo-700'
-                          : 'border-slate-200 bg-white text-slate-700'
+                          ? 'border-primary/30 bg-primary/10 text-primary'
+                          : 'border-border bg-card text-foreground'
                       )}
                     >
                       {record.turnIndex + 1}
                     </span>
-                    <span className="truncate text-[15px] font-semibold text-slate-800">{fmtMsCompact(record.latencyMs)}</span>
+                    <span className="truncate text-[15px] font-semibold text-foreground">{fmtMsCompact(record.latencyMs)}</span>
                   </div>
                 </div>
-                <p className="mt-1 text-[10px] text-slate-500">start {(startOffset / 1000).toFixed(1)}s</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">start {(startOffset / 1000).toFixed(1)}s</p>
 
                 <div className="mt-2">
-                  <div className="flex items-center justify-between text-[10px] text-slate-500">
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                     <span>{fmtMs(record.ttftMs)} TTFT</span>
                   </div>
-                  <div className="relative mt-1 h-4 rounded-sm bg-slate-100">
-                    <div className="h-4 rounded-sm bg-blue-200" style={{ width: latencyWidth }} />
+                  <div className="relative mt-1 h-4 rounded-sm bg-secondary">
+                    <div className="h-4 rounded-sm bg-primary/20" style={{ width: latencyWidth }} />
                     {ttftOffset != null && (
                       <>
                         <span
-                          className="absolute top-[-3px] h-5 w-[3px] -translate-x-1/2 rounded-full bg-violet-500 shadow-[0_0_0_1px_rgba(255,255,255,0.9)]"
+                          className="absolute top-[-3px] h-5 w-[3px] -translate-x-1/2 rounded-full bg-violet-500 ring-1 ring-white"
                           style={{ left: ttftOffset }}
                         />
                         <span
@@ -358,17 +378,17 @@ function TimelineOverview({
                 </div>
 
                 <div className="mt-2">
-                  <div className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
                     <span>Tools</span>
                     <span>{toolCalls.length}</span>
                   </div>
                   <div className="flex h-5 items-center gap-1">
                     <span
                       className={cn(
-                        'inline-flex h-5 min-w-5 items-center justify-center rounded-md border text-[10px] font-semibold',
+                        'inline-flex h-5 min-w-5 items-center justify-center rounded-md border text-[11px] font-semibold',
                         toolCalls.length > 0
                           ? 'border-amber-400 bg-amber-200 text-amber-900'
-                          : 'border-slate-300 bg-white text-slate-500'
+                          : 'border-border bg-card text-muted-foreground'
                       )}
                     >
                       {toolCalls.length}
@@ -380,13 +400,13 @@ function TimelineOverview({
           })}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
+        <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-sm bg-blue-200" />
             Total latency
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="relative inline-block h-2.5 w-2.5 rounded-full border border-white bg-violet-500 shadow-[0_0_0_1px_rgba(139,92,246,0.35)]" />
+            <span className="relative inline-block h-2.5 w-2.5 rounded-full border border-white bg-violet-500 ring-1 ring-violet-500/35" />
             First token (TTFT)
           </span>
           <span className="flex items-center gap-1.5">
@@ -431,42 +451,39 @@ function TurnDetail({
           : '(no tool calls)'
 
   return (
-    <div data-testid="profiler-turn-detail" className="shrink-0 bg-slate-50">
-      <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-3">
+    <div data-testid="profiler-turn-detail" className="mt-3 shrink-0 rounded-xl bg-card shadow-[var(--surface-shadow)]">
+      <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
-          <span
-            className="rounded-full px-2 py-1 font-semibold text-white"
-            style={{ background: 'linear-gradient(135deg, #6E63FF, #4E8DFF)' }}
-          >
+          <span className="rounded-full bg-primary px-2 py-1 font-semibold text-primary-foreground">
             Turn {record.turnIndex + 1}
           </span>
-          <span className="text-slate-500">{formatTurnRange(record, detail.startedAt)}</span>
-          <span className="rounded-full bg-violet-100 px-2 py-1 font-semibold text-violet-700">
+          <span className="text-muted-foreground">{formatTurnRange(record, detail.startedAt)}</span>
+          <span className="rounded-full bg-violet-50 border border-violet-200 px-2 py-1 font-semibold text-violet-700 dark:bg-violet-500/16 dark:border-violet-400/20 dark:text-violet-200">
             TTFT {fmtMs(record.ttftMs)}
           </span>
-          <span className="rounded-full bg-blue-100 px-2 py-1 font-semibold text-blue-700">
+          <span className="rounded-full bg-sky-50 border border-sky-200 px-2 py-1 font-semibold text-sky-700 dark:bg-sky-500/16 dark:border-sky-400/20 dark:text-sky-200">
             {fmtCompactNumber(totalTokens)} tokens
           </span>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-slate-500">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <button
             type="button"
             onClick={() => onSelectTurn(Math.max(0, selectedTurn - 1))}
             disabled={selectedTurn === 0}
-            className="rounded p-1 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-full p-1.5 transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Previous turn"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="min-w-10 text-center font-medium text-slate-600">
+          <span className="min-w-10 text-center font-medium text-muted-foreground">
             {selectedTurn + 1} / {detail.records.length}
           </span>
           <button
             type="button"
             onClick={() => onSelectTurn(Math.min(detail.records.length - 1, selectedTurn + 1))}
             disabled={selectedTurn === detail.records.length - 1}
-            className="rounded p-1 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-full p-1.5 transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Next turn"
           >
             <ChevronRight className="h-4 w-4" />
@@ -474,7 +491,7 @@ function TurnDetail({
         </div>
       </div>
 
-      <div className="border-b border-slate-200 bg-white px-5 py-2">
+      <div className="border-b border-border bg-secondary/30 px-5 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <DetailTabButton active={detailTab === 'request'} label="Request" onClick={() => onDetailTabChange('request')} />
           <DetailTabButton active={detailTab === 'response'} label="Response" onClick={() => onDetailTabChange('response')} />
@@ -487,7 +504,7 @@ function TurnDetail({
         </div>
       </div>
 
-      <div className="p-5">
+      <div className="bg-secondary/30 p-5">
         <pre className="max-h-[420px] overflow-auto rounded-xl bg-[#1E1E2E] p-4 text-xs leading-5 text-slate-200">
           {tabContent}
         </pre>
@@ -538,8 +555,8 @@ function PayloadBlock({
   accentClass: string
 }) {
   return (
-    <div className="rounded-xl border border-border bg-white p-3">
-      <p className={cn('mb-2 text-[11px] font-semibold uppercase tracking-[0.16em]', accentClass)}>{title}</p>
+    <div className="rounded-xl border border-white/45 bg-white/88 p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-slate-950/[0.58] dark:shadow-[0_12px_28px_rgba(0,0,0,0.28)]">
+      <p className={cn('mb-2 text-[11px] font-semibold uppercase tracking-wider', accentClass)}>{title}</p>
       <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs leading-5 text-slate-200">
         {codeBlockContent(payload, '(empty)')}
       </pre>
@@ -559,10 +576,10 @@ function MetricCard({
   accentClass?: string
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-white p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
-      <p className={cn('mt-2 text-2xl font-semibold text-slate-900', accentClass)}>{value}</p>
-      {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
+    <div className="rounded-xl bg-card p-4 shadow-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className={cn('metric-number mt-2 text-2xl font-semibold text-foreground', accentClass)}>{value}</p>
+      {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
     </div>
   )
 }
@@ -581,22 +598,19 @@ function BreakdownRow({
   const toolCalls = extractToolCalls(record)
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-white">
+    <div className="overflow-hidden rounded-xl bg-card shadow-sm">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-slate-50"
+        className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-secondary/50"
       >
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span
-            className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
-            style={{ background: 'linear-gradient(135deg, #6E63FF, #4E8DFF)' }}
-          >
+          <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground">
             T{record.turnIndex + 1}
           </span>
           <div className="min-w-0">
-            <div className="text-sm font-medium text-slate-900">{formatTurnRange(record, sessionStart)}</div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+            <div className="text-sm font-medium text-foreground">{formatTurnRange(record, sessionStart)}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
               <span>Total {fmtMs(record.latencyMs)}</span>
               <span>TTFT {fmtMs(record.ttftMs)}</span>
               <span>TPOT {record.tpotMs != null ? `${record.tpotMs.toFixed(1)} ms/tok` : '-'}</span>
@@ -604,55 +618,55 @@ function BreakdownRow({
               <span>↓ {fmtNum(record.outputTokens)}</span>
               <span>{toolCalls.length} tool calls</span>
               {record.error && (
-                <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-600">Error</span>
+                <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-600 dark:bg-red-500/14 dark:text-red-300">Error</span>
               )}
             </div>
           </div>
         </div>
-        <ChevronDown className={cn('h-4 w-4 flex-shrink-0 text-slate-400 transition-transform', expanded && 'rotate-180')} />
+        <ChevronDown className={cn('h-4 w-4 flex-shrink-0 text-muted-foreground/70 transition-transform', expanded && 'rotate-180')} />
       </button>
 
       {expanded && (
-        <div className="border-t border-border bg-slate-50/70 p-4">
+        <div className="border-t border-border bg-secondary/30 p-4">
           <div className="grid gap-3 xl:grid-cols-2">
             <PayloadBlock title="Request" payload={record.clientRequest} accentClass="text-blue-600" />
             <PayloadBlock title="Response" payload={record.clientResponse} accentClass="text-violet-600" />
           </div>
           <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="rounded-xl border border-border bg-white p-3">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-600">Tool Calls</p>
+            <div className="rounded-xl bg-card p-3 shadow-sm">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-amber-600">Tool Calls</p>
               <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs leading-5 text-slate-200">
                 {toolCalls.length > 0 ? JSON.stringify(toolCalls, null, 2) : '(no tool calls)'}
               </pre>
             </div>
-            <div className="rounded-xl border border-border bg-white p-3">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Turn Metrics</p>
+            <div className="rounded-xl bg-card p-3 shadow-sm">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Turn Metrics</p>
               <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                 <div>
-                  <dt className="text-slate-500">Duration</dt>
-                  <dd className="mt-0.5 font-medium text-slate-900">{fmtMs(record.latencyMs)}</dd>
+                  <dt className="text-muted-foreground">Duration</dt>
+                  <dd className="mt-0.5 font-medium text-foreground">{fmtMs(record.latencyMs)}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">TTFT</dt>
-                  <dd className="mt-0.5 font-medium text-slate-900">{fmtMs(record.ttftMs)}</dd>
+                  <dt className="text-muted-foreground">TTFT</dt>
+                  <dd className="mt-0.5 font-medium text-foreground">{fmtMs(record.ttftMs)}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">TPOT</dt>
-                  <dd className="mt-0.5 font-medium text-slate-900">
+                  <dt className="text-muted-foreground">TPOT</dt>
+                  <dd className="mt-0.5 font-medium text-foreground">
                     {record.tpotMs != null ? `${record.tpotMs.toFixed(1)} ms/tok` : '-'}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">Status</dt>
-                  <dd className="mt-0.5 font-medium text-slate-900">{record.statusCode ?? '-'}</dd>
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd className="mt-0.5 font-medium text-foreground">{record.statusCode ?? '-'}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">Input</dt>
-                  <dd className="mt-0.5 font-medium text-slate-900">{fmtNum(record.inputTokens)}</dd>
+                  <dt className="text-muted-foreground">Input</dt>
+                  <dd className="mt-0.5 font-medium text-foreground">{fmtNum(record.inputTokens)}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">Output</dt>
-                  <dd className="mt-0.5 font-medium text-slate-900">{fmtNum(record.outputTokens)}</dd>
+                  <dt className="text-muted-foreground">Output</dt>
+                  <dd className="mt-0.5 font-medium text-foreground">{fmtNum(record.outputTokens)}</dd>
                 </div>
               </dl>
               {record.error && (
@@ -677,8 +691,16 @@ function BreakdownPanel({
   expandedTurn: number | null
   onToggleTurn: (index: number) => void
 }) {
+  const { t } = useTranslation()
   if (detail.records.length === 0) {
-    return <PageState compact className="min-h-[220px]" title="No turns recorded" />
+    return (
+      <PageState
+        compact
+        className="min-h-[220px]"
+        title={t('profiler.empty.noTurnsTitle')}
+        description={t('profiler.empty.noTurnsDescription')}
+      />
+    )
   }
 
   const totalDurationMs = totalMs(detail)
@@ -707,8 +729,8 @@ function BreakdownPanel({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Per-Turn Breakdown</h3>
-            <p className="mt-1 text-xs text-slate-500">Expand a turn to inspect request, response, tool calls, and errors.</p>
+            <h3 className="text-sm font-semibold text-foreground">Per-Turn Breakdown</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Expand a turn to inspect request, response, tool calls, and errors.</p>
           </div>
         </div>
         {detail.records.map((record) => (
@@ -726,6 +748,7 @@ function BreakdownPanel({
 }
 
 export default function ProfilerPage() {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [tab, setTab] = useState<ActiveTab>('timeline')
@@ -805,6 +828,12 @@ export default function ProfilerPage() {
   }, [selectedId, sessions])
 
   useEffect(() => {
+    if (!selectedId && filteredSessions.length > 0) {
+      setSelectedId(filteredSessions[0].id)
+    }
+  }, [filteredSessions, selectedId])
+
+  useEffect(() => {
     setSelectedTurn(0)
     setExpandedTurn(0)
     setTimelineDetailTab('request')
@@ -830,71 +859,88 @@ export default function ProfilerPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col" style={{ height: 'calc(100vh - 64px)' }}>
-      <div className="flex items-center justify-between gap-4 border-b border-border bg-white px-6 py-3">
-        <div className="flex items-center gap-3">
-          <Activity className="h-5 w-5 text-indigo-500" />
-          <span className="text-base font-semibold text-slate-900">Profiler</span>
-          <Badge
-            variant="outline"
-            className={cn(
-              'rounded-full border px-2.5 py-1 text-xs font-semibold',
-              isRecording ? 'border-red-200 bg-red-50 text-red-600' : 'border-slate-200 bg-slate-50 text-slate-500'
-            )}
-          >
-            <span className={cn('mr-2 inline-block h-1.5 w-1.5 rounded-full', isRecording ? 'bg-red-500' : 'bg-slate-400')} />
-            {isRecording ? 'Recording' : 'Not Recording'}
-          </Badge>
-        </div>
+    <div className="flex min-h-0 flex-col gap-3 lg:h-[calc(100vh-64px)]">
+      <PageHeader
+        className="flex-none"
+        icon={<Activity className="h-5 w-5" aria-hidden="true" />}
+        title={t('profiler.title')}
+        description={t('profiler.description')}
+        eyebrow={t('profiler.eyebrow')}
+        breadcrumb={t('profiler.breadcrumb')}
+        helper={selectedId ? t('profiler.empty.selectDescription') : undefined}
+        badge={(
+          <span className={cn('inline-flex items-center gap-1.5', isRecording ? 'text-red-600 dark:text-red-300' : 'text-muted-foreground')}>
+            <span className={cn('inline-block h-1.5 w-1.5 rounded-full', isRecording ? 'bg-red-500' : 'bg-muted-foreground/70')} />
+            {isRecording ? t('profiler.status.recording') : t('profiler.status.idle')}
+          </span>
+        )}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="secondary"
+              className="rounded-full px-3 py-1 text-[11px]"
+            >
+              {t('profiler.sessionsCount', { count: sessions.length })}
+            </Badge>
+            <Button
+              size="sm"
+              variant={isRecording ? 'destructive' : 'default'}
+              onClick={() => (isRecording ? stopMutation.mutate() : startMutation.mutate())}
+              disabled={startMutation.isPending || stopMutation.isPending}
+            >
+              {isRecording ? t('profiler.actions.stop') : t('profiler.actions.start')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={exportSelectedSession} disabled={!detail}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              {t('profiler.actions.export')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => clearMutation.mutate()} disabled={sessions.length === 0} className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800 dark:border-red-400/20 dark:bg-red-500/14 dark:text-red-300 dark:hover:bg-red-500/20 dark:hover:text-red-200">
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              {t('profiler.actions.clear')}
+            </Button>
+          </div>
+        }
+      />
 
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant={isRecording ? 'destructive' : 'default'}
-            onClick={() => (isRecording ? stopMutation.mutate() : startMutation.mutate())}
-            disabled={startMutation.isPending || stopMutation.isPending}
-          >
-            {isRecording ? 'Stop Recording' : 'Start Recording'}
-          </Button>
-          <Button size="sm" variant="outline" onClick={exportSelectedSession} disabled={!detail}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            Export
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => clearMutation.mutate()} disabled={sessions.length === 0} className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800">
-            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-            Clear
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex min-h-0 flex-1 overflow-hidden bg-[#F1F3F4]">
-        <div className="flex w-80 flex-shrink-0 flex-col border-r border-border bg-white">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <span className="text-sm font-semibold text-slate-900">Sessions</span>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 bg-background lg:flex-row lg:gap-0 lg:overflow-hidden">
+        <div className="flex w-full flex-shrink-0 flex-col overflow-hidden rounded-[1.2rem] border border-white/70 bg-card/96 shadow-[0_20px_48px_-42px_rgba(15,23,42,0.26)] lg:w-[300px]">
+          <div className="flex items-center justify-between border-b border-border/45 px-4 py-3">
+            <span className="text-sm font-semibold text-foreground">{t('profiler.sessionsTitle')}</span>
             <Badge variant="secondary" className="rounded-full px-2 py-0.5">
               {sessions.length}
             </Badge>
           </div>
 
-          <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
-            <Search className="h-3.5 w-3.5 text-slate-400" />
+          <div className="flex items-center gap-2 border-b border-border bg-secondary/50 px-3 py-2.5">
+            <Search className="h-3.5 w-3.5 text-muted-foreground/70" />
             <input
-              className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
-              placeholder="Search sessions..."
+              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
+              placeholder={t('profiler.searchPlaceholder')}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="max-h-[240px] overflow-y-auto lg:min-h-0 lg:max-h-none lg:flex-1">
             {sessionsQuery.isPending ? (
-              <PageLoadingState compact className="min-h-[160px]" label="Loading..." />
+              <PageLoadingState compact className="min-h-[160px]" label={t('common.loading')} />
             ) : filteredSessions.length === 0 ? (
               <PageState
                 compact
                 className="m-4 min-h-[160px]"
-                title={isRecording ? 'Waiting for requests…' : 'No sessions'}
-                description={isRecording ? 'Requests with session_id will appear here.' : 'Start recording to capture LLM sessions.'}
+                title={isRecording ? t('profiler.empty.waitingTitle') : t('profiler.empty.idleTitle')}
+                description={isRecording ? t('profiler.empty.waitingDescription') : t('profiler.empty.idleDescription')}
+                action={
+                  isRecording ? (
+                    <Button asChild variant="ghost" size="sm">
+                      <Link to="/logs">{t('profiler.empty.actions.logs')}</Link>
+                    </Button>
+                  ) : (
+                    <Button size="sm" onClick={() => startMutation.mutate()} disabled={startMutation.isPending}>
+                      {t('profiler.actions.start')}
+                    </Button>
+                  )
+                }
               />
             ) : (
               filteredSessions.map((session, index) => (
@@ -910,28 +956,32 @@ export default function ProfilerPage() {
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col bg-white">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.2rem] border border-white/70 bg-card/96 shadow-[0_20px_48px_-42px_rgba(15,23,42,0.26)] lg:ml-3">
           {!selectedId ? (
             <div className="flex flex-1 items-center justify-center">
               <PageState
-                title="Select a session"
-                description="Choose a session from the left to inspect its timeline, message payloads, and stats."
+                title={t('profiler.empty.selectTitle')}
+                description={t('profiler.empty.selectDescription')}
                 icon={<Activity className="h-5 w-5" />}
               />
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-4 border-b border-border bg-white px-5 py-3">
+              <div className="flex items-center justify-between gap-4 border-b border-border bg-card px-5 py-3.5">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-indigo-500" />
-                  <span className="truncate text-sm font-semibold text-slate-900">
+                  <span className="truncate text-sm font-semibold text-foreground">
                     {detail?.sessionId ?? selectedSession?.sessionId ?? selectedId}
                   </span>
-                  <span className="text-slate-300">·</span>
-                  <span className="truncate text-sm text-slate-500">
+                  <span className="text-muted-foreground/70">·</span>
+                  <span className="truncate text-sm text-muted-foreground">
                     {detail
-                      ? `${detail.turnCount} turns · ${fmtMsCompact(totalMs(detail))} · ${fmtCompactNumber((detail.totalInputTokens ?? 0) + (detail.totalOutputTokens ?? 0))} tokens`
-                      : 'Loading session…'}
+                      ? t('profiler.sessionSummary', {
+                          turns: detail.turnCount,
+                          duration: fmtMsCompact(totalMs(detail)),
+                          tokens: fmtCompactNumber((detail.totalInputTokens ?? 0) + (detail.totalOutputTokens ?? 0))
+                        })
+                      : t('profiler.loadingSession')}
                   </span>
                 </div>
 
@@ -940,24 +990,24 @@ export default function ProfilerPage() {
                   size="sm"
                   onClick={() => selectedId && deleteMutation.mutate(selectedId)}
                   disabled={!selectedId || deleteMutation.isPending}
-                  className="text-slate-500 hover:text-red-700"
+                  className="text-muted-foreground hover:text-red-700"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
 
-              <div className="border-b border-border bg-white px-5 py-2">
+              <div className="border-b border-border bg-secondary/30 px-5 py-2.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <SegmentedTab active={tab === 'timeline'} icon={LayoutList} label="Timeline" onClick={() => setTab('timeline')} />
-                  <SegmentedTab active={tab === 'breakdown'} icon={BarChart3} label="Breakdown" onClick={() => setTab('breakdown')} />
+                  <SegmentedTab active={tab === 'timeline'} icon={LayoutList} label={t('profiler.tabs.timeline')} onClick={() => setTab('timeline')} />
+                  <SegmentedTab active={tab === 'breakdown'} icon={BarChart3} label={t('profiler.tabs.breakdown')} onClick={() => setTab('breakdown')} />
                 </div>
               </div>
 
-              <div data-testid="profiler-session-content" className="min-h-0 flex-1 overflow-auto bg-slate-50">
+              <div data-testid="profiler-session-content" className="min-h-0 flex-1 overflow-auto bg-secondary/20">
                 {detailQuery.isPending ? (
-                  <PageLoadingState compact className="min-h-[240px]" label="Loading session..." />
+                  <PageLoadingState compact className="min-h-[240px]" label={t('profiler.loadingSession')} />
                 ) : detailQuery.isError ? (
-                  <PageState compact className="m-5 min-h-[220px]" tone="danger" title="Failed to load session" />
+                  <PageState compact className="m-5 min-h-[220px]" tone="danger" title={t('profiler.errors.loadFailed')} />
                 ) : detail ? (
                   tab === 'timeline' ? (
                     <TimelinePanel
@@ -975,7 +1025,7 @@ export default function ProfilerPage() {
                     />
                   )
                 ) : (
-                  <PageState compact className="m-5 min-h-[220px]" title="Session not found" />
+                  <PageState compact className="m-5 min-h-[220px]" title={t('profiler.errors.notFound')} />
                 )}
               </div>
 

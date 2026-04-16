@@ -60,17 +60,17 @@ export function CreateApiKeyDialog({
             {t('apiKeys.selectEndpoints')}
           </div>
           <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-[1rem] border border-blue-200 bg-blue-50/70 px-3 py-3 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
+            <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-3 text-xs text-primary">
               <p className="font-semibold">Restricted</p>
-              <p className="mt-1 text-blue-800/85 dark:text-blue-100/80">Select explicit endpoints before saving.</p>
+              <p className="mt-1 opacity-80">Select explicit endpoints before saving.</p>
             </div>
-            <div className="rounded-[1rem] border border-amber-200 bg-amber-50/70 px-3 py-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
               <p className="font-semibold">Unrestricted</p>
-              <p className="mt-1 text-amber-800/85 dark:text-amber-100/80">Leave endpoint selection empty for broad access.</p>
+              <p className="mt-1 opacity-80">Leave endpoint selection empty for broad access.</p>
             </div>
-            <div className="rounded-[1rem] border border-rose-200 bg-rose-50/70 px-3 py-3 text-xs text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-100">
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-3 text-xs text-destructive">
               <p className="font-semibold">Wildcard</p>
-              <p className="mt-1 text-rose-800/85 dark:text-rose-100/80">Special-case key with the highest blast radius.</p>
+              <p className="mt-1 opacity-80">Special-case key with the highest blast radius.</p>
             </div>
           </div>
           <div className="space-y-2">
@@ -209,7 +209,7 @@ export function EditApiKeyEndpointsDialog({
         <AppDialogBody className="space-y-4">
           {!apiKey?.isWildcard && (
             <>
-              <div className="rounded-lg border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning-bg))] px-4 py-3 text-xs text-[hsl(var(--warning)/1)]">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                 {t('apiKeys.allEndpoints')}
               </div>
               <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">

@@ -180,9 +180,9 @@ export function EndpointDrawer({
         onClick={onClose}
       />
 
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-border bg-background shadow-lg">
+      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-border/45 bg-background/96 shadow-[var(--surface-shadow-lg)] backdrop-blur">
         <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between border-b border-border bg-secondary p-6">
+          <div className="flex items-center justify-between border-b border-border/45 bg-secondary/45 p-6 backdrop-blur-sm">
             <div className="space-y-1">
               <h2 className="text-lg font-semibold tracking-[-0.02em]">
                 {endpoint ? t('modelManagement.editEndpoint') : t('modelManagement.createEndpoint')}
@@ -191,13 +191,13 @@ export function EndpointDrawer({
                 {endpoint ? endpoint.id : t('modelManagement.endpointRoutingHint')}
               </p>
             </div>
-            <Button variant="ghost" size="sm" onClick={onClose}>
+            <Button variant="ghost" size="sm" onClick={onClose} className="rounded-2xl bg-white/70">
               <X className="h-4 w-4" />
             </Button>
           </div>
 
           <form onSubmit={handleSubmit} className="flex-1 space-y-6 overflow-y-auto p-6">
-            <div className="grid gap-3 rounded-lg border border-border bg-secondary p-4 sm:grid-cols-2">
+            <div className="grid gap-3 rounded-xl bg-secondary/50 p-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                   {t('modelManagement.endpointId')}
@@ -257,7 +257,7 @@ export function EndpointDrawer({
                 {formData.paths.map((pathItem, index) => (
                   <div
                     key={`${pathItem.protocol}-${index}`}
-                    className="space-y-2 rounded-lg border border-border bg-card p-3"
+                    className="space-y-2 rounded-xl border border-transparent bg-card p-3 shadow-[var(--surface-shadow)]"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 space-y-2">
@@ -322,15 +322,15 @@ export function EndpointDrawer({
             </div>
 
             {!endpoint ? (
-              <div className="rounded-lg border border-primary/20 bg-accent p-4">
-                <p className="text-sm text-blue-800 dark:text-blue-200">
+              <div className="rounded-xl bg-accent p-4">
+                <p className="text-sm text-primary">
                   {t('modelManagement.endpointRoutingHint')}
                 </p>
               </div>
             ) : null}
           </form>
 
-          <div className="flex gap-3 border-t border-border bg-secondary p-6">
+          <div className="flex gap-3 border-t border-border/45 bg-secondary/45 p-6 backdrop-blur-sm">
             <Button variant="outline" className="flex-1" onClick={onClose} disabled={isSubmitting}>
               {t('common.cancel')}
             </Button>

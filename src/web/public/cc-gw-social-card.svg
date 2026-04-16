@@ -1,0 +1,143 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="86" y1="42" x2="1116" y2="612" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFF"/>
+      <stop offset="0.52" stop-color="#F4F7FF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="heroGlow" x1="192" y1="108" x2="468" y2="364" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C7D2FE" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#A5F3FC" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="panelBg" x1="724" y1="132" x2="1086" y2="524" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111A33"/>
+      <stop offset="1" stop-color="#16213F"/>
+    </linearGradient>
+    <linearGradient id="brandGradient" x1="0" y1="0" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E1B4B"/>
+      <stop offset="0.48" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#22C7F2"/>
+    </linearGradient>
+    <linearGradient id="pillGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#EEF2FF"/>
+      <stop offset="1" stop-color="#ECFEFF"/>
+    </linearGradient>
+    <filter id="softShadow" x="-80" y="-80" width="1360" height="790" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="36" flood-color="#243B53" flood-opacity="0.12"/>
+    </filter>
+    <filter id="panelShadow" x="630" y="80" width="520" height="502" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="34" flood-color="#0F172A" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" rx="36" fill="url(#bg)"/>
+  <circle cx="216" cy="162" r="132" fill="url(#heroGlow)"/>
+  <circle cx="1018" cy="112" r="96" fill="#E0F2FE" fill-opacity="0.82"/>
+  <circle cx="924" cy="548" r="148" fill="#DBEAFE" fill-opacity="0.78"/>
+  <circle cx="1084" cy="504" r="82" fill="#DCFCE7" fill-opacity="0.7"/>
+
+  <g transform="translate(78 62)">
+    <rect x="0" y="0" width="56" height="56" rx="18" fill="url(#brandGradient)"/>
+    <rect x="0.5" y="0.5" width="55" height="55" rx="17.5" stroke="white" stroke-opacity="0.16"/>
+    <g fill="none" stroke="#F8FAFC" stroke-linecap="round" stroke-linejoin="round" stroke-width="4">
+      <path d="M16 16H22C25.314 16 28 18.686 28 22V34C28 37.314 30.686 40 34 40H40"/>
+      <path d="M40 16H34C30.686 16 28 18.686 28 22V34C28 37.314 25.314 40 22 40H16"/>
+    </g>
+    <g fill="#FFFFFF">
+      <circle cx="16" cy="16" r="4"/>
+      <circle cx="40" cy="16" r="4"/>
+      <circle cx="16" cy="40" r="4"/>
+      <circle cx="40" cy="40" r="4"/>
+      <circle cx="28" cy="28" r="3.5" fill-opacity="0.92"/>
+    </g>
+  </g>
+
+  <text x="150" y="88" fill="#4F46E5" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="17" font-weight="800" letter-spacing="3">LOCAL-FIRST AI GATEWAY</text>
+
+  <text x="78" y="186" fill="#020617" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="60" font-weight="800">别再让 AI 配置</text>
+  <text x="78" y="252" fill="#020617" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="60" font-weight="800">散落在每个项目里</text>
+
+  <text x="78" y="316" fill="#475569" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="24">
+    <tspan x="78" dy="0">把 Claude Code、OpenAI SDK、Anthropic SDK 和内部工具</tspan>
+    <tspan x="78" dy="34">统一到一个本地优先入口，Key、路由、日志和排查回到控制台里管理。</tspan>
+  </text>
+
+  <g filter="url(#softShadow)">
+    <rect x="78" y="392" width="532" height="152" rx="32" fill="#FFFFFF" fill-opacity="0.88"/>
+    <rect x="78.5" y="392.5" width="531" height="151" rx="31.5" stroke="#E2E8F0" stroke-opacity="0.72"/>
+  </g>
+
+  <text x="112" y="430" fill="#0F172A" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18" font-weight="800">为什么它更像日常工作台，而不是又一个复杂平台</text>
+
+  <g transform="translate(112 456)">
+    <rect width="138" height="34" rx="17" fill="url(#pillGlow)"/>
+    <circle cx="22" cy="17" r="6" fill="#4F46E5"/>
+    <text x="38" y="22" fill="#312E81" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="16" font-weight="700">统一入口</text>
+  </g>
+
+  <g transform="translate(264 456)">
+    <rect width="156" height="34" rx="17" fill="#F0FDF4"/>
+    <circle cx="22" cy="17" r="6" fill="#10B981"/>
+    <text x="38" y="22" fill="#166534" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="16" font-weight="700">日志可追踪</text>
+  </g>
+
+  <g transform="translate(434 456)">
+    <rect width="144" height="34" rx="17" fill="#FFF7ED"/>
+    <circle cx="22" cy="17" r="6" fill="#F97316"/>
+    <text x="38" y="22" fill="#9A3412" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="16" font-weight="700">少改业务代码</text>
+  </g>
+
+  <text x="112" y="520" fill="#64748B" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18">
+    先在本地跑起来，再逐步给团队共享。轻量、自托管、适合日常接入与排查。
+  </text>
+
+  <g filter="url(#panelShadow)">
+    <rect x="690" y="114" width="434" height="402" rx="34" fill="url(#panelBg)"/>
+  </g>
+  <rect x="706" y="130" width="402" height="370" rx="28" fill="#0F172A" fill-opacity="0.55" stroke="#FFFFFF" stroke-opacity="0.08"/>
+  <rect x="726" y="150" width="90" height="330" rx="22" fill="#111C36"/>
+  <rect x="836" y="150" width="252" height="74" rx="24" fill="#131F3B"/>
+  <rect x="836" y="240" width="252" height="144" rx="24" fill="#12203C"/>
+  <rect x="836" y="392" width="252" height="88" rx="24" fill="#12203C"/>
+
+  <text x="758" y="184" fill="#94A3B8" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="13" font-weight="700">WORKSPACE</text>
+  <rect x="738" y="204" width="66" height="38" rx="19" fill="#4F46E5"/>
+  <text x="755" y="228" fill="#FFFFFF" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="15" font-weight="700">总览</text>
+  <rect x="738" y="254" width="66" height="34" rx="17" fill="#172445"/>
+  <text x="756" y="276" fill="#B8C5D8" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="14" font-weight="700">日志</text>
+  <rect x="738" y="300" width="66" height="34" rx="17" fill="#172445"/>
+  <text x="756" y="322" fill="#B8C5D8" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="14" font-weight="700">路由</text>
+
+  <text x="864" y="182" fill="#FFFFFF" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="22" font-weight="800">你的日常控制台</text>
+  <text x="864" y="205" fill="#8CA0BC" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="14">统一入口、可视化排查、轻量协作</text>
+
+  <rect x="856" y="252" width="68" height="46" rx="18" fill="#EEF2FF"/>
+  <rect x="930" y="252" width="74" height="46" rx="18" fill="#ECFDF5"/>
+  <rect x="1010" y="252" width="58" height="46" rx="18" fill="#E0F2FE"/>
+  <text x="872" y="272" fill="#4338CA" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" font-weight="700">CLIENTS</text>
+  <text x="872" y="289" fill="#1E1B4B" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18" font-weight="800">12</text>
+  <text x="946" y="272" fill="#047857" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" font-weight="700">HEALTH</text>
+  <text x="946" y="289" fill="#064E3B" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18" font-weight="800">98.7%</text>
+  <text x="1024" y="272" fill="#0369A1" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" font-weight="700">TTFT</text>
+  <text x="1020" y="289" fill="#0C4A6E" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18" font-weight="800">380ms</text>
+
+  <text x="856" y="330" fill="#93A8C7" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="13" font-weight="700">REQUEST FLOW</text>
+  <rect x="856" y="342" width="86" height="28" rx="14" fill="#172445"/>
+  <rect x="954" y="342" width="64" height="28" rx="14" fill="#4F46E5"/>
+  <rect x="1030" y="342" width="42" height="28" rx="14" fill="#172445"/>
+  <text x="875" y="360" fill="#D8E1EF" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" font-weight="700">SDKs</text>
+  <text x="971" y="360" fill="#FFFFFF" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" font-weight="700">cc-gw</text>
+  <text x="1038" y="360" fill="#D8E1EF" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" font-weight="700">LLM</text>
+  <path d="M944 356H954" stroke="#38BDF8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M1018 356H1030" stroke="#38BDF8" stroke-width="4" stroke-linecap="round"/>
+
+  <text x="856" y="412" fill="#93A8C7" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="13" font-weight="700">LIVE ACTIVITY</text>
+  <rect x="856" y="422" width="216" height="24" rx="12" fill="#111C36"/>
+  <circle cx="874" cy="434" r="5" fill="#22C55E"/>
+  <text x="888" y="438" fill="#E2E8F0" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" font-weight="700">Claude Code → prod-anthropic</text>
+  <rect x="856" y="452" width="216" height="24" rx="12" fill="#111C36"/>
+  <circle cx="874" cy="464" r="5" fill="#22C55E"/>
+  <text x="888" y="468" fill="#E2E8F0" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" font-weight="700">OpenAI SDK → fallback-openai</text>
+
+  <text x="78" y="586" fill="#64748B" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18">cc-gw · One local-first entry for Claude Code, OpenAI SDK, Anthropic SDK, and internal tools</text>
+</svg>

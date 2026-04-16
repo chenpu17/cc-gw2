@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next'
 import type { LogRecord } from '@/types/logs'
 
-const SESSION_ROW_HUES = [12, 28, 48, 88, 112, 152, 184, 208, 228, 262, 292, 332] as const
+const SESSION_ROW_HUES = [168, 184, 198, 208, 218, 228, 238, 248, 258, 268, 278, 292] as const
 const MAX_PRETTY_PRINT_PAYLOAD_LENGTH = 200_000
 
 export function formatDateTime(timestamp: number): string {
@@ -90,19 +90,19 @@ export function getSessionRowTone(sessionId: string | null | undefined) {
 
   const hash = hashSessionId(normalized)
   const hue = SESSION_ROW_HUES[hash % SESSION_ROW_HUES.length]
-  const accent = `hsl(${hue} 82% 42%)`
+  const accent = `hsl(${hue} 74% 46%)`
 
   return {
     sessionId: normalized,
     colorKey: `${hue}`,
     rowStyle: {
-      backgroundColor: `hsl(${hue} 82% 42% / 0.08)`
+      backgroundColor: `hsl(${hue} 74% 46% / 0.05)`
     },
     hoverStyle: {
-      backgroundColor: `hsl(${hue} 82% 42% / 0.12)`
+      backgroundColor: `hsl(${hue} 74% 46% / 0.09)`
     },
     stickyStyle: {
-      backgroundColor: `hsl(${hue} 82% 42% / 0.1)`
+      backgroundColor: `hsl(${hue} 74% 46% / 0.08)`
     },
     accentStyle: {
       borderLeft: `3px solid ${accent}`

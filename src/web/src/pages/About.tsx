@@ -12,7 +12,7 @@ import { queryKeys } from '@/services/queryKeys'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import packageJson from '../../../../package.json' assert { type: 'json' }
+import packageJson from '../../../../package.json' with { type: 'json' }
 
 interface StatusResponse {
   port: number
@@ -133,7 +133,7 @@ export default function AboutPage() {
         helper={t('about.support.description')}
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
+            <div className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-muted-foreground">
               manual refresh only
             </div>
             <Button onClick={() => versionCheckMutation.mutate()} disabled={versionCheckMutation.isPending} className="w-full sm:w-auto">
@@ -144,38 +144,44 @@ export default function AboutPage() {
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
-        <Card className="overflow-hidden">
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-accent px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
+        <Card className="overflow-hidden rounded-[1.25rem] border border-white/70 bg-card/95 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.24)]">
+          <CardContent className="p-5">
+            <div className="space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <ServerCog className="h-3.5 w-3.5" aria-hidden="true" />
                 Runtime snapshot
               </div>
-              <div className="space-y-2">
-                <p data-visual-volatile="true" className="text-3xl font-semibold tracking-tight text-foreground">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <p data-visual-volatile="true" className="metric-number truncate text-4xl font-semibold tracking-tight text-foreground">
                   {statusQuery.data?.host ?? '127.0.0.1'}:{statusQuery.data?.port ?? '-'}
-                </p>
-                <p className="text-sm text-muted-foreground">{t('about.description')}</p>
+                  </p>
+                  <p className="text-sm text-muted-foreground">{t('about.description')}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs sm:w-56">
+                  <RuntimePill label={t('about.status.labels.providers')} value={statusQuery.data?.providers?.toLocaleString() ?? '-'} />
+                  <RuntimePill label={t('about.status.labels.active')} value={(statusQuery.data?.activeRequests ?? 0).toLocaleString()} />
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{statusQuery.data?.runtime ?? 'rust'}</Badge>
                 <Badge variant="outline">{statusQuery.data?.platform ?? '-'}</Badge>
-                <Badge variant="secondary">{t('about.status.labels.providers')}: {statusQuery.data?.providers?.toLocaleString() ?? '-'}</Badge>
-                <Badge variant="secondary">{t('about.status.labels.active')}: {(statusQuery.data?.activeRequests ?? 0).toLocaleString()}</Badge>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden">
-          <CardContent className="pt-6">
+        <Card className="overflow-hidden rounded-[1.25rem] border border-white/70 bg-card/95 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.24)]">
+          <CardContent className="p-5">
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Build</p>
-              <p data-visual-volatile="true" className="font-mono text-lg text-primary">v{appVersion}</p>
-              <p data-visual-volatile="true" className="text-sm text-muted-foreground">{buildTime}</p>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p data-visual-volatile="true" className="font-mono text-xl font-semibold text-primary">v{appVersion}</p>
+                <p data-visual-volatile="true" className="text-xs text-muted-foreground">{buildTime}</p>
+              </div>
               {versionCheck ? (
-                <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-sm text-muted-foreground">
+                <div className="rounded-lg bg-secondary px-4 py-3 text-sm text-muted-foreground">
                   <p className="font-medium text-foreground">
                     {versionCheck.updateAvailable
                       ? t('about.update.available', { version: versionCheck.latestVersion })
@@ -187,7 +193,7 @@ export default function AboutPage() {
                   </p>
                 </div>
               ) : null}
-              <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-sm text-muted-foreground">
+              <div className="rounded-[0.95rem] bg-secondary/65 px-3.5 py-3 text-sm text-muted-foreground">
                 {t('about.support.tip')}
               </div>
             </div>
@@ -248,15 +254,15 @@ export default function AboutPage() {
           </span>
         }
       >
-        <Card>
+        <Card className="rounded-xl bg-card shadow-[var(--surface-shadow)]">
           <CardContent className="flex flex-col gap-4 pt-5 md:flex-row md:items-start md:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <div className="flex items-start gap-4 rounded-lg bg-secondary p-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <LifeBuoy className="h-5 w-5" aria-hidden="true" />
               </div>
               <p className="max-w-2xl text-sm text-muted-foreground">{t('about.support.tip')}</p>
             </div>
-            <code className="inline-flex self-start rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-medium">
+            <code className="inline-flex self-start rounded-lg bg-secondary px-3 py-2 text-xs font-medium">
               ~/.cc-gw/config.json
             </code>
           </CardContent>
@@ -272,17 +278,26 @@ function InfoGrid({ items }: { items: InfoGridItem[] }) {
   }
 
   return (
-    <dl className="grid gap-4 sm:grid-cols-2">
+    <dl className="grid gap-3 sm:grid-cols-2">
       {items.map((item) => (
-        <Card key={item.label}>
-          <CardContent className="pt-5">
-            <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{item.label}</dt>
-            <dd className="mt-2 text-sm font-semibold text-foreground">{item.value}</dd>
+        <Card key={item.label} className="rounded-[1rem] border border-white/70 bg-secondary/45 shadow-none">
+          <CardContent className="p-4">
+            <dt className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{item.label}</dt>
+            <dd className="metric-number mt-2 text-sm font-semibold text-foreground">{item.value}</dd>
             {item.hint ? <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p> : null}
           </CardContent>
         </Card>
       ))}
     </dl>
+  )
+}
+
+function RuntimePill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[0.9rem] bg-secondary/65 px-3 py-2 text-right">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className="metric-number mt-1 text-sm font-semibold text-foreground">{value}</p>
+    </div>
   )
 }
 

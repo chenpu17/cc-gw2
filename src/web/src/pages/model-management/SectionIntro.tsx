@@ -16,7 +16,7 @@ export function SectionIntro({
   aside?: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="flex flex-col gap-4 rounded-[1.35rem] bg-[linear-gradient(135deg,hsl(var(--accent)/0.55)_0%,rgba(255,255,255,0.7)_100%)] p-5 shadow-[var(--surface-shadow)] lg:flex-row lg:items-start lg:justify-between">
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           <span>{eyebrow}</span>

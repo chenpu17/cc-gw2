@@ -4,72 +4,78 @@
 
 @layer base {
   :root {
-    /* Google Material Design 3 / Google Cloud Console */
-    --background: 210 17% 98%;        /* #F8F9FA */
-    --foreground: 213 10% 14%;        /* #202124 */
+    --background: 220 14% 96%;        /* #F4F5F7 — subtle cool gray */
+    --foreground: 224 71% 4%;         /* #09090B — near-black */
     --card: 0 0% 100%;                /* #FFFFFF */
-    --card-foreground: 213 10% 14%;
+    --card-foreground: 224 71% 4%;
     --popover: 0 0% 100%;
-    --popover-foreground: 213 10% 14%;
-    --primary: 217 89% 51%;           /* #1A73E8 */
+    --popover-foreground: 224 71% 4%;
+    --primary: 234 89% 54%;           /* #4338CA — deep indigo */
     --primary-foreground: 0 0% 100%;
-    --secondary: 213 14% 95%;         /* #F1F3F4 */
-    --secondary-foreground: 213 10% 14%;
-    --muted: 213 14% 95%;
-    --muted-foreground: 213 7% 39%;   /* #5F6368 */
-    --accent: 217 100% 93%;           /* #E8F0FE */
-    --accent-foreground: 217 80% 40%;
-    --destructive: 4 85% 57%;         /* #EA4335 */
+    --secondary: 220 13% 95%;         /* #F1F3F5 */
+    --secondary-foreground: 224 71% 4%;
+    --muted: 220 13% 91%;
+    --muted-foreground: 220 9% 46%;   /* #6B7280 — properly muted */
+    --accent: 220 13% 95%;
+    --accent-foreground: 234 89% 54%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 213 14% 87%;            /* #DADCE0 */
-    --input: 213 14% 87%;
-    --ring: 217 89% 51%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 234 89% 54%;
     --radius: 0.5rem;
 
-    /* Status */
-    --success: 145 63% 32%;
-    --success-bg: 138 45% 93%;
-    --warning: 35 100% 35%;
-    --warning-bg: 48 100% 94%;
-    --error: 4 85% 57%;
-    --error-bg: 5 92% 95%;
-    --info: 217 89% 51%;
-    --info-bg: 217 100% 93%;
+    /* Status — subtle backgrounds with saturated text */
+    --success: 152 69% 31%;
+    --success-bg: 152 68% 96%;
+    --warning: 38 92% 50%;
+    --warning-bg: 48 96% 96%;
+    --error: 0 84% 60%;
+    --error-bg: 0 86% 97%;
+    --info: 234 89% 54%;
+    --info-bg: 234 85% 97%;
 
-    /* Chart - Google palette */
-    --chart-1: 217 89% 51%;
-    --chart-2: 140 57% 42%;
-    --chart-3: 44 100% 50%;
-    --chart-4: 4 85% 57%;
-    --chart-5: 271 55% 56%;
+    /* Chart — muted professional palette */
+    --chart-1: 234 89% 54%;
+    --chart-2: 152 69% 31%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 0 84% 60%;
+    --chart-5: 280 67% 51%;
+
+    --surface-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 4px 12px rgba(0, 0, 0, 0.04);
+    --surface-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.03), 0 8px 24px rgba(0, 0, 0, 0.06);
+    --surface-border: rgba(0, 0, 0, 0.06);
   }
 
   .dark,
   [data-theme="dark"] {
-    --background: 220 9% 14%;
-    --foreground: 213 10% 91%;
-    --card: 220 9% 17%;
-    --card-foreground: 213 10% 91%;
-    --popover: 220 9% 17%;
-    --popover-foreground: 213 10% 91%;
-    --primary: 217 89% 67%;
-    --primary-foreground: 220 9% 14%;
-    --secondary: 220 9% 21%;
-    --secondary-foreground: 213 10% 91%;
-    --muted: 220 9% 21%;
-    --muted-foreground: 213 7% 60%;
-    --accent: 217 50% 25%;
-    --accent-foreground: 217 89% 67%;
-    --destructive: 4 75% 65%;
+    --background: 224 71% 4%;         /* #09090B */
+    --foreground: 210 20% 98%;
+    --card: 224 48% 8%;               /* #111318 */
+    --card-foreground: 210 20% 98%;
+    --popover: 224 48% 8%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 234 89% 74%;           /* lighter indigo for dark */
+    --primary-foreground: 224 71% 4%;
+    --secondary: 215 28% 14%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 218 11% 58%;
+    --accent: 215 28% 17%;
+    --accent-foreground: 234 89% 74%;
+    --destructive: 0 72% 65%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 9% 24%;
-    --input: 220 9% 24%;
-    --ring: 217 89% 67%;
-    --chart-1: 217 89% 67%;
-    --chart-2: 140 57% 55%;
-    --chart-3: 44 100% 60%;
-    --chart-4: 4 75% 65%;
-    --chart-5: 271 55% 70%;
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+    --ring: 234 89% 74%;
+    --chart-1: 234 89% 74%;
+    --chart-2: 152 60% 50%;
+    --chart-3: 38 92% 60%;
+    --chart-4: 0 72% 65%;
+    --chart-5: 280 67% 65%;
+    --surface-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --surface-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
+    --surface-border: rgba(255, 255, 255, 0.08);
   }
 }
 
@@ -84,10 +90,11 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: "Google Sans", "Inter", "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: "Inter", "SF Pro Display", "PingFang SC", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1, "cv11" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 }
 
@@ -113,6 +120,12 @@
 }
 .animate-fade-in  { animation: fadeIn    0.2s ease-out; }
 .animate-slide-in { animation: slideInUp 0.25s ease-out; }
+
+.metric-number {
+  font-family: "Inter", "SF Mono", "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
 
 /* Table scroll */
 .table-container {

@@ -1,0 +1,142 @@
+<svg width="1600" height="920" viewBox="0 0 1600 920" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="112" y1="84" x2="1470" y2="874" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFF"/>
+      <stop offset="0.58" stop-color="#F3F7FF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E1B4B"/>
+      <stop offset="0.48" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#22C7F2"/>
+    </linearGradient>
+    <linearGradient id="beforeGlow" x1="162" y1="250" x2="654" y2="724" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FECACA" stop-opacity="0.52"/>
+      <stop offset="1" stop-color="#FDE68A" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="afterGlow" x1="946" y1="214" x2="1428" y2="742" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C7D2FE" stop-opacity="0.66"/>
+      <stop offset="1" stop-color="#A5F3FC" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="afterPanel" x1="936" y1="226" x2="1416" y2="734" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101A33"/>
+      <stop offset="1" stop-color="#15233F"/>
+    </linearGradient>
+    <filter id="softShadow" x="-80" y="-80" width="1760" height="1080" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="34" flood-color="#243B53" flood-opacity="0.10"/>
+    </filter>
+    <filter id="cardShadow" x="90" y="170" width="660" height="640" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="22" stdDeviation="28" flood-color="#7C2D12" flood-opacity="0.10"/>
+    </filter>
+    <filter id="panelShadow" x="860" y="150" width="620" height="660" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="26" stdDeviation="32" flood-color="#0F172A" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="920" rx="42" fill="url(#bg)"/>
+  <circle cx="228" cy="156" r="130" fill="#DBEAFE" fill-opacity="0.8"/>
+  <circle cx="1386" cy="126" r="110" fill="#E0F2FE" fill-opacity="0.9"/>
+  <circle cx="1324" cy="782" r="152" fill="#DBEAFE" fill-opacity="0.75"/>
+  <circle cx="336" cy="726" r="144" fill="#FEF3C7" fill-opacity="0.74"/>
+
+  <g transform="translate(94 72)">
+    <rect x="0" y="0" width="56" height="56" rx="18" fill="url(#brand)"/>
+    <rect x="0.5" y="0.5" width="55" height="55" rx="17.5" stroke="white" stroke-opacity="0.16"/>
+    <g fill="none" stroke="#F8FAFC" stroke-linecap="round" stroke-linejoin="round" stroke-width="4">
+      <path d="M16 16H22C25.314 16 28 18.686 28 22V34C28 37.314 30.686 40 34 40H40"/>
+      <path d="M40 16H34C30.686 16 28 18.686 28 22V34C28 37.314 25.314 40 22 40H16"/>
+    </g>
+    <g fill="#FFFFFF">
+      <circle cx="16" cy="16" r="4"/>
+      <circle cx="40" cy="16" r="4"/>
+      <circle cx="16" cy="40" r="4"/>
+      <circle cx="40" cy="40" r="4"/>
+      <circle cx="28" cy="28" r="3.5" fill-opacity="0.92"/>
+    </g>
+  </g>
+
+  <text x="168" y="96" fill="#4F46E5" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="24" font-weight="800" letter-spacing="4">README VISUAL OVERVIEW</text>
+  <text x="94" y="174" fill="#020617" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="58" font-weight="800">接入前 / 接入后</text>
+  <text x="94" y="226" fill="#475569" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="28">
+    <tspan x="94" dy="0">同样是接 Anthropic、OpenAI 和内部工具，区别在于：</tspan>
+    <tspan x="94" dy="38">你是继续把配置和排查散在每个项目里，还是把它们收回一个日常控制台。</tspan>
+  </text>
+
+  <g filter="url(#cardShadow)">
+    <rect x="112" y="276" width="560" height="446" rx="36" fill="#FFF7ED"/>
+    <rect x="112.5" y="276.5" width="559" height="445" rx="35.5" stroke="#FED7AA"/>
+  </g>
+  <circle cx="278" cy="474" r="188" fill="url(#beforeGlow)"/>
+  <text x="152" y="330" fill="#9A3412" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="26" font-weight="800">接入前</text>
+  <text x="152" y="370" fill="#111827" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="38" font-weight="800">每个项目都在单独维护 AI 入口</text>
+  <text x="152" y="414" fill="#7C2D12" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="21">
+    <tspan x="152" dy="0">baseURL、API Key、provider 切换、日志入口和排查线索</tspan>
+    <tspan x="152" dy="30">跟着应用代码一起长，越接越散。</tspan>
+  </text>
+
+  <g transform="translate(150 466)">
+    <rect width="214" height="94" rx="24" fill="#FFFFFF"/>
+    <rect x="1" y="1" width="212" height="92" rx="23" stroke="#FED7AA"/>
+    <text x="22" y="30" fill="#9CA3AF" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="14" font-weight="700">PROJECT A</text>
+    <text x="22" y="56" fill="#111827" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18" font-weight="800">Claude Code + custom baseURL</text>
+    <text x="22" y="78" fill="#B45309" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="14">Key 写在脚本和环境变量里</text>
+  </g>
+  <g transform="translate(392 426)">
+    <rect width="214" height="94" rx="24" fill="#FFFFFF"/>
+    <rect x="1" y="1" width="212" height="92" rx="23" stroke="#FED7AA"/>
+    <text x="22" y="30" fill="#9CA3AF" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="14" font-weight="700">PROJECT B</text>
+    <text x="22" y="56" fill="#111827" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18" font-weight="800">OpenAI SDK + fallback rules</text>
+    <text x="22" y="78" fill="#B45309" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="14">日志要回各自工程里查</text>
+  </g>
+  <g transform="translate(214 590)">
+    <rect width="236" height="86" rx="22" fill="#FFFFFF"/>
+    <rect x="1" y="1" width="234" height="84" rx="21" stroke="#FED7AA"/>
+    <text x="22" y="28" fill="#9CA3AF" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="14" font-weight="700">INTERNAL TOOLS</text>
+    <text x="22" y="54" fill="#111827" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18" font-weight="800">多套 key、切模型要翻项目</text>
+  </g>
+
+  <path d="M356 526L412 478" stroke="#F97316" stroke-width="8" stroke-linecap="round" stroke-dasharray="16 16"/>
+  <path d="M450 612L514 544" stroke="#F97316" stroke-width="8" stroke-linecap="round" stroke-dasharray="16 16"/>
+  <path d="M320 590L272 556" stroke="#F97316" stroke-width="8" stroke-linecap="round" stroke-dasharray="16 16"/>
+
+  <g filter="url(#panelShadow)">
+    <rect x="914" y="248" width="524" height="470" rx="40" fill="url(#afterPanel)"/>
+  </g>
+  <circle cx="1222" cy="448" r="238" fill="url(#afterGlow)"/>
+  <rect x="936" y="270" width="480" height="426" rx="32" fill="#0F172A" fill-opacity="0.56" stroke="#FFFFFF" stroke-opacity="0.08"/>
+  <text x="976" y="322" fill="#22C7F2" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="26" font-weight="800">接入后</text>
+  <text x="976" y="358" fill="#FFFFFF" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="34" font-weight="800">
+    <tspan x="976" dy="0">AI 接入回到一个统一入口</tspan>
+    <tspan x="976" dy="40">和日常控制台</tspan>
+  </text>
+  <text x="976" y="430" fill="#A9BCD7" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18">
+    <tspan x="976" dy="0">客户端继续请求熟悉协议；路由、Key、日志和排查</tspan>
+    <tspan x="976" dy="26">回到团队每天都能打开的一个控制台。</tspan>
+  </text>
+
+  <rect x="976" y="480" width="138" height="44" rx="22" fill="#EDE9FE"/>
+  <text x="1000" y="508" fill="#4338CA" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="17" font-weight="800">Claude Code</text>
+  <rect x="1128" y="480" width="124" height="44" rx="22" fill="#ECFDF5"/>
+  <text x="1159" y="508" fill="#047857" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="17" font-weight="800">OpenAI SDK</text>
+  <rect x="1266" y="480" width="116" height="44" rx="22" fill="#E0F2FE"/>
+  <text x="1297" y="508" fill="#0369A1" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="17" font-weight="800">内部工具</text>
+
+  <rect x="1048" y="568" width="240" height="58" rx="28" fill="#4F46E5"/>
+  <text x="1128" y="604" fill="#FFFFFF" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="24" font-weight="800">cc-gw</text>
+  <path d="M1045 524V568" stroke="#38BDF8" stroke-width="8" stroke-linecap="round" stroke-dasharray="16 16"/>
+  <path d="M1190 524V568" stroke="#38BDF8" stroke-width="8" stroke-linecap="round" stroke-dasharray="16 16"/>
+  <path d="M1324 524V568" stroke="#38BDF8" stroke-width="8" stroke-linecap="round" stroke-dasharray="16 16"/>
+
+  <rect x="978" y="652" width="164" height="40" rx="20" fill="#172445"/>
+  <text x="1020" y="678" fill="#DCE7F4" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="16" font-weight="700">日志 / Events</text>
+  <rect x="1154" y="652" width="148" height="40" rx="20" fill="#172445"/>
+  <text x="1183" y="678" fill="#DCE7F4" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="16" font-weight="700">Routing / Keys</text>
+  <rect x="1314" y="652" width="88" height="40" rx="20" fill="#172445"/>
+  <text x="1337" y="678" fill="#DCE7F4" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="16" font-weight="700">Profiler</text>
+
+  <g filter="url(#softShadow)">
+    <rect x="94" y="760" width="1412" height="96" rx="30" fill="#FFFFFF" fill-opacity="0.9"/>
+    <rect x="94.5" y="760.5" width="1411" height="95" rx="29.5" stroke="#E2E8F0" stroke-opacity="0.7"/>
+  </g>
+  <text x="136" y="820" fill="#334155" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="24" font-weight="700">cc-gw 的重点不是再造一个大平台，而是先把你每天都会碰到的 AI 接入、切换和排查收回一个地方。</text>
+</svg>

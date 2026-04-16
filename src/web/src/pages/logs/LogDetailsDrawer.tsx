@@ -127,13 +127,13 @@ export function LogDetailsDrawer({
             />
           ) : (
             <div className="space-y-6 text-sm">
-              <section className="space-y-4 rounded-lg border border-border bg-card p-5">
+              <section className="space-y-4 rounded-lg border bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       {t('logs.detail.infoSection')}
                     </h3>
-                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary p-3 text-xs">
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-secondary p-3 text-xs">
                       <span className="font-medium">
                         {t('logs.detail.summary.route', {
                           from: record.client_model ?? t('logs.detail.info.noRequestedModel'),
@@ -190,7 +190,7 @@ export function LogDetailsDrawer({
                 {record.error ? (
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t('logs.detail.info.error')}</p>
-                    <p className="rounded-[1rem] border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive">
+                    <p className="rounded-xl border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive">
                       {record.error}
                     </p>
                   </div>
@@ -198,7 +198,7 @@ export function LogDetailsDrawer({
               </section>
 
               <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                <section className="space-y-3 rounded-lg border border-border bg-card p-5">
+                <section className="space-y-3 rounded-lg border bg-card p-4">
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t('logs.detail.apiKey.title')}
                   </h3>
@@ -227,7 +227,7 @@ export function LogDetailsDrawer({
                       value={apiKeyMeta?.lastUsedAt ? new Date(apiKeyMeta.lastUsedAt).toLocaleString() : t('common.noData')}
                     />
                   </dl>
-                  <div className="rounded-lg border border-border bg-secondary p-3 text-xs">
+                  <div className="rounded-lg border bg-secondary p-3 text-xs">
                     <p className="font-medium">{t('logs.detail.apiKey.rawMasked')}</p>
                     <p className="mt-1 break-all font-mono">
                       {record.api_key_value_available
@@ -240,7 +240,7 @@ export function LogDetailsDrawer({
                   </div>
                 </section>
 
-                <section className="space-y-4 rounded-lg border border-border bg-card p-5">
+                <section className="space-y-4 rounded-lg border bg-card p-4">
                   <div className="space-y-1">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       {t('logs.detail.payload.title')}
@@ -275,8 +275,8 @@ export function LogDetailsDrawer({
 
 function DetailStatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-lg border border-border bg-secondary px-3 py-3">
-      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+    <div className="min-w-0 rounded-lg border bg-secondary px-3 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
       <p className="mt-2 break-all text-sm font-semibold leading-6">{value}</p>
     </div>
   )
@@ -307,7 +307,7 @@ function PayloadPanel({
   t: (key: string) => string
 }) {
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-secondary/40 p-4">
+    <div className="space-y-3 rounded-lg border bg-secondary/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {title}
@@ -316,7 +316,7 @@ function PayloadPanel({
           {t('common.actions.copy')}
         </Button>
       </div>
-      <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-secondary p-3 text-xs">
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border bg-secondary p-3 text-xs">
         {displayValue}
       </pre>
     </div>

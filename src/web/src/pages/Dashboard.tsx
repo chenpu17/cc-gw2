@@ -13,11 +13,12 @@ import {
 import { cn } from '@/lib/utils'
 import {
   DashboardChartsGrid,
+  DashboardGettingStarted,
   DashboardInsightsGrid,
   DashboardLoading,
-  DashboardSpotlight,
-  DashboardStatsGrid,
+  GatewayStatusBar,
   ModelMetricsTable,
+  MonitoringGrid,
   RecentRequestsTable
 } from './dashboard/DashboardSections'
 import { useDashboardPageState } from './dashboard/useDashboardPageState'
@@ -25,6 +26,7 @@ import { useDashboardPageState } from './dashboard/useDashboardPageState'
 export default function DashboardPage() {
   const { t } = useTranslation()
   const state = useDashboardPageState()
+  const showGettingStarted = state.recentLogs.length === 0 || state.models.length === 0
 
   return (
     <div className="flex flex-col gap-6">
@@ -38,7 +40,7 @@ export default function DashboardPage() {
         helper={t('dashboard.charts.requestsDesc')}
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-            <div className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground/60">
               {t('dashboard.filters.endpoint')}
               {' · '}
               {state.selectedEndpointLabel}
@@ -86,15 +88,26 @@ export default function DashboardPage() {
         />
       ) : (
         <>
-          <DashboardSpotlight
-            dbSizeDisplay={state.dbSizeDisplay}
-            memoryDisplay={state.memoryDisplay}
+          <GatewayStatusBar
             selectedEndpointLabel={state.selectedEndpointLabel}
             status={state.status}
             todayRequests={state.overview?.today.requests ?? 0}
           />
 
-          <DashboardStatsGrid overview={state.overview} />
+          {showGettingStarted ? (
+            <DashboardGettingStarted
+              endpointCount={state.customEndpoints.length}
+              providerCount={state.status?.providers ?? 0}
+              selectedEndpointLabel={state.selectedEndpointLabel}
+            />
+          ) : null}
+
+          <MonitoringGrid
+            dbSizeDisplay={state.dbSizeDisplay}
+            memoryDisplay={state.memoryDisplay}
+            overview={state.overview}
+            status={state.status}
+          />
 
           <DashboardInsightsGrid
             busiestDay={state.busiestDay}

@@ -13,6 +13,6 @@
     },
     "types": ["vite/client"]
   },
-  "include": ["./**/*.ts", "./**/*.tsx"],
+  "include": ["./**/*.ts", "./**/*.tsx", "./package.json"],
   "exclude": ["dist", "node_modules"]
 }

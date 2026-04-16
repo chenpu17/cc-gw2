@@ -1,5 +1,10 @@
 # Docs
 
+当前对外入口约定：
+
+- `GET /`：产品官网和定位说明
+- `GET /ui/`：Web 管理控制台
+
 当前文档按下面几类维护：
 
 - [system-design.md](./system-design.md)
@@ -8,6 +13,16 @@
   - 本地目录结构、SQLite 表设计和兼容迁移策略
 - [api-compatibility.md](./api-compatibility.md)
   - 对外 HTTP 接口、别名路径和当前兼容范围
+- [product-positioning.md](./product-positioning.md)
+  - 产品定位、适用团队规模、推荐叙事和官网/README 一致性基线
+- [landing-publishing.md](./landing-publishing.md)
+  - 官网入口、分享资产、SEO 文件与发版前核对清单
+- [media-kit.md](./media-kit.md)
+  - 架构图、社交分享图、README 截图和对外分享文案建议
+- [demo-script.md](./demo-script.md)
+  - 录屏、演示和官网讲解流程
+- [launch-copy.md](./launch-copy.md)
+  - 中文/英文发布文案、GitHub Release Notes 和社区帖子模板
 - [frontend-redesign-requirements.md](./frontend-redesign-requirements.md)
   - 当前前端功能盘点、前后端耦合点和重设计基线
 - [npm-packaging.md](./npm-packaging.md)
