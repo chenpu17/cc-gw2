@@ -1,6 +1,6 @@
 {
   "name": "@chenpu17/cc-gw-linux-arm64",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "private": false,
   "description": "Prebuilt linux arm64 binary for cc-gw",
   "license": "MIT",

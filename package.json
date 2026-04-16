@@ -1,6 +1,6 @@
 {
   "name": "@chenpu17/cc-gw",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "private": false,
   "type": "module",
   "description": "Local-first AI gateway for personal developers and small software teams, with web console and CLI daemon.",
