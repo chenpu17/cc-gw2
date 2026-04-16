@@ -59,7 +59,7 @@ test('web console pages load and navigation works', async ({ page }) => {
 
   await page.getByRole('link', { name: '性能分析' }).click()
   await expect(page).toHaveURL(/\/ui\/profiler$/)
-  await expect(page.getByText('Profiler')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '性能分析', level: 1 })).toBeVisible()
 
   await page.getByRole('link', { name: 'API 密钥' }).click()
   await expect(page).toHaveURL(/\/ui\/api-keys$/)

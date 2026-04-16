@@ -68,6 +68,10 @@ async function pollForKeyDeletion(request: any, baseUrl: string, apiKeyId: numbe
   throw new Error('api key not deleted in time')
 }
 
+function apiKeyRow(page: any, name: string) {
+  return page.getByRole('row').filter({ hasText: name }).first()
+}
+
 test('api key web ui covers create, reveal, restrict, toggle, analytics, and delete flows', async ({ page, request }) => {
   const baseUrl = harness.baseUrl()
   await disableWildcard(request, baseUrl)
@@ -121,9 +125,8 @@ test('api key web ui covers create, reveal, restrict, toggle, analytics, and del
 
   await createdDialog.getByRole('button', { name: '关闭' }).click()
 
-  const createdKeyCard = page.locator(
-    'xpath=//h3[normalize-space()="Playwright Test Key"]/ancestor::div[@data-testid="api-key-card"][1]'
-  )
+  const createdKeyCard = apiKeyRow(page, 'Playwright Test Key')
+  await expect(createdKeyCard).toBeVisible()
 
   await createdKeyCard.getByRole('button', { name: '显示完整密钥' }).click()
   await expect(createdKeyCard.getByRole('button', { name: '隐藏密钥' })).toBeVisible()
@@ -191,9 +194,7 @@ test('maxConcurrency: create via API, display in card, edit via dialog, and clea
   await page.goto(`${baseUrl}/ui/api-keys`)
   await expect(page.getByRole('heading', { name: 'API 密钥管理', level: 1 })).toBeVisible()
 
-  const card = page.locator(
-    'xpath=//h3[normalize-space()="Concurrency Key"]/ancestor::div[@data-testid="api-key-card"][1]'
-  )
+  const card = apiKeyRow(page, 'Concurrency Key')
   await expect(card).toBeVisible()
 
   // Edit maxConcurrency via the edit dialog
@@ -257,9 +258,7 @@ test('wildcard key: edit maxConcurrency via UI dialog saves without allowedEndpo
   await expect(page.getByRole('heading', { name: 'API 密钥管理', level: 1 })).toBeVisible()
 
   // Find the wildcard card
-  const wildcardCard = page.locator(
-    'xpath=//h3[normalize-space()="Wildcard"]/ancestor::div[@data-testid="api-key-card"][1]'
-  )
+  const wildcardCard = apiKeyRow(page, 'Wildcard')
   await expect(wildcardCard).toBeVisible()
 
   // Click the "最大并发数" button (wildcard shows maxConcurrency label, not editEndpoints)

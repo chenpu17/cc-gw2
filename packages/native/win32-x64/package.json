@@ -1,6 +1,6 @@
 {
   "name": "@chenpu17/cc-gw-win32-x64",
-  "version": "0.8.9",
+  "version": "0.8.10",
   "private": false,
   "description": "Prebuilt win32 x64 binary for cc-gw",
   "license": "MIT",

@@ -142,14 +142,17 @@ function ProviderCard({
   const statusLabel = hasDefaultModel ? t('providers.status.ready') : t('providers.status.needsDefault')
 
   return (
-    <Card className="overflow-hidden rounded-[1rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.97)_0%,rgba(250,251,253,0.94)_100%)] shadow-[0_14px_32px_-30px_rgba(15,23,42,0.2)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_38px_-32px_rgba(59,130,246,0.18)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92)_0%,rgba(2,6,23,0.88)_100%)]">
+    <Card
+      data-testid="provider-card"
+      className="overflow-hidden rounded-[1rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.97)_0%,rgba(250,251,253,0.94)_100%)] shadow-[0_14px_32px_-30px_rgba(15,23,42,0.2)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_38px_-32px_rgba(59,130,246,0.18)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92)_0%,rgba(2,6,23,0.88)_100%)]"
+    >
       <CardContent className="space-y-2.5 p-3">
         <div className="flex items-start justify-between gap-2.5">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2.5">
-              <h4 className="truncate text-[14px] font-semibold tracking-[-0.02em] text-foreground" title={provider.label || provider.id}>
+              <h3 className="truncate text-[14px] font-semibold tracking-[-0.02em] text-foreground" title={provider.label || provider.id}>
                 {provider.label || provider.id}
-              </h4>
+              </h3>
             </div>
             <code className="mt-0.5 block truncate text-[11px] text-muted-foreground" title={provider.id}>
               {provider.id}
