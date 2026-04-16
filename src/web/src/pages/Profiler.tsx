@@ -292,22 +292,22 @@ function TimelineOverview({
     <div className="rounded-xl bg-card shadow-[var(--surface-shadow)]">
       <div className="flex items-center justify-between gap-4 border-b border-border/45 px-5 py-3.5">
         <p className="text-xs text-muted-foreground">
-          Compressed overview · idle gaps folded · wraps as turns grow
+          {t('profiler.timeline.summary')}
         </p>
         <div className="flex items-center gap-2 text-[11px]">
-          <span className="text-muted-foreground">Mode:</span>
+          <span className="text-muted-foreground">{t('profiler.timeline.mode')}</span>
           <span className="rounded-full border border-border bg-secondary/70 px-2.5 py-1 font-medium text-foreground">
-            Compressed
+            {t('profiler.timeline.compressed')}
           </span>
           <span className="rounded-full border border-border bg-card px-2.5 py-1 font-medium text-foreground">
-            Session {fmtMsCompact(totalDurationMs)}
+            {t('profiler.timeline.sessionDuration', { duration: fmtMsCompact(totalDurationMs) })}
           </span>
         </div>
       </div>
 
       <div className="px-5 pb-4">
         <div className="mb-3 flex items-center justify-between text-[11px] text-muted-foreground/70">
-          <span>start</span>
+          <span>{t('profiler.timeline.start')}</span>
           <span>{(totalDurationMs / 1000).toFixed(1)}s</span>
         </div>
 
@@ -337,7 +337,7 @@ function TimelineOverview({
                     ? 'border-primary/20 bg-primary/5'
                     : 'hover:bg-secondary/50'
                 )}
-                title={`Turn ${record.turnIndex + 1}`}
+                title={t('profiler.turn.title', { index: record.turnIndex + 1 })}
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="flex min-w-0 items-center gap-2">
@@ -354,7 +354,7 @@ function TimelineOverview({
                     <span className="truncate text-[15px] font-semibold text-foreground">{fmtMsCompact(record.latencyMs)}</span>
                   </div>
                 </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">start {(startOffset / 1000).toFixed(1)}s</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">{t('profiler.timeline.startAt', { time: (startOffset / 1000).toFixed(1) })}</p>
 
                 <div className="mt-2">
                   <div className="flex items-center justify-between text-[11px] text-muted-foreground">
@@ -379,7 +379,7 @@ function TimelineOverview({
 
                 <div className="mt-2">
                   <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>Tools</span>
+                    <span>{t('profiler.timeline.tools')}</span>
                     <span>{toolCalls.length}</span>
                   </div>
                   <div className="flex h-5 items-center gap-1">
@@ -403,19 +403,19 @@ function TimelineOverview({
         <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-sm bg-blue-200" />
-            Total latency
+            {t('profiler.timeline.legend.totalLatency')}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="relative inline-block h-2.5 w-2.5 rounded-full border border-white bg-violet-500 ring-1 ring-violet-500/35" />
-            First token (TTFT)
+            {t('profiler.timeline.legend.firstToken')}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-sm border border-amber-400 bg-amber-200" />
-            Tool executing
+            {t('profiler.timeline.legend.toolExecuting')}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-sm border border-rose-300 bg-rose-50" />
-            Selected turn
+            {t('profiler.timeline.legend.selectedTurn')}
           </span>
         </div>
       </div>
@@ -436,6 +436,7 @@ function TurnDetail({
   onDetailTabChange: (tab: TimelineDetailTab) => void
   onSelectTurn: (index: number) => void
 }) {
+  const { t } = useTranslation()
   const record = detail.records[selectedTurn]
   if (!record) return null
 
@@ -443,19 +444,19 @@ function TurnDetail({
   const totalTokens = (record.inputTokens ?? 0) + (record.outputTokens ?? 0)
   const tabContent =
     detailTab === 'request'
-      ? codeBlockContent(record.clientRequest, '(empty request)')
+      ? codeBlockContent(record.clientRequest, t('profiler.payload.emptyRequest'))
       : detailTab === 'response'
-        ? codeBlockContent(record.clientResponse, '(empty response)')
+        ? codeBlockContent(record.clientResponse, t('profiler.payload.emptyResponse'))
         : toolCalls.length > 0
           ? JSON.stringify(toolCalls, null, 2)
-          : '(no tool calls)'
+          : t('profiler.payload.noToolCalls')
 
   return (
     <div data-testid="profiler-turn-detail" className="mt-3 shrink-0 rounded-xl bg-card shadow-[var(--surface-shadow)]">
       <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
           <span className="rounded-full bg-primary px-2 py-1 font-semibold text-primary-foreground">
-            Turn {record.turnIndex + 1}
+            {t('profiler.turn.title', { index: record.turnIndex + 1 })}
           </span>
           <span className="text-muted-foreground">{formatTurnRange(record, detail.startedAt)}</span>
           <span className="rounded-full bg-violet-50 border border-violet-200 px-2 py-1 font-semibold text-violet-700 dark:bg-violet-500/16 dark:border-violet-400/20 dark:text-violet-200">
@@ -472,7 +473,7 @@ function TurnDetail({
             onClick={() => onSelectTurn(Math.max(0, selectedTurn - 1))}
             disabled={selectedTurn === 0}
             className="rounded-full p-1.5 transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Previous turn"
+            aria-label={t('profiler.turn.previous')}
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -484,7 +485,7 @@ function TurnDetail({
             onClick={() => onSelectTurn(Math.min(detail.records.length - 1, selectedTurn + 1))}
             disabled={selectedTurn === detail.records.length - 1}
             className="rounded-full p-1.5 transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Next turn"
+            aria-label={t('profiler.turn.next')}
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -493,11 +494,11 @@ function TurnDetail({
 
       <div className="border-b border-border bg-secondary/30 px-5 py-2">
         <div className="flex flex-wrap items-center gap-2">
-          <DetailTabButton active={detailTab === 'request'} label="Request" onClick={() => onDetailTabChange('request')} />
-          <DetailTabButton active={detailTab === 'response'} label="Response" onClick={() => onDetailTabChange('response')} />
+          <DetailTabButton active={detailTab === 'request'} label={t('profiler.payload.request')} onClick={() => onDetailTabChange('request')} />
+          <DetailTabButton active={detailTab === 'response'} label={t('profiler.payload.response')} onClick={() => onDetailTabChange('response')} />
           <DetailTabButton
             active={detailTab === 'tools'}
-            label="Tool Calls"
+            label={t('profiler.payload.toolCalls')}
             count={toolCalls.length}
             onClick={() => onDetailTabChange('tools')}
           />
@@ -549,16 +550,18 @@ function PayloadBlock({
   title,
   payload,
   accentClass,
+  emptyLabel,
 }: {
   title: string
   payload: string | null | undefined
   accentClass: string
+  emptyLabel: string
 }) {
   return (
     <div className="rounded-xl border border-white/45 bg-white/88 p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-slate-950/[0.58] dark:shadow-[0_12px_28px_rgba(0,0,0,0.28)]">
       <p className={cn('mb-2 text-[11px] font-semibold uppercase tracking-wider', accentClass)}>{title}</p>
       <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs leading-5 text-slate-200">
-        {codeBlockContent(payload, '(empty)')}
+        {codeBlockContent(payload, emptyLabel)}
       </pre>
     </div>
   )
@@ -595,6 +598,7 @@ function BreakdownRow({
   expanded: boolean
   onToggle: () => void
 }) {
+  const { t } = useTranslation()
   const toolCalls = extractToolCalls(record)
 
   return (
@@ -611,14 +615,14 @@ function BreakdownRow({
           <div className="min-w-0">
             <div className="text-sm font-medium text-foreground">{formatTurnRange(record, sessionStart)}</div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-              <span>Total {fmtMs(record.latencyMs)}</span>
+              <span>{t('profiler.breakdown.total', { value: fmtMs(record.latencyMs) })}</span>
               <span>TTFT {fmtMs(record.ttftMs)}</span>
               <span>TPOT {record.tpotMs != null ? `${record.tpotMs.toFixed(1)} ms/tok` : '-'}</span>
               <span>↑ {fmtNum(record.inputTokens)}</span>
               <span>↓ {fmtNum(record.outputTokens)}</span>
-              <span>{toolCalls.length} tool calls</span>
+              <span>{t('profiler.breakdown.toolCallsCount', { count: toolCalls.length })}</span>
               {record.error && (
-                <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-600 dark:bg-red-500/14 dark:text-red-300">Error</span>
+                <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-600 dark:bg-red-500/14 dark:text-red-300">{t('profiler.breakdown.error')}</span>
               )}
             </div>
           </div>
@@ -629,21 +633,21 @@ function BreakdownRow({
       {expanded && (
         <div className="border-t border-border bg-secondary/30 p-4">
           <div className="grid gap-3 xl:grid-cols-2">
-            <PayloadBlock title="Request" payload={record.clientRequest} accentClass="text-blue-600" />
-            <PayloadBlock title="Response" payload={record.clientResponse} accentClass="text-violet-600" />
+            <PayloadBlock title={t('profiler.payload.request')} payload={record.clientRequest} accentClass="text-blue-600" emptyLabel={t('profiler.payload.empty')} />
+            <PayloadBlock title={t('profiler.payload.response')} payload={record.clientResponse} accentClass="text-violet-600" emptyLabel={t('profiler.payload.empty')} />
           </div>
           <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
             <div className="rounded-xl bg-card p-3 shadow-sm">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-amber-600">Tool Calls</p>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-amber-600">{t('profiler.payload.toolCalls')}</p>
               <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs leading-5 text-slate-200">
-                {toolCalls.length > 0 ? JSON.stringify(toolCalls, null, 2) : '(no tool calls)'}
+                {toolCalls.length > 0 ? JSON.stringify(toolCalls, null, 2) : t('profiler.payload.noToolCalls')}
               </pre>
             </div>
             <div className="rounded-xl bg-card p-3 shadow-sm">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Turn Metrics</p>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t('profiler.breakdown.turnMetrics')}</p>
               <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                 <div>
-                  <dt className="text-muted-foreground">Duration</dt>
+                  <dt className="text-muted-foreground">{t('profiler.breakdown.duration')}</dt>
                   <dd className="mt-0.5 font-medium text-foreground">{fmtMs(record.latencyMs)}</dd>
                 </div>
                 <div>
@@ -657,15 +661,15 @@ function BreakdownRow({
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Status</dt>
+                  <dt className="text-muted-foreground">{t('profiler.breakdown.status')}</dt>
                   <dd className="mt-0.5 font-medium text-foreground">{record.statusCode ?? '-'}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Input</dt>
+                  <dt className="text-muted-foreground">{t('profiler.breakdown.input')}</dt>
                   <dd className="mt-0.5 font-medium text-foreground">{fmtNum(record.inputTokens)}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Output</dt>
+                  <dt className="text-muted-foreground">{t('profiler.breakdown.output')}</dt>
                   <dd className="mt-0.5 font-medium text-foreground">{fmtNum(record.outputTokens)}</dd>
                 </div>
               </dl>
@@ -718,19 +722,19 @@ function BreakdownPanel({
   return (
     <div className="space-y-5 p-5">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <MetricCard label="Total Duration" value={fmtMs(totalDurationMs)} sub={`${detail.records.length} turns`} />
-        <MetricCard label="LLM Time" value={fmtMs(llmMs)} sub={`${llmPct}% of session`} accentClass="text-violet-700" />
-        <MetricCard label="Avg TTFT" value={fmtMs(avgTtftMs)} />
-        <MetricCard label="Avg TPOT" value={avgTpotMs != null ? `${avgTpotMs.toFixed(1)} ms/tok` : '-'} />
-        <MetricCard label="Input Tokens" value={fmtNum(detail.totalInputTokens)} />
-        <MetricCard label="Output Tokens" value={fmtNum(detail.totalOutputTokens)} />
+        <MetricCard label={t('profiler.breakdown.totalDuration')} value={fmtMs(totalDurationMs)} sub={t('profiler.breakdown.turnsSub', { count: detail.records.length })} />
+        <MetricCard label={t('profiler.breakdown.llmTime')} value={fmtMs(llmMs)} sub={t('profiler.breakdown.sessionShare', { value: llmPct })} accentClass="text-violet-700" />
+        <MetricCard label={t('profiler.breakdown.avgTtft')} value={fmtMs(avgTtftMs)} />
+        <MetricCard label={t('profiler.breakdown.avgTpot')} value={avgTpotMs != null ? `${avgTpotMs.toFixed(1)} ms/tok` : '-'} />
+        <MetricCard label={t('profiler.breakdown.inputTokens')} value={fmtNum(detail.totalInputTokens)} />
+        <MetricCard label={t('profiler.breakdown.outputTokens')} value={fmtNum(detail.totalOutputTokens)} />
       </div>
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Per-Turn Breakdown</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Expand a turn to inspect request, response, tool calls, and errors.</p>
+            <h3 className="text-sm font-semibold text-foreground">{t('profiler.breakdown.perTurnTitle')}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{t('profiler.breakdown.perTurnDescription')}</p>
           </div>
         </div>
         {detail.records.map((record) => (

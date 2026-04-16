@@ -106,13 +106,13 @@ export function RoutingWorkspace({
         </div>
 
         {anthropicProtocol ? (
-          <div className="rounded-xl bg-accent p-4 shadow-[var(--surface-shadow)]">
+          <div className="rounded-xl border border-primary/12 bg-[linear-gradient(135deg,hsl(var(--primary)/0.08),hsl(var(--accent)/0.72))] p-4 shadow-[var(--surface-shadow)] dark:border-sky-300/12 dark:bg-[linear-gradient(135deg,rgba(14,165,233,0.12),rgba(15,23,42,0.72))]">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
                 <p className="text-sm font-medium text-primary dark:text-sky-100">
                   {t('modelManagement.claudeValidation.title')}
                 </p>
-                <p className="text-xs text-primary/80 dark:text-slate-300">
+                <p className="max-w-2xl text-xs leading-5 text-muted-foreground dark:text-slate-300">
                   {t('modelManagement.claudeValidation.description')}
                 </p>
               </div>
@@ -125,7 +125,7 @@ export function RoutingWorkspace({
                   onValueChange={(value) => onValidationModeChange(value as EndpointValidationMode)}
                   disabled={savingClaudeValidation}
                 >
-                  <SelectTrigger className="bg-card dark:bg-secondary">
+                  <SelectTrigger className="border-primary/15 bg-card/90 dark:border-white/10 dark:bg-slate-950/50">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

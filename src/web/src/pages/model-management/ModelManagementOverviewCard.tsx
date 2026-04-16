@@ -91,7 +91,7 @@ export function ModelManagementOverviewCard({
           </div>
 
           {activeTabInfo ? (
-            <div className="flex min-h-[116px] flex-col justify-between rounded-[1.1rem] bg-[linear-gradient(135deg,hsl(var(--primary)/0.1),rgba(255,255,255,0.78))] p-4 ring-1 ring-primary/10">
+            <div className="flex min-h-[116px] flex-col justify-between rounded-[1.1rem] bg-[linear-gradient(135deg,hsl(var(--primary)/0.1),rgba(255,255,255,0.78))] p-4 ring-1 ring-primary/10 dark:bg-[linear-gradient(135deg,rgba(14,165,233,0.14),rgba(15,23,42,0.72))] dark:ring-white/10">
               <div className="flex items-center gap-3">
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <ArrowDown className="h-4 w-4" />

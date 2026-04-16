@@ -1054,6 +1054,7 @@ const resources = {
           breadcrumb: '网关 / 使用指南',
           guides: '{{count}} 个指南',
           faqCount: '{{count}} 个问题',
+          recommendedFlow: '推荐流程',
           claudeWorkflow: 'IDE / 桌面工作流',
           codexWorkflow: '终端工作流'
         },
@@ -1405,8 +1406,8 @@ const resources = {
       },
       profiler: {
         title: '性能分析',
-        eyebrow: 'Session Profiler',
-        breadcrumb: 'Gateway / Profiler',
+        eyebrow: '会话性能分析',
+        breadcrumb: '网关 / 性能分析',
         description: '记录并分析 LLM 会话的延迟与 token 用量。',
         sessionsTitle: '会话列表',
         sessionsCount: '{{count}} 个会话',
@@ -1428,6 +1429,55 @@ const resources = {
           stop: '停止录制',
           export: '导出',
           clear: '清空'
+        },
+        timeline: {
+          summary: '压缩总览 · 自动折叠空闲间隔 · 按轮次换行展示',
+          mode: '模式：',
+          compressed: '压缩',
+          sessionDuration: '会话 {{duration}}',
+          start: '开始',
+          startAt: '开始 {{time}}s',
+          tools: '工具',
+          legend: {
+            totalLatency: '总延迟',
+            firstToken: '首 token（TTFT）',
+            toolExecuting: '工具调用',
+            selectedTurn: '选中轮次'
+          }
+        },
+        turn: {
+          title: '第 {{index}} 轮',
+          previous: '上一轮',
+          next: '下一轮'
+        },
+        payload: {
+          request: '请求',
+          response: '响应',
+          toolCalls: '工具调用',
+          empty: '（空）',
+          emptyRequest: '（空请求）',
+          emptyResponse: '（空响应）',
+          noToolCalls: '（无工具调用）'
+        },
+        breakdown: {
+          total: '总计 {{value}}',
+          toolCallsCount: '{{count}} 次工具调用',
+          error: '错误',
+          turnMetrics: '轮次指标',
+          duration: '耗时',
+          status: '状态',
+          input: '输入',
+          output: '输出',
+          totalDuration: '总耗时',
+          llmTime: 'LLM 时间',
+          avgTtft: '平均 TTFT',
+          avgTpot: '平均 TPOT',
+          inputTokens: '输入 Tokens',
+          outputTokens: '输出 Tokens',
+          turnsSub: '{{count}} 轮',
+          sessionShare: '占会话 {{value}}%',
+          perTurnTitle: '逐轮拆解',
+          perTurnDescription: '展开任意轮次，检查请求、响应、工具调用与错误。'
         },
         empty: {
           waitingTitle: '等待请求进入...',
@@ -2501,6 +2551,7 @@ const resources = {
           breadcrumb: 'Gateway / Help',
           guides: '{{count}} guides',
           faqCount: '{{count}} FAQs',
+          recommendedFlow: 'Recommended Flow',
           claudeWorkflow: 'IDE / Desktop workflow',
           codexWorkflow: 'Terminal workflow'
         },
@@ -2866,6 +2917,55 @@ const resources = {
           stop: 'Stop Recording',
           export: 'Export',
           clear: 'Clear'
+        },
+        timeline: {
+          summary: 'Compressed overview · idle gaps folded · wraps as turns grow',
+          mode: 'Mode:',
+          compressed: 'Compressed',
+          sessionDuration: 'Session {{duration}}',
+          start: 'start',
+          startAt: 'start {{time}}s',
+          tools: 'Tools',
+          legend: {
+            totalLatency: 'Total latency',
+            firstToken: 'First token (TTFT)',
+            toolExecuting: 'Tool executing',
+            selectedTurn: 'Selected turn'
+          }
+        },
+        turn: {
+          title: 'Turn {{index}}',
+          previous: 'Previous turn',
+          next: 'Next turn'
+        },
+        payload: {
+          request: 'Request',
+          response: 'Response',
+          toolCalls: 'Tool Calls',
+          empty: '(empty)',
+          emptyRequest: '(empty request)',
+          emptyResponse: '(empty response)',
+          noToolCalls: '(no tool calls)'
+        },
+        breakdown: {
+          total: 'Total {{value}}',
+          toolCallsCount: '{{count}} tool calls',
+          error: 'Error',
+          turnMetrics: 'Turn Metrics',
+          duration: 'Duration',
+          status: 'Status',
+          input: 'Input',
+          output: 'Output',
+          totalDuration: 'Total Duration',
+          llmTime: 'LLM Time',
+          avgTtft: 'Avg TTFT',
+          avgTpot: 'Avg TPOT',
+          inputTokens: 'Input Tokens',
+          outputTokens: 'Output Tokens',
+          turnsSub: '{{count}} turns',
+          sessionShare: '{{value}}% of session',
+          perTurnTitle: 'Per-Turn Breakdown',
+          perTurnDescription: 'Expand a turn to inspect request, response, tool calls, and errors.'
         },
         empty: {
           waitingTitle: 'Waiting for requests…',

@@ -101,7 +101,7 @@ export default function HelpPage(): JSX.Element {
           </div>
 
           <div className="rounded-[0.95rem] bg-secondary/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/78">Recommended Flow</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/78">{t('help.meta.recommendedFlow')}</p>
             <div className="-mx-1 mt-2 flex gap-2 overflow-x-auto px-1 pb-1">
               {quickPaths.map((path) => (
                 <a
@@ -145,7 +145,7 @@ export default function HelpPage(): JSX.Element {
                 </div>
               </div>
               <div className="rounded-[1rem] bg-secondary/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/78">Recommended Flow</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/78">{t('help.meta.recommendedFlow')}</p>
                 <ol className="mt-2.5 space-y-2">
                   {starterFlow.map((item, index) => (
                     <li key={`${index}-${item}`} className="flex gap-2.5 text-xs leading-5 text-muted-foreground">

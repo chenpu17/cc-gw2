@@ -87,7 +87,7 @@ export function ProvidersWorkspace({
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <div className="grid gap-2.5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {filteredProviders.map((provider) => {
                 const authModeDisplay = describeAuthMode(provider)
                 const modelCount = provider.models?.length ?? 0
@@ -142,12 +142,12 @@ function ProviderCard({
   const statusLabel = hasDefaultModel ? t('providers.status.ready') : t('providers.status.needsDefault')
 
   return (
-    <Card className="overflow-hidden rounded-[1.05rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.97)_0%,rgba(250,251,253,0.94)_100%)] shadow-[0_16px_36px_-32px_rgba(15,23,42,0.2)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_42px_-34px_rgba(59,130,246,0.18)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92)_0%,rgba(2,6,23,0.88)_100%)]">
-      <CardContent className="space-y-3 p-3.5">
+    <Card className="overflow-hidden rounded-[1rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.97)_0%,rgba(250,251,253,0.94)_100%)] shadow-[0_14px_32px_-30px_rgba(15,23,42,0.2)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_38px_-32px_rgba(59,130,246,0.18)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92)_0%,rgba(2,6,23,0.88)_100%)]">
+      <CardContent className="space-y-2.5 p-3">
         <div className="flex items-start justify-between gap-2.5">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2.5">
-              <h4 className="truncate text-[15px] font-semibold tracking-[-0.02em] text-foreground" title={provider.label || provider.id}>
+              <h4 className="truncate text-[14px] font-semibold tracking-[-0.02em] text-foreground" title={provider.label || provider.id}>
                 {provider.label || provider.id}
               </h4>
             </div>
@@ -160,7 +160,7 @@ function ProviderCard({
           </Badge>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-[11px]">
+        <div className="grid grid-cols-2 gap-1.5 text-[11px]">
           <MetaPill icon={<ShieldCheck className="h-3.5 w-3.5" />} label={t('providers.card.authMode')} value={authMode} />
           <MetaPill
             icon={<Boxes className="h-3.5 w-3.5" />}
@@ -169,7 +169,7 @@ function ProviderCard({
           />
         </div>
 
-        <div className="space-y-2 rounded-[0.9rem] bg-secondary/45 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:bg-slate-900/[0.42]">
+        <div className="space-y-1.5 rounded-[0.85rem] bg-secondary/45 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:bg-slate-900/[0.42]">
           <div className="flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
             <Globe className="h-3.5 w-3.5 shrink-0" />
             <code className="truncate" title={provider.baseUrl}>{provider.baseUrl}</code>
@@ -179,7 +179,7 @@ function ProviderCard({
               {t('providers.card.defaultModelLabel')}
             </span>
             {defaultModel ? (
-              <code className="min-w-0 truncate rounded-full border border-border/65 bg-background/82 px-2.5 py-1 text-[11px] text-foreground dark:border-white/10 dark:bg-slate-950/[0.58]" title={defaultModel}>
+              <code className="min-w-0 truncate rounded-full border border-border/65 bg-background/82 px-2 py-0.5 text-[10px] text-foreground dark:border-white/10 dark:bg-slate-950/[0.58]" title={defaultModel}>
                 {defaultModel}
               </code>
             ) : (
@@ -188,7 +188,7 @@ function ProviderCard({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5 border-t border-border/45 pt-2">
+        <div className="grid grid-cols-3 gap-1 border-t border-border/45 pt-2">
           <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 rounded-full px-2 text-[11px]">
             {t('providers.actions.edit')}
           </Button>
@@ -227,12 +227,12 @@ function MetaPill({
   value: string
 }) {
   return (
-    <div className="min-w-0 rounded-[0.8rem] bg-secondary/55 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)] dark:bg-slate-900/[0.5]">
-      <div className="mb-1 flex min-w-0 items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+    <div className="min-w-0 rounded-[0.75rem] bg-secondary/55 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)] dark:bg-slate-900/[0.5]">
+      <div className="mb-0.5 flex min-w-0 items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
         {icon}
         <span className="truncate">{label}</span>
       </div>
-      <p className="truncate text-[12px] font-medium text-foreground" title={value}>{value}</p>
+      <p className="truncate text-[11px] font-medium text-foreground" title={value}>{value}</p>
     </div>
   )
 }
