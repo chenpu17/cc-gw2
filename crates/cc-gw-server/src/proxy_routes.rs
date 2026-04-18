@@ -539,6 +539,7 @@ fn summarize_tool_messages_for_custom_provider(body: &mut Value) {
                     append_text_with_spacing(&mut content, &summary);
                 }
                 next.remove("tool_calls");
+                next.remove("reasoning_content");
                 next.insert("content".to_string(), Value::String(content));
                 next_messages.push(Value::Object(next));
             }
@@ -551,11 +552,28 @@ fn summarize_tool_messages_for_custom_provider(body: &mut Value) {
     }
 }
 
-fn downgrade_openai_chat_body_for_custom_provider(body: &mut Value) {
+fn downgrade_openai_chat_body_for_compatibility(body: &mut Value) {
+    downgrade_openai_chat_body_for_tool_history_compatibility(body);
     remove_top_level_key(body, "tools");
+}
+
+fn downgrade_openai_chat_body_for_tool_history_compatibility(body: &mut Value) {
     remove_top_level_key(body, "tool_choice");
     remove_top_level_key(body, "metadata");
+    remove_top_level_key(body, "parallel_tool_calls");
+    if let Some(object) = body.as_object_mut() {
+        if object.get("max_tokens").is_none() {
+            if let Some(value) = object.get("max_completion_tokens").cloned() {
+                object.insert("max_tokens".to_string(), value);
+            }
+        }
+        object.remove("max_completion_tokens");
+    }
     summarize_tool_messages_for_custom_provider(body);
+}
+
+fn downgrade_openai_chat_body_for_custom_provider(body: &mut Value) {
+    downgrade_openai_chat_body_for_compatibility(body);
 }
 
 fn summarize_response_input_items_for_custom_provider(body: &mut Value) {
@@ -659,6 +677,14 @@ fn downgrade_openai_responses_body_for_custom_provider(body: &mut Value) {
     remove_top_level_key(body, "tools");
     remove_top_level_key(body, "tool_choice");
     remove_top_level_key(body, "metadata");
+    remove_top_level_key(body, "parallel_tool_calls");
+    summarize_response_input_items_for_custom_provider(body);
+}
+
+fn downgrade_openai_responses_body_for_tool_history_compatibility(body: &mut Value) {
+    remove_top_level_key(body, "tool_choice");
+    remove_top_level_key(body, "metadata");
+    remove_top_level_key(body, "parallel_tool_calls");
     summarize_response_input_items_for_custom_provider(body);
 }
 
@@ -710,6 +736,220 @@ fn retry_body_without_metadata_or_tool_choice(body: &Value) -> Option<Value> {
     remove_top_level_key(&mut retry, "tool_choice");
     let after = serde_json::to_string(&retry).ok()?;
     if before == after { None } else { Some(retry) }
+}
+
+fn openai_compatibility_cache_key(
+    provider_id: &str,
+    target_protocol: ProviderProtocol,
+    model_id: &str,
+    declares_tools: bool,
+    uses_reasoning_tokens: bool,
+) -> String {
+    let protocol = provider_protocol_name(target_protocol);
+    let tools = if declares_tools { "tools" } else { "no-tools" };
+    let reasoning = if uses_reasoning_tokens {
+        "reasoning"
+    } else {
+        "no-reasoning"
+    };
+    format!("{provider_id}:{protocol}:{model_id}:{tools}:{reasoning}")
+}
+
+fn provider_protocol_name(protocol: ProviderProtocol) -> &'static str {
+    match protocol {
+        ProviderProtocol::OpenAiChatCompletions => "openai-chat",
+        ProviderProtocol::OpenAiResponses => "openai-responses",
+        ProviderProtocol::AnthropicMessages => "anthropic",
+    }
+}
+
+fn cached_openai_compatibility_mode(
+    state: &AppState,
+    provider_id: &str,
+    target_protocol: ProviderProtocol,
+    model_id: &str,
+    declares_tools: bool,
+    uses_reasoning_tokens: bool,
+) -> OpenAiCompatibilityMode {
+    let key = openai_compatibility_cache_key(
+        provider_id,
+        target_protocol,
+        model_id,
+        declares_tools,
+        uses_reasoning_tokens,
+    );
+    state
+        .openai_compatibility_modes
+        .lock()
+        .ok()
+        .and_then(|entries| entries.get(&key).copied())
+        .unwrap_or(OpenAiCompatibilityMode::Standard)
+}
+
+fn remember_openai_compatibility_mode(
+    state: &AppState,
+    provider_id: &str,
+    target_protocol: ProviderProtocol,
+    model_id: &str,
+    declares_tools: bool,
+    uses_reasoning_tokens: bool,
+    mode: OpenAiCompatibilityMode,
+) {
+    if mode == OpenAiCompatibilityMode::Standard {
+        return;
+    }
+    let key = openai_compatibility_cache_key(
+        provider_id,
+        target_protocol,
+        model_id,
+        declares_tools,
+        uses_reasoning_tokens,
+    );
+    if let Ok(mut entries) = state.openai_compatibility_modes.lock() {
+        entries.insert(key, mode);
+    }
+}
+
+fn openai_compatibility_mode_rank(mode: OpenAiCompatibilityMode) -> usize {
+    match mode {
+        OpenAiCompatibilityMode::Standard => 0,
+        OpenAiCompatibilityMode::StripMetadataAndToolChoice => 1,
+        OpenAiCompatibilityMode::ToolHistoryCompatibility => 2,
+        OpenAiCompatibilityMode::Compatibility => 3,
+    }
+}
+
+fn openai_compatibility_mode_name(mode: OpenAiCompatibilityMode) -> &'static str {
+    match mode {
+        OpenAiCompatibilityMode::Standard => "standard",
+        OpenAiCompatibilityMode::StripMetadataAndToolChoice => "strip-metadata-tool-choice",
+        OpenAiCompatibilityMode::ToolHistoryCompatibility => "tool-history-compatibility",
+        OpenAiCompatibilityMode::Compatibility => "compatibility",
+    }
+}
+
+fn openai_request_declares_tools(body: &Value, target_protocol: ProviderProtocol) -> bool {
+    match target_protocol {
+        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => body
+            .get("tools")
+            .and_then(Value::as_array)
+            .is_some_and(|tools| !tools.is_empty()),
+        ProviderProtocol::AnthropicMessages => false,
+    }
+}
+
+fn openai_request_uses_reasoning_tokens(body: &Value, target_protocol: ProviderProtocol) -> bool {
+    match target_protocol {
+        ProviderProtocol::OpenAiChatCompletions => body.get("max_completion_tokens").is_some(),
+        ProviderProtocol::OpenAiResponses => {
+            body.get("reasoning").is_some()
+                || body
+                    .get("input")
+                    .and_then(Value::as_array)
+                    .is_some_and(|items| {
+                        items.iter().any(|item| {
+                            item.get("type").and_then(Value::as_str) == Some("reasoning")
+                                || item
+                                    .get("summary")
+                                    .and_then(Value::as_array)
+                                    .is_some_and(|summary| !summary.is_empty())
+                                || item.get("content").and_then(Value::as_array).is_some_and(
+                                    |content| {
+                                        content.iter().any(|part| {
+                                            part.get("type").and_then(Value::as_str)
+                                                == Some("reasoning_text")
+                                        })
+                                    },
+                                )
+                                || item.get("reasoning_content").is_some()
+                                || item.get("content").and_then(Value::as_array).is_some_and(
+                                    |content| {
+                                        content.iter().any(|part| {
+                                            part.get("type").and_then(Value::as_str)
+                                                == Some("reasoning")
+                                        })
+                                    },
+                                )
+                        })
+                    })
+        }
+        ProviderProtocol::AnthropicMessages => false,
+    }
+}
+
+fn apply_openai_compatibility_mode(
+    body: &Value,
+    target_protocol: ProviderProtocol,
+    mode: OpenAiCompatibilityMode,
+) -> Value {
+    match mode {
+        OpenAiCompatibilityMode::Standard => body.clone(),
+        OpenAiCompatibilityMode::StripMetadataAndToolChoice => {
+            retry_body_without_metadata_or_tool_choice(body).unwrap_or_else(|| body.clone())
+        }
+        OpenAiCompatibilityMode::ToolHistoryCompatibility => {
+            let mut retry = body.clone();
+            match target_protocol {
+                ProviderProtocol::OpenAiChatCompletions => {
+                    downgrade_openai_chat_body_for_tool_history_compatibility(&mut retry);
+                }
+                ProviderProtocol::OpenAiResponses => {
+                    downgrade_openai_responses_body_for_tool_history_compatibility(&mut retry);
+                }
+                ProviderProtocol::AnthropicMessages => {}
+            }
+            retry
+        }
+        OpenAiCompatibilityMode::Compatibility => {
+            let mut retry = body.clone();
+            match target_protocol {
+                ProviderProtocol::OpenAiChatCompletions => {
+                    downgrade_openai_chat_body_for_compatibility(&mut retry);
+                }
+                ProviderProtocol::OpenAiResponses => {
+                    downgrade_openai_responses_body_for_custom_provider(&mut retry);
+                }
+                ProviderProtocol::AnthropicMessages => {}
+            }
+            retry
+        }
+    }
+}
+
+fn retry_bodies_for_openai_compatibility(
+    body: &Value,
+    target_protocol: ProviderProtocol,
+    current_mode: OpenAiCompatibilityMode,
+    current_body: &Value,
+) -> Vec<(OpenAiCompatibilityMode, Value)> {
+    let mut retries = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let declares_tools = openai_request_declares_tools(body, target_protocol);
+    if let Ok(serialized) = serde_json::to_string(current_body) {
+        seen.insert(serialized);
+    }
+
+    let mut modes = vec![OpenAiCompatibilityMode::StripMetadataAndToolChoice];
+    if declares_tools {
+        modes.push(OpenAiCompatibilityMode::ToolHistoryCompatibility);
+    }
+    if !declares_tools {
+        modes.push(OpenAiCompatibilityMode::Compatibility);
+    }
+
+    for mode in modes {
+        if openai_compatibility_mode_rank(mode) <= openai_compatibility_mode_rank(current_mode) {
+            continue;
+        }
+        let retry = apply_openai_compatibility_mode(body, target_protocol, mode);
+        if let Ok(serialized) = serde_json::to_string(&retry) {
+            if seen.insert(serialized) {
+                retries.push((mode, retry));
+            }
+        }
+    }
+
+    retries
 }
 
 fn validation_config_for_endpoint<'a>(
@@ -1071,7 +1311,13 @@ pub(super) async fn proxy_standard_request(
         ProviderProtocol::AnthropicMessages
     } else {
         match protocol {
-            ProviderProtocol::AnthropicMessages => ProviderProtocol::OpenAiChatCompletions,
+            ProviderProtocol::AnthropicMessages => {
+                if provider_prefers_openai_responses_protocol(&target.provider) {
+                    ProviderProtocol::OpenAiResponses
+                } else {
+                    ProviderProtocol::OpenAiChatCompletions
+                }
+            }
             ProviderProtocol::OpenAiChatCompletions => ProviderProtocol::OpenAiChatCompletions,
             ProviderProtocol::OpenAiResponses => ProviderProtocol::OpenAiResponses,
         }
@@ -1079,8 +1325,37 @@ pub(super) async fn proxy_standard_request(
 
     let converted_request_body =
         build_request_body_for_target(&body, protocol, target_protocol, provider_type);
-    let upstream_request_payload = if request_payload_storage && converted_request_body != body {
-        serde_json::to_string(&converted_request_body).ok()
+    let request_declares_tools =
+        openai_request_declares_tools(&converted_request_body, target_protocol);
+    let request_uses_reasoning_tokens =
+        openai_request_uses_reasoning_tokens(&converted_request_body, target_protocol);
+    let openai_compatibility_mode = if matches!(
+        target_protocol,
+        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
+    ) {
+        let cached = cached_openai_compatibility_mode(
+            &state,
+            &target.provider_id,
+            target_protocol,
+            &target.model_id,
+            request_declares_tools,
+            request_uses_reasoning_tokens,
+        );
+        if request_declares_tools && cached == OpenAiCompatibilityMode::Compatibility {
+            OpenAiCompatibilityMode::ToolHistoryCompatibility
+        } else {
+            cached
+        }
+    } else {
+        OpenAiCompatibilityMode::Standard
+    };
+    let initial_request_body = apply_openai_compatibility_mode(
+        &converted_request_body,
+        target_protocol,
+        openai_compatibility_mode,
+    );
+    let mut upstream_request_payload = if request_payload_storage && initial_request_body != body {
+        serde_json::to_string(&initial_request_body).ok()
     } else {
         None
     };
@@ -1118,7 +1393,7 @@ pub(super) async fn proxy_standard_request(
         target_protocol,
         ProxyRequest {
             model: target_model_id.clone(),
-            body: converted_request_body.clone(),
+            body: initial_request_body.clone(),
             stream,
             incoming_headers: headers.clone(),
             passthrough_headers: HeaderMap::new(),
@@ -1134,16 +1409,19 @@ pub(super) async fn proxy_standard_request(
                 ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
             ) && response.status().as_u16() >= 400
             {
-                if let Some(retry_body) =
-                    retry_body_without_metadata_or_tool_choice(&converted_request_body)
-                {
+                for (retry_mode, retry_body) in retry_bodies_for_openai_compatibility(
+                    &converted_request_body,
+                    target_protocol,
+                    openai_compatibility_mode,
+                    &initial_request_body,
+                ) {
                     if let Ok(retry_response) = forward_request(
                         &state.http_client,
                         &target.provider,
                         target_protocol,
                         ProxyRequest {
                             model: target_model_id.clone(),
-                            body: retry_body,
+                            body: retry_body.clone(),
                             stream,
                             incoming_headers: headers.clone(),
                             passthrough_headers: HeaderMap::new(),
@@ -1154,6 +1432,64 @@ pub(super) async fn proxy_standard_request(
                     {
                         if retry_response.status().as_u16() < 400 {
                             response = retry_response;
+                            remember_openai_compatibility_mode(
+                                &state,
+                                &target.provider_id,
+                                target_protocol,
+                                &target.model_id,
+                                request_declares_tools,
+                                request_uses_reasoning_tokens,
+                                retry_mode,
+                            );
+                            let _ = record_event(
+                                &state.paths.db_path,
+                                &RecordEventInput {
+                                    event_type: "openai_compatibility_mode_learned".to_string(),
+                                    level: Some("info".to_string()),
+                                    source: Some("proxy".to_string()),
+                                    title: Some("OpenAI compatibility mode learned".to_string()),
+                                    message: Some(format!(
+                                        "Provider {} accepted {} requests after retrying in {} mode",
+                                        target.provider_id,
+                                        provider_protocol_name(target_protocol),
+                                        openai_compatibility_mode_name(retry_mode)
+                                    )),
+                                    endpoint: Some(endpoint_id.clone()),
+                                    ip_address: source_ip.clone(),
+                                    api_key_id: Some(api_key_context.id),
+                                    api_key_name: Some(api_key_context.name.clone()),
+                                    api_key_value: encrypted_api_key_value.clone(),
+                                    user_agent: user_agent.clone(),
+                                    mode: Some(
+                                        openai_compatibility_mode_name(retry_mode).to_string(),
+                                    ),
+                                    details: Some(json!({
+                                        "provider": target.provider_id,
+                                        "model": target.model_id,
+                                        "requestProtocol": provider_protocol_name(protocol),
+                                        "targetProtocol": provider_protocol_name(target_protocol)
+                                    })),
+                                    ..RecordEventInput::default()
+                                },
+                            );
+                            upstream_request_payload =
+                                if request_payload_storage && retry_body != body {
+                                    serde_json::to_string(&retry_body).ok()
+                                } else {
+                                    None
+                                };
+                            if let (Some(log_id), true) = (request_log_id, request_payload_storage)
+                            {
+                                let _ = upsert_request_payload(
+                                    &state.paths.db_path,
+                                    log_id,
+                                    &LogPayloadUpdate {
+                                        upstream_request: upstream_request_payload.as_deref(),
+                                        ..LogPayloadUpdate::default()
+                                    },
+                                );
+                            }
+                            break;
                         }
                     }
                 }
@@ -1178,6 +1514,7 @@ pub(super) async fn proxy_standard_request(
                     response,
                     protocol,
                     target_protocol,
+                    &target.provider_id,
                     requested_model.unwrap_or(""),
                     network_recorder.clone(),
                     streaming_log_context,
@@ -1201,6 +1538,7 @@ pub(super) async fn proxy_standard_request(
                         response,
                         protocol,
                         target_protocol,
+                        &target.provider_id,
                         requested_model.unwrap_or(""),
                         network_recorder.clone(),
                     )
@@ -1380,6 +1718,7 @@ async fn into_converted_response(
     response: reqwest::Response,
     request_protocol: ProviderProtocol,
     target_protocol: ProviderProtocol,
+    provider_id: &str,
     requested_model: &str,
     network_recorder: NetworkByteRecorder,
 ) -> (Response, UsageStats, Option<String>, Option<String>) {
@@ -1406,6 +1745,32 @@ async fn into_converted_response(
     let payload: Value = match serde_json::from_slice(&body_bytes) {
         Ok(payload) => payload,
         Err(error) => {
+            if !status.is_success() {
+                let payload = non_json_upstream_error_payload(
+                    request_protocol,
+                    status,
+                    &headers,
+                    &body_bytes,
+                );
+                record_non_json_upstream_error_fallback(
+                    &network_recorder,
+                    provider_id,
+                    request_protocol,
+                    target_protocol,
+                    status,
+                    &headers,
+                    &error,
+                    &payload,
+                );
+                let (result, client_payload) =
+                    build_json_response(status, &headers, &payload, &network_recorder);
+                return (
+                    result,
+                    UsageStats::default(),
+                    upstream_payload,
+                    client_payload,
+                );
+            }
             let payload = protocol_error_payload(
                 request_protocol,
                 &format!("failed to decode upstream JSON: {error}"),
@@ -1464,6 +1829,7 @@ async fn into_streaming_converted_response(
     response: reqwest::Response,
     request_protocol: ProviderProtocol,
     target_protocol: ProviderProtocol,
+    provider_id: &str,
     requested_model: &str,
     network_recorder: NetworkByteRecorder,
     log_context: Option<StreamingLogContext>,
@@ -1480,6 +1846,7 @@ async fn into_streaming_converted_response(
                 response,
                 request_protocol,
                 target_protocol,
+                provider_id,
                 requested_model,
                 network_recorder,
             )
@@ -1576,7 +1943,12 @@ async fn into_streaming_converted_response(
                     }
                 }
                 Ok(None) => break,
-                Err(_) => break,
+                Err(error) => {
+                    yield Err::<Bytes, std::io::Error>(std::io::Error::other(format!(
+                        "upstream stream read failed: {error}"
+                    )));
+                    return;
+                }
             }
         }
 
@@ -1699,6 +2071,85 @@ fn protocol_error_payload(protocol: ProviderProtocol, message: &str) -> Value {
     }
 }
 
+fn compact_upstream_text(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(500)
+        .collect()
+}
+
+fn protocol_error_message(payload: &Value) -> Option<&str> {
+    payload
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .and_then(Value::as_str)
+}
+
+fn non_json_upstream_error_payload(
+    protocol: ProviderProtocol,
+    status: StatusCode,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Value {
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("unknown");
+    let body_text = String::from_utf8_lossy(body);
+    let summary = compact_upstream_text(&body_text);
+    let message = if summary.is_empty() {
+        format!(
+            "upstream returned non-JSON error (status {}, content-type {content_type}): empty body",
+            status.as_u16()
+        )
+    } else {
+        format!(
+            "upstream returned non-JSON error (status {}, content-type {content_type}): {summary}",
+            status.as_u16()
+        )
+    };
+    protocol_error_payload(protocol, &message)
+}
+
+fn record_non_json_upstream_error_fallback(
+    network_recorder: &NetworkByteRecorder,
+    provider_id: &str,
+    request_protocol: ProviderProtocol,
+    target_protocol: ProviderProtocol,
+    status: StatusCode,
+    headers: &HeaderMap,
+    decode_error: &serde_json::Error,
+    payload: &Value,
+) {
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("unknown");
+    let _ = record_event(
+        &network_recorder.state.paths.db_path,
+        &RecordEventInput {
+            event_type: "non_json_upstream_error_fallback".to_string(),
+            level: Some("warn".to_string()),
+            source: Some("proxy".to_string()),
+            title: Some("Non-JSON upstream error fallback".to_string()),
+            message: protocol_error_message(payload).map(ToString::to_string),
+            endpoint: Some(network_recorder.endpoint_id.clone()),
+            details: Some(json!({
+                "provider": provider_id,
+                "status": status.as_u16(),
+                "contentType": content_type,
+                "decodeError": decode_error.to_string(),
+                "requestProtocol": provider_protocol_name(request_protocol),
+                "targetProtocol": provider_protocol_name(target_protocol)
+            })),
+            ..RecordEventInput::default()
+        },
+    );
+}
+
 fn convert_error_payload(
     payload: &Value,
     request_protocol: ProviderProtocol,
@@ -1809,7 +2260,12 @@ async fn into_streaming_proxy_response(
                     yield Ok::<Bytes, std::io::Error>(chunk);
                 }
                 Ok(None) => break,
-                Err(_) => break,
+                Err(error) => {
+                    yield Err::<Bytes, std::io::Error>(std::io::Error::other(format!(
+                        "upstream stream read failed: {error}"
+                    )));
+                    return;
+                }
             }
         }
 
@@ -2144,6 +2600,7 @@ mod tests {
                 log_dir: std::path::PathBuf::from("/tmp/logs"),
             }),
             ui_root: None,
+            openai_compatibility_modes: Arc::new(Mutex::new(HashMap::new())),
             active_requests: Arc::new(AtomicU64::new(0)),
             active_client_addresses: Arc::new(Mutex::new(HashMap::new())),
             active_client_sessions: Arc::new(Mutex::new(HashMap::new())),

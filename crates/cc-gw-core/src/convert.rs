@@ -336,6 +336,126 @@ fn anthropic_reasoning_text(block: &Value) -> Option<String> {
     }
 }
 
+fn anthropic_thinking_to_openai_reasoning(value: Option<&Value>) -> Option<Value> {
+    let thinking = value?;
+    match thinking {
+        Value::Bool(false) | Value::Null => return None,
+        Value::Bool(true) => {
+            return Some(json!({
+                "effort": "medium",
+                "summary": "auto"
+            }));
+        }
+        Value::String(text) if text.trim().is_empty() => return None,
+        Value::String(_) => {
+            return Some(json!({
+                "effort": "medium",
+                "summary": "auto"
+            }));
+        }
+        Value::Object(map) => {
+            if matches!(
+                map.get("type").and_then(Value::as_str),
+                Some("disabled") | Some("off")
+            ) {
+                return None;
+            }
+            let mut reasoning = Map::new();
+            let effort = map
+                .get("effort")
+                .and_then(Value::as_str)
+                .filter(|value| matches!(*value, "minimal" | "low" | "medium" | "high"))
+                .map(ToString::to_string)
+                .or_else(|| {
+                    map.get("budget_tokens")
+                        .and_then(Value::as_i64)
+                        .map(|budget| match budget {
+                            0..=1024 => "low",
+                            1025..=8192 => "medium",
+                            _ => "high",
+                        })
+                        .map(ToString::to_string)
+                })
+                .unwrap_or_else(|| "medium".to_string());
+            reasoning.insert("effort".to_string(), Value::String(effort));
+            let summary = map
+                .get("summary")
+                .and_then(Value::as_str)
+                .filter(|value| matches!(*value, "auto" | "concise" | "detailed"))
+                .unwrap_or("auto");
+            reasoning.insert("summary".to_string(), Value::String(summary.to_string()));
+            return Some(Value::Object(reasoning));
+        }
+        _ => {}
+    }
+
+    None
+}
+
+fn openai_reasoning_item_from_anthropic_block(block: &Value, index: usize) -> Option<Value> {
+    let text = anthropic_reasoning_text(block)?;
+    if text.trim().is_empty() {
+        return None;
+    }
+    let id = block
+        .get("id")
+        .or_else(|| block.get("signature"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("rs_cc_gw_{index}"));
+    Some(json!({
+        "type": "reasoning",
+        "id": id,
+        "summary": [{
+            "type": "summary_text",
+            "text": text
+        }]
+    }))
+}
+
+fn openai_reasoning_text(block: &Value) -> Option<String> {
+    let mut parts = Vec::new();
+    for item in block
+        .get("summary")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(text) = item
+            .get("text")
+            .or_else(|| item.get("content"))
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+        {
+            parts.push(text.to_string());
+        }
+    }
+    for item in block
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(text) = item
+            .get("text")
+            .or_else(|| item.get("content"))
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+        {
+            parts.push(text.to_string());
+        }
+    }
+    if parts.is_empty() {
+        block
+            .get("reasoning_content")
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+            .map(ToString::to_string)
+    } else {
+        Some(parts.join("\n"))
+    }
+}
+
 pub fn openai_error_to_anthropic(body: &Value) -> Value {
     let error = body.get("error").unwrap_or(body);
     let message = error
@@ -607,10 +727,18 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
                             }
                         }
                         "tool_result" => {
+                            let tool_use_id = block
+                                .get("tool_use_id")
+                                .cloned()
+                                .unwrap_or(Value::String("tool_result".to_string()));
+                            let tool_name = block
+                                .get("name")
+                                .cloned()
+                                .unwrap_or_else(|| tool_use_id.clone());
                             tool_results.push(json!({
                                 "role": "tool",
-                                "tool_call_id": block.get("tool_use_id").cloned().unwrap_or(Value::String("tool_result".to_string())),
-                                "name": block.get("name").cloned().unwrap_or(Value::Null),
+                                "tool_call_id": tool_use_id,
+                                "name": tool_name,
                                 "content": block.get("content").map(stringify_value).unwrap_or_default()
                             }));
                         }
@@ -866,6 +994,9 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
     if let Some(stream) = body.get("stream").cloned() {
         result.insert("stream".to_string(), stream);
     }
+    if body.get("reasoning").is_some() || body.get("thinking").is_some() {
+        result.insert("thinking".to_string(), json!({ "type": "enabled" }));
+    }
     if let Some(metadata) = body.get("metadata").cloned() {
         result.insert("metadata".to_string(), metadata);
     }
@@ -932,6 +1063,19 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
                     "input": arguments
                 }]
             }));
+            continue;
+        }
+
+        if item.get("type").and_then(Value::as_str) == Some("reasoning") {
+            if let Some(reasoning) = openai_reasoning_text(item) {
+                messages.push(json!({
+                    "role": "assistant",
+                    "content": [{
+                        "type": "thinking",
+                        "thinking": reasoning
+                    }]
+                }));
+            }
             continue;
         }
 
@@ -1038,6 +1182,9 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
     if let Some(stream) = body.get("stream").cloned() {
         result.insert("stream".to_string(), stream);
     }
+    if body.get("reasoning").is_some() || body.get("thinking").is_some() {
+        result.insert("thinking".to_string(), json!({ "type": "enabled" }));
+    }
     if let Some(metadata) = body.get("metadata").cloned() {
         result.insert("metadata".to_string(), metadata);
     }
@@ -1126,7 +1273,6 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
             }
             "assistant" => {
                 let mut pending_text_parts = Vec::new();
-                let mut reasoning_parts = Vec::<String>::new();
                 let flush_assistant_text =
                     |input: &mut Vec<Value>, text_parts: &mut Vec<String>| {
                         if text_parts.is_empty() {
@@ -1157,8 +1303,11 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
                             }
                         }
                         "thinking" | "redacted_thinking" => {
-                            if let Some(text) = anthropic_reasoning_text(block) {
-                                reasoning_parts.push(text);
+                            flush_assistant_text(&mut input, &mut pending_text_parts);
+                            if let Some(reasoning_item) =
+                                openai_reasoning_item_from_anthropic_block(block, input.len() + 1)
+                            {
+                                input.push(reasoning_item);
                             }
                         }
                         "tool_use" => {
@@ -1186,18 +1335,6 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
                     }));
                 } else {
                     flush_assistant_text(&mut input, &mut pending_text_parts);
-                    if !reasoning_parts.is_empty() {
-                        let reasoning_content = reasoning_parts.join("\n");
-                        input.push(json!({
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [{
-                                "type": "output_text",
-                                "text": reasoning_content
-                            }],
-                            "reasoning_content": reasoning_content
-                        }));
-                    }
                 }
             }
             _ => {}
@@ -1214,6 +1351,9 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
     }
     if let Some(max_tokens) = body.get("max_tokens").cloned() {
         result.insert("max_output_tokens".to_string(), max_tokens);
+    }
+    if let Some(reasoning) = anthropic_thinking_to_openai_reasoning(body.get("thinking")) {
+        result.insert("reasoning".to_string(), reasoning);
     }
     if let Some(temperature) = body.get("temperature").cloned() {
         result.insert("temperature".to_string(), temperature);
@@ -1376,20 +1516,21 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
 pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Value {
     let mut content = Vec::<Value>::new();
     let mut saw_refusal = false;
+    let mut saw_tool_use = false;
     let mut reasoning = Vec::<String>::new();
 
     if let Some(output) = body.get("output").and_then(Value::as_array) {
         for item in output {
-            for block in item
+            let blocks = item
                 .get("content")
                 .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
+                .cloned()
+                .unwrap_or_else(|| vec![item.clone()]);
+            for block in blocks {
                 let block_type = block.get("type").and_then(Value::as_str).unwrap_or("");
                 match block_type {
                     "output_text" | "text" | "refusal" => {
-                        let text = extract_text(block);
+                        let text = extract_text(&block);
                         if !text.trim().is_empty() {
                             if block_type == "refusal" {
                                 saw_refusal = true;
@@ -1398,6 +1539,7 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
                         }
                     }
                     "tool_use" | "function_call" => {
+                        saw_tool_use = true;
                         let input = block
                             .get("input")
                             .cloned()
@@ -1417,28 +1559,21 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
                     }
                     "input_image" | "input_file" => {
                         if let Some(content_block) =
-                            openai_response_content_part_to_anthropic_block(block)
+                            openai_response_content_part_to_anthropic_block(&block)
                         {
                             content.push(content_block);
                         }
                     }
                     "image_url" | "file" => {
                         if let Some(content_block) =
-                            openai_chat_content_part_to_anthropic_block(block)
+                            openai_chat_content_part_to_anthropic_block(&block)
                         {
                             content.push(content_block);
                         }
                     }
                     "reasoning" => {
-                        let summary = block
-                            .get("summary")
-                            .and_then(Value::as_array)
-                            .into_iter()
-                            .flatten()
-                            .filter_map(|item| item.get("text").and_then(Value::as_str))
-                            .collect::<Vec<_>>();
-                        if !summary.is_empty() {
-                            reasoning.push(summary.join("\n"));
+                        if let Some(text) = openai_reasoning_text(&block) {
+                            reasoning.push(text);
                         }
                     }
                     _ => {}
@@ -1474,6 +1609,8 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
     let status = body.get("status").and_then(Value::as_str);
     let stop_reason = if saw_refusal {
         Some("refusal")
+    } else if saw_tool_use {
+        Some("tool_use")
     } else {
         match status {
             Some("requires_action") => Some("tool_use"),
@@ -1738,6 +1875,30 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_request_to_openai_chat_sets_tool_result_name_from_tool_use_id() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call_1",
+                    "content": [{ "type": "text", "text": "done" }]
+                }]
+            }]
+        }));
+
+        assert_eq!(
+            converted["messages"][0],
+            json!({
+                "role": "tool",
+                "tool_call_id": "call_1",
+                "name": "call_1",
+                "content": "[{\"text\":\"done\",\"type\":\"text\"}]"
+            })
+        );
+    }
+
+    #[test]
     fn anthropic_request_to_openai_chat_maps_stop_sequences_to_stop() {
         let converted = anthropic_request_to_openai_chat(&json!({
             "messages": [{
@@ -1947,7 +2108,8 @@ mod tests {
                     }
                 ],
                 "reasoning_content": "considering options"
-            }]
+            }],
+            "reasoning": { "effort": "medium" }
         }));
 
         assert_eq!(
@@ -1962,6 +2124,7 @@ mod tests {
             converted["messages"][0]["content"][3]["type"].as_str(),
             Some("thinking")
         );
+        assert_eq!(converted["thinking"]["type"].as_str(), Some("enabled"));
     }
 
     #[test]
@@ -2017,6 +2180,7 @@ mod tests {
     #[test]
     fn anthropic_request_to_openai_response_preserves_reasoning_and_multimodal_parts() {
         let converted = anthropic_request_to_openai_response(&json!({
+            "thinking": { "type": "enabled", "budget_tokens": 2048 },
             "messages": [
                 {
                     "role": "user",
@@ -2048,9 +2212,29 @@ mod tests {
             converted["input"][0]["content"][2]["type"].as_str(),
             Some("input_file")
         );
+        assert_eq!(converted["reasoning"]["effort"].as_str(), Some("medium"));
+        assert_eq!(converted["input"][1]["type"].as_str(), Some("reasoning"));
         assert_eq!(
-            converted["input"][1]["reasoning_content"].as_str(),
+            converted["input"][1]["summary"][0]["text"].as_str(),
             Some("considering options")
+        );
+    }
+
+    #[test]
+    fn openai_responses_request_to_anthropic_maps_top_level_reasoning_item() {
+        let converted = openai_responses_request_to_anthropic(&json!({
+            "input": [{
+                "type": "reasoning",
+                "summary": [{ "type": "summary_text", "text": "considering options" }]
+            }]
+        }));
+
+        assert_eq!(
+            converted["messages"][0]["content"][0],
+            json!({
+                "type": "thinking",
+                "thinking": "considering options"
+            })
         );
     }
 
@@ -2324,6 +2508,34 @@ mod tests {
                         "name": "weather",
                         "arguments": "{\"city\":\"Paris\"}"
                     }]
+                }],
+                "usage": {
+                    "input_tokens": 8,
+                    "output_tokens": 1
+                }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(converted["content"][0]["type"].as_str(), Some("tool_use"));
+        assert_eq!(converted["content"][0]["id"].as_str(), Some("call_1"));
+        assert_eq!(converted["content"][0]["name"].as_str(), Some("weather"));
+        assert_eq!(converted["content"][0]["input"], json!({ "city": "Paris" }));
+        assert_eq!(converted["stop_reason"].as_str(), Some("tool_use"));
+    }
+
+    #[test]
+    fn openai_responses_response_to_anthropic_maps_top_level_function_call_when_completed() {
+        let converted = openai_responses_response_to_anthropic(
+            &json!({
+                "id": "resp_tool",
+                "status": "completed",
+                "output": [{
+                    "id": "call_1",
+                    "type": "function_call",
+                    "call_id": "call_1",
+                    "name": "weather",
+                    "arguments": "{\"city\":\"Paris\"}"
                 }],
                 "usage": {
                     "input_tokens": 8,

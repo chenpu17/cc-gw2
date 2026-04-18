@@ -252,6 +252,17 @@ pub fn provider_prefers_anthropic_protocol(provider: &ProviderConfig) -> bool {
     false
 }
 
+pub fn provider_prefers_openai_responses_protocol(provider: &ProviderConfig) -> bool {
+    if matches!(provider.provider_type.as_deref(), Some("openai-responses")) {
+        return true;
+    }
+
+    provider
+        .base_url
+        .trim_end_matches('/')
+        .ends_with("/responses")
+}
+
 pub async fn forward_request(
     client: &Client,
     provider: &ProviderConfig,
@@ -294,7 +305,8 @@ pub async fn forward_request(
 mod tests {
     use super::{
         ProviderConfig, ProviderProtocol, apply_query_string, build_headers,
-        provider_prefers_anthropic_protocol, resolve_endpoint,
+        provider_prefers_anthropic_protocol, provider_prefers_openai_responses_protocol,
+        resolve_endpoint,
     };
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
@@ -536,5 +548,22 @@ mod tests {
         };
 
         assert!(!provider_prefers_anthropic_protocol(&provider));
+        assert!(!provider_prefers_openai_responses_protocol(&provider));
+    }
+
+    #[test]
+    fn provider_prefers_openai_responses_protocol_for_explicit_signals() {
+        let provider = ProviderConfig {
+            provider_type: Some("openai-responses".to_string()),
+            base_url: "https://example.com/v1".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert!(provider_prefers_openai_responses_protocol(&provider));
+
+        let provider = ProviderConfig {
+            base_url: "https://example.com/v1/responses".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert!(provider_prefers_openai_responses_protocol(&provider));
     }
 }

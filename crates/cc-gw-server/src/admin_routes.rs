@@ -319,6 +319,7 @@ pub(super) async fn api_provider_test(
     }
 
     let prefers_anthropic_protocol = provider_prefers_anthropic_protocol(&provider);
+    let prefers_openai_responses_protocol = provider_prefers_openai_responses_protocol(&provider);
     let (protocol, request_body) = if prefers_anthropic_protocol {
         (
             ProviderProtocol::AnthropicMessages,
@@ -333,6 +334,19 @@ pub(super) async fn api_provider_test(
                         { "type": "text", "text": "You are a connection diagnostic assistant." },
                         { "type": "text", "text": "你好，这是一次连接测试。请简短回应以确认服务可用。" }
                     ]
+                }]
+            }),
+        )
+    } else if prefers_openai_responses_protocol {
+        (
+            ProviderProtocol::OpenAiResponses,
+            json!({
+                "model": target_model,
+                "stream": false,
+                "temperature": 0,
+                "input": [{
+                    "role": "user",
+                    "content": [{ "type": "input_text", "text": "你好，这是一次连接测试。请简短回应以确认服务可用。" }]
                 }]
             }),
         )

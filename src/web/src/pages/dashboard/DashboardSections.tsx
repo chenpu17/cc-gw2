@@ -573,9 +573,9 @@ function MonitoringCard({
   return (
     <div
       className={cn(
-        'group flex flex-col justify-between rounded-[1.15rem] border border-white/70 bg-card/95 shadow-[0_18px_42px_-36px_rgba(15,23,42,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_48px_-38px_rgba(59,130,246,0.2)]',
+        'group flex flex-col justify-between rounded-[1.15rem] border border-white/70 bg-card/95 shadow-[0_18px_42px_-36px_rgba(15,23,42,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_48px_-38px_rgba(59,130,246,0.2)] dark:border-white/10 dark:bg-slate-950/90 dark:shadow-[0_18px_42px_-36px_rgba(0,0,0,0.72)] dark:hover:shadow-[0_24px_48px_-38px_rgba(59,130,246,0.28)]',
         featured
-          ? 'bg-[linear-gradient(135deg,hsl(var(--primary)/0.1),rgba(255,255,255,0.95)_46%,rgba(236,253,245,0.74))] p-5'
+          ? 'bg-[linear-gradient(135deg,hsl(var(--primary)/0.1),rgba(255,255,255,0.95)_46%,rgba(236,253,245,0.74))] p-5 dark:!bg-none dark:!bg-slate-950/90'
           : compact
             ? 'p-3.5'
             : 'p-5',
@@ -604,7 +604,13 @@ function MonitoringCard({
 
 function InsightCard({ featured, label, value, hint }: { featured?: boolean; label: string; value: string; hint: string }) {
   return (
-    <Card className={featured ? 'overflow-hidden bg-[linear-gradient(135deg,rgba(255,255,255,0.98),hsl(var(--primary)/0.08))]' : undefined}>
+    <Card
+      className={
+        featured
+          ? 'overflow-hidden bg-[linear-gradient(135deg,rgba(255,255,255,0.98),hsl(var(--primary)/0.08))] dark:!bg-none dark:!bg-card dark:border-white/10 dark:shadow-[0_18px_42px_-36px_rgba(0,0,0,0.72)]'
+          : undefined
+      }
+    >
       <CardContent className={cn('pt-4', featured && 'pb-4')}>
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
         <p className={cn('mt-2 line-clamp-1 font-semibold text-foreground', featured ? 'metric-number text-2xl tracking-tight' : 'text-base')}>{value}</p>

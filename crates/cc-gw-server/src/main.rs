@@ -48,6 +48,7 @@ use cc_gw_core::{
     },
     provider::{
         ProviderProtocol, ProxyRequest, forward_request, provider_prefers_anthropic_protocol,
+        provider_prefers_openai_responses_protocol,
     },
     routing::{GatewayEndpoint, resolve_route},
     storage::initialize_database,
@@ -78,6 +79,7 @@ struct AppState {
     config: Arc<RwLock<GatewayConfig>>,
     paths: Arc<GatewayPaths>,
     ui_root: Option<Arc<PathBuf>>,
+    openai_compatibility_modes: Arc<Mutex<HashMap<String, OpenAiCompatibilityMode>>>,
     active_requests: Arc<AtomicU64>,
     active_client_addresses: Arc<Mutex<HashMap<String, u64>>>,
     active_client_sessions: Arc<Mutex<HashMap<String, u64>>>,
@@ -95,6 +97,14 @@ struct AppState {
     version_check_package_name: String,
     sessions: auth::SessionStore,
     profiling_active: Arc<AtomicU64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenAiCompatibilityMode {
+    Standard,
+    StripMetadataAndToolChoice,
+    ToolHistoryCompatibility,
+    Compatibility,
 }
 
 #[derive(Serialize)]
@@ -285,6 +295,7 @@ async fn main() -> Result<()> {
         config: Arc::new(RwLock::new(config.clone())),
         paths: Arc::new(paths),
         ui_root,
+        openai_compatibility_modes: Arc::new(Mutex::new(HashMap::new())),
         active_requests: Arc::new(AtomicU64::new(0)),
         active_client_addresses: Arc::new(Mutex::new(HashMap::new())),
         active_client_sessions: Arc::new(Mutex::new(HashMap::new())),

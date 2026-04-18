@@ -207,9 +207,9 @@ impl SseStreamObserver {
         self.buffer.push_str(chunk);
         let mut observation = StreamObservation::default();
 
-        while let Some(boundary) = self.buffer.find("\n\n") {
+        while let Some((boundary, separator_len)) = next_sse_event_boundary(&self.buffer) {
             let raw_event = self.buffer[..boundary].to_string();
-            self.buffer = self.buffer[boundary + 2..].to_string();
+            self.buffer = self.buffer[boundary + separator_len..].to_string();
             self.observe_event_block(&raw_event, &mut observation);
         }
 
@@ -337,12 +337,67 @@ impl SseStreamObserver {
     }
 }
 
+fn extract_openai_reasoning_text(block: &Value) -> Option<String> {
+    let mut parts = Vec::new();
+    for item in block
+        .get("summary")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(text) = item
+            .get("text")
+            .or_else(|| item.get("content"))
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+        {
+            parts.push(text.to_string());
+        }
+    }
+    for item in block
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(text) = item
+            .get("text")
+            .or_else(|| item.get("content"))
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+        {
+            parts.push(text.to_string());
+        }
+    }
+    if parts.is_empty() {
+        block
+            .get("reasoning_content")
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+            .map(ToString::to_string)
+    } else {
+        Some(parts.join("\n"))
+    }
+}
+
+fn build_openai_reasoning_output_item(reasoning: &str) -> Value {
+    json!({
+        "id": format!("rs_{}", nanoid_like()),
+        "type": "reasoning",
+        "summary": [{
+            "type": "summary_text",
+            "text": reasoning
+        }]
+    })
+}
+
 #[derive(Debug, Clone)]
 struct OpenAiToolState {
     id: String,
     name: String,
     arguments: String,
     block_index: usize,
+    started: bool,
     stopped: bool,
 }
 
@@ -438,9 +493,9 @@ impl CrossProtocolStreamTransformer {
         self.buffer.push_str(chunk);
         let mut out = Vec::new();
 
-        while let Some(boundary) = self.buffer.find("\n\n") {
+        while let Some((boundary, separator_len)) = next_sse_event_boundary(&self.buffer) {
             let raw_event = self.buffer[..boundary].to_string();
-            self.buffer = self.buffer[boundary + 2..].to_string();
+            self.buffer = self.buffer[boundary + separator_len..].to_string();
             if raw_event.trim().is_empty() {
                 continue;
             }
@@ -649,12 +704,14 @@ impl CrossProtocolStreamTransformer {
                             name: name.clone(),
                             arguments: String::new(),
                             block_index,
+                            started: false,
                             stopped: false,
                         });
                 entry.id = id.clone();
                 entry.name = name.clone();
 
-                if entry.arguments.is_empty() {
+                if !entry.started {
+                    entry.started = true;
                     out.push(anthropic_event(
                         "content_block_start",
                         json!({
@@ -944,9 +1001,11 @@ impl CrossProtocolStreamTransformer {
                                     .unwrap_or_else(|| "tool".to_string()),
                                 arguments: String::new(),
                                 block_index,
+                                started: false,
                                 stopped: false,
                             });
-                    if state.arguments.is_empty() {
+                    if !state.started {
+                        state.started = true;
                         out.push(anthropic_event(
                             "content_block_start",
                             json!({
@@ -1090,6 +1149,7 @@ impl CrossProtocolStreamTransformer {
                         name: name.clone(),
                         arguments: arguments.clone(),
                         block_index,
+                        started: true,
                         stopped: false,
                     },
                 );
@@ -1116,6 +1176,19 @@ impl CrossProtocolStreamTransformer {
                                 "type": "input_json_delta",
                                 "partial_json": arguments
                             }
+                        }),
+                    ));
+                }
+            }
+            Some("reasoning") => {
+                if let Some(text) = extract_openai_reasoning_text(block) {
+                    let index = self.ensure_reasoning_block_started(&mut out);
+                    out.push(anthropic_event(
+                        "content_block_delta",
+                        json!({
+                            "type": "content_block_delta",
+                            "index": index,
+                            "delta": { "type": "thinking_delta", "thinking": text }
                         }),
                     ));
                 }
@@ -1372,6 +1445,12 @@ impl CrossProtocolStreamTransformer {
             }));
         }
 
+        let mut output = Vec::new();
+        if !self.responses_reasoning_content.is_empty() {
+            output.push(build_openai_reasoning_output_item(
+                &self.responses_reasoning_content,
+            ));
+        }
         let mut output_content = Vec::new();
         if !self.responses_text.is_empty() {
             output_content.push(json!({
@@ -1380,6 +1459,12 @@ impl CrossProtocolStreamTransformer {
             }));
         }
         output_content.extend(tool_blocks);
+        output.push(json!({
+            "id": "out_1",
+            "type": "output_message",
+            "role": "assistant",
+            "content": output_content
+        }));
 
         vec![
             openai_responses_event(json!({
@@ -1393,12 +1478,7 @@ impl CrossProtocolStreamTransformer {
                     "created": self.created,
                     "model": self.model,
                     "status": map_anthropic_stop_reason_to_openai_status(self.stop_reason.as_deref()),
-                    "output": [{
-                        "id": "out_1",
-                        "type": "output_message",
-                        "role": "assistant",
-                        "content": output_content
-                    }],
+                    "output": output,
                     "usage": {
                         "input_tokens": self.usage.input_tokens,
                         "output_tokens": self.usage.output_tokens,
@@ -1533,11 +1613,44 @@ fn infer_openai_responses_stop_reason(event: &Value) -> Option<&'static str> {
             .and_then(|response| response.get("status"))
             .and_then(Value::as_str)
     });
+    let saw_tool_use = event
+        .get("response")
+        .and_then(|response| response.get("output"))
+        .and_then(Value::as_array)
+        .is_some_and(|output| {
+            output.iter().any(|item| {
+                let blocks = item
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_else(|| vec![item.clone()]);
+                blocks.iter().any(|block| {
+                    matches!(
+                        block.get("type").and_then(Value::as_str),
+                        Some("function_call") | Some("tool_use")
+                    )
+                })
+            })
+        });
+    if saw_tool_use {
+        return Some("tool_use");
+    }
     match status {
         Some("requires_action") => Some("tool_use"),
         Some("incomplete") => Some("max_tokens"),
         Some("completed") => Some("end_turn"),
         _ => None,
+    }
+}
+
+fn next_sse_event_boundary(buffer: &str) -> Option<(usize, usize)> {
+    let lf = buffer.find("\n\n").map(|index| (index, 2));
+    let crlf = buffer.find("\r\n\r\n").map(|index| (index, 4));
+    match (lf, crlf) {
+        (Some(left), Some(right)) => Some(if left.0 <= right.0 { left } else { right }),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
     }
 }
 
@@ -2046,6 +2159,20 @@ mod tests {
     }
 
     #[test]
+    fn sse_observer_accepts_crlf_event_boundaries() {
+        let mut observer = SseStreamObserver::new(ProviderProtocol::OpenAiResponses);
+        let observation = observer.push(
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\r\n\r\n\
+             data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":10,\"output_tokens\":4}}}\r\n\r\n",
+        );
+
+        assert!(observation.saw_first_token);
+        let usage = observer.usage_stats();
+        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.output_tokens, 4);
+    }
+
+    #[test]
     fn openai_responses_transformer_emits_anthropic_events() {
         let mut transformer = CrossProtocolStreamTransformer::new(
             ProviderProtocol::AnthropicMessages,
@@ -2094,6 +2221,25 @@ mod tests {
         assert!(joined.contains("\"stop_reason\":\"tool_use\""));
         assert!(joined.contains("\"input_tokens\":8"));
         assert!(joined.contains("\"output_tokens\":1"));
+    }
+
+    #[test]
+    fn openai_responses_transformer_treats_completed_function_call_as_tool_use() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_tool\"}}\r\n\r\n\
+             data: {\"type\":\"response.completed\",\"status\":\"completed\",\"response\":{\"id\":\"resp_tool\",\"status\":\"completed\",\"usage\":{\"input_tokens\":8,\"output_tokens\":1},\"output\":[{\"id\":\"call_1\",\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"weather\",\"arguments\":\"{\\\"city\\\":\\\"Paris\\\"}\"}]}}\r\n\r\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"type\":\"tool_use\""));
+        assert!(joined.contains("\"id\":\"call_1\""));
+        assert!(joined.contains("\"stop_reason\":\"tool_use\""));
     }
 
     #[test]
@@ -2168,6 +2314,12 @@ mod tests {
         assert!(joined.contains("\"index\":0,\"type\":\"content_block_start\""));
         assert!(joined.contains("\"index\":1,\"type\":\"content_block_start\""));
         assert!(joined.contains("\"index\":2,\"type\":\"content_block_start\""));
+        assert_eq!(
+            joined
+                .matches("\"index\":2,\"type\":\"content_block_start\"")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -2223,6 +2375,28 @@ mod tests {
         let joined = chunks.join("");
 
         assert!(joined.contains("\"reasoning_content\":\"considering options\""));
+        assert!(joined.contains("\"type\":\"reasoning\""));
+        assert!(joined.contains("\"summary_text\""));
+    }
+
+    #[test]
+    fn openai_responses_to_anthropic_reconciles_reasoning_output_items() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_reason\"}}\n\n\
+             data: {\"type\":\"response.completed\",\"status\":\"completed\",\"response\":{\"id\":\"resp_reason\",\"status\":\"completed\",\"usage\":{\"input_tokens\":8,\"output_tokens\":1},\"output\":[{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"considering options\"}]},{\"id\":\"out_1\",\"type\":\"output_message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"done\"}]}]}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(
+            joined.contains("\"thinking\":\"considering options\",\"type\":\"thinking_delta\"")
+        );
+        assert!(joined.contains("\"text\":\"done\",\"type\":\"text_delta\""));
     }
 
     #[test]

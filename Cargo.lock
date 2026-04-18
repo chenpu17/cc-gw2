@@ -304,7 +304,7 @@ dependencies = [
 
 [[package]]
 name = "cc-gw-core"
-version = "0.8.10"
+version = "0.8.11"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -327,7 +327,7 @@ dependencies = [
 
 [[package]]
 name = "cc-gw-server"
-version = "0.8.10"
+version = "0.8.11"
 dependencies = [
  "anyhow",
  "async-stream",
