@@ -6,12 +6,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { CustomEndpoint } from '@/types/endpoints'
 import type { EndpointValidationMode, GatewayConfig, RoutingPreset } from '@/types/providers'
 import { TargetCombobox } from './TargetCombobox'
 import {
+  getEndpointCompatibility,
   CLAUDE_MODEL_SUGGESTIONS,
   getEndpointValidation,
   isAnthropicEndpoint,
@@ -37,6 +39,7 @@ export function RoutingWorkspace({
   deletingPreset,
   presetsExpanded,
   savingClaudeValidation,
+  savingCompatibilityPolicy,
   providerModelOptions,
   onTogglePresetsExpanded,
   onPresetNameChange,
@@ -44,6 +47,7 @@ export function RoutingWorkspace({
   onRequestPresetDiff,
   onRequestDeletePreset,
   onValidationModeChange,
+  onCompatibilityEnabledChange,
   onRouteChange,
   onRemoveRoute,
   onAddSuggestion,
@@ -67,6 +71,7 @@ export function RoutingWorkspace({
   deletingPreset: string | null
   presetsExpanded: boolean
   savingClaudeValidation: boolean
+  savingCompatibilityPolicy: boolean
   providerModelOptions: Array<{ value: string; label: string }>
   onTogglePresetsExpanded: () => void
   onPresetNameChange: (value: string) => void
@@ -74,6 +79,7 @@ export function RoutingWorkspace({
   onRequestPresetDiff: (preset: RoutingPreset) => void
   onRequestDeletePreset: (preset: RoutingPreset) => void
   onValidationModeChange: (mode: EndpointValidationMode) => void
+  onCompatibilityEnabledChange: (enabled: boolean) => void
   onRouteChange: (id: string, field: 'source' | 'target', value: string) => void
   onRemoveRoute: (id: string) => void
   onAddSuggestion: (model: string) => void
@@ -91,10 +97,13 @@ export function RoutingWorkspace({
     : t(`settings.routing.descriptionByEndpoint.${endpoint}`)
   const sourceListId = `route-source-${endpoint}`
   const anthropicProtocol = isAnthropicEndpoint(endpoint, customEndpoints)
+  const openaiProtocol = tabInfo?.protocols?.some((protocol) => protocol.startsWith('openai')) ?? (endpoint === 'openai')
   const validation = getEndpointValidation(endpoint, config, customEndpoints)
+  const compatibility = getEndpointCompatibility(endpoint, config, customEndpoints)
   const validationMode: EndpointValidationMode = anthropicProtocol
     ? ((validation?.mode as EndpointValidationMode | undefined) ?? 'off')
     : 'off'
+  const compatibilityEnabled = openaiProtocol ? (compatibility?.enabled ?? false) : false
   const existingSources = new Set(routes.map((entry) => entry.source.trim()).filter(Boolean))
   const validationModeDescriptionKey = `modelManagement.claudeValidation.options.${validationMode}.description`
 
@@ -140,6 +149,41 @@ export function RoutingWorkspace({
                 )}>
                   {t(validationModeDescriptionKey)}
                 </span>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {openaiProtocol ? (
+          <div className="rounded-xl border border-primary/12 bg-[linear-gradient(135deg,hsl(var(--primary)/0.08),hsl(var(--accent)/0.72))] p-4 shadow-[var(--surface-shadow)] dark:border-sky-300/12 dark:bg-[linear-gradient(135deg,rgba(14,165,233,0.12),rgba(15,23,42,0.72))]">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-primary dark:text-sky-100">
+                  {t('modelManagement.openaiCompatibility.title')}
+                </p>
+                <p className="max-w-2xl text-xs leading-5 text-muted-foreground dark:text-slate-300">
+                  {t('modelManagement.openaiCompatibility.description')}
+                </p>
+              </div>
+              <div className="flex w-full max-w-xs flex-col gap-2 self-start sm:self-auto">
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/12 bg-card/85 px-3 py-2 dark:border-white/10 dark:bg-slate-950/50">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/70 dark:text-sky-200/75">
+                      {t('modelManagement.openaiCompatibility.toggleLabel')}
+                    </Label>
+                    <p className="text-xs text-muted-foreground dark:text-slate-300">
+                      {compatibilityEnabled
+                        ? t('modelManagement.openaiCompatibility.enabledHint')
+                        : t('modelManagement.openaiCompatibility.disabledHint')}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={compatibilityEnabled}
+                    onCheckedChange={onCompatibilityEnabledChange}
+                    disabled={savingCompatibilityPolicy}
+                    aria-label={t('modelManagement.openaiCompatibility.toggleLabel')}
+                  />
+                </div>
               </div>
             </div>
           </div>

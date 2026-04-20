@@ -76,6 +76,7 @@ export default function RoutingManagementPage() {
         onRouteChange={(id, field, value) => state.handleRouteChange(currentEndpoint, id, field, value)}
         onSavePreset={() => void state.handleSavePreset(currentEndpoint)}
         onSaveRoutes={() => void state.handleSaveRoutes(currentEndpoint)}
+        onCompatibilityEnabledChange={(enabled) => void state.handleCompatibilityEnabledChange(currentEndpoint, enabled)}
         onValidationModeChange={(mode) => void state.handleValidationModeChange(currentEndpoint, mode)}
         onTogglePresetsExpanded={() => state.setPresetsExpanded((previous) => ({ ...previous, [currentEndpoint]: !previous[currentEndpoint] }))}
         presetError={state.presetErrorByEndpoint[currentEndpoint]}
@@ -86,6 +87,7 @@ export default function RoutingManagementPage() {
         routeError={state.routeError[currentEndpoint]}
         routes={state.routesByEndpoint[currentEndpoint] || []}
         savingClaudeValidation={state.savingClaudeValidation}
+        savingCompatibilityPolicy={state.savingCompatibilityPolicy}
         savingPreset={state.savingPresetFor === currentEndpoint}
         savingRoute={state.savingRouteFor === currentEndpoint}
         tabs={state.tabs.filter((tab) => tab.key !== 'providers')}

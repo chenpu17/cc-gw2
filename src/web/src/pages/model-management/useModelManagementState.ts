@@ -84,6 +84,7 @@ export function useModelManagementState() {
   const [testDialogUsePreset, setTestDialogUsePreset] = useState(true)
   const [testDialogPreservedExtras, setTestDialogPreservedExtras] = useState<Record<string, string>>({})
   const [savingClaudeValidation, setSavingClaudeValidation] = useState(false)
+  const [savingCompatibilityPolicy, setSavingCompatibilityPolicy] = useState(false)
   const [presetsExpanded, setPresetsExpanded] = useState<Record<string, boolean>>({})
   const [presetDiffDialog, setPresetDiffDialog] = useState<{ endpoint: string; preset: RoutingPreset } | null>(null)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
@@ -891,6 +892,90 @@ export function useModelManagementState() {
     }
   }
 
+  const handleCompatibilityEnabledChange = async (endpoint: string, enabled: boolean) => {
+    if (!ensureConfig()) return
+
+    setSavingCompatibilityPolicy(true)
+    try {
+      if (endpoint === 'anthropic' || endpoint === 'openai') {
+        const systemEndpoint = endpoint as 'anthropic' | 'openai'
+        const currentRouting = config!.endpointRouting ? { ...config!.endpointRouting } : {}
+        const currentEndpointRouting = currentRouting[systemEndpoint] ?? {
+          defaults: config!.defaults,
+          modelRoutes: (systemEndpoint === 'anthropic' ? config!.modelRoutes : {}) ?? {}
+        }
+
+        const baseRouting: EndpointRoutingConfig = {
+          defaults: currentEndpointRouting.defaults ?? config!.defaults,
+          modelRoutes: currentEndpointRouting.modelRoutes ?? {},
+          validation: currentEndpointRouting.validation
+        }
+
+        const nextConfig: GatewayConfig = {
+          ...config!,
+          endpointRouting: {
+            ...currentRouting,
+            [systemEndpoint]: enabled
+              ? { ...baseRouting, compatibility: { enabled: true } }
+              : { ...baseRouting }
+          }
+        }
+
+        await gatewayApi.saveConfig(nextConfig)
+        setConfig(nextConfig)
+      } else {
+        const nextEndpoints = [...(config!.customEndpoints ?? [])]
+        const endpointIndex = nextEndpoints.findIndex((item) => item.id === endpoint)
+        if (endpointIndex === -1) {
+          throw new Error(t('modelManagement.toast.endpointNotFound'))
+        }
+
+        const customEndpoint = nextEndpoints[endpointIndex]
+        const currentRouting = customEndpoint.routing ?? {
+          defaults: config!.defaults,
+          modelRoutes: {}
+        }
+
+        nextEndpoints[endpointIndex] = {
+          ...customEndpoint,
+          routing: enabled
+            ? { ...currentRouting, compatibility: { enabled: true } }
+            : {
+                defaults: currentRouting.defaults,
+                modelRoutes: currentRouting.modelRoutes,
+                validation: currentRouting.validation
+              }
+        }
+
+        const nextConfig: GatewayConfig = {
+          ...config!,
+          customEndpoints: nextEndpoints
+        }
+
+        await gatewayApi.saveConfig(nextConfig)
+        setConfig(nextConfig)
+      }
+
+      pushToast({
+        title: t('modelManagement.toast.compatibilitySaved', {
+          state: enabled
+            ? t('common.enabled')
+            : t('common.disabled')
+        }),
+        variant: 'success'
+      })
+      void configQuery.refetch()
+    } catch (error) {
+      const apiError = toApiError(error)
+      pushToast({
+        title: t('modelManagement.toast.compatibilitySaveFailure', { message: apiError.message }),
+        variant: 'error'
+      })
+    } finally {
+      setSavingCompatibilityPolicy(false)
+    }
+  }
+
   const handleAddSuggestion = (endpoint: string, model: string) => {
     setRoutesByEndpoint((previous) => {
       const currentRoutes = previous[endpoint] || []
@@ -1132,6 +1217,7 @@ export function useModelManagementState() {
     handleAddRoute,
     handleAddSuggestion,
     handleApplyPreset,
+    handleCompatibilityEnabledChange,
     handleConfirmDialog,
     handleDeleteProvider,
     handleOpenCreate,
@@ -1162,6 +1248,7 @@ export function useModelManagementState() {
     routeError,
     routesByEndpoint,
     savingClaudeValidation,
+    savingCompatibilityPolicy,
     savingPresetFor,
     savingRouteFor,
     setActiveTab,

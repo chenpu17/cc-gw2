@@ -52,6 +52,7 @@ pub struct ProfilerRecord {
     pub turn_index: i64,
     pub timestamp: i64,
     pub model: String,
+    pub client_kind: Option<String>,
     pub client_model: Option<String>,
     pub stream: bool,
     pub latency_ms: Option<i64>,
@@ -110,6 +111,7 @@ pub fn initialize_profiler_tables(conn: &Connection) -> Result<()> {
           turn_index INTEGER NOT NULL DEFAULT 0,
           timestamp INTEGER NOT NULL,
           model TEXT NOT NULL,
+          client_kind TEXT,
           client_model TEXT,
           stream INTEGER NOT NULL DEFAULT 0,
           latency_ms INTEGER,
@@ -132,6 +134,22 @@ pub fn initialize_profiler_tables(conn: &Connection) -> Result<()> {
           ON profiler_sessions(started_at DESC);
         ",
     )?;
+    maybe_add_column(conn, "profiler_records", "client_kind", "TEXT")?;
+    Ok(())
+}
+
+fn maybe_add_column(conn: &Connection, table: &str, column: &str, sql_type: &str) -> Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    for existing in columns {
+        if existing? == column {
+            return Ok(());
+        }
+    }
+    conn.execute(
+        &format!("ALTER TABLE {table} ADD COLUMN {column} {sql_type}"),
+        [],
+    )?;
     Ok(())
 }
 
@@ -146,6 +164,7 @@ pub struct InsertProfilerRecordInput<'a> {
     pub turn_index: i64,
     pub timestamp: i64,
     pub model: &'a str,
+    pub client_kind: Option<&'a str>,
     pub client_model: Option<&'a str>,
     pub stream: bool,
     pub latency_ms: Option<i64>,
@@ -167,6 +186,7 @@ pub struct AppendProfilerTurnInput<'a> {
     pub session_id: &'a str,
     pub timestamp: i64,
     pub model: &'a str,
+    pub client_kind: Option<&'a str>,
     pub client_model: Option<&'a str>,
     pub stream: bool,
     pub latency_ms: Option<i64>,
@@ -244,10 +264,10 @@ fn insert_profiler_record_on(
     conn.execute(
         "INSERT INTO profiler_records (
            profiler_session_id, log_id, session_id, turn_index, timestamp,
-           model, client_model, stream, latency_ms, ttft_ms, tpot_ms,
+           model, client_kind, client_model, stream, latency_ms, ttft_ms, tpot_ms,
            status_code, input_tokens, output_tokens, cache_read_tokens,
            cache_creation_tokens, error, client_request, client_response
-         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
         params![
             input.profiler_session_id,
             input.log_id,
@@ -255,6 +275,7 @@ fn insert_profiler_record_on(
             input.turn_index,
             input.timestamp,
             input.model,
+            input.client_kind,
             input.client_model,
             if input.stream { 1i64 } else { 0i64 },
             input.latency_ms,
@@ -325,10 +346,10 @@ pub fn append_profiler_turn(db_path: &Path, input: &AppendProfilerTurnInput<'_>)
     tx.execute(
         "INSERT INTO profiler_records (
            profiler_session_id, log_id, session_id, turn_index, timestamp,
-           model, client_model, stream, latency_ms, ttft_ms, tpot_ms,
+           model, client_kind, client_model, stream, latency_ms, ttft_ms, tpot_ms,
            status_code, input_tokens, output_tokens, cache_read_tokens,
            cache_creation_tokens, error, client_request, client_response
-         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
         params![
             input.profiler_session_id,
             input.log_id,
@@ -336,6 +357,7 @@ pub fn append_profiler_turn(db_path: &Path, input: &AppendProfilerTurnInput<'_>)
             turn_index,
             input.timestamp,
             input.model,
+            input.client_kind,
             input.client_model,
             if input.stream { 1i64 } else { 0i64 },
             input.latency_ms,
@@ -412,19 +434,20 @@ fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProfilerRecord> {
         turn_index: row.get(4)?,
         timestamp: row.get(5)?,
         model: row.get(6)?,
-        client_model: row.get(7)?,
-        stream: row.get::<_, i64>(8)? != 0,
-        latency_ms: row.get(9)?,
-        ttft_ms: row.get(10)?,
-        tpot_ms: row.get(11)?,
-        status_code: row.get(12)?,
-        input_tokens: row.get(13)?,
-        output_tokens: row.get(14)?,
-        cache_read_tokens: row.get(15)?,
-        cache_creation_tokens: row.get(16)?,
-        error: row.get(17)?,
-        client_request: decompress_payload_bytes(row.get(18)?),
-        client_response: decompress_payload_bytes(row.get(19)?),
+        client_kind: row.get(7)?,
+        client_model: row.get(8)?,
+        stream: row.get::<_, i64>(9)? != 0,
+        latency_ms: row.get(10)?,
+        ttft_ms: row.get(11)?,
+        tpot_ms: row.get(12)?,
+        status_code: row.get(13)?,
+        input_tokens: row.get(14)?,
+        output_tokens: row.get(15)?,
+        cache_read_tokens: row.get(16)?,
+        cache_creation_tokens: row.get(17)?,
+        error: row.get(18)?,
+        client_request: decompress_payload_bytes(row.get(19)?),
+        client_response: decompress_payload_bytes(row.get(20)?),
     })
 }
 
@@ -473,7 +496,7 @@ pub fn get_profiler_session_detail(
     };
     let mut stmt = conn.prepare(
         "SELECT id, profiler_session_id, log_id, session_id, turn_index, timestamp,
-                model, client_model, stream, latency_ms, ttft_ms, tpot_ms,
+                model, client_kind, client_model, stream, latency_ms, ttft_ms, tpot_ms,
                 status_code, input_tokens, output_tokens, cache_read_tokens,
                 cache_creation_tokens, error, client_request, client_response
          FROM profiler_records
@@ -524,6 +547,7 @@ mod tests {
                 session_id: "session-a",
                 timestamp: 1_000,
                 model: "stub-model",
+                client_kind: Some("claude-code"),
                 client_model: Some("stub-model"),
                 stream: false,
                 latency_ms: Some(25),
@@ -549,6 +573,7 @@ mod tests {
                 session_id: "session-a",
                 timestamp: 2_000,
                 model: "stub-model",
+                client_kind: Some("claude-code"),
                 client_model: Some("stub-model"),
                 stream: false,
                 latency_ms: Some(30),
@@ -581,6 +606,10 @@ mod tests {
             detail.records[1].client_request.as_deref(),
             Some(r#"{"message":"follow up"}"#)
         );
+        assert_eq!(
+            detail.records[0].client_kind.as_deref(),
+            Some("claude-code")
+        );
         assert_eq!(detail.session.ended_at, Some(2_030));
         assert_eq!(detail.session.total_latency_ms, Some(55));
 
@@ -600,6 +629,7 @@ mod tests {
                 session_id: "session-reuse",
                 timestamp: 1_000,
                 model: "stub-model",
+                client_kind: Some("openai-compatible"),
                 client_model: None,
                 stream: false,
                 latency_ms: Some(10),
@@ -630,6 +660,7 @@ mod tests {
                 session_id: "session-reuse",
                 timestamp: 2_000,
                 model: "stub-model",
+                client_kind: Some("openai-compatible"),
                 client_model: None,
                 stream: false,
                 latency_ms: Some(12),

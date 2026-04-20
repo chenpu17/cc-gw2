@@ -60,6 +60,23 @@ function sessionLabel(session: ProfilerSession): string {
   return id.length > 18 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id
 }
 
+function formatClientKindLabel(clientKind: string | null | undefined): string | null {
+  switch (clientKind) {
+    case 'claude-code':
+      return 'Claude Code'
+    case 'codex':
+      return 'Codex'
+    case 'opencode':
+      return 'OpenCode'
+    case 'anthropic-compatible':
+      return 'Anthropic Compatible'
+    case 'openai-compatible':
+      return 'OpenAI Compatible'
+    default:
+      return clientKind ? clientKind : null
+  }
+}
+
 function relativeTimeLabel(timestamp: number, t: (key: string, options?: Record<string, unknown>) => string): string {
   const diffMs = Math.max(0, Date.now() - timestamp)
   const minutes = Math.floor(diffMs / 60_000)
@@ -88,6 +105,20 @@ function collectToolCalls(value: unknown, output: unknown[]): void {
 
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
+    const type = record.type
+    if (
+      type === 'tool_use' ||
+      type === 'tool_call' ||
+      type === 'function_call' ||
+      type === 'computer_call' ||
+      type === 'web_search_call' ||
+      type === 'file_search_call' ||
+      type === 'mcp_call' ||
+      type === 'custom_tool_call'
+    ) {
+      output.push(record)
+    }
+
     const directToolCalls = record.tool_calls
     if (Array.isArray(directToolCalls)) {
       output.push(...directToolCalls)
@@ -820,10 +851,12 @@ export default function ProfilerPage() {
     if (!query) return sessions
     return sessions.filter((session) => session.sessionId.toLowerCase().includes(query))
   }, [search, sessions])
+  const hasSearchQuery = search.trim().length > 0
 
   const detail = detailQuery.data
   const selectedSession = sessions.find((session) => session.id === selectedId) ?? null
   const selectedRecord = detail?.records[selectedTurn] ?? null
+  const selectedClientKind = formatClientKindLabel(detail?.records[0]?.clientKind ?? null)
 
   useEffect(() => {
     if (selectedId && !sessions.some((session) => session.id === selectedId)) {
@@ -932,10 +965,10 @@ export default function ProfilerPage() {
               <PageState
                 compact
                 className="m-4 min-h-[160px]"
-                title={isRecording ? t('profiler.empty.waitingTitle') : t('profiler.empty.idleTitle')}
-                description={isRecording ? t('profiler.empty.waitingDescription') : t('profiler.empty.idleDescription')}
+                title={hasSearchQuery ? t('profiler.empty.searchTitle') : isRecording ? t('profiler.empty.waitingTitle') : t('profiler.empty.idleTitle')}
+                description={hasSearchQuery ? t('profiler.empty.searchDescription') : isRecording ? t('profiler.empty.waitingDescription') : t('profiler.empty.idleDescription')}
                 action={
-                  isRecording ? (
+                  hasSearchQuery ? undefined : isRecording ? (
                     <Button asChild variant="ghost" size="sm">
                       <Link to="/logs">{t('profiler.empty.actions.logs')}</Link>
                     </Button>
@@ -977,6 +1010,14 @@ export default function ProfilerPage() {
                   <span className="truncate text-sm font-semibold text-foreground">
                     {detail?.sessionId ?? selectedSession?.sessionId ?? selectedId}
                   </span>
+                  {selectedClientKind && (
+                    <>
+                      <span className="text-muted-foreground/70">·</span>
+                      <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px]">
+                        {selectedClientKind}
+                      </Badge>
+                    </>
+                  )}
                   <span className="text-muted-foreground/70">·</span>
                   <span className="truncate text-sm text-muted-foreground">
                     {detail

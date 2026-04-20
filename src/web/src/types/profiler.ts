@@ -19,6 +19,7 @@ export interface ProfilerRecord {
   turnIndex: number
   timestamp: number
   model: string
+  clientKind: string | null
   clientModel: string | null
   stream: boolean
   latencyMs: number | null

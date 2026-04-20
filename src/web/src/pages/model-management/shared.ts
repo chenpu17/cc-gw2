@@ -168,6 +168,21 @@ export function getEndpointValidation(
   return customEndpoint?.routing?.validation
 }
 
+export function getEndpointCompatibility(
+  endpoint: string,
+  config: GatewayConfig | null,
+  customEndpoints: ManagedEndpointLike[]
+): { enabled: boolean } | undefined {
+  if (!config) return undefined
+
+  if (endpoint === 'anthropic' || endpoint === 'openai') {
+    return config.endpointRouting?.[endpoint]?.compatibility
+  }
+
+  const customEndpoint = mapManagedEndpoints(config, customEndpoints).find((item) => item.id === endpoint)
+  return customEndpoint?.routing?.compatibility
+}
+
 export function buildPresetsMap(
   config: GatewayConfig,
   customEndpoints: ManagedEndpointLike[]

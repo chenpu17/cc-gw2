@@ -778,6 +778,13 @@ const resources = {
             }
           }
         },
+        openaiCompatibility: {
+          title: 'OpenAI 兼容降级',
+          description: '仅在跨协议转发时启用 OpenAI 兼容降级与重试。同协议 /openai 请求始终原样透传，不会因为这里的设置被改写。',
+          toggleLabel: '兼容降级',
+          enabledHint: '已启用：跨协议失败时允许剥离 metadata/tool 历史并重试。',
+          disabledHint: '已关闭：跨协议请求不会自动降级或重试。'
+        },
         toast: {
           routesSaved: '模型路由已更新。',
           routesSaveFailure: '保存模型路由失败：{{message}}',
@@ -788,7 +795,9 @@ const resources = {
           presetDeleteSuccess: '模板 "{{name}}" 已删除。',
           presetDeleteFailure: '删除模板失败：{{message}}',
           validationModeSaved: 'Anthropic 请求校验模式已更新为：{{mode}}。',
-          validationModeFailure: '更新请求校验模式失败：{{message}}'
+          validationModeFailure: '更新请求校验模式失败：{{message}}',
+          compatibilitySaved: 'OpenAI 兼容降级已更新为：{{state}}。',
+          compatibilitySaveFailure: '更新 OpenAI 兼容降级失败：{{message}}'
         },
         presets: {
           title: '路由模板',
@@ -1481,13 +1490,15 @@ const resources = {
         },
         empty: {
           waitingTitle: '等待请求进入...',
-          waitingDescription: '带有 session_id 的请求会显示在这里。',
+          waitingDescription: '只有带可识别会话标识的请求才会显示在这里，例如 session_id、conversation_id 或兼容的会话请求头。',
           idleTitle: '暂无会话',
-          idleDescription: '开始录制后即可捕获 LLM 会话。',
+          idleDescription: '开始录制后即可捕获带可识别会话标识的 LLM 会话。',
+          searchTitle: '未找到匹配会话',
+          searchDescription: '换个关键词试试，或清空搜索查看全部已录制会话。',
           noTurnsTitle: '该会话还没有记录到轮次',
           noTurnsDescription: '会话壳已创建，但还没有写入 turn 级别的请求或响应内容。',
           selectTitle: '选择一个会话',
-          selectDescription: '从左侧选择会话，查看其时间线、消息载荷和统计数据。',
+          selectDescription: '从左侧选择会话，查看其时间线、消息载荷和统计数据。未携带可识别会话标识的请求仍可在日志中查看。',
           actions: {
             logs: '查看请求日志'
           }
@@ -2280,6 +2291,13 @@ const resources = {
             }
           }
         },
+        openaiCompatibility: {
+          title: 'OpenAI compatibility fallback',
+          description: 'Enable OpenAI compatibility downgrade and retry only for cross-protocol forwarding. Same-protocol /openai requests always pass through unchanged.',
+          toggleLabel: 'Compatibility fallback',
+          enabledHint: 'Enabled: cross-protocol failures may retry after stripping metadata or tool history.',
+          disabledHint: 'Disabled: cross-protocol requests will not auto-downgrade or retry.'
+        },
         toast: {
           routesSaved: 'Model routes updated successfully.',
           routesSaveFailure: 'Failed to save model routes: {{message}}',
@@ -2290,7 +2308,9 @@ const resources = {
           presetDeleteSuccess: 'Preset "{{name}}" deleted.',
           presetDeleteFailure: 'Failed to delete preset: {{message}}',
           validationModeSaved: 'Anthropic request validation updated to: {{mode}}.',
-          validationModeFailure: 'Failed to update request validation: {{message}}'
+          validationModeFailure: 'Failed to update request validation: {{message}}',
+          compatibilitySaved: 'OpenAI compatibility fallback updated to: {{state}}.',
+          compatibilitySaveFailure: 'Failed to update OpenAI compatibility fallback: {{message}}'
         },
         presets: {
           title: 'Routing presets',
@@ -2969,13 +2989,15 @@ const resources = {
         },
         empty: {
           waitingTitle: 'Waiting for requests…',
-          waitingDescription: 'Requests with session_id will appear here.',
+          waitingDescription: 'Only requests with a recognizable session identifier appear here, such as session_id, conversation_id, or compatible session headers.',
           idleTitle: 'No sessions',
-          idleDescription: 'Start recording to capture LLM sessions.',
+          idleDescription: 'Start recording to capture LLM sessions with recognizable session identifiers.',
+          searchTitle: 'No matching sessions',
+          searchDescription: 'Try a different keyword, or clear the search to see every recorded session.',
           noTurnsTitle: 'No turns recorded',
           noTurnsDescription: 'The session exists, but no turn-level payloads have been captured yet.',
           selectTitle: 'Select a session',
-          selectDescription: 'Choose a session from the left to inspect its timeline, message payloads, and stats.',
+          selectDescription: 'Choose a session from the left to inspect its timeline, message payloads, and stats. Requests without a recognizable session identifier still appear in logs.',
           actions: {
             logs: 'Open request logs'
           }

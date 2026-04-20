@@ -206,6 +206,7 @@ struct StreamingLogContext {
     profiler_session_id: Option<String>,
     client_request_payload: Option<String>,
     model: String,
+    client_kind: String,
     client_model: Option<String>,
     stream: bool,
 }
@@ -492,6 +493,7 @@ fn build_router(state: AppState) -> Router {
         )
         .route("/openai/v1/models", get(proxy_routes::openai_models))
         .route("/openai/models", get(proxy_routes::openai_models))
+        .route("/v1/models", get(proxy_routes::openai_models))
         .route(
             "/openai/v1/chat/completions",
             post(proxy_routes::openai_chat_completions),
@@ -500,8 +502,13 @@ fn build_router(state: AppState) -> Router {
             "/openai/chat/completions",
             post(proxy_routes::openai_chat_completions),
         )
+        .route(
+            "/v1/chat/completions",
+            post(proxy_routes::openai_chat_completions),
+        )
         .route("/openai/v1/responses", post(proxy_routes::openai_responses))
         .route("/openai/responses", post(proxy_routes::openai_responses))
+        .route("/v1/responses", post(proxy_routes::openai_responses))
         .route("/ui", get(ui_routes::ui_redirect))
         .route("/ui/", get(ui_routes::ui_index))
         .route("/favicon.ico", get(ui_routes::favicon))
@@ -953,21 +960,83 @@ fn profiler_session_id_for(session_id: &str) -> String {
     session_id.to_string()
 }
 
-fn extract_session_id(body: &Value) -> Option<String> {
-    fn extract_string(value: Option<&Value>) -> Option<String> {
-        value
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-    }
+fn extract_string(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
 
+fn extract_body_session_id(body: &Value) -> Option<String> {
     let metadata = body.get("metadata");
     extract_string(metadata.and_then(|value| value.get("session_id")))
         .or_else(|| extract_string(metadata.and_then(|value| value.get("conversation_id"))))
         .or_else(|| extract_string(body.get("session_id")))
-        .or_else(|| extract_string(metadata.and_then(|value| value.get("user_id"))))
+}
+
+fn extract_body_user_session_id(body: &Value) -> Option<String> {
+    let metadata = body.get("metadata");
+    extract_string(metadata.and_then(|value| value.get("user_id")))
         .or_else(|| extract_string(body.get("user")))
+}
+
+fn extract_header_session_id(headers: &HeaderMap) -> Option<String> {
+    [
+        "x-session-id",
+        "x-conversation-id",
+        "x-app-session-id",
+        "x-client-session-id",
+        "x-claude-session-id",
+        "x-claude-code-session-id",
+        "x-codex-session-id",
+        "x-opencode-session-id",
+    ]
+    .into_iter()
+    .find_map(|name| header_value(headers, name))
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty())
+}
+
+fn extract_request_session_id(body: &Value, headers: &HeaderMap) -> Option<String> {
+    extract_body_session_id(body)
+        .or_else(|| extract_header_session_id(headers))
+        .or_else(|| extract_body_user_session_id(body))
+}
+
+fn infer_client_kind(
+    headers: &HeaderMap,
+    user_agent: Option<&str>,
+    protocol: ProviderProtocol,
+) -> String {
+    let x_app = header_value(headers, "x-app")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let user_agent = user_agent.unwrap_or_default().to_ascii_lowercase();
+
+    if x_app == "claude-code"
+        || user_agent.contains("claude-cli")
+        || user_agent.contains("claude code")
+    {
+        return "claude-code".to_string();
+    }
+    if headers.contains_key("x-codex-session-id") || user_agent.contains("codex") {
+        return "codex".to_string();
+    }
+    if headers.contains_key("x-opencode-session-id") || user_agent.contains("opencode") {
+        return "opencode".to_string();
+    }
+
+    match protocol {
+        ProviderProtocol::AnthropicMessages => "anthropic-compatible".to_string(),
+        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => {
+            "openai-compatible".to_string()
+        }
+    }
+}
+
+fn extract_session_id(body: &Value) -> Option<String> {
+    extract_body_session_id(body).or_else(|| extract_body_user_session_id(body))
 }
 
 #[cfg(test)]
