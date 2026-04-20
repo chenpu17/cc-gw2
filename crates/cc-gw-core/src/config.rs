@@ -128,10 +128,23 @@ impl Default for EndpointValidationConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+pub struct EndpointCompatibilityConfig {
+    pub enabled: bool,
+}
+
+impl Default for EndpointCompatibilityConfig {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
 pub struct EndpointRoutingConfig {
     pub defaults: DefaultsConfig,
     pub model_routes: ModelRouteMap,
     pub validation: Option<EndpointValidationConfig>,
+    pub compatibility: Option<EndpointCompatibilityConfig>,
 }
 
 impl Default for EndpointRoutingConfig {
@@ -140,6 +153,7 @@ impl Default for EndpointRoutingConfig {
             defaults: DefaultsConfig::default(),
             model_routes: Default::default(),
             validation: None,
+            compatibility: None,
         }
     }
 }
@@ -244,6 +258,7 @@ impl Default for GatewayConfig {
                 defaults: defaults.clone(),
                 model_routes: Default::default(),
                 validation: None,
+                compatibility: None,
             },
         );
         endpoint_routing.insert(
@@ -252,6 +267,7 @@ impl Default for GatewayConfig {
                 defaults: defaults.clone(),
                 model_routes: Default::default(),
                 validation: None,
+                compatibility: None,
             },
         );
 

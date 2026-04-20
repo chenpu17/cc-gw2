@@ -1,5 +1,6 @@
 use super::*;
 use axum::extract::{Json as AxumJson, Query};
+use axum::http::{HeaderName, HeaderValue};
 use futures_util::StreamExt;
 use std::fs as stdfs;
 use std::sync::{Arc, Mutex};
@@ -57,6 +58,86 @@ fn extract_session_id_prefers_session_fields_over_user_fields() {
     assert_eq!(
         extract_session_id(&payload_with_only_user),
         Some("user-fallback".to_string())
+    );
+}
+
+#[test]
+fn extract_request_session_id_uses_stable_headers_before_user_fallbacks() {
+    let payload_with_user_only = json!({
+        "metadata": {
+            "user_id": "user-fallback"
+        }
+    });
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("x-opencode-session-id"),
+        HeaderValue::from_static("opencode-session"),
+    );
+    headers.insert(
+        HeaderName::from_static("x-request-id"),
+        HeaderValue::from_static("single-request-id"),
+    );
+
+    assert_eq!(
+        extract_request_session_id(&payload_with_user_only, &headers),
+        Some("opencode-session".to_string())
+    );
+
+    let payload_with_body_session = json!({
+        "metadata": {
+            "session_id": "body-session"
+        },
+        "user": "user-fallback"
+    });
+
+    assert_eq!(
+        extract_request_session_id(&payload_with_body_session, &headers),
+        Some("body-session".to_string())
+    );
+}
+
+#[test]
+fn infer_client_kind_prefers_known_cli_markers() {
+    let mut claude_headers = HeaderMap::new();
+    claude_headers.insert(
+        HeaderName::from_static("x-app"),
+        HeaderValue::from_static("claude-code"),
+    );
+    assert_eq!(
+        infer_client_kind(
+            &claude_headers,
+            Some("claude-cli/1.0.0"),
+            ProviderProtocol::AnthropicMessages
+        ),
+        "claude-code"
+    );
+
+    let mut codex_headers = HeaderMap::new();
+    codex_headers.insert(
+        HeaderName::from_static("x-codex-session-id"),
+        HeaderValue::from_static("codex-session"),
+    );
+    assert_eq!(
+        infer_client_kind(
+            &codex_headers,
+            Some("OpenAI Codex CLI"),
+            ProviderProtocol::OpenAiResponses
+        ),
+        "codex"
+    );
+
+    let mut opencode_headers = HeaderMap::new();
+    opencode_headers.insert(
+        HeaderName::from_static("x-opencode-session-id"),
+        HeaderValue::from_static("opencode-session"),
+    );
+    assert_eq!(
+        infer_client_kind(
+            &opencode_headers,
+            Some("opencode/0.1.0"),
+            ProviderProtocol::OpenAiChatCompletions
+        ),
+        "opencode"
     );
 }
 
@@ -438,6 +519,92 @@ async fn direct_proxy_responses_do_not_forward_upstream_set_cookie() {
             .and_then(|value| value.to_str().ok()),
         Some("req_123")
     );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn openai_root_routes_match_openai_prefixed_routes() {
+    let upstream = Router::new()
+        .route("/v1/chat/completions", post(mock_openai_test))
+        .route(
+            "/v1/responses",
+            post(|| async {
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({
+                            "id": "resp_test",
+                            "object": "response",
+                            "output": [{
+                                "type": "message",
+                                "content": [{ "type": "output_text", "text": "ok" }]
+                            }],
+                            "usage": {
+                                "input_tokens": 1,
+                                "output_tokens": 1
+                            }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("build responses response")
+            }),
+        );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("gpt-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("gpt-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-root-routes").await;
+    let client = reqwest::Client::new();
+
+    let models = client
+        .get(format!("http://{gateway_addr}/v1/models"))
+        .send()
+        .await
+        .expect("send models request");
+    assert_eq!(models.status(), StatusCode::OK);
+
+    let chat = client
+        .post(format!("http://{gateway_addr}/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-test",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send root chat request");
+    assert_eq!(chat.status(), StatusCode::OK);
+
+    let responses = client
+        .post(format!("http://{gateway_addr}/v1/responses"))
+        .json(&json!({
+            "model": "gpt-test",
+            "input": "hello"
+        }))
+        .send()
+        .await
+        .expect("send root responses request");
+    assert_eq!(responses.status(), StatusCode::OK);
 
     gateway_handle.abort();
     upstream_handle.abort();
@@ -2466,6 +2633,8 @@ async fn anthropic_to_openai_retry_drops_metadata_and_tool_choice() {
     config.defaults.completion = Some("retry-openai:gpt-test".to_string());
     if let Some(anthropic) = config.endpoint_routing.get_mut("anthropic") {
         anthropic.defaults.completion = Some("retry-openai:gpt-test".to_string());
+        anthropic.compatibility =
+            Some(cc_gw_core::config::EndpointCompatibilityConfig { enabled: true });
     }
 
     let (home_dir, gateway_addr, gateway_handle) =
@@ -2507,6 +2676,75 @@ async fn anthropic_to_openai_retry_drops_metadata_and_tool_choice() {
     assert!(recorded[0].get("tool_choice").is_some());
     assert!(recorded[1].get("metadata").is_none());
     assert!(recorded[1].get("tool_choice").is_none());
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_to_openai_does_not_retry_when_compatibility_disabled() {
+    let attempts = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let attempts_for_route = Arc::clone(&attempts);
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let attempts = Arc::clone(&attempts_for_route);
+            async move {
+                record_payload(&attempts, &payload);
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "unsupported metadata/tool_choice" })),
+                )
+                    .into_response()
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "strict-openai".to_string(),
+        label: "Strict OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("strict-openai:gpt-test".to_string());
+    if let Some(anthropic) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic.defaults.completion = Some("strict-openai:gpt-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-openai-compat-disabled").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 128,
+            "metadata": { "user_id": "user-1" },
+            "tool_choice": { "type": "tool", "name": "lookup" },
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": "hello" }]
+            }]
+        }))
+        .send()
+        .await
+        .expect("send anthropic request");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let recorded = attempts.lock().expect("lock attempts");
+    assert_eq!(recorded.len(), 1);
+    assert!(recorded[0].get("metadata").is_some());
+    assert!(recorded[0].get("tool_choice").is_some());
 
     gateway_handle.abort();
     upstream_handle.abort();
@@ -2588,6 +2826,8 @@ async fn anthropic_to_openai_retry_summarizes_tool_roundtrip_and_normalizes_toke
     config.defaults.completion = Some("compat-openai:gpt-test".to_string());
     if let Some(anthropic) = config.endpoint_routing.get_mut("anthropic") {
         anthropic.defaults.completion = Some("compat-openai:gpt-test".to_string());
+        anthropic.compatibility =
+            Some(cc_gw_core::config::EndpointCompatibilityConfig { enabled: true });
     }
 
     let (home_dir, gateway_addr, gateway_handle) =
@@ -2792,7 +3032,7 @@ async fn anthropic_to_openai_retry_summarizes_tool_roundtrip_and_normalizes_toke
 }
 
 #[tokio::test]
-async fn openai_responses_retry_drops_metadata_and_tool_choice() {
+async fn openai_responses_same_protocol_does_not_retry_or_strip_metadata() {
     let attempts = Arc::new(Mutex::new(Vec::<Value>::new()));
     let attempts_for_route = Arc::clone(&attempts);
     let upstream = Router::new().route(
@@ -2854,7 +3094,7 @@ async fn openai_responses_retry_drops_metadata_and_tool_choice() {
         spawn_test_gateway(config, "responses-retry").await;
     let client = reqwest::Client::new();
 
-    let response: Value = client
+    let response = client
         .post(format!("http://{gateway_addr}/openai/v1/responses"))
         .json(&json!({
             "model": "gpt-test",
@@ -2864,22 +3104,13 @@ async fn openai_responses_retry_drops_metadata_and_tool_choice() {
         }))
         .send()
         .await
-        .expect("send responses request")
-        .json()
-        .await
-        .expect("decode responses response");
-
-    assert_eq!(
-        response.get("output_text").and_then(Value::as_str),
-        Some("retry-ok")
-    );
+        .expect("send responses request");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let recorded = attempts.lock().expect("lock attempts");
-    assert_eq!(recorded.len(), 2);
+    assert_eq!(recorded.len(), 1);
     assert!(recorded[0].get("metadata").is_some());
     assert!(recorded[0].get("tool_choice").is_some());
-    assert!(recorded[1].get("metadata").is_none());
-    assert!(recorded[1].get("tool_choice").is_none());
 
     gateway_handle.abort();
     upstream_handle.abort();
@@ -3609,6 +3840,8 @@ async fn anthropic_to_custom_provider_strips_tooling_and_metadata() {
     config.defaults.completion = Some("custom-openai:custom-model".to_string());
     if let Some(anthropic) = config.endpoint_routing.get_mut("anthropic") {
         anthropic.defaults.completion = Some("custom-openai:custom-model".to_string());
+        anthropic.compatibility =
+            Some(cc_gw_core::config::EndpointCompatibilityConfig { enabled: true });
     }
 
     let (home_dir, gateway_addr, gateway_handle) =
@@ -3676,7 +3909,7 @@ async fn anthropic_to_custom_provider_strips_tooling_and_metadata() {
 }
 
 #[tokio::test]
-async fn openai_responses_to_custom_provider_strips_tooling_and_metadata() {
+async fn openai_responses_to_custom_provider_preserves_same_protocol_tooling() {
     let attempts = Arc::new(Mutex::new(Vec::<Value>::new()));
     let attempts_for_route = Arc::clone(&attempts);
     let upstream = Router::new().route(
@@ -3761,27 +3994,29 @@ async fn openai_responses_to_custom_provider_strips_tooling_and_metadata() {
     let recorded = attempts.lock().expect("lock attempts");
     assert_eq!(recorded.len(), 1);
     let forwarded = &recorded[0];
-    assert!(forwarded.get("metadata").is_none());
-    assert!(forwarded.get("tools").is_none());
-    assert!(forwarded.get("tool_choice").is_none());
+    assert_eq!(
+        forwarded.get("metadata"),
+        Some(&json!({ "user_id": "user-2" }))
+    );
+    assert!(
+        forwarded
+            .get("tools")
+            .and_then(Value::as_array)
+            .is_some_and(|tools| !tools.is_empty())
+    );
+    assert_eq!(forwarded.get("tool_choice"), Some(&json!("auto")));
     assert!(
         forwarded
             .get("input")
             .and_then(Value::as_array)
-            .is_some_and(|items| items.iter().all(|item| {
-                item.get("type").and_then(Value::as_str) == Some("message")
-                    && item
-                        .get("content")
-                        .and_then(Value::as_array)
-                        .is_some_and(|content| {
-                            content.iter().all(|part| {
-                                matches!(
-                                    part.get("type").and_then(Value::as_str),
-                                    Some("input_text" | "output_text" | "text")
-                                )
-                            })
-                        })
-            }))
+            .is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|item| item.get("type").and_then(Value::as_str) == Some("function_call"))
+                    && items.iter().any(|item| {
+                        item.get("type").and_then(Value::as_str) == Some("function_call_output")
+                    })
+            })
     );
 
     gateway_handle.abort();

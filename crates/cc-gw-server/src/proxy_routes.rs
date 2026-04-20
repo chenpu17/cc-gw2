@@ -693,6 +693,7 @@ fn build_request_body_for_target(
     request_protocol: ProviderProtocol,
     target_protocol: ProviderProtocol,
     provider_type: &str,
+    compatibility_enabled: bool,
 ) -> Value {
     let mut converted = match (request_protocol, target_protocol) {
         (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions) => {
@@ -710,11 +711,13 @@ fn build_request_body_for_target(
         _ => original_body.clone(),
     };
 
-    if !provider_supports_metadata(provider_type) {
+    let same_protocol = request_protocol == target_protocol;
+
+    if compatibility_enabled && !same_protocol && !provider_supports_metadata(provider_type) {
         remove_top_level_key(&mut converted, "metadata");
     }
 
-    if !provider_supports_tools(provider_type) {
+    if compatibility_enabled && !same_protocol && !provider_supports_tools(provider_type) {
         match target_protocol {
             ProviderProtocol::OpenAiChatCompletions => {
                 downgrade_openai_chat_body_for_custom_provider(&mut converted);
@@ -952,44 +955,46 @@ fn retry_bodies_for_openai_compatibility(
     retries
 }
 
-fn validation_config_for_endpoint<'a>(
+fn routing_config_for_endpoint<'a>(
     config: &'a GatewayConfig,
     endpoint: GatewayEndpoint<'_>,
     protocol: ProviderProtocol,
-) -> Option<&'a cc_gw_core::config::EndpointValidationConfig> {
+) -> Option<&'a cc_gw_core::config::EndpointRoutingConfig> {
     let default_endpoint_key = match protocol {
         ProviderProtocol::AnthropicMessages => "anthropic",
         ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => "openai",
     };
 
     match endpoint {
-        GatewayEndpoint::Anthropic => config
-            .endpoint_routing
-            .get("anthropic")
-            .and_then(|routing| routing.validation.as_ref()),
-        GatewayEndpoint::OpenAi => config
-            .endpoint_routing
-            .get("openai")
-            .and_then(|routing| routing.validation.as_ref()),
+        GatewayEndpoint::Anthropic => config.endpoint_routing.get("anthropic"),
+        GatewayEndpoint::OpenAi => config.endpoint_routing.get("openai"),
         GatewayEndpoint::Custom(id) => config
             .custom_endpoints
             .iter()
             .find(|item| item.id == id)
             .and_then(|item| item.routing.as_ref())
-            .and_then(|routing| routing.validation.as_ref())
-            .or_else(|| {
-                config
-                    .endpoint_routing
-                    .get(id)
-                    .and_then(|routing| routing.validation.as_ref())
-            })
-            .or_else(|| {
-                config
-                    .endpoint_routing
-                    .get(default_endpoint_key)
-                    .and_then(|routing| routing.validation.as_ref())
-            }),
+            .or_else(|| config.endpoint_routing.get(id))
+            .or_else(|| config.endpoint_routing.get(default_endpoint_key)),
     }
+}
+
+fn validation_config_for_endpoint<'a>(
+    config: &'a GatewayConfig,
+    endpoint: GatewayEndpoint<'_>,
+    protocol: ProviderProtocol,
+) -> Option<&'a cc_gw_core::config::EndpointValidationConfig> {
+    routing_config_for_endpoint(config, endpoint, protocol)
+        .and_then(|routing| routing.validation.as_ref())
+}
+
+fn openai_compatibility_enabled_for_endpoint(
+    config: &GatewayConfig,
+    endpoint: GatewayEndpoint<'_>,
+    protocol: ProviderProtocol,
+) -> bool {
+    routing_config_for_endpoint(config, endpoint, protocol)
+        .and_then(|routing| routing.compatibility.as_ref())
+        .is_some_and(|compatibility| compatibility.enabled)
 }
 
 fn block_type_allowed(block_type: &str, _mode: &str, allow_experimental_blocks: bool) -> bool {
@@ -1177,7 +1182,8 @@ pub(super) async fn proxy_standard_request(
     let endpoint_id = endpoint_name(endpoint, protocol);
     let network_recorder = NetworkByteRecorder::new(&state, &endpoint_id);
     let user_agent = header_value(&headers, header::USER_AGENT.as_str());
-    let session_id = extract_session_id(&body);
+    let client_kind = infer_client_kind(&headers, user_agent.as_deref(), protocol);
+    let session_id = extract_request_session_id(&body, &headers);
 
     // Atomically check per-key concurrency limit and create the activity guard
     let activity_guard = match RequestActivityGuard::try_new_with_concurrency_check(
@@ -1323,16 +1329,38 @@ pub(super) async fn proxy_standard_request(
         }
     };
 
-    let converted_request_body =
-        build_request_body_for_target(&body, protocol, target_protocol, provider_type);
+    let endpoint_compatibility_enabled =
+        openai_compatibility_enabled_for_endpoint(&config, endpoint, protocol);
+    let converted_request_body = build_request_body_for_target(
+        &body,
+        protocol,
+        target_protocol,
+        provider_type,
+        endpoint_compatibility_enabled,
+    );
+    let cross_protocol = !matches!(
+        (protocol, target_protocol),
+        (
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::AnthropicMessages
+        ) | (
+            ProviderProtocol::OpenAiChatCompletions,
+            ProviderProtocol::OpenAiChatCompletions
+        ) | (
+            ProviderProtocol::OpenAiResponses,
+            ProviderProtocol::OpenAiResponses
+        )
+    );
     let request_declares_tools =
         openai_request_declares_tools(&converted_request_body, target_protocol);
     let request_uses_reasoning_tokens =
         openai_request_uses_reasoning_tokens(&converted_request_body, target_protocol);
-    let openai_compatibility_mode = if matches!(
-        target_protocol,
-        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
-    ) {
+    let openai_compatibility_enabled = endpoint_compatibility_enabled && cross_protocol;
+    let openai_compatibility_mode = if openai_compatibility_enabled
+        && matches!(
+            target_protocol,
+            ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
+        ) {
         let cached = cached_openai_compatibility_mode(
             &state,
             &target.provider_id,
@@ -1371,20 +1399,6 @@ pub(super) async fn proxy_standard_request(
         );
     }
 
-    let cross_protocol = !matches!(
-        (protocol, target_protocol),
-        (
-            ProviderProtocol::AnthropicMessages,
-            ProviderProtocol::AnthropicMessages
-        ) | (
-            ProviderProtocol::OpenAiChatCompletions,
-            ProviderProtocol::OpenAiChatCompletions
-        ) | (
-            ProviderProtocol::OpenAiResponses,
-            ProviderProtocol::OpenAiResponses
-        )
-    );
-
     let target_model_id = target.model_id.clone();
     let upstream_query = query.clone();
     let proxy_result = forward_request(
@@ -1404,10 +1418,12 @@ pub(super) async fn proxy_standard_request(
 
     match proxy_result {
         Ok(mut response) => {
-            if matches!(
-                target_protocol,
-                ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
-            ) && response.status().as_u16() >= 400
+            if openai_compatibility_enabled
+                && matches!(
+                    target_protocol,
+                    ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
+                )
+                && response.status().as_u16() >= 400
             {
                 for (retry_mode, retry_body) in retry_bodies_for_openai_compatibility(
                     &converted_request_body,
@@ -1506,6 +1522,7 @@ pub(super) async fn proxy_standard_request(
                 profiler_session_id: profiler_session_id.clone(),
                 client_request_payload: client_request_payload.clone(),
                 model: target.model_id.clone(),
+                client_kind: client_kind.clone(),
                 client_model: requested_model.map(ToString::to_string),
                 stream,
             });
@@ -1574,6 +1591,7 @@ pub(super) async fn proxy_standard_request(
                                 log_id,
                                 started_at,
                                 &target.model_id,
+                                &client_kind,
                                 requested_model,
                                 stream,
                                 latency_ms,
@@ -1638,6 +1656,7 @@ pub(super) async fn proxy_standard_request(
                                 log_id,
                                 started_at,
                                 &target.model_id,
+                                &client_kind,
                                 requested_model,
                                 stream,
                                 latency_ms,
@@ -2322,6 +2341,7 @@ fn record_profiler_turn(
     log_id: i64,
     started_at: i64,
     model: &str,
+    client_kind: &str,
     client_model: Option<&str>,
     stream: bool,
     latency_ms: i64,
@@ -2344,6 +2364,7 @@ fn record_profiler_turn(
             session_id,
             timestamp: started_at,
             model,
+            client_kind: Some(client_kind),
             client_model,
             stream,
             latency_ms: Some(latency_ms),
@@ -2544,6 +2565,7 @@ fn finalize_stream_logging(
                     session_id,
                     timestamp: context.started_at,
                     model: &context.model,
+                    client_kind: Some(&context.client_kind),
                     client_model: context.client_model.as_deref(),
                     stream: context.stream,
                     latency_ms: Some(latency_ms),

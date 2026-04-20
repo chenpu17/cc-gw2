@@ -29,6 +29,10 @@ export type EndpointValidationConfig =
   | { mode: 'claude-code'; allowExperimentalBlocks?: boolean }
   | { mode: 'anthropic-strict'; allowExperimentalBlocks?: boolean }
 
+export interface EndpointCompatibilityConfig {
+  enabled: boolean
+}
+
 export type GatewayEndpoint = 'anthropic' | 'openai'
 
 export interface HttpConfig {
@@ -50,6 +54,7 @@ export interface EndpointRoutingConfig {
   defaults: DefaultsConfig
   modelRoutes: Record<string, string>
   validation?: EndpointValidationConfig
+  compatibility?: EndpointCompatibilityConfig
 }
 
 export interface RoutingPreset {

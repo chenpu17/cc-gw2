@@ -713,12 +713,14 @@ export function useModelManagementState() {
         anthropic: {
           defaults: currentRouting.anthropic?.defaults ?? config!.defaults,
           modelRoutes: sanitizedAnthropic,
-          validation: currentRouting.anthropic?.validation
+          validation: currentRouting.anthropic?.validation,
+          compatibility: currentRouting.anthropic?.compatibility
         },
         openai: {
           defaults: currentRouting.openai?.defaults ?? config!.defaults,
           modelRoutes: sanitizedOpenAI,
-          validation: currentRouting.openai?.validation
+          validation: currentRouting.openai?.validation,
+          compatibility: currentRouting.openai?.compatibility
         }
       }
     }
@@ -804,7 +806,8 @@ export function useModelManagementState() {
 
         const baseRouting: EndpointRoutingConfig = {
           defaults: currentEndpointRouting.defaults ?? config!.defaults,
-          modelRoutes: currentEndpointRouting.modelRoutes ?? {}
+          modelRoutes: currentEndpointRouting.modelRoutes ?? {},
+          compatibility: currentEndpointRouting.compatibility
         }
 
         const nextValidation: EndpointRoutingConfig['validation'] =
@@ -856,7 +859,8 @@ export function useModelManagementState() {
             ? { ...currentRouting, validation: nextValidation }
             : {
                 defaults: currentRouting.defaults,
-                modelRoutes: currentRouting.modelRoutes
+                modelRoutes: currentRouting.modelRoutes,
+                compatibility: currentRouting.compatibility
               }
         }
 
@@ -1038,7 +1042,8 @@ export function useModelManagementState() {
             [endpoint]: {
               defaults: config!.endpointRouting?.[endpoint as 'anthropic' | 'openai']?.defaults ?? config!.defaults,
               modelRoutes: sanitizedRoutes,
-              validation: config!.endpointRouting?.[endpoint as 'anthropic' | 'openai']?.validation
+              validation: config!.endpointRouting?.[endpoint as 'anthropic' | 'openai']?.validation,
+              compatibility: config!.endpointRouting?.[endpoint as 'anthropic' | 'openai']?.compatibility
             }
           },
           modelRoutes: endpoint === 'anthropic' ? sanitizedRoutes : config!.modelRoutes ?? {}

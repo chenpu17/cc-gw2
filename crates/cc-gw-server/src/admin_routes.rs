@@ -918,6 +918,7 @@ pub(super) async fn api_routing_presets_apply(
                 defaults: config.defaults.clone(),
                 model_routes: Default::default(),
                 validation: None,
+                compatibility: None,
             });
         routing.model_routes = preset.model_routes.clone();
         if endpoint == "anthropic" {
@@ -969,6 +970,7 @@ pub(super) async fn api_routing_presets_apply(
                 defaults,
                 model_routes: Default::default(),
                 validation: None,
+                compatibility: None,
             });
         routing.model_routes = preset.model_routes;
         custom_endpoint.routing = Some(routing.clone());
