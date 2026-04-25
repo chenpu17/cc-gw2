@@ -211,12 +211,55 @@ struct StreamingLogContext {
     stream: bool,
 }
 
-fn extract_provider_test_sample(
-    prefers_anthropic_protocol: bool,
-    payload: &Value,
-) -> Option<String> {
-    let sample = if prefers_anthropic_protocol {
-        payload
+fn join_non_empty_texts(texts: Vec<String>) -> Option<String> {
+    let joined = texts
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if joined.is_empty() {
+        None
+    } else {
+        Some(joined)
+    }
+}
+
+fn extract_openai_responses_sample(payload: &Value) -> Option<String> {
+    if let Some(output_text) = payload
+        .get("output_text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(output_text.to_string());
+    }
+
+    let output = payload.get("output").and_then(Value::as_array)?;
+    let mut texts = Vec::new();
+    for item in output {
+        if let Some(text) = item.get("text").and_then(Value::as_str) {
+            texts.push(text.to_string());
+        }
+
+        if let Some(content) = item.get("content").and_then(Value::as_array) {
+            for part in content {
+                if let Some(text) = part.as_str() {
+                    texts.push(text.to_string());
+                } else if let Some(text) = part.get("text").and_then(Value::as_str) {
+                    texts.push(text.to_string());
+                }
+            }
+        }
+    }
+
+    join_non_empty_texts(texts)
+}
+
+fn extract_provider_test_sample(protocol: ProviderProtocol, payload: &Value) -> Option<String> {
+    let sample = match protocol {
+        ProviderProtocol::AnthropicMessages => payload
             .get("content")
             .and_then(Value::as_array)
             .map(|blocks| {
@@ -226,9 +269,9 @@ fn extract_provider_test_sample(
                     .filter_map(|block| block.get("text").and_then(Value::as_str))
                     .collect::<Vec<_>>()
                     .join("\n")
-            })
-    } else {
-        payload
+            }),
+        ProviderProtocol::OpenAiResponses => extract_openai_responses_sample(payload),
+        ProviderProtocol::OpenAiChatCompletions => payload
             .get("choices")
             .and_then(Value::as_array)
             .and_then(|choices| choices.first())
@@ -262,7 +305,7 @@ fn extract_provider_test_sample(
                     .get("text")
                     .and_then(Value::as_str)
                     .map(ToString::to_string)
-            })
+            }),
     };
 
     sample

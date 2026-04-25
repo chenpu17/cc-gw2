@@ -660,8 +660,7 @@ export function useModelManagementState() {
     const targetProvider = testDialogProvider
     closeTestDialog()
     await handleTestConnection(targetProvider, {
-      headers: Object.keys(selectedHeaders).length > 0 ? selectedHeaders : undefined,
-      query: testDialogUsePreset ? 'beta=true' : undefined
+      headers: Object.keys(selectedHeaders).length > 0 ? selectedHeaders : undefined
     })
   }
 

@@ -45,7 +45,7 @@ export const modelManagementApi = {
 
   testProvider(providerId: string, payload?: ProviderTestPayload): Promise<ProviderTestResponse> {
     return unwrapResponse(
-      apiClient.post<ProviderTestResponse>(`/api/providers/${providerId}/test`, payload)
+      apiClient.post<ProviderTestResponse>(`/api/providers/${providerId}/test`, payload ?? {})
     )
   }
 }

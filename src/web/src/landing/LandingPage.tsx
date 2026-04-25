@@ -1,274 +1,503 @@
 import { useState, type ReactNode } from 'react'
 import {
   ArrowRight,
-  BarChart3,
   CheckCircle2,
   ChevronDown,
   Copy,
-  GitBranch,
+  FileText,
+  Gauge,
+  Github,
   KeyRound,
+  Languages,
+  Lock,
+  Network,
+  Repeat,
   Terminal,
   XCircle,
+  Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { copyToClipboard } from '@/utils/clipboard'
 import { BrandMark } from '@/components/BrandMark'
-import dashboardShot from '../../../../docs/assets/compare-pen/live-dashboard.png'
-import logsShot from '../../../../docs/assets/compare-pen/live-logs.png'
-import modelsShot from '../../../../docs/assets/compare-pen/live-model-management.png'
-import apiKeysShot from '../../../../docs/assets/compare-pen/live-api-keys.png'
-import eventsShot from '../../../../docs/assets/compare-pen/live-events.png'
+import dashboardShotZh from '../../../../docs/assets/compare-pen/live-dashboard.png'
+import logsShotZh from '../../../../docs/assets/compare-pen/live-logs.png'
+import modelsShotZh from '../../../../docs/assets/compare-pen/live-model-management.png'
+import apiKeysShotZh from '../../../../docs/assets/compare-pen/live-api-keys.png'
+import profilerShotZh from '../../../../docs/assets/compare-pen/live-events.png'
+import dashboardShotEn from '../../../../docs/assets/compare-pen/live-en-dashboard.png'
+import logsShotEn from '../../../../docs/assets/compare-pen/live-en-logs.png'
+import modelsShotEn from '../../../../docs/assets/compare-pen/live-en-model-management.png'
+import apiKeysShotEn from '../../../../docs/assets/compare-pen/live-en-api-keys.png'
+import profilerShotEn from '../../../../docs/assets/compare-pen/live-en-events.png'
 import packageJson from '../../../../package.json' with { type: 'json' }
 
 const packageVersion = (packageJson as { version?: string }).version ?? '0.0.0'
 
-const navItems = [
-  { href: '#architecture', label: '痛点' },
-  { href: '#features', label: '收益' },
-  { href: '#quickstart', label: '开始' },
-  { href: '#console', label: '控制台' },
-  { href: '#fit', label: '适合谁' },
-  { href: '#faq', label: 'FAQ' },
+type Lang = 'zh' | 'en'
+type T = { zh: string; en: string }
+type TImg = { zh: string; en: string }
+const t = (lang: Lang, v: T) => v[lang]
+
+// ---------- copy ----------
+
+const COPY = {
+  nav: {
+    why: { zh: '现状', en: 'The mess' },
+    how: { zh: '怎么用', en: 'How' },
+    debug: { zh: '排查', en: 'Debug' },
+    local: { zh: '本地优先', en: 'Local-first' },
+    start: { zh: '开始', en: 'Start' },
+    faq: { zh: 'FAQ', en: 'FAQ' },
+  },
+  ctaConsole: { zh: '打开控制台', en: 'Open console' },
+  ctaInstall: { zh: '立即安装', en: 'Install now' },
+  ctaPreview: { zh: '看看控制台长什么样', en: 'Preview the console' },
+  hero: {
+    badge: {
+      zh: 'v' + packageVersion + ' · Rust 内核 · 完全开源',
+      en: 'v' + packageVersion + ' · Rust core · Open source',
+    },
+    h1Top: { zh: '你的 API Key', en: 'Your API key' },
+    h1Bottom: {
+      zh: '不该躺在 30 个 .env 里',
+      en: 'shouldn’t live in 30 .env files',
+    },
+    lead: {
+      zh: 'cc-gw 在你的机器上跑一个本地网关。Claude Code、OpenAI SDK、Anthropic SDK 全部指向同一个地址。换模型、换 provider、查日志，再也不用翻业务代码。',
+      en: 'cc-gw runs a small gateway right on your machine. Point Claude Code, the OpenAI SDK, and the Anthropic SDK at one address — then swap models, switch providers, and trace requests without touching your app code.',
+    },
+    note: {
+      zh: '不需要本机有 Rust 环境，npm 自动拉对应平台的预编译二进制。',
+      en: 'No Rust toolchain needed — npm pulls the right prebuilt binary for your platform.',
+    },
+    proof: [
+      { zh: '一条命令装好，本机就能跑', en: 'One command to install, runs on your laptop' },
+      { zh: '客户端只改 baseURL，不动业务逻辑', en: 'Clients only change baseURL — your code stays put' },
+      { zh: '所有数据都在 ~/.cc-gw 下，不走云', en: 'Everything lives under ~/.cc-gw — nothing leaves your box' },
+    ] as T[],
+    works: { zh: '已经在以下客户端里跑通', en: 'Tested with' },
+  },
+  why: {
+    eyebrow: { zh: '现状', en: 'The mess' },
+    title: {
+      zh: 'AI 接进来不难，难的是接进来之后',
+      en: 'Wiring up AI is easy. Living with it isn’t.',
+    },
+    description: {
+      zh: '你大概率已经踩过下面这三件事里的至少两件。这就是为什么有了 cc-gw。',
+      en: 'You’ve probably hit at least two of these. That’s why cc-gw exists.',
+    },
+    cards: [
+      {
+        title: { zh: 'Key 散在各个 .env 里', en: 'Keys scattered across .env files' },
+        body: {
+          zh: '每个项目自己一份 baseURL、自己一份 key、自己一份模型名。时间一长，没人敢动，也没人记得清。',
+          en: 'Every project keeps its own baseURL, its own key, its own model name. Six months in, nobody dares touch it.',
+        },
+        sample: 'OPENAI_BASE_URL=https://...\nANTHROPIC_API_KEY=sk-ant-...\nMODEL=gpt-4o-2024-08-06',
+      },
+      {
+        title: { zh: '出错只能猜', en: 'Debugging is just guessing' },
+        body: {
+          zh: '是 payload 错？协议不对？上游挂了？key 被收回了？没有统一日志，只能 curl 一遍试一遍。',
+          en: 'Bad payload? Wrong protocol? Upstream down? Key revoked? Without one log to look at, you curl your way through every theory.',
+        },
+        sample: '$ curl ... 401\n# 是 key 过期？还是 endpoint 写错了？\n# Or has the key been rotated?',
+      },
+      {
+        title: { zh: '换模型像拆地雷', en: 'Swapping models is a minefield' },
+        body: {
+          zh: '想从 GPT-4o 换 Claude Sonnet？要么 grep 30 个文件挨个改，要么改一堆环境变量然后祈祷。',
+          en: 'Want to try Claude Sonnet instead of GPT-4o? Either grep 30 files or rotate a pile of env vars and pray.',
+        },
+        sample: '- model: gpt-4o\n+ model: claude-sonnet-4-5\n  // 30 处需要同步修改…',
+      },
+    ],
+  },
+  how: {
+    eyebrow: { zh: '怎么解决', en: 'The fix' },
+    title: {
+      zh: '一个本地入口，背后什么都能换',
+      en: 'One local endpoint. Anything behind it can change.',
+    },
+    description: {
+      zh: '客户端只认 cc-gw。模型、provider、路由策略，全都在网关里调，业务代码不动。',
+      en: 'Your clients only know cc-gw. Models, providers, routing rules — all live in the gateway. Your code never moves.',
+    },
+    diagramLabels: {
+      clients: { zh: '你的客户端', en: 'Your clients' },
+      gateway: { zh: '本地网关', en: 'Local gateway' },
+      providers: { zh: '上游 Provider', en: 'Upstream providers' },
+    },
+    differentiator: {
+      eyebrow: { zh: '一个真正的差异化', en: 'A real superpower' },
+      title: {
+        zh: '用 Anthropic 的代码，调 GPT-4o；反过来也行',
+        en: 'Write Anthropic code, route to GPT-4o. Or the other way around.',
+      },
+      body: {
+        zh: 'cc-gw 在网关层完成 Anthropic ↔ OpenAI Chat ↔ OpenAI Responses 三端六方向的协议转换，包括 SSE 流式。所以 Claude Code 里写的代码可以路由到 GPT-4o，OpenAI SDK 写的代码也可以路由到 Claude。',
+        en: 'cc-gw does full bidirectional translation across Anthropic, OpenAI Chat, and OpenAI Responses — including SSE streaming. So your Claude Code can run on GPT-4o, and your OpenAI SDK can run on Claude.',
+      },
+      example: { zh: '示例：客户端协议 → 上游模型', en: 'Example: client protocol → upstream model' },
+    },
+    flowSteps: [
+      { zh: '客户端发起请求', en: 'Client sends request' },
+      { zh: '按规则匹配 Provider', en: 'Routes to the right provider' },
+      { zh: '协议转换 + 流式透传', en: 'Translates protocol + streams through' },
+      { zh: '回包同时落日志', en: 'Logs the round-trip on the way back' },
+    ] as T[],
+  },
+  debug: {
+    eyebrow: { zh: '排查', en: 'Observability' },
+    title: {
+      zh: '出了事，能看到一整段对话',
+      en: 'When things break, see the whole conversation',
+    },
+    description: {
+      zh: '不只是一条请求的耗时。Profiler 把多轮对话的每一 turn 串成 session，TTFT、TPOT、token 用量全都记下来。',
+      en: 'Not just a single request. The Profiler stitches every turn of a multi-turn conversation into one session, with TTFT, TPOT, and token counts all recorded.',
+    },
+    payload: {
+      title: { zh: '四段 payload，分开存', en: 'Four payloads, stored separately' },
+      body: {
+        zh: '每个请求都会保留：客户端发出的、网关转给上游的、上游回来的、再转回客户端的。跨协议有 bug？两侧对照一下就清楚了。',
+        en: 'For every request we keep four blobs: what the client sent, what we sent upstream, what came back, and what the client finally received. Cross-protocol bug? Compare both sides — done.',
+      },
+      stages: [
+        { zh: '客户端请求', en: 'Client request' },
+        { zh: '上游请求', en: 'Upstream request' },
+        { zh: '上游响应', en: 'Upstream response' },
+        { zh: '客户端响应', en: 'Client response' },
+      ] as T[],
+      clientSide: { zh: '客户端侧', en: 'client side' },
+      upstreamSide: { zh: '上游侧', en: 'upstream side' },
+    },
+    pillars: [
+      {
+        icon: FileText,
+        title: { zh: 'Logs', en: 'Logs' },
+        body: {
+          zh: '按 endpoint / Key / 状态码筛选，定位失败请求只要几秒。可选保留完整 payload。',
+          en: 'Filter by endpoint, key, or status code. Optional full-payload capture.',
+        },
+      },
+      {
+        icon: Gauge,
+        title: { zh: 'Profiler', en: 'Profiler' },
+        body: {
+          zh: '按 session 聚合多轮 turn。每轮 TTFT / TPOT / tokens 一目了然，慢的那 turn 一眼能挑出。',
+          en: 'Multi-turn sessions, one row per turn. TTFT, TPOT, tokens — spot the slow turn instantly.',
+        },
+      },
+      {
+        icon: Network,
+        title: { zh: 'Events', en: 'Events' },
+        body: {
+          zh: '配置变更、Key 增删、鉴权失败、并发拒绝，全部以事件形式可追溯。',
+          en: 'Config changes, key edits, auth failures, concurrency rejects — all auditable as events.',
+        },
+      },
+    ],
+  },
+  local: {
+    eyebrow: { zh: '本地优先', en: 'Local-first' },
+    title: {
+      zh: '所有东西都在你机器的 ~/.cc-gw 下',
+      en: 'Everything lives under ~/.cc-gw on your machine',
+    },
+    description: {
+      zh: '没有云端，没有遥测，没有外部依赖。配置可以版本管理，数据库可以直接打开，要离线跑就离线跑。',
+      en: 'No cloud. No telemetry. No external dependencies. Version-control your config, open the SQLite file with any tool, run it offline if you want to.',
+    },
+    pillars: [
+      {
+        icon: Lock,
+        title: { zh: 'Key 加密落库', en: 'Keys encrypted at rest' },
+        body: {
+          zh: 'API Key 用 AES-256-GCM 加密存储，索引只走 SHA-256 哈希，明文永不落盘。',
+          en: 'API keys encrypted with AES-256-GCM. Lookups go through SHA-256 hashes — plaintext never hits disk.',
+        },
+      },
+      {
+        icon: KeyRound,
+        title: { zh: '按客户端独立 Key', en: 'Per-client API keys' },
+        body: {
+          zh: '为不同客户端、环境、成员发独立 Key。可设并发上限，可配 endpoint 白名单，停用即时生效。',
+          en: 'Issue separate keys per client, env, or teammate. Set concurrency caps, restrict to specific endpoints, revoke instantly.',
+        },
+      },
+      {
+        icon: Repeat,
+        title: { zh: '配置热改，无需重启', en: 'Hot reload — no restart' },
+        body: {
+          zh: '改路由、加自定义 endpoint、调默认模型，控制台保存即生效。Rust 后端常驻，开发机也能长期挂着。',
+          en: 'Edit routing, add custom endpoints, change defaults — saves apply live. The Rust process is light enough to leave running on your laptop.',
+        },
+      },
+      {
+        icon: Zap,
+        title: { zh: '老用户数据无痛迁移', en: 'Old data just works' },
+        body: {
+          zh: '从旧 Node 版本升级？config.json 和 gateway.db 直接继承，自动做 schema 迁移，历史日志一条不丢。',
+          en: 'Upgrading from the old Node build? Your config.json and gateway.db carry over — schema is migrated in place, no log loss.',
+        },
+      },
+    ],
+    treeCaption: {
+      zh: '一切都在这个目录下，备份它就等于备份了整个 cc-gw。',
+      en: 'Back up this folder and you’ve backed up your entire cc-gw setup.',
+    },
+  },
+  start: {
+    eyebrow: { zh: '开始', en: 'Get started' },
+    title: { zh: '4 步跑起来', en: 'Up and running in four steps' },
+    description: {
+      zh: '不用先改团队流程。先让一个客户端走通，看到价值再往后扩。',
+      en: 'No team-wide migration. Get one client through first — expand from there.',
+    },
+    steps: [
+      {
+        title: { zh: '安装', en: 'Install' },
+        body: {
+          zh: '一条命令搞定，npm 会自动拉对应平台的预编译二进制。',
+          en: 'One command. npm grabs the prebuilt binary for your platform automatically.',
+        },
+        code: 'npm install -g @chenpu17/cc-gw',
+      },
+      {
+        title: { zh: '启动', en: 'Start' },
+        body: {
+          zh: '前台模式方便观察日志；想常驻就 `--daemon`。默认绑定 127.0.0.1:4100。',
+          en: 'Foreground for live logs, or `--daemon` to keep it running. Binds to 127.0.0.1:4100 by default.',
+        },
+        code: 'cc-gw start --foreground --port 4100',
+      },
+      {
+        title: { zh: '加 Provider', en: 'Add a provider' },
+        body: {
+          zh: '打开控制台，把你的 OpenAI / Anthropic / 兼容 provider 填进去。',
+          en: 'Open the console and plug in your OpenAI, Anthropic, or any compatible provider.',
+        },
+        code: 'open http://127.0.0.1:4100/ui',
+      },
+      {
+        title: { zh: '指过去', en: 'Point your client' },
+        body: {
+          zh: '客户端只改 baseURL。Anthropic 协议走根路径，OpenAI 协议加 /openai/v1 前缀。',
+          en: 'Just change baseURL. Anthropic protocol uses the root path; OpenAI uses /openai/v1.',
+        },
+        code: "ANTHROPIC_BASE_URL='http://127.0.0.1:4100'\nOPENAI_BASE_URL='http://127.0.0.1:4100/openai/v1'",
+      },
+    ],
+  },
+  console: {
+    eyebrow: { zh: '控制台', en: 'Console' },
+    title: { zh: '不是摆设，是你每天用的地方', en: 'Not for show — you’ll be in here daily' },
+    description: {
+      zh: '请求进来之后，趋势、日志、路由、Key、Profiler 都在同一个台子里。',
+      en: 'Once requests start flowing, trends, logs, routing, keys, and profiler all live under one roof.',
+    },
+  },
+  fit: {
+    eyebrow: { zh: '适合谁', en: 'Who it’s for' },
+    title: {
+      zh: '诚实地说：它不是为所有人做的',
+      en: 'Honestly: it’s not for everyone',
+    },
+    description: {
+      zh: '如果你的 AI 调用已经开始扩张，但又没到要上组织级治理平台的程度，cc-gw 多半正好卡在合适的位置。',
+      en: 'If your AI usage is growing but you’re not ready for an enterprise governance platform, cc-gw probably sits right where you need it.',
+    },
+    yesTitle: { zh: '适合', en: 'Good fit' },
+    noTitle: { zh: '不适合', en: 'Not a fit' },
+    yes: [
+      { zh: '同时在用 Claude Code、OpenAI SDK、Anthropic SDK', en: 'Already juggling Claude Code, OpenAI SDK, and Anthropic SDK' },
+      { zh: '2-10 人 AI 小队，需要共享入口和日志', en: 'A 2–10 person AI team that needs a shared entrypoint and shared logs' },
+      { zh: '10-100 人研发团队，开始多人共享模型调用', en: 'A 10–100 dev team starting to share model calls across people' },
+      { zh: '想自托管，对数据归属敏感', en: 'You self-host. Data sovereignty matters.' },
+      { zh: '受不了把 key、baseURL 散在每个项目里', en: 'You’re tired of keys and baseURLs sprinkled across every repo' },
+    ] as T[],
+    no: [
+      { zh: '需要跨 BU 治理、复杂审批流', en: 'You need cross-BU governance and complex approval flows' },
+      { zh: '需要企业 SSO 与组织级策略中台', en: 'Enterprise SSO and org-level policy hubs' },
+      { zh: '需要多副本 HA 集群', en: 'High-availability multi-replica clusters' },
+      { zh: '强 Compliance 场景（金融、医疗等）', en: 'Heavily regulated industries (finance, healthcare)' },
+      { zh: '希望一套大平台囊括所有 AI 成本结算', en: 'A single platform to handle all AI cost reconciliation' },
+    ] as T[],
+  },
+  faq: {
+    eyebrow: { zh: 'FAQ', en: 'FAQ' },
+    title: { zh: '你可能想问', en: 'You probably want to ask' },
+    description: {
+      zh: '从是否值得装、会不会绑死、数据放哪几个最常见的疑问开始。',
+      en: 'Starting with the questions people ask most: is it worth it, does it lock me in, where does my data live.',
+    },
+    items: [
+      {
+        q: { zh: '我一个人用，也值得装吗？', en: 'I’m a solo dev — is it still worth it?' },
+        a: {
+          zh: '只用一个 provider、一个项目，可能不需要。但只要你同时在用 Claude Code 和 OpenAI SDK，或者经常切模型，统一入口能省下来的维护时间会很可观。',
+          en: 'If you use one provider and one project, probably not. But the moment you’re juggling Claude Code and the OpenAI SDK — or switching models often — having one entrypoint pays back fast.',
+        },
+      },
+      {
+        q: { zh: '会不会被 cc-gw 绑死？', en: 'Will I get locked into cc-gw?' },
+        a: {
+          zh: '不会。客户端用的还是 OpenAI / Anthropic 标准协议，不要 cc-gw 也能工作。配置和数据都是 JSON + SQLite，可以直接读、直接迁。',
+          en: 'No. Your clients still speak standard OpenAI / Anthropic protocols and work fine without cc-gw. Your config is plain JSON, your data is plain SQLite — read or migrate it any time.',
+        },
+      },
+      {
+        q: { zh: '数据存在哪里？会上传吗？', en: 'Where does my data live? Does anything get uploaded?' },
+        a: {
+          zh: '全部在本机 ~/.cc-gw/ 下：config.json、SQLite 数据库、加密密钥、日志文件。请求只在你和上游 provider 之间转发，cc-gw 自己不发遥测。',
+          en: 'Everything is local under ~/.cc-gw/: config.json, the SQLite database, the encryption key, and log files. Requests flow only between you and the upstream provider — cc-gw sends no telemetry.',
+        },
+      },
+      {
+        q: { zh: '它和 LiteLLM、One API 这些有啥区别？', en: 'How is it different from LiteLLM or One API?' },
+        a: {
+          zh: '主要三点：(1) 默认本地优先、零云依赖；(2) 跨协议三端六方向真正双向转换，包括 SSE 流式；(3) 内置按 session 聚合的 Profiler 和四段 payload 存储，专门给跨协议排查用。',
+          en: 'Three things: (1) local-first by default, zero cloud dependency; (2) true bidirectional translation across Anthropic, OpenAI Chat, and OpenAI Responses — streaming included; (3) a built-in Profiler that groups multi-turn sessions, plus four-segment payload storage purpose-built for cross-protocol debugging.',
+        },
+      },
+      {
+        q: { zh: '安装需要本机有 Rust 吗？', en: 'Do I need Rust installed?' },
+        a: {
+          zh: '不需要。npm 包通过 optionalDependencies 自动拉对应平台的预编译二进制：macOS arm64、Linux x64/arm64、Windows x64。',
+          en: 'No. The npm package uses optionalDependencies to pull the right prebuilt binary for your platform: macOS arm64, Linux x64/arm64, and Windows x64.',
+        },
+      },
+    ],
+  },
+  cta: {
+    title: { zh: '今天就把这件事处理掉', en: 'Take care of this today' },
+    body: {
+      zh: '一条命令就能装好。先在本地跑通一个客户端，看到价值再往后扩。',
+      en: 'One command to install. Get one client running locally, see if it pays back, then keep going.',
+    },
+  },
+  footer: {
+    tagline: {
+      zh: 'cc-gw · 给开发者和小团队的本地优先 AI 网关',
+      en: 'cc-gw · A local-first AI gateway for developers and small teams',
+    },
+    console: { zh: '控制台', en: 'Console' },
+    changelog: { zh: '更新日志', en: 'Changelog' },
+  },
+}
+
+const compatibilityBadges = ['Claude Code', 'OpenAI SDK', 'Anthropic SDK', 'cURL', 'LangChain', 'Vercel AI SDK']
+
+const protocolExamples = [
+  {
+    client: 'Anthropic SDK',
+    upstream: { zh: 'OpenAI · GPT-4o', en: 'OpenAI · GPT-4o' } as T,
+    accent: 'from-amber-500/20 to-rose-500/20 text-amber-600',
+  },
+  {
+    client: 'OpenAI SDK',
+    upstream: { zh: 'Anthropic · Claude Sonnet', en: 'Anthropic · Claude Sonnet' } as T,
+    accent: 'from-cyan-500/20 to-indigo-500/20 text-cyan-600',
+  },
+  {
+    client: 'Claude Code',
+    upstream: { zh: '本地 Ollama / 自建模型', en: 'Local Ollama / self-hosted' } as T,
+    accent: 'from-emerald-500/20 to-teal-500/20 text-emerald-600',
+  },
 ]
 
-const compatibilityBadges = ['OpenAI SDK', 'Anthropic SDK', 'Claude Code', 'cURL', 'LangChain', 'Vercel AI SDK']
+const compatibleProviders: T = {
+  zh: '兼容 provider · 自建模型',
+  en: 'Compatible providers · self-hosted',
+}
 
-const runtimeMetrics = [
-  { value: '1 个', label: '团队统一入口' },
-  { value: '少改', label: '业务代码少被打扰' },
-  { value: '可查', label: '日志链路可追踪' },
-  { value: '本地', label: '轻量自托管优先' },
-]
+const codeUi = {
+  copy: { zh: '复制', en: 'Copy' } as T,
+  copied: { zh: '已复制', en: 'Copied' } as T,
+}
 
-const heroProofPoints = [
-  '不用在每个项目里重复配置 baseURL 和 API Key',
-  '出问题先看日志、链路和 Profiler，不再靠猜',
-  '换 provider、模型和路由时，尽量不打扰业务代码',
-]
-
-const scenarioCards = [
-  {
-    title: '个人开发者',
-    body: '你同时在用 Claude Code、OpenAI SDK 和几个脚本工具，已经不想再维护多套 Key 与地址。',
-  },
-  {
-    title: 'AI 产品小队',
-    body: '团队开始共享模型调用，想统一入口、路由和日志，但还不想先上复杂平台。',
-  },
-  {
-    title: '1-100 人研发团队',
-    body: '需要给多个环境、多个客户端和不同成员分配调用权限，同时保留轻量自托管的灵活性。',
-  },
-]
-
-const featureCards = [
-  {
-    icon: GitBranch,
-    title: '换模型，不再到处改配置',
-    body: '客户端继续请求同一个入口，模型映射、Provider 切换和路由策略交给网关处理。',
-  },
-  {
-    icon: BarChart3,
-    title: '排查问题，不再只能靠猜',
-    body: '请求日志、上游链路、TTFT/TPOT、Token usage 和事件记录都能在控制台看到。',
-  },
-  {
-    icon: KeyRound,
-    title: 'Key 管理，不再散落在脚本里',
-    body: '为不同客户端、环境或成员创建独立 Key，方便审计、停用和隔离风险。',
-  },
-  {
-    icon: CheckCircle2,
-    title: '先本地跑，再给团队共享',
-    body: 'npm 安装即可启动，个人先试，团队需要时再迁到共享机器或轻量自托管实例。',
-  },
-]
-
-const firstDayJourney = [
-  {
-    icon: Terminal,
-    eyebrow: '01',
-    title: '先接一个你已经在用的客户端',
-    body: '从 Claude Code、OpenAI SDK 或 Anthropic SDK 里挑一个，不需要先迁所有项目。',
-    detail: '目标是让第一个真实请求先跑通，并进入控制台可观测范围。',
-  },
-  {
-    icon: KeyRound,
-    eyebrow: '02',
-    title: '把密钥和访问范围收回来',
-    body: '给不同成员、环境或工具分开 API Key，避免继续共享同一个万能 Key。',
-    detail: '这样做之后，停用、排查和审计都会轻很多。',
-  },
-  {
-    icon: GitBranch,
-    eyebrow: '03',
-    title: '开始通过路由和日志持续调优',
-    body: '模型切换、Provider 替换和请求追踪都逐步从业务代码外迁到网关层。',
-    detail: '一旦流量和协作变复杂，价值会明显放大。',
-  },
-]
-
-const firstDayOutcomes = [
-  '客户端开始只认一个统一入口，而不是多套 base URL',
-  '调用问题能先在控制台定位，而不是在客户端里盲猜',
-  '模型和 Provider 的演进不必每次都打扰业务代码',
-]
-
-const quickStartSteps = [
-  {
-    title: '先在本地跑起来',
-    body: '不用先改团队流程，也不要求大家安装 Rust。先让一个统一入口可用。',
-    code: 'npm install -g @chenpu17/cc-gw\ncc-gw start --foreground --port 4100',
-  },
-  {
-    title: '接入一个现有客户端',
-    body: '先选 Claude Code、OpenAI SDK 或 Anthropic SDK 中的一个，把 base URL 指到 cc-gw。',
-    code: "baseURL = 'http://127.0.0.1:4100/openai/v1'\n# 或 http://127.0.0.1:4100/anthropic",
-  },
-  {
-    title: '开始用控制台接管日常',
-    body: '请求进来后，再慢慢管理路由、日志、API Keys、事件和 Profiler。',
-    code: 'Product site: http://127.0.0.1:4100/\nConsole:      http://127.0.0.1:4100/ui/',
-  },
-]
-
-const faqItems = [
-  {
-    question: '我只有一个人用，也需要 cc-gw 吗？',
-    answer:
-      '如果你只有一个脚本、一个 provider，可能暂时不需要。但只要你同时用 Claude Code、OpenAI SDK、Anthropic SDK，或者经常切模型和 Key，一个统一入口就会省很多维护成本。',
-  },
-  {
-    question: '它会不会绑死某个模型供应商？',
-    answer:
-      '不会。cc-gw 的价值正是把 Provider 和客户端解耦。客户端面对 cc-gw，背后的 OpenAI / Anthropic 兼容 Provider、模型映射和路由规则都可以继续调整。',
-  },
-  {
-    question: '它是企业级 AI 平台吗？',
-    answer:
-      '不是。它更适合个人开发者、AI 产品小队和 1-100 人研发团队，用轻量方式先解决入口、日志、路由、Key 管理和排查问题，而不是做大型治理平台。',
-  },
-]
+const directoryTree = `~/.cc-gw/
+├── config.json          # 直接编辑也行 / edit by hand if you like
+├── encryption.key       # 自动生成 / auto-generated
+├── cc-gw.pid
+├── data/
+│   └── gateway.db       # SQLite (WAL) — 直接 sqlite3 打开
+└── logs/
+    └── cc-gw.log`
 
 const consoleTabs = [
-  { id: 'dashboard', label: 'Dashboard', shot: dashboardShot },
-  { id: 'logs', label: 'Logs', shot: logsShot },
-  { id: 'models', label: 'Models & Routing', shot: modelsShot },
-  { id: 'apikeys', label: 'API Keys', shot: apiKeysShot },
-  { id: 'events', label: 'Events', shot: eventsShot },
+  { id: 'dashboard', shot: { zh: dashboardShotZh, en: dashboardShotEn }, label: { zh: '总览', en: 'Dashboard' }, blurb: { zh: '今天的请求量、延迟、健康状态，一屏看完。', en: 'Today’s request volume, latency, and health — at a glance.' } },
+  { id: 'logs', shot: { zh: logsShotZh, en: logsShotEn }, label: { zh: '请求日志', en: 'Logs' }, blurb: { zh: '按 endpoint / Key / 状态码筛，几秒定位。', en: 'Filter by endpoint, key, or status. Find issues in seconds.' } },
+  { id: 'routing', shot: { zh: modelsShotZh, en: modelsShotEn }, label: { zh: '模型路由', en: 'Routing' }, blurb: { zh: '别名、通配匹配、fallback 链全在 UI 里维护。', en: 'Aliases, wildcards, and fallback chains — all in the UI.' } },
+  { id: 'keys', shot: { zh: apiKeysShotZh, en: apiKeysShotEn }, label: { zh: 'API Keys', en: 'API Keys' }, blurb: { zh: '按客户端发独立 Key，可设并发上限。', en: 'Per-client keys with concurrency caps.' } },
+  { id: 'profiler', shot: { zh: profilerShotZh, en: profilerShotEn }, label: { zh: 'Profiler & Events', en: 'Profiler & Events' }, blurb: { zh: '多轮对话按 session 聚合，事件流可追溯。', en: 'Sessions group multi-turn calls. Events keep an audit trail.' } },
 ]
 
-function Section({
-  id,
-  eyebrow,
-  title,
-  description,
-  children,
-  className,
-}: {
-  id?: string
-  eyebrow: string
-  title: string
-  description: string
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <section id={id} className={cn('mx-auto w-full max-w-6xl px-6 py-14 sm:px-8 lg:px-10', className)}>
-      <div className="max-w-3xl">
-        <div className="text-sm font-semibold uppercase tracking-[0.16em] text-indigo-600">{eyebrow}</div>
-        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{title}</h2>
-        <p className="mt-4 text-base leading-8 text-slate-600 sm:text-lg">{description}</p>
-      </div>
-      <div className="mt-8">{children}</div>
-    </section>
-  )
-}
+// ---------- atoms ----------
 
-function NavLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <a
-      href={href}
-      className="rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
-    >
-      {children}
-    </a>
-  )
-}
-
-function renderCodeLine(line: string): ReactNode {
-  if (line.trimStart().startsWith('#')) {
-    return <span className="text-slate-400">{line}</span>
-  }
-  const assignMatch = line.match(/^(\w+)(\s*=\s*)(.+)$/)
-  if (assignMatch) {
-    const key = assignMatch[1] ?? ''
-    const op = assignMatch[2] ?? ''
-    const val = assignMatch[3] ?? ''
-    const isStr = val.startsWith("'") || val.startsWith('"')
+function highlightCode(line: string): ReactNode {
+  if (line.trim().startsWith('#')) return <span className="text-slate-500">{line}</span>
+  if (line.startsWith('$ ')) {
     return (
       <>
+        <span className="select-none text-emerald-400">$ </span>
+        <span className="text-slate-100">{line.slice(2)}</span>
+      </>
+    )
+  }
+  const assign = line.match(/^(\s*)([A-Z_][\w]*)(\s*=\s*)(.+)$/)
+  if (assign) {
+    const [, indent, key, op, val] = assign
+    const isStr = val!.startsWith("'") || val!.startsWith('"')
+    return (
+      <>
+        <span>{indent}</span>
         <span className="text-indigo-300">{key}</span>
-        <span className="text-slate-100">{op}</span>
-        <span className={isStr ? 'text-emerald-400' : 'text-slate-100'}>{val}</span>
-      </>
-    )
-  }
-  const kvMatch = line.match(/^([A-Za-z][A-Za-z\s]*:\s+)(.+)$/)
-  if (kvMatch) {
-    return (
-      <>
-        <span className="text-indigo-300">{kvMatch[1]}</span>
-        <span className="text-emerald-400">{kvMatch[2]}</span>
-      </>
-    )
-  }
-  const parts = line.split(/(--[\w-]+)/g)
-  if (parts.length > 1) {
-    return (
-      <>
-        {parts.map((part, i) =>
-          part.startsWith('--') ? (
-            <span key={i} className="text-indigo-300">
-              {part}
-            </span>
-          ) : (
-            <span key={i} className="text-slate-100">
-              {part}
-            </span>
-          ),
-        )}
+        <span className="text-slate-400">{op}</span>
+        <span className={isStr ? 'text-emerald-300' : 'text-slate-100'}>{val}</span>
       </>
     )
   }
   return <span className="text-slate-100">{line}</span>
 }
 
-function CodeBlock({ code, label, className }: { code: string; label: string; className?: string }) {
+function CodeBlock({
+  code,
+  label,
+  className,
+  copyLabel,
+  copiedLabel,
+}: {
+  code: string
+  label: string
+  className?: string
+  copyLabel: string
+  copiedLabel: string
+}) {
   const [copied, setCopied] = useState(false)
-
-  async function handleCopy() {
+  async function onCopy() {
     await copyToClipboard(code)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1800)
   }
-
   return (
     <div className={cn('relative min-w-0', className)}>
       <button
         type="button"
-        aria-label={`复制 ${label}`}
-        onClick={handleCopy}
-        className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-slate-100 transition hover:bg-white/15 sm:px-3 sm:py-1.5 sm:text-xs"
+        aria-label={`Copy ${label}`}
+        onClick={onCopy}
+        className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/10 px-2.5 py-1 text-[11px] font-medium text-slate-100 transition hover:bg-white/15"
       >
         {copied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-        {copied ? '已复制' : '复制'}
+        {copied ? copiedLabel : copyLabel}
       </button>
-      <pre className="max-w-full overflow-x-auto rounded-2xl bg-slate-950 p-4 text-xs leading-6 sm:p-5 sm:text-sm sm:leading-7">
+      <pre className="max-w-full overflow-x-auto rounded-2xl bg-slate-950 p-5 font-mono text-[13px] leading-7 text-slate-100 ring-1 ring-white/5 [&_::selection]:bg-blue-500/40 [&_::selection]:text-white">
         <code>
           {code.split('\n').map((line, i) => (
             <span key={i} className="block">
-              {renderCodeLine(line)}
+              {highlightCode(line) ?? '\u00a0'}
             </span>
           ))}
         </code>
@@ -277,83 +506,132 @@ function CodeBlock({ code, label, className }: { code: string; label: string; cl
   )
 }
 
-function QuickInstallBar() {
+function InstallPill() {
   const [copied, setCopied] = useState(false)
   const cmd = 'npm install -g @chenpu17/cc-gw'
-
-  async function handleCopy() {
+  async function onCopy() {
     await copyToClipboard(cmd)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1800)
   }
-
   return (
-    <div className="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 pl-4 pr-2 py-2">
-      <span className="select-all font-mono text-sm text-slate-700">{cmd}</span>
-      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">v{packageVersion}</span>
+    <div className="inline-flex w-full max-w-md items-center gap-2 rounded-2xl border border-white/15 bg-white/5 py-2 pl-4 pr-2 backdrop-blur-sm">
+      <span className="select-none font-mono text-emerald-400">$</span>
+      <span className="select-all truncate font-mono text-sm text-slate-100">{cmd}</span>
       <button
         type="button"
-        aria-label="复制安装命令"
-        onClick={handleCopy}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 hover:text-slate-700"
+        aria-label="Copy install command"
+        onClick={onCopy}
+        className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-slate-200 transition hover:bg-white/20"
       >
-        {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
     </div>
   )
 }
 
+function SectionHead({
+  eyebrow,
+  title,
+  description,
+}: {
+  eyebrow: string
+  title: string
+  description: string
+}) {
+  return (
+    <div className="max-w-3xl">
+      <div className="font-mono text-xs font-semibold uppercase tracking-[0.22em] text-indigo-600">
+        {eyebrow}
+      </div>
+      <h2 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-slate-950 sm:text-4xl">
+        {title}
+      </h2>
+      <p className="mt-4 text-base leading-8 text-slate-600 sm:text-lg">{description}</p>
+    </div>
+  )
+}
+
+// ---------- page ----------
+
 export default function LandingPage() {
-  const [activeTab, setActiveTab] = useState('dashboard')
-  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null)
+  const [lang, setLang] = useState<Lang>('zh')
+  const [activeTab, setActiveTab] = useState(consoleTabs[0]!.id)
+  const [openFaq, setOpenFaq] = useState<number | null>(0)
+  const tt = (v: T) => t(lang, v)
+  const activeConsole = consoleTabs.find((c) => c.id === activeTab) ?? consoleTabs[0]!
+
+  const navItems = [
+    { href: '#why', label: tt(COPY.nav.why) },
+    { href: '#how', label: tt(COPY.nav.how) },
+    { href: '#debug', label: tt(COPY.nav.debug) },
+    { href: '#local', label: tt(COPY.nav.local) },
+    { href: '#start', label: tt(COPY.nav.start) },
+    { href: '#faq', label: tt(COPY.nav.faq) },
+  ]
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#eef4ff_0%,#f8fbff_26%,#ffffff_62%)] text-slate-950">
-      {/* Header */}
-      <header className="sticky top-0 z-20 border-b border-white/70 bg-white/88 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 sm:px-8 lg:px-10">
-          <div className="flex items-center gap-3">
-            <BrandMark className="h-11 w-11 shadow-[0_18px_40px_-24px_rgba(79,70,229,0.55)]" title="cc-gw" />
-            <div>
-              <div className="text-lg font-semibold tracking-tight">cc-gw</div>
-              <div className="text-xs text-slate-500">AI gateway for builders</div>
+    <div className="min-h-screen bg-white text-slate-950 antialiased">
+      {/* ============= HEADER ============= */}
+      <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3.5 sm:px-8 lg:px-10">
+          <a href="#top" className="flex items-center gap-2.5">
+            <BrandMark className="h-9 w-9" title="cc-gw" />
+            <div className="leading-tight">
+              <div className="text-[15px] font-semibold tracking-tight">cc-gw</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                local-first ai gateway
+              </div>
             </div>
-          </div>
+          </a>
 
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav className="hidden items-center gap-1 lg:flex">
             {navItems.map((item) => (
-              <NavLink key={item.href} href={item.href}>
+              <a
+                key={item.href}
+                href={item.href}
+                className="rounded-lg px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+              >
                 {item.label}
-              </NavLink>
+              </a>
             ))}
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+              aria-label="Toggle language"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300"
+            >
+              <Languages className="h-3.5 w-3.5" />
+              {lang === 'zh' ? 'EN' : '中文'}
+            </button>
             <a
               href="/ui/"
-              className="hidden rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-950 sm:inline-flex"
+              className="hidden rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950 sm:inline-flex"
             >
-              打开控制台
+              {tt(COPY.ctaConsole)}
             </a>
             <a
               href="https://github.com/chenpu17/cc-gw2"
-              className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-slate-800"
             >
+              <Github className="h-4 w-4" />
               GitHub
-              <ArrowRight className="h-4 w-4" />
             </a>
           </div>
         </div>
 
         <nav
-          aria-label="移动端页面导航"
-          className="flex gap-2 overflow-x-auto border-t border-slate-200/70 px-4 py-2 md:hidden"
+          aria-label="Mobile section navigation"
+          className="flex gap-1.5 overflow-x-auto border-t border-slate-200/70 px-4 py-2 lg:hidden"
         >
-          {[...navItems, { href: '/ui/', label: '打开控制台' }].map((item) => (
+          {[...navItems, { href: '/ui/', label: tt(COPY.ctaConsole) }].map((item) => (
             <a
               key={item.href}
               href={item.href}
-              className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700"
+              className="shrink-0 rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
             >
               {item.label}
             </a>
@@ -361,520 +639,593 @@ export default function LandingPage() {
         </nav>
       </header>
 
-      <main>
-        {/* Hero Section */}
-        <section className="mx-auto w-full max-w-6xl px-6 py-12 sm:px-8 lg:px-10 lg:py-14">
-          <div className="overflow-hidden rounded-[2rem] border border-white/70 bg-white/78 px-6 py-8 shadow-[0_30px_80px_-44px_rgba(15,23,42,0.24)] ring-1 ring-slate-900/5 backdrop-blur xl:px-8 xl:py-9">
-            <div className="grid gap-8 xl:grid-cols-[minmax(0,1.04fr)_minmax(420px,0.96fr)] xl:items-center">
-              <div>
-                <div className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50/80 px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm">
-                  Local-first · Open Source · Rust-powered
-                </div>
+      <main id="top">
+        {/* ============= HERO ============= */}
+        <section className="relative overflow-hidden bg-slate-950 text-white [&_::selection]:bg-indigo-400/40 [&_::selection]:text-white">
+          <div
+            aria-hidden
+            className="absolute inset-0 opacity-[0.18]"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, rgba(148,163,184,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.18) 1px, transparent 1px)',
+              backgroundSize: '48px 48px',
+              maskImage: 'radial-gradient(ellipse at center top, black 30%, transparent 75%)',
+              WebkitMaskImage: 'radial-gradient(ellipse at center top, black 30%, transparent 75%)',
+            }}
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -top-40 left-1/2 h-[640px] w-[1100px] -translate-x-1/2 rounded-full opacity-60 blur-[120px]"
+            style={{
+              background:
+                'radial-gradient(closest-side, rgba(99,102,241,0.55), transparent 70%), radial-gradient(closest-side at 70% 60%, rgba(34,211,238,0.35), transparent 70%)',
+            }}
+          />
 
-                <h1 className="mt-5 max-w-4xl text-[2.25rem] font-bold tracking-[-0.04em] text-slate-950 sm:text-[2.75rem] xl:text-[3rem] xl:leading-[1.05]">
-                  别再让 AI 配置
-                  <span className="block bg-gradient-to-r from-indigo-700 via-violet-600 to-cyan-600 bg-clip-text text-transparent">
-                    散落在每个项目里
-                  </span>
-                </h1>
+          <div className="relative mx-auto w-full max-w-6xl px-6 pb-24 pt-20 sm:px-8 lg:px-10 lg:pt-28">
+            <div className="mx-auto max-w-3xl text-center">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 py-1 text-xs font-medium text-slate-200 backdrop-blur-sm">
+                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+                {tt(COPY.hero.badge)}
+              </span>
 
-                <p className="mt-5 max-w-2xl text-[1.02rem] leading-8 text-slate-600 xl:text-[1.08rem]">
-                  cc-gw 帮你把 Claude Code、OpenAI SDK、Anthropic SDK 和内部工具统一到一个本地优先入口。Key、路由、日志和排查都回到控制台里管理。
-                </p>
+              <h1 className="mt-7 text-[2.4rem] font-bold leading-[1.05] tracking-[-0.035em] sm:text-6xl">
+                {tt(COPY.hero.h1Top)}
+                <span className="mt-2 block bg-gradient-to-r from-indigo-300 via-violet-300 to-cyan-300 bg-clip-text text-transparent">
+                  {tt(COPY.hero.h1Bottom)}
+                </span>
+              </h1>
 
-                <div className="mt-5 hidden gap-2.5 md:grid md:max-w-xl">
-                  {heroProofPoints.map((item) => (
-                    <div
-                      key={item}
-                      className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 text-sm text-slate-700 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.18)]"
-                    >
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </div>
+              <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
+                {tt(COPY.hero.lead)}
+              </p>
 
-                <div className="mt-7 flex flex-wrap items-center gap-3">
-                  <a
-                    href="https://www.npmjs.com/package/@chenpu17/cc-gw"
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_-20px_rgba(79,70,229,0.6)] transition hover:from-indigo-500 hover:to-violet-500"
-                  >
-                    <Terminal className="h-4 w-4" />
-                    3 分钟开始接入
-                  </a>
-                  <a
-                    href="/ui/"
-                    className="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-400"
-                  >
-                    先看控制台 →
-                  </a>
-                </div>
-
-                <p className="mt-3 text-sm text-slate-500">
-                  不用先改团队流程。先接一个客户端，看到价值后再慢慢迁移。
-                </p>
-
-                <div className="mt-5">
-                  <QuickInstallBar />
-                </div>
-
-                <div className="mt-5">
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Works with</div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {compatibilityBadges.map((badge) => (
-                      <div
-                        key={badge}
-                        className="rounded-full border border-slate-200 bg-slate-50/88 px-3 py-1.5 text-sm text-slate-700"
-                      >
-                        {badge}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                <a
+                  href="#start"
+                  className="group inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-indigo-500/20 transition hover:bg-slate-100"
+                >
+                  <Terminal className="h-4 w-4" />
+                  {tt(COPY.ctaInstall)}
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </a>
+                <a
+                  href="#console"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/10"
+                >
+                  {tt(COPY.ctaPreview)}
+                </a>
               </div>
 
-              <div className="relative xl:pl-4">
-                <div className="absolute inset-x-6 top-0 h-36 rounded-full bg-gradient-to-r from-indigo-200/60 via-violet-200/45 to-cyan-200/55 blur-3xl" />
-                <div className="relative rounded-[2rem] border border-white/80 bg-gradient-to-b from-white to-slate-50 p-3 shadow-[0_32px_80px_-40px_rgba(15,23,42,0.34)] ring-1 ring-slate-900/5">
-                  <div className="flex items-center gap-1.5 border-b border-slate-100 px-4 py-3">
-                    <div className="h-3 w-3 rounded-full bg-slate-200" />
-                    <div className="h-3 w-3 rounded-full bg-slate-200" />
-                    <div className="h-3 w-3 rounded-full bg-slate-200" />
-                    <div className="ml-3 flex-1 rounded-md bg-slate-100 px-3 py-1 text-xs text-slate-400">
-                      http://127.0.0.1:4100/ui/
-                    </div>
-                  </div>
-                  <img
-                    src={dashboardShot}
-                    alt="cc-gw dashboard screenshot"
-                    className="max-h-[340px] w-full rounded-[1.25rem] object-cover object-top sm:max-h-[440px] xl:max-h-none"
-                  />
-                </div>
+              <div className="mt-7 flex flex-col items-center gap-2">
+                <InstallPill />
+                <p className="font-mono text-[11px] text-slate-400">{tt(COPY.hero.note)}</p>
+              </div>
 
-                <div className="mt-4 hidden gap-3 sm:grid sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/80 bg-white/88 p-4 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.28)]">
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Live Ops</div>
-                    <div className="mt-2 text-3xl font-bold tracking-tight text-slate-950">12</div>
-                    <div className="mt-1 text-sm text-slate-600">Active Requests right now</div>
+              <ul className="mt-10 grid gap-3 text-left sm:grid-cols-3">
+                {COPY.hero.proof.map((p, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[13px] leading-6 text-slate-200 backdrop-blur-sm"
+                  >
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                    <span>{tt(p)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* hero screenshot */}
+            <div className="relative mx-auto mt-16 max-w-5xl">
+              <div
+                aria-hidden
+                className="absolute inset-x-10 -top-10 h-40 rounded-full bg-gradient-to-r from-indigo-500/30 via-violet-500/25 to-cyan-500/30 blur-3xl"
+              />
+              <div className="relative overflow-hidden rounded-2xl border border-white/15 bg-slate-900/60 p-1.5 shadow-[0_40px_120px_-20px_rgba(2,6,23,0.8)] ring-1 ring-white/5 backdrop-blur">
+                <div className="flex items-center gap-1.5 border-b border-white/10 px-4 py-2.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400/70" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-300/70" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
+                  <div className="ml-3 flex-1 truncate rounded-md bg-white/5 px-3 py-1 text-center font-mono text-[11px] text-slate-300">
+                    127.0.0.1:4100/ui/
                   </div>
-                  <div className="rounded-2xl border border-white/80 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 p-4 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.22)]">
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Included</div>
-                    <div className="mt-2 text-sm font-semibold text-slate-900">Logs · Routing · API Keys · Profiler</div>
-                    <div className="mt-1 text-sm text-slate-600">不是单纯转发，而是可管理的团队入口。</div>
+                </div>
+                <img
+                  src={lang === 'en' ? dashboardShotEn : dashboardShotZh}
+                  alt="cc-gw dashboard screenshot"
+                  className="block w-full rounded-b-xl"
+                  loading="eager"
+                />
+              </div>
+            </div>
+
+            <div className="mt-16">
+              <p className="text-center font-mono text-[11px] uppercase tracking-[0.22em] text-slate-400">
+                {tt(COPY.hero.works)}
+              </p>
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                {compatibilityBadges.map((b) => (
+                  <span
+                    key={b}
+                    className="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-sm text-slate-200 backdrop-blur-sm"
+                  >
+                    {b}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ============= WHY ============= */}
+        <section id="why" className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
+          <SectionHead
+            eyebrow={tt(COPY.why.eyebrow)}
+            title={tt(COPY.why.title)}
+            description={tt(COPY.why.description)}
+          />
+          <div className="mt-12 grid gap-5 md:grid-cols-3">
+            {COPY.why.cards.map((p) => (
+              <div
+                key={p.title.en}
+                className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-slate-300 hover:shadow-[0_20px_50px_-30px_rgba(15,23,42,0.25)]"
+              >
+                <div className="flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-rose-500" />
+                  <h3 className="text-base font-semibold text-slate-950">{tt(p.title)}</h3>
+                </div>
+                <p className="mt-3 text-sm leading-7 text-slate-600">{tt(p.body)}</p>
+                <pre className="mt-5 overflow-hidden rounded-lg bg-slate-50 p-3 font-mono text-[11.5px] leading-6 text-slate-500 ring-1 ring-slate-200">
+                  {p.sample}
+                </pre>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ============= HOW ============= */}
+        <section id="how" className="border-y border-slate-200/80 bg-slate-50/60">
+          <div className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
+            <SectionHead
+              eyebrow={tt(COPY.how.eyebrow)}
+              title={tt(COPY.how.title)}
+              description={tt(COPY.how.description)}
+            />
+
+            {/* flow diagram */}
+            <div className="mt-12 grid gap-6 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-stretch">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  {tt(COPY.how.diagramLabels.clients)}
+                </div>
+                <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                  <li className="rounded-lg bg-slate-50 px-3 py-2">Claude Code</li>
+                  <li className="rounded-lg bg-slate-50 px-3 py-2">OpenAI SDK</li>
+                  <li className="rounded-lg bg-slate-50 px-3 py-2">Anthropic SDK</li>
+                  <li className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">cURL · LangChain · …</li>
+                </ul>
+              </div>
+              <div className="hidden flex-col items-center justify-center text-slate-300 lg:flex">
+                <ArrowRight className="h-6 w-6" />
+              </div>
+              <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 p-5 ring-1 ring-indigo-100">
+                <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-600">
+                  {tt(COPY.how.diagramLabels.gateway)}
+                </div>
+                <div className="mt-3 rounded-xl bg-slate-950 px-4 py-3 font-mono text-[12px] text-slate-100">
+                  127.0.0.1:4100
+                </div>
+                <ul className="mt-3 space-y-1.5 text-[13px] text-slate-700">
+                  {COPY.how.flowSteps.map((s, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="mt-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-100 font-mono text-[10px] font-semibold text-indigo-700">
+                        {i + 1}
+                      </span>
+                      <span>{tt(s)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="hidden flex-col items-center justify-center text-slate-300 lg:flex">
+                <ArrowRight className="h-6 w-6" />
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  {tt(COPY.how.diagramLabels.providers)}
+                </div>
+                <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                  <li className="rounded-lg bg-slate-50 px-3 py-2">OpenAI</li>
+                  <li className="rounded-lg bg-slate-50 px-3 py-2">Anthropic</li>
+                  <li className="rounded-lg bg-slate-50 px-3 py-2">Azure / Bedrock</li>
+                  <li className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">{tt(compatibleProviders)}</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* differentiator */}
+            <div className="mt-14 overflow-hidden rounded-3xl border border-slate-200 bg-white">
+              <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+                <div className="border-b border-slate-200 p-8 lg:border-b-0 lg:border-r lg:p-10">
+                  <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-600">
+                    {tt(COPY.how.differentiator.eyebrow)}
                   </div>
+                  <h3 className="mt-3 text-2xl font-semibold tracking-[-0.01em] text-slate-950">
+                    {tt(COPY.how.differentiator.title)}
+                  </h3>
+                  <p className="mt-4 text-sm leading-7 text-slate-600">
+                    {tt(COPY.how.differentiator.body)}
+                  </p>
+                </div>
+                <div className="bg-slate-50/60 p-8 lg:p-10">
+                  <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    {tt(COPY.how.differentiator.example)}
+                  </div>
+                  <ul className="mt-4 space-y-3">
+                    {protocolExamples.map((ex) => (
+                      <li
+                        key={ex.client}
+                        className="flex items-center gap-3 rounded-xl bg-white px-4 py-3 ring-1 ring-slate-200"
+                      >
+                        <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700">
+                          {ex.client}
+                        </span>
+                        <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                        <span className="rounded-md bg-gradient-to-r px-2 py-1 font-mono text-xs ring-1 ring-inset ring-slate-200 bg-slate-950 text-slate-100">
+                          {tt(ex.upstream)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Metrics Strip */}
-        <div className="py-6">
-          <div className="mx-auto grid max-w-6xl gap-4 px-6 sm:grid-cols-2 sm:px-8 xl:grid-cols-4 xl:px-10">
-            {runtimeMetrics.map(({ value, label }) => (
-              <div
-                key={label}
-                className="rounded-[1.4rem] border border-white/75 bg-white/82 px-6 py-5 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.26)] ring-1 ring-slate-900/5"
-              >
-                <div className="text-3xl font-bold tracking-tight text-slate-950">{value}</div>
-                <div className="mt-1 text-sm text-slate-500">{label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* ============= DEBUG ============= */}
+        <section id="debug" className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
+          <SectionHead
+            eyebrow={tt(COPY.debug.eyebrow)}
+            title={tt(COPY.debug.title)}
+            description={tt(COPY.debug.description)}
+          />
 
-        <Section
-          eyebrow="Day One"
-          title="从用户视角看，cc-gw 的第一天应该是轻量、可见、可回退的"
-          description="不是先重构整套 AI 平台，而是先让一个客户端进来、一个入口稳定下来、一次排查变得更简单。"
-          className="pt-4"
-        >
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
-            <div className="grid gap-4">
-              {firstDayJourney.map(({ icon: Icon, eyebrow, title, body, detail }) => (
-                <div
-                  key={title}
-                  className="grid gap-4 rounded-[1.6rem] border border-white/80 bg-white/88 p-5 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.22)] sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start"
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-100 to-cyan-100 text-indigo-600">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-500">{eyebrow}</div>
-                    <h3 className="mt-2 text-lg font-semibold text-slate-950">{title}</h3>
-                    <p className="mt-2 text-sm leading-7 text-slate-600">{body}</p>
-                    <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500 ring-1 ring-slate-200/70">
-                      {detail}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-[1.8rem] border border-slate-900/10 bg-slate-950 px-6 py-6 text-white shadow-[0_24px_64px_-38px_rgba(15,23,42,0.5)]">
-              <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-indigo-200">
-                What You Get
-              </div>
-              <h3 className="mt-4 text-2xl font-semibold tracking-tight">不是更重的治理系统，而是更顺手的 AI 工作台</h3>
-              <p className="mt-3 text-sm leading-7 text-slate-300">
-                对个人开发者和小团队来说，价值不是“功能全”，而是接入当天就能少踩坑、少改配置、少猜问题。
-              </p>
-
-              <div className="mt-5 space-y-3">
-                {firstDayOutcomes.map((item) => (
-                  <div
-                    key={item}
-                    className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
-                  >
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
-                    <span className="text-sm leading-6 text-slate-200">{item}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-6 grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-                {[
-                  { value: '3-10 分钟', label: '通常能完成第一次接入' },
-                  { value: '1 个入口', label: '客户端开始收口到同一地址' },
-                  { value: '先本地', label: '看到价值后再考虑共享部署' },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-2xl bg-white/6 px-4 py-3 ring-1 ring-white/10">
-                    <div className="text-lg font-semibold text-white">{item.value}</div>
-                    <div className="mt-1 text-xs text-slate-300">{item.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Section>
-
-        {/* Architecture Section */}
-        <Section
-          id="architecture"
-          eyebrow="Why"
-          title="AI 接入一多，最先乱的不是模型，而是日常维护"
-          description="用户真正遇到的问题，通常不是“能不能调通”，而是调通之后配置散落、Key 难管、日志难查、模型切换牵一发动全身。"
-        >
-          <div className="grid gap-5 lg:grid-cols-2">
-            <div className="rounded-[1.6rem] border border-rose-100 bg-white/88 p-6 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.22)]">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-500">
-                  <XCircle className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-500">Before</p>
-                  <h3 className="text-lg font-semibold text-slate-950">没有统一入口时</h3>
-                </div>
-              </div>
-              <div className="mt-5 space-y-4">
-                {[
-                  {
-                    title: '配置到处复制',
-                    body: '每个项目、脚本、客户端都有自己的 base URL、Key 和模型名，时间一久没人敢动。',
-                  },
-                  {
-                    title: '报错难以定位',
-                    body: '到底是客户端 payload、协议转换、上游模型，还是 Key 权限问题？没有统一日志就只能猜。',
-                  },
-                  {
-                    title: '切换成本太高',
-                    body: '想换 Provider、改默认模型或拆环境，经常要动业务代码、环境变量和多人本地配置。',
-                  },
-                ].map((item) => (
-                  <div key={item.title} className="rounded-2xl border border-rose-100/80 bg-rose-50/50 px-4 py-4">
-                    <h4 className="text-sm font-semibold text-slate-950">{item.title}</h4>
-                    <p className="mt-1.5 text-sm leading-7 text-slate-600">{item.body}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-[1.6rem] border border-emerald-100 bg-white/88 p-6 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.22)]">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500">
-                  <CheckCircle2 className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-500">After</p>
-                  <h3 className="text-lg font-semibold text-slate-950">有了 cc-gw 之后</h3>
-                </div>
-              </div>
-              <div className="mt-5 space-y-4">
-                {[
-                  {
-                    title: '客户端只认一个入口',
-                    body: 'Claude Code、OpenAI SDK、Anthropic SDK 和内部工具都先接到 cc-gw，配置明显收敛。',
-                  },
-                  {
-                    title: '日志和链路有地方看',
-                    body: '请求是否进来、打到了哪里、哪里慢、哪里错，都可以先从控制台开始排查。',
-                  },
-                  {
-                    title: '路由演进不打扰业务',
-                    body: '改默认模型、切 Provider、拆 endpoint 或按客户端分 Key，都尽量留在网关层完成。',
-                  },
-                ].map((item) => (
-                  <div key={item.title} className="rounded-2xl border border-emerald-100/80 bg-emerald-50/50 px-4 py-4">
-                    <h4 className="text-sm font-semibold text-slate-950">{item.title}</h4>
-                    <p className="mt-1.5 text-sm leading-7 text-slate-600">{item.body}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Section>
-
-        {/* Features Section */}
-        <Section
-          id="features"
-          eyebrow="Benefits"
-          title="它先解决的是接入后的维护成本，不是再发明一套平台流程"
-          description="当你已经开始同时接多个模型、多个客户端和多个环境时，cc-gw 的价值体现在收口入口、保留观测性，并把变更尽量留在网关层。"
-        >
-          <div className="grid gap-4 md:grid-cols-2">
-            {featureCards.map(({ icon: Icon, title, body }) => (
-              <div
-                key={title}
-                className="rounded-[1.5rem] border border-white/80 bg-white/88 p-6 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.26)] transition-shadow hover:shadow-[0_24px_54px_-34px_rgba(15,23,42,0.3)]"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-100 to-cyan-100 text-indigo-600">
+          <div className="mt-12 grid gap-px overflow-hidden rounded-2xl bg-slate-200 ring-1 ring-slate-200 md:grid-cols-3">
+            {COPY.debug.pillars.map(({ icon: Icon, title, body }) => (
+              <div key={title.en} className="bg-white p-7">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/10 to-cyan-500/10 text-indigo-600 ring-1 ring-indigo-500/15">
                   <Icon className="h-5 w-5" />
                 </div>
-                <div className="mt-4 text-lg font-semibold text-slate-950">{title}</div>
-                <p className="mt-2 text-sm leading-7 text-slate-600">{body}</p>
+                <h3 className="mt-5 text-base font-semibold text-slate-950">{tt(title)}</h3>
+                <p className="mt-2 text-sm leading-7 text-slate-600">{tt(body)}</p>
               </div>
             ))}
           </div>
-        </Section>
 
-        {/* Quick Start Section */}
-        <Section
-          id="quickstart"
-          eyebrow="Quick Start"
-          title="先接一个客户端，马上看到价值"
-          description="不用一次性迁完整个团队。先从一个常用客户端开始，把请求、日志和路由接进控制台。"
-          className="pt-2"
-        >
-          <div className="space-y-4">
-            {quickStartSteps.map((step, index) => (
-              <div
-                key={step.title}
-                className="grid gap-5 rounded-[1.6rem] border border-white/80 bg-white/88 p-5 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.26)] lg:grid-cols-[80px_minmax(0,0.8fr)_minmax(0,1.1fr)] lg:items-start"
-              >
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 text-lg font-semibold text-indigo-700">
-                  0{index + 1}
-                </div>
-                <div>
-                  <div className="text-lg font-semibold text-slate-950">{step.title}</div>
-                  <p className="mt-3 text-sm leading-7 text-slate-600">{step.body}</p>
-                </div>
-                <CodeBlock label={`${step.title}代码`} code={step.code} />
-              </div>
-            ))}
-          </div>
-        </Section>
-
-        {/* Console Showcase Section */}
-        <Section
-          id="console"
-          eyebrow="Console"
-          title="控制台不是摆设，是你每天排查和切换的地方"
-          description="请求进来之后，你能看到趋势、过滤日志、调整路由、管理 API Keys，并用 Profiler 追踪慢请求和异常。"
-        >
-          <div className="overflow-hidden rounded-[1.7rem] border border-white/80 bg-white/88 shadow-[0_22px_56px_-38px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/5">
-            <div className="flex flex-wrap gap-1 border-b border-slate-100 px-4 pt-4">
-              {consoleTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    'rounded-t-lg px-4 py-2 text-sm font-medium transition-colors',
-                    activeTab === tab.id
-                      ? 'border-b-2 border-indigo-600 bg-indigo-50 text-indigo-700'
-                      : 'text-slate-500 hover:text-slate-900',
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            <div className="p-4">
-              <img
-                src={consoleTabs.find((t) => t.id === activeTab)?.shot ?? dashboardShot}
-                alt={activeTab}
-                className="w-full rounded-xl border border-slate-100"
-              />
-            </div>
-            <div className="grid gap-3 px-4 pb-4 md:grid-cols-3">
-              {[
-                '先看请求有没有进来，再看它去了哪个上游、用了多少 Token、哪里慢。',
-                '业务代码只面对一个入口，协议兼容和模型路由留给网关慢慢演进。',
-                '更像小团队自己的 AI 调用工作台，而不是只会转发请求的代理。',
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white px-4 py-3 text-sm leading-6 text-slate-600"
-                >
-                  {item}
-                </div>
-              ))}
+          {/* payload 4 stages */}
+          <div className="mt-10 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-8">
+            <h3 className="text-xl font-semibold text-slate-950">{tt(COPY.debug.payload.title)}</h3>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">{tt(COPY.debug.payload.body)}</p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {COPY.debug.payload.stages.map((stage, i) => {
+                const isClient = i === 0 || i === 3
+                return (
+                  <div
+                    key={i}
+                    className={cn(
+                      'rounded-xl border px-4 py-4',
+                      isClient ? 'border-cyan-200 bg-cyan-50/60' : 'border-indigo-200 bg-indigo-50/60',
+                    )}
+                  >
+                    <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      payload [{i + 1}/4]
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900">{tt(stage)}</div>
+                    <div className="mt-1 font-mono text-[11px] text-slate-500">
+                      {isClient ? tt(COPY.debug.payload.clientSide) : tt(COPY.debug.payload.upstreamSide)}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
-        </Section>
+        </section>
 
-        {/* Fit Section */}
-        <Section
-          id="fit"
-          eyebrow="Fit"
-          title="什么时候它会明显省事，什么时候你其实还不需要它"
-          description="如果你的 AI 接入已经开始扩张，但又没到要上组织级治理平台的程度，cc-gw 往往正好卡在那个合适的区间。"
-        >
-          <div className="mb-5 grid gap-4 lg:grid-cols-3">
-            {scenarioCards.map((item) => (
-              <div
-                key={item.title}
-                className="rounded-[1.45rem] border border-white/80 bg-white/88 p-5 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)]"
-              >
-                <p className="text-sm font-semibold text-slate-950">{item.title}</p>
-                <p className="mt-2 text-sm leading-7 text-slate-600">{item.body}</p>
-              </div>
-            ))}
-          </div>
-          <div className="grid gap-5 lg:grid-cols-2">
-            <div className="rounded-[1.6rem] border border-emerald-100 bg-emerald-50/72 p-7 shadow-[0_18px_46px_-34px_rgba(16,185,129,0.22)]">
-              <div className="mb-4 flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                </div>
-                <h3 className="text-base font-semibold text-slate-900">适合谁</h3>
-              </div>
-              <ul className="space-y-2.5">
-                {[
-                  '个人开发者、AI 产品小队',
-                  '1-100 人的软件研发团队',
-                  '正在用多个 AI provider 的团队',
-                  '觉得 key、baseURL 和模型配置越来越乱',
-                  '想要先收口再慢慢治理的团队',
-                ].map((item) => (
-                  <li key={item} className="flex items-start gap-2.5 text-sm text-slate-700">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                    {item}
-                  </li>
+        {/* ============= LOCAL ============= */}
+        <section id="local" className="border-y border-slate-200/80 bg-slate-50/60">
+          <div className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
+            <SectionHead
+              eyebrow={tt(COPY.local.eyebrow)}
+              title={tt(COPY.local.title)}
+              description={tt(COPY.local.description)}
+            />
+
+            <div className="mt-12 grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-start">
+              <div className="grid gap-px overflow-hidden rounded-2xl bg-slate-200 ring-1 ring-slate-200 sm:grid-cols-2">
+                {COPY.local.pillars.map(({ icon: Icon, title, body }) => (
+                  <div key={title.en} className="bg-white p-6">
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/10 to-cyan-500/10 text-indigo-600 ring-1 ring-indigo-500/15">
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <h3 className="mt-4 text-base font-semibold text-slate-950">{tt(title)}</h3>
+                    <p className="mt-2 text-sm leading-7 text-slate-600">{tt(body)}</p>
+                  </div>
                 ))}
-              </ul>
-            </div>
-            <div className="rounded-[1.6rem] border border-slate-200 bg-white/78 p-7 shadow-[0_18px_46px_-34px_rgba(15,23,42,0.16)]">
-              <div className="mb-4 flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200">
-                  <XCircle className="h-4 w-4 text-slate-500" />
-                </div>
-                <h3 className="text-base font-semibold text-slate-900">不适合谁</h3>
               </div>
-              <ul className="space-y-2.5">
-                {[
-                  '需要跨 BU 统一治理的大企业',
-                  '需要复杂审批流程和审计流转',
-                  '企业 SSO 与组织级策略中台',
-                  '需要 HA/高可用集群部署',
-                  'Compliance-first 的金融/医疗场景',
-                ].map((item) => (
-                  <li key={item} className="flex items-start gap-2.5 text-sm text-slate-700">
-                    <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </Section>
 
-        {/* FAQ Section */}
-        <Section
-          id="faq"
-          eyebrow="FAQ"
-          title="常见问题"
-          description="从是否值得试、是否会绑死、是否过重这几个用户关心的问题开始。"
-          className="pb-24"
-        >
-          <div className="grid gap-4">
-            {faqItems.map((item, i) => (
-              <div
-                key={item.question}
-                className="overflow-hidden rounded-[1.35rem] border border-white/80 bg-white/88 shadow-[0_16px_40px_-34px_rgba(15,23,42,0.2)]"
-              >
-                <button
-                  type="button"
-                  onClick={() => setOpenFaqIndex(openFaqIndex === i ? null : i)}
-                  className="flex w-full items-center justify-between px-6 py-5 text-left"
-                >
-                  <span className="text-base font-semibold text-slate-900">{item.question}</span>
-                  <ChevronDown
-                    className={cn('h-5 w-5 text-slate-400 transition-transform', openFaqIndex === i && 'rotate-180')}
-                  />
-                </button>
-                {openFaqIndex === i && (
-                  <div className="px-6 pb-5 text-sm leading-7 text-slate-600">{item.answer}</div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* CTA Footer Block */}
-          <div
-            className="relative mt-8 overflow-hidden rounded-[1.8rem] border border-slate-800/20 bg-slate-950 px-8 py-10 text-white shadow-[0_28px_80px_-44px_rgba(15,23,42,0.5)]"
-            style={{
-              backgroundImage:
-                'radial-gradient(circle at top left, rgba(129,140,248,0.2), transparent 32%), radial-gradient(circle at bottom right, rgba(34,211,238,0.12), transparent 28%), radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px)',
-              backgroundSize: 'auto, auto, 24px 24px',
-            }}
-          >
-            <div className="relative grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
               <div>
-                <div className="text-3xl font-semibold tracking-tight">先把 AI 调用管顺，再慢慢扩展团队协作。</div>
-                <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300">
-                  不需要一开始就建设企业级平台。先用 cc-gw 把入口、路由、日志和 Key 管理收回来，今天就能开始。
-                </p>
+                <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-1.5 shadow-[0_30px_80px_-30px_rgba(15,23,42,0.45)]">
+                  <div className="flex items-center gap-1.5 px-3 py-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-rose-400/70" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-amber-300/70" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
+                    <div className="ml-3 flex-1 truncate rounded-md bg-white/5 px-3 py-1 font-mono text-[11px] text-slate-300">
+                      ~/.cc-gw
+                    </div>
+                  </div>
+                  <pre className="overflow-x-auto px-5 pb-5 pt-2 font-mono text-[12.5px] leading-7 text-slate-100">
+                    <code>
+                      {directoryTree.split('\n').map((line, i) => (
+                        <span key={i} className="block">
+                          {line.includes('#') ? (
+                            <>
+                              <span>{line.slice(0, line.indexOf('#'))}</span>
+                              <span className="text-slate-500">{line.slice(line.indexOf('#'))}</span>
+                            </>
+                          ) : (
+                            line
+                          )}
+                        </span>
+                      ))}
+                    </code>
+                  </pre>
+                </div>
+                <p className="mt-4 px-1 text-sm leading-7 text-slate-600">{tt(COPY.local.treeCaption)}</p>
               </div>
-              <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
+            </div>
+          </div>
+        </section>
+
+        {/* ============= QUICK START ============= */}
+        <section id="start" className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
+          <SectionHead
+            eyebrow={tt(COPY.start.eyebrow)}
+            title={tt(COPY.start.title)}
+            description={tt(COPY.start.description)}
+          />
+
+          <ol className="mt-12 grid gap-5 md:grid-cols-2">
+            {COPY.start.steps.map((step, idx) => (
+              <li
+                key={step.title.en}
+                className="flex flex-col rounded-2xl border border-slate-200 bg-white p-6"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-8 min-w-[2rem] items-center justify-center rounded-lg bg-slate-950 px-2 font-mono text-xs font-semibold text-white">
+                    {String(idx + 1).padStart(2, '0')}
+                  </span>
+                  <h3 className="text-base font-semibold text-slate-950">{tt(step.title)}</h3>
+                </div>
+                <p className="mt-3 text-sm leading-7 text-slate-600">{tt(step.body)}</p>
+                <div className="mt-5">
+                  <CodeBlock
+                    label={`step ${idx + 1}: ${step.title.en}`}
+                    code={step.code}
+                    copyLabel={tt(codeUi.copy)}
+                    copiedLabel={tt(codeUi.copied)}
+                  />
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* ============= CONSOLE ============= */}
+        <section id="console" className="border-y border-slate-200/80 bg-slate-50/60">
+          <div className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
+            <SectionHead
+              eyebrow={tt(COPY.console.eyebrow)}
+              title={tt(COPY.console.title)}
+              description={tt(COPY.console.description)}
+            />
+
+            <div className="mt-12 grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <div role="tablist" aria-orientation="vertical" className="flex flex-col gap-1.5">
+                {consoleTabs.map((tab) => {
+                  const active = tab.id === activeTab
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      id={`console-tab-${tab.id}`}
+                      aria-selected={active}
+                      aria-controls={`console-panel-${tab.id}`}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={cn(
+                        'rounded-xl border px-4 py-3 text-left transition',
+                        active
+                          ? 'border-indigo-500/30 bg-white shadow-[0_10px_30px_-18px_rgba(79,70,229,0.4)] ring-1 ring-indigo-500/10'
+                          : 'border-transparent bg-transparent hover:bg-white/70',
+                      )}
+                    >
+                      <div className={cn('text-sm font-semibold', active ? 'text-slate-950' : 'text-slate-700')}>
+                        {tt(tab.label)}
+                      </div>
+                      <div className={cn('mt-1 text-xs leading-5', active ? 'text-slate-600' : 'text-slate-500')}>
+                        {tt(tab.blurb)}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div
+                role="tabpanel"
+                id={`console-panel-${activeConsole.id}`}
+                aria-labelledby={`console-tab-${activeConsole.id}`}
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 p-1.5 shadow-[0_30px_80px_-30px_rgba(15,23,42,0.45)]"
+              >
+                <div className="flex items-center gap-1.5 px-3 py-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400/70" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-300/70" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
+                  <div className="ml-3 flex-1 truncate rounded-md bg-white/5 px-3 py-1 font-mono text-[11px] text-slate-300">
+                    127.0.0.1:4100/ui/{activeConsole.id}
+                  </div>
+                </div>
+                <img
+                  key={activeConsole.id + lang}
+                  src={tt(activeConsole.shot)}
+                  alt={`${tt(activeConsole.label)} screenshot`}
+                  className="block w-full rounded-b-xl"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ============= FIT ============= */}
+        <section id="fit" className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
+          <SectionHead
+            eyebrow={tt(COPY.fit.eyebrow)}
+            title={tt(COPY.fit.title)}
+            description={tt(COPY.fit.description)}
+          />
+          <div className="mt-12 grid gap-5 md:grid-cols-2">
+            <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-white p-7">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <h3 className="text-base font-semibold text-slate-950">{tt(COPY.fit.yesTitle)}</h3>
+              </div>
+              <ul className="mt-5 space-y-3">
+                {COPY.fit.yes.map((item, i) => (
+                  <li key={i} className="flex items-start gap-3 text-sm leading-7 text-slate-700">
+                    <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-emerald-500" />
+                    {tt(item)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-7">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200/70 text-slate-500">
+                  <XCircle className="h-4 w-4" />
+                </div>
+                <h3 className="text-base font-semibold text-slate-950">{tt(COPY.fit.noTitle)}</h3>
+              </div>
+              <ul className="mt-5 space-y-3">
+                {COPY.fit.no.map((item, i) => (
+                  <li key={i} className="flex items-start gap-3 text-sm leading-7 text-slate-600">
+                    <XCircle className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
+                    {tt(item)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* ============= FAQ ============= */}
+        <section id="faq" className="border-y border-slate-200/80 bg-slate-50/60">
+          <div className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
+            <SectionHead
+              eyebrow={tt(COPY.faq.eyebrow)}
+              title={tt(COPY.faq.title)}
+              description={tt(COPY.faq.description)}
+            />
+            <div className="mx-auto mt-12 max-w-3xl divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white">
+              {COPY.faq.items.map((item, i) => {
+                const open = openFaq === i
+                return (
+                  <div key={i}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenFaq(open ? null : i)}
+                      aria-expanded={open}
+                      className="flex w-full items-center justify-between gap-6 px-6 py-5 text-left"
+                    >
+                      <span className="text-base font-semibold text-slate-900">{tt(item.q)}</span>
+                      <ChevronDown
+                        className={cn(
+                          'h-5 w-5 shrink-0 text-slate-400 transition-transform',
+                          open && 'rotate-180 text-slate-700',
+                        )}
+                      />
+                    </button>
+                    {open && <div className="px-6 pb-6 text-sm leading-7 text-slate-600">{tt(item.a)}</div>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* ============= CTA ============= */}
+        <section className="px-6 py-24 sm:px-8 lg:px-10">
+          <div className="relative mx-auto w-full max-w-6xl overflow-hidden rounded-3xl bg-slate-950 px-8 py-14 text-white shadow-[0_40px_100px_-40px_rgba(15,23,42,0.5)] sm:px-12 [&_::selection]:bg-indigo-400/40 [&_::selection]:text-white">
+            <div
+              aria-hidden
+              className="absolute inset-0 opacity-25"
+              style={{
+                backgroundImage:
+                  'linear-gradient(to right, rgba(148,163,184,0.16) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.16) 1px, transparent 1px)',
+                backgroundSize: '40px 40px',
+                maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 75%)',
+                WebkitMaskImage: 'radial-gradient(ellipse at center, black 30%, transparent 75%)',
+              }}
+            />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -bottom-40 left-1/2 h-[460px] w-[900px] -translate-x-1/2 rounded-full opacity-50 blur-[100px]"
+              style={{
+                background:
+                  'radial-gradient(closest-side, rgba(99,102,241,0.6), transparent 70%), radial-gradient(closest-side at 70% 60%, rgba(34,211,238,0.4), transparent 70%)',
+              }}
+            />
+            <div className="relative grid gap-10 lg:grid-cols-[1.2fr_auto] lg:items-end">
+              <div>
+                <h2 className="text-3xl font-semibold tracking-[-0.02em] sm:text-4xl">{tt(COPY.cta.title)}</h2>
+                <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">{tt(COPY.cta.body)}</p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row lg:flex-col lg:items-end">
                 <a
                   href="https://www.npmjs.com/package/@chenpu17/cc-gw"
-                  className="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
                 >
-                  npm 安装
+                  <Terminal className="h-4 w-4" />
+                  {tt(COPY.ctaInstall)}
                 </a>
                 <a
                   href="/ui/"
-                  className="inline-flex items-center justify-center rounded-2xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
-                  打开控制台
+                  {tt(COPY.ctaConsole)}
+                  <ArrowRight className="h-4 w-4" />
                 </a>
               </div>
             </div>
           </div>
-        </Section>
+        </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-white/80 bg-white/70">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-6 py-8 text-sm text-slate-500 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
-          <div>
-            <div>cc-gw · Local-first AI gateway for personal developers and small software teams.</div>
-            <div className="mt-1 text-xs">v{packageVersion}</div>
+      {/* ============= FOOTER ============= */}
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-10 text-sm text-slate-500 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
+          <div className="flex items-center gap-3">
+            <BrandMark className="h-7 w-7" title="cc-gw" />
+            <div>
+              <div className="text-slate-700">{tt(COPY.footer.tagline)}</div>
+              <div className="font-mono text-[11px] text-slate-400">v{packageVersion}</div>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-4">
-            <a href="/ui/" className="hover:text-slate-900">
-              控制台
-            </a>
-            <a href="https://www.npmjs.com/package/@chenpu17/cc-gw" className="hover:text-slate-900">
-              npm
-            </a>
-            <a href="https://github.com/chenpu17/cc-gw2" className="hover:text-slate-900">
-              GitHub
-            </a>
-            <a href="https://github.com/chenpu17/cc-gw2/releases" className="hover:text-slate-900">
-              Changelog
-            </a>
+          <div className="flex flex-wrap gap-5">
+            <a href="/ui/" className="hover:text-slate-900">{tt(COPY.footer.console)}</a>
+            <a href="https://www.npmjs.com/package/@chenpu17/cc-gw" className="hover:text-slate-900">npm</a>
+            <a href="https://github.com/chenpu17/cc-gw2" className="hover:text-slate-900">GitHub</a>
+            <a href="https://github.com/chenpu17/cc-gw2/releases" className="hover:text-slate-900">{tt(COPY.footer.changelog)}</a>
           </div>
         </div>
       </footer>

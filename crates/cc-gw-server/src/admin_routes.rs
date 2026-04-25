@@ -260,8 +260,9 @@ pub(super) async fn api_providers(
 pub(super) async fn api_provider_test(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
-    Json(body): Json<Option<ProviderTestBody>>,
+    body: Option<Json<ProviderTestBody>>,
 ) -> Response {
+    let body = body.map(|Json(payload)| payload);
     let config = config_snapshot(&state);
     let Some(provider) = config.providers.iter().find(|item| item.id == id).cloned() else {
         return (
@@ -404,7 +405,7 @@ pub(super) async fn api_provider_test(
             }
             let parsed_json = serde_json::from_str::<Value>(&text).ok();
             let sample = if let Some(payload) = parsed_json.as_ref() {
-                extract_provider_test_sample(prefers_anthropic_protocol, payload)
+                extract_provider_test_sample(protocol, payload)
             } else if !prefers_anthropic_protocol {
                 let fallback = text.trim();
                 if fallback.is_empty() {

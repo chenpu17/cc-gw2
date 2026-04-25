@@ -231,6 +231,21 @@ async fn mock_openai_test(
     }
 }
 
+async fn mock_openai_responses_test() -> Response {
+    Json(json!({
+        "id": "resp_test",
+        "object": "response",
+        "status": "completed",
+        "output_text": "responses diagnostic ok",
+        "output": [{
+            "type": "message",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "text": "responses diagnostic ok" }]
+        }]
+    }))
+    .into_response()
+}
+
 async fn mock_anthropic_test(Query(query): Query<HashMap<String, String>>) -> Response {
     match query.get("mode").map(String::as_str) {
         Some("badjson") => (StatusCode::OK, "not-json").into_response(),
@@ -327,6 +342,7 @@ async fn spawn_test_gateway(
 async fn provider_test_matches_key_node_behaviors() {
     let upstream = Router::new()
         .route("/v1/chat/completions", post(mock_openai_test))
+        .route("/v1/responses", post(mock_openai_responses_test))
         .route("/v1/messages", post(mock_anthropic_test));
     let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
 
@@ -353,6 +369,18 @@ async fn provider_test_matches_key_node_behaviors() {
             models: vec![cc_gw_core::config::ProviderModelConfig {
                 id: "claude-test".to_string(),
                 label: Some("Claude Test".to_string()),
+            }],
+            ..cc_gw_core::config::ProviderConfig::default()
+        },
+        cc_gw_core::config::ProviderConfig {
+            id: "mock-openai-responses".to_string(),
+            label: "Mock OpenAI Responses".to_string(),
+            base_url: format!("http://{upstream_addr}"),
+            provider_type: Some("openai-responses".to_string()),
+            default_model: Some("gpt-responses-test".to_string()),
+            models: vec![cc_gw_core::config::ProviderModelConfig {
+                id: "gpt-responses-test".to_string(),
+                label: Some("GPT Responses Test".to_string()),
             }],
             ..cc_gw_core::config::ProviderConfig::default()
         },
@@ -389,6 +417,21 @@ async fn provider_test_matches_key_node_behaviors() {
     assert!(success_sample.contains("via=test"));
     assert!(success_sample.ends_with("ua=abc"));
 
+    let empty_body_success: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/mock-openai/test"
+        ))
+        .send()
+        .await
+        .expect("send empty body request")
+        .json()
+        .await
+        .expect("decode empty body response");
+    assert_eq!(
+        empty_body_success.get("ok").and_then(Value::as_bool),
+        Some(true)
+    );
+
     let text_fallback: Value = client
         .post(format!(
             "http://{gateway_addr}/api/providers/mock-openai/test"
@@ -408,6 +451,26 @@ async fn provider_test_matches_key_node_behaviors() {
     assert_eq!(
         text_fallback.get("sample").and_then(Value::as_str),
         Some("plain text ok")
+    );
+
+    let responses_success: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/mock-openai-responses/test"
+        ))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("send responses success request")
+        .json()
+        .await
+        .expect("decode responses success response");
+    assert_eq!(
+        responses_success.get("ok").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        responses_success.get("sample").and_then(Value::as_str),
+        Some("responses diagnostic ok")
     );
 
     let restricted: Value = client

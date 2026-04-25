@@ -109,8 +109,10 @@
   @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
 }
 
-/* Selection */
-::selection { @apply bg-primary/15 text-foreground; }
+/* Selection — bg-indigo-400/35 works on both light and dark backgrounds; no forced text color so
+   elements keep their own text color (white on dark bg, dark on light bg).
+   Hero/CTA sections override locally with [&_::selection]:text-white for gradient text. */
+::selection { @apply bg-indigo-400/35; }
 
 /* Animations */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
