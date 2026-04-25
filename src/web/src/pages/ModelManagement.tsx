@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
+import { NoModelConfiguredDialog } from './model-management/NoModelConfiguredDialog'
 import { ProvidersWorkspace } from './model-management/ProvidersWorkspace'
 import { TestConnectionDialog } from './model-management/TestConnectionDialog'
 import { useModelManagementState } from './model-management/useModelManagementState'
@@ -80,6 +81,16 @@ export default function ModelManagementPage() {
         onPresetChange={state.setTestDialogUsePreset}
         onConfirm={state.confirmTestDialog}
         onClose={state.closeTestDialog}
+      />
+
+      <NoModelConfiguredDialog
+        open={!!state.noModelDialogProvider}
+        provider={state.noModelDialogProvider}
+        onClose={() => state.setNoModelDialogProvider(null)}
+        onEdit={(provider) => {
+          state.setNoModelDialogProvider(null)
+          state.handleOpenEdit(provider)
+        }}
       />
 
       <ConfirmDialog

@@ -384,6 +384,13 @@ async fn provider_test_matches_key_node_behaviors() {
             }],
             ..cc_gw_core::config::ProviderConfig::default()
         },
+        cc_gw_core::config::ProviderConfig {
+            id: "mock-no-model".to_string(),
+            label: "Mock No Model".to_string(),
+            base_url: format!("http://{upstream_addr}"),
+            provider_type: Some("openai".to_string()),
+            ..cc_gw_core::config::ProviderConfig::default()
+        },
     ];
 
     let (home_dir, gateway_addr, gateway_handle) =
@@ -430,6 +437,25 @@ async fn provider_test_matches_key_node_behaviors() {
     assert_eq!(
         empty_body_success.get("ok").and_then(Value::as_bool),
         Some(true)
+    );
+
+    let no_model_response = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/mock-no-model/test"
+        ))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("send no model request");
+    assert_eq!(no_model_response.status(), StatusCode::OK);
+    let no_model: Value = no_model_response
+        .json()
+        .await
+        .expect("decode no model response");
+    assert_eq!(no_model.get("ok").and_then(Value::as_bool), Some(false));
+    assert_eq!(
+        no_model.get("statusText").and_then(Value::as_str),
+        Some("No model configured for provider")
     );
 
     let text_fallback: Value = client

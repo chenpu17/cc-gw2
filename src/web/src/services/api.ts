@@ -45,8 +45,10 @@ export interface ApiError {
 export function toApiError(error: unknown): ApiError {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status
+    const data = error.response?.data as { error?: string; statusText?: string } | undefined
     const message =
-      (error.response?.data as { error?: string })?.error ||
+      data?.error ||
+      data?.statusText ||
       error.message ||
       '请求失败，请稍后再试'
     return {

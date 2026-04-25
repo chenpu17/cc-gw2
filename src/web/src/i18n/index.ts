@@ -552,6 +552,13 @@ const resources = {
             }
           }
         },
+        noModelDialog: {
+          title: '未配置模型',
+          subtitle: 'Provider「{{name}}」还没有可用于测试的模型',
+          description: '连接测试需要先知道要请求哪个模型。请先为该 Provider 添加至少一个模型，或设置默认模型后再测试。',
+          hint: '如果你只是想使用透传模式，也需要在实际请求或路由映射里指定模型；诊断测试不能自动猜测上游模型 ID。',
+          primary: '去配置模型'
+        },
         card: {
           baseUrl: 'Base URL',
           defaultModelLabel: '默认模型',
@@ -700,6 +707,17 @@ const resources = {
         providersSemantics: {
           title: '先维护 Provider 资源池，再维护 Endpoint 路由',
           description: '这里配置的是上游供应商、认证方式和模型清单；真正对客户端暴露的仍是内置端点与自定义端点。'
+        },
+        targetPicker: {
+          helper: '可输入 Provider、模型名或 ID 快速筛选。',
+          searchPlaceholder: '搜索 Provider、模型名或 ID',
+          matchCount: '找到 {{count}} 个匹配目标',
+          recent: '最近使用',
+          custom: '自定义 / 已保存',
+          model: '模型',
+          passthrough: '透传',
+          customValue: '自定义',
+          default: '默认'
         },
         tabs: {
           providers: '模型提供商',
@@ -1058,7 +1076,7 @@ const resources = {
         title: '使用指南',
         intro: '完整的 cc-gw 配置和使用指南，帮助您从零开始搭建 AI 模型网关。',
         note: '所有配置变更都会实时生效。建议通过 Web UI 进行配置管理，CLI 主要用于服务启动和重启。',
-        helper: '推荐顺序：先启动服务，再配置 Provider，然后创建 API 密钥，最后接入 Claude Code 或 Codex。',
+        helper: '推荐顺序：先启动服务，再配置模型供应商和模型，验证连接，然后配置路由，按需创建 API 密钥，最后接入 Claude Code 或 Codex。',
         meta: {
           breadcrumb: '网关 / 使用指南',
           guides: '{{count}} 个指南',
@@ -1080,8 +1098,10 @@ const resources = {
             title: '🚀 基础配置流程',
             items: [
               '📦 **安装并启动服务**：运行 `npm install -g @chenpu17/cc-gw && cc-gw start --daemon --port 4100`，然后访问 http://127.0.0.1:4100/ui',
-              '🔧 **配置模型提供商**：在"模型供应商"页面中添加至少一个 Provider，配置 Base URL、API Key 和默认模型',
-              '🔑 **生成网关 API Key（可选）**：在"API 密钥"页面创建 API 密钥，为不同客户端创建独立密钥。默认情况下，所有请求都可以通过网关访问。'
+              '🔧 **配置模型供应商与模型**：在"模型供应商"页面添加至少一个 Provider，配置 Base URL、认证方式/API Key，并添加至少一个模型或设置默认模型。Provider 只是上游资源池，真正对外接入还需要路由配置。',
+              '✅ **测试供应商连接**：模型列表或默认模型配置完成后，使用"测试"按钮验证 Base URL、API Key 与模型是否可用。如果提示没有配置模型，请先在该 Provider 下新增模型。',
+              '🔀 **配置模型路由**：进入"路由管理"，选择 `/anthropic`、`/openai` 或自定义接入点，把客户端请求的模型名映射到目标模型 `providerId:modelId`；如果希望透传客户端传入的模型名，可选择 `providerId:*`，保存后只影响当前端点。',
+              '🔑 **生成网关 API Key（可选）**：在"API 密钥"页面创建 API Key，用于审计、区分客户端和后续吊销访问。默认情况下，所有请求都可以通过网关访问。'
             ]
           },
           claudeCodeConfig: {
@@ -1105,7 +1125,7 @@ const resources = {
             items: [
               '📈 **仪表盘监控**：实时查看请求量、Token 使用量、缓存命中率和响应时间（TTFT/TPOT）等关键指标',
               '📋 **日志分析**：使用"请求日志"页面筛选和分析请求记录；详情抽屉会按客户端/上游链路分开展示 payload 区块，便于定位协议改写问题',
-              '🔄 **模型路由管理**：在"路由管理"页面中设置模型映射规则，实现不同模型的智能路由',
+              '🔄 **模型路由管理**：在"路由管理"页面按端点维护模型映射规则。内置 `/anthropic` 和 `/openai` 是两个独立路由工作区，自定义接入点也拥有独立路由配置。',
               '🎛️ **系统配置**：在"设置"页面中调整日志保留策略、数据存储设置和运行参数',
               '🔐 **安全配置**：启用 Web UI 登录保护，设置用户名密码，确保管理接口安全'
             ]
@@ -1119,7 +1139,7 @@ const resources = {
               '🧹 **日志清理**：根据需要调整日志保留天数，或使用"日志清理"功能手动清理',
               '🔍 **问题排查**：开启"保存请求内容 / 保存响应内容"后，可在日志详情里复制客户端与上游 payload，用于调试兼容性问题',
               '⚡ **性能优化**：如无需排障，可关闭 payload 存储以减少磁盘占用与敏感数据落盘风险',
-              '🎯 **模型切换**：使用路由模板功能，实现不同 Provider 方案的一键切换',
+              '🎯 **模型切换**：优先使用路由预设保存常用映射方案，例如"Claude 走 Anthropic"、"GPT 走 OpenAI 兼容供应商"，需要切换时在对应端点一键应用预设',
               '📊 **监控告警**：结合 Dashboard 数据设置自定义监控，及时发现异常'
             ]
           }
@@ -1136,12 +1156,20 @@ const resources = {
               a: '在"路由管理"页面创建自定义接入点，配置基础路径（如 `/my-endpoint`）和协议类型。系统会自动根据协议注册完整的 API 路径。例如，配置 `/claude` + `anthropic` 协议后，客户端通过 `http://127.0.0.1:4100/claude/v1/messages` 访问。\n\n如果遇到 404 错误，检查：\n1) 端点是否已启用\n2) 客户端使用的是完整路径（包括协议子路径）\n3) 查看服务器日志确认路由是否注册成功'
             },
             {
+              q: '模型供应商已经配置了，为什么测试提示没有模型？',
+              a: '供应商配置只保存 Base URL 和认证信息，测试请求还需要明确模型。请在该 Provider 下新增至少一个模型，或设置默认模型后再测试。'
+            },
+            {
+              q: '什么时候必须配置模型路由？',
+              a: '当客户端请求的模型名与上游模型名不一致、需要按 `/anthropic` 与 `/openai` 分流、或不同客户端要走不同供应商时，需要在"路由管理"中配置映射。目标模型格式为 `providerId:modelId`，`providerId:*` 表示使用客户端原始模型名透传到该供应商。'
+            },
+            {
               q: '为什么没有缓存命中数据？',
               a: '需要上游 Provider 返回 cached_tokens 或 input_tokens_details.cached_tokens 字段。确认 Provider 支持缓存功能并已正确配置。'
             },
             {
               q: '如何配置多个客户端使用不同模型？',
-              a: '为每个客户端创建独立的 API Key，在"路由管理"页面中设置不同的路由规则，或使用不同的环境变量配置。也可以为不同客户端创建专用的自定义接入点。'
+              a: '推荐为不同客户端创建专用自定义接入点，并在每个端点维护独立路由规则；也可以让客户端使用不同的 Base URL 指向 `/anthropic`、`/openai` 或自定义端点。API Key 主要用于审计、区分来源和吊销访问，不单独承载路由规则。'
             },
             {
               q: 'Codex CLI 如何连接到 cc-gw？',
@@ -2065,6 +2093,13 @@ const resources = {
             }
           }
         },
+        noModelDialog: {
+          title: 'No Model Configured',
+          subtitle: 'Provider “{{name}}” has no model available for testing',
+          description: 'The connection test needs a target model before it can call the upstream API. Add at least one model or set a default model first.',
+          hint: 'Pass-through mode is still supported for real requests or route mappings, but the diagnostic test cannot guess the upstream model ID.',
+          primary: 'Configure models'
+        },
         card: {
           baseUrl: 'Base URL',
           defaultModelLabel: 'Default model',
@@ -2213,6 +2248,17 @@ const resources = {
         providersSemantics: {
           title: 'Maintain the provider pool first, then endpoint routing',
           description: 'This workspace defines upstream vendors, auth, and model inventory. Public traffic still enters through built-in or custom endpoints.'
+        },
+        targetPicker: {
+          helper: 'Type a provider, model name, or ID to filter quickly.',
+          searchPlaceholder: 'Search provider, model, or ID',
+          matchCount: '{{count}} matching targets',
+          recent: 'Recent',
+          custom: 'Custom / Saved',
+          model: 'Model',
+          passthrough: 'Pass-through',
+          customValue: 'Custom',
+          default: 'Default'
         },
         tabs: {
           providers: 'Providers',
@@ -2566,7 +2612,7 @@ const resources = {
         title: 'Help & Guidance',
         intro: 'This page summarises how to configure cc-gw via the Web UI and how to operate it day to day.',
         note: 'Changes are written to ~/.cc-gw/config.json immediately. Prefer editing through the Web UI; use the CLI mainly to start or restart the daemon.',
-        helper: 'Recommended order: start the service, add providers, create API keys, then connect Claude Code or Codex.',
+        helper: 'Recommended order: start the service, configure providers and models, verify connectivity, configure routing, create API keys if needed, then connect Claude Code or Codex.',
         meta: {
           breadcrumb: 'Gateway / Help',
           guides: '{{count}} guides',
@@ -2588,8 +2634,10 @@ const resources = {
             title: '1. Initial Setup',
             items: [
               'Install the service and start it with `npm install -g @chenpu17/cc-gw && cc-gw start --daemon --port 4100`, then open http://127.0.0.1:4100/ui.',
-              'Go to "Model Providers" to add upstream providers including base URL, API key, and default model.',
-              'Generate Gateway API Keys (Optional): Create API keys on the "API Keys" page for different clients. By default, all requests can pass through the gateway.'
+              'Configure providers and models: Go to "Model Providers", add at least one Provider, configure Base URL, auth mode/API key, and add at least one model or default model. Providers are only the upstream resource pool; public traffic still needs routing.',
+              'Test provider connectivity: After a model list or default model exists, use the test button to verify the Base URL, API key, and model. If the UI says no model is configured, add a model under that Provider first.',
+              'Configure model routing: Open "Routing", choose `/anthropic`, `/openai`, or a custom endpoint, then map the client-requested model name to target model `providerId:modelId`; use `providerId:*` to pass the original client model name through to that provider. Saving only updates the current endpoint.',
+              'Generate Gateway API Keys (Optional): Create API keys on the "API Keys" page for auditing, client separation, and future revocation. By default, all requests can pass through the gateway.'
             ]
           },
           claudeCodeConfig: {
@@ -2613,7 +2661,7 @@ const resources = {
             items: [
               'Use the dashboard to keep an eye on request volume, token usage, cache hits, and TTFT/TPOT trends.',
               '“Request Logs” provides rich filters plus separated client/upstream payload blocks, which makes protocol-rewrite debugging much easier.',
-              'Use “Routing” to switch mappings and presets without redeploying IDE extensions or automation scripts.',
+              'Use “Routing” to maintain model mappings per endpoint. Built-in `/anthropic` and `/openai` have separate routing workspaces, and each custom endpoint keeps its own routing rules.',
               '“Settings” controls log retention, payload storage, and runtime parameters to suit your operations.'
             ]
           },
@@ -2624,7 +2672,7 @@ const resources = {
               '🔌 **Custom Endpoints**: Create additional API endpoints with different protocols and independent routing. Manage them from the "Routing" page.\n\n**Key Features**:\n• Configure only the base path (e.g., `/my-endpoint`), the system automatically registers full API paths based on protocol\n• Support for Anthropic and OpenAI protocols (Chat Completions / Responses API)\n• Each endpoint can have independent model routing rules\n• One endpoint can register multiple paths with different protocols\n\n**Example Configuration**:\n```json\n{\n  "id": "claude-api",\n  "label": "Claude Dedicated Endpoint",\n  "path": "/claude",\n  "protocol": "anthropic"\n}\n```\nAfter configuration, clients access via `http://127.0.0.1:4100/claude/v1/messages` (path auto-expansion).',
               'Enable "Store request bodies" / "Store response bodies" to inspect and copy client-side and upstream payloads from the log drawer when troubleshooting.',
               'If you do not need payload-level troubleshooting, turn off payload storage to reduce local disk usage and privacy exposure.',
-              'Use **routing presets** to save common routing configurations and quickly switch between different provider setups.',
+              'Use **routing presets** to save common mapping schemes, such as "Claude models through Anthropic" or "GPT models through an OpenAI-compatible provider", then apply them per endpoint when switching providers.',
               'If you edit ~/.cc-gw/config.json manually, refresh the Settings page or restart cc-gw so the UI reflects the latest configuration.'
             ]
           }
@@ -2641,12 +2689,20 @@ const resources = {
               a: 'Create a custom endpoint in the "Routing" page by configuring a base path (e.g., `/my-endpoint`) and protocol type. The system automatically registers full API paths based on the protocol. For example, after configuring `/claude` + `anthropic` protocol, clients access via `http://127.0.0.1:4100/claude/v1/messages`.\n\nIf you encounter 404 errors, check:\n1) Is the endpoint enabled?\n2) Are clients using the complete path (including protocol subpath)?\n3) Check server logs to confirm route registration'
             },
             {
+              q: 'Why does provider testing say no model is configured?',
+              a: 'Provider settings store Base URL and authentication, but the test request still needs a concrete model. Add at least one model under that Provider, or set a default model, then test again.'
+            },
+            {
+              q: 'When do I need model routing?',
+              a: 'Configure routing when the client model name differs from the upstream model name, when `/anthropic` and `/openai` should go to different providers, or when different clients need different provider mappings. Target models use `providerId:modelId`; `providerId:*` passes the original client model name through to that provider.'
+            },
+            {
               q: 'Why are cached token numbers missing?',
               a: 'Upstream providers must return cached_tokens or input_tokens_details.cached_tokens. Enable cache metrics on the provider if supported.'
             },
             {
               q: 'How can I use different models for different clients?',
-              a: 'Create separate API keys for each client and configure different routing rules in "Routing". You can also create dedicated custom endpoints for different clients.'
+              a: 'The recommended approach is to create dedicated custom endpoints for different clients and maintain independent routing rules per endpoint. You can also point clients at `/anthropic`, `/openai`, or custom Base URLs. API keys are mainly for auditing, source separation, and revocation; they do not carry separate routing rules by themselves.'
             }
           ]
         }

@@ -50,7 +50,7 @@ export default function HelpPage(): JSX.Element {
   }, [t])
 
   const faqItems = t('help.faq.items', { returnObjects: true }) as Array<{ q: string; a: string }>
-  const starterFlow = sections[0].items.slice(0, 3)
+  const starterFlow = sections[0].items
   const quickPaths = useMemo(
     () => [
       {

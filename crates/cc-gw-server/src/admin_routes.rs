@@ -276,15 +276,12 @@ pub(super) async fn api_provider_test(
         .clone()
         .or_else(|| provider.models.first().map(|model| model.id.clone()));
     let Some(target_model) = target_model else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "ok": false,
-                "status": 0,
-                "statusText": "No model configured for provider"
-            })),
-        )
-            .into_response();
+        return Json(json!({
+            "ok": false,
+            "status": 0,
+            "statusText": "No model configured for provider"
+        }))
+        .into_response();
     };
 
     let mut incoming_headers = HeaderMap::new();

@@ -22,5 +22,8 @@ export const storageKeys = {
     search: 'cc-gw.api-keys.search',
     statusFilter: 'cc-gw.api-keys.status-filter',
     viewMode: 'cc-gw.api-keys.inventory-view-mode'
+  },
+  modelManagement: {
+    recentRouteTargets: 'cc-gw.model-management.recent-route-targets'
   }
 } as const

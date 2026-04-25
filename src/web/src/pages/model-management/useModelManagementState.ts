@@ -83,6 +83,7 @@ export function useModelManagementState() {
   const [testDialogProvider, setTestDialogProvider] = useState<ProviderConfig | null>(null)
   const [testDialogUsePreset, setTestDialogUsePreset] = useState(true)
   const [testDialogPreservedExtras, setTestDialogPreservedExtras] = useState<Record<string, string>>({})
+  const [noModelDialogProvider, setNoModelDialogProvider] = useState<ProviderConfig | null>(null)
   const [savingClaudeValidation, setSavingClaudeValidation] = useState(false)
   const [savingCompatibilityPolicy, setSavingCompatibilityPolicy] = useState(false)
   const [presetsExpanded, setPresetsExpanded] = useState<Record<string, boolean>>({})
@@ -187,7 +188,16 @@ export function useModelManagementState() {
   }, [providers])
 
   const providerModelOptions = useMemo(() => {
-    const options: Array<{ value: string; label: string }> = []
+    const options: Array<{
+      value: string
+      label: string
+      providerId?: string
+      providerLabel?: string
+      modelId?: string
+      modelLabel?: string
+      kind?: 'model' | 'passthrough' | 'custom'
+      isDefault?: boolean
+    }> = []
     const seen = new Set<string>()
 
     for (const provider of providers) {
@@ -204,7 +214,13 @@ export function useModelManagementState() {
           seen.add(value)
           options.push({
             value,
-            label: `${providerDisplay} · ${model.label ?? model.id}`
+            label: `${providerDisplay} · ${model.label ?? model.id}`,
+            providerId: provider.id,
+            providerLabel: providerDisplay,
+            modelId: model.id,
+            modelLabel: model.label ?? model.id,
+            kind: 'model',
+            isDefault: provider.defaultModel === model.id
           })
         }
       } else if (provider.defaultModel) {
@@ -213,7 +229,13 @@ export function useModelManagementState() {
           seen.add(value)
           options.push({
             value,
-            label: `${providerDisplay} · ${provider.defaultModel}`
+            label: `${providerDisplay} · ${provider.defaultModel}`,
+            providerId: provider.id,
+            providerLabel: providerDisplay,
+            modelId: provider.defaultModel,
+            modelLabel: provider.defaultModel,
+            kind: 'model',
+            isDefault: true
           })
         }
       }
@@ -223,7 +245,12 @@ export function useModelManagementState() {
         seen.add(passthroughValue)
         options.push({
           value: passthroughValue,
-          label: t('settings.routing.providerPassthroughOption', { provider: providerDisplay })
+          label: t('settings.routing.providerPassthroughOption', { provider: providerDisplay }),
+          providerId: provider.id,
+          providerLabel: providerDisplay,
+          modelId: '*',
+          modelLabel: '*',
+          kind: 'passthrough'
         })
       }
     }
@@ -232,7 +259,13 @@ export function useModelManagementState() {
       const target = entry.target.trim()
       if (target && !seen.has(target)) {
         seen.add(target)
-        options.push({ value: target, label: target })
+        options.push({
+          value: target,
+          label: target,
+          modelId: target,
+          modelLabel: target,
+          kind: 'custom'
+        })
       }
     }
 
@@ -583,9 +616,10 @@ export function useModelManagementState() {
         variant: 'error'
       })
     } catch (error) {
+      const apiError = toApiError(error)
       pushToast({
         title: t('providers.toast.testFailure', {
-          message: error instanceof Error ? error.message : 'unknown'
+          message: apiError.status ? `${apiError.status} ${apiError.message}` : apiError.message
         }),
         variant: 'error'
       })
@@ -595,6 +629,14 @@ export function useModelManagementState() {
   }
 
   const initiateTestConnection = (provider: ProviderConfig) => {
+    const hasConfiguredModel =
+      Boolean(provider.defaultModel?.trim()) ||
+      Boolean(provider.models?.some((model) => model.id.trim().length > 0))
+    if (!hasConfiguredModel) {
+      setNoModelDialogProvider(provider)
+      return
+    }
+
     if (provider.type !== 'anthropic') {
       void handleTestConnection(provider)
       return
@@ -1213,6 +1255,7 @@ export function useModelManagementState() {
     editingProvider,
     endpointDrawerOpen,
     filteredProviders,
+    noModelDialogProvider,
     handleAddRoute,
     handleAddSuggestion,
     handleApplyPreset,
@@ -1257,6 +1300,7 @@ export function useModelManagementState() {
     setEditingEndpoint,
     setEditingProvider,
     setEndpointDrawerOpen,
+    setNoModelDialogProvider,
     setPresetDiffDialog,
     setPresetsExpanded,
     setProviderSearch,
