@@ -97,6 +97,69 @@ fn extract_request_session_id_uses_stable_headers_before_user_fallbacks() {
 }
 
 #[test]
+fn extract_request_session_id_supports_provider_conversation_fields() {
+    let headers = HeaderMap::new();
+
+    let openai_responses_payload = json!({
+        "conversation": "conv_openai_123",
+        "input": "hello",
+        "prompt_cache_key": "cache-bucket"
+    });
+    assert_eq!(
+        extract_request_session_id(&openai_responses_payload, &headers),
+        Some("conv_openai_123".to_string())
+    );
+
+    let openai_responses_object_payload = json!({
+        "conversation": {
+            "id": "conv_openai_object_123"
+        },
+        "input": "hello"
+    });
+    assert_eq!(
+        extract_request_session_id(&openai_responses_object_payload, &headers),
+        Some("conv_openai_object_123".to_string())
+    );
+
+    let anthropic_container_payload = json!({
+        "container": "container_anthropic_123",
+        "messages": [{ "role": "user", "content": "hello" }]
+    });
+    assert_eq!(
+        extract_request_session_id(&anthropic_container_payload, &headers),
+        Some("container_anthropic_123".to_string())
+    );
+
+    let cache_only_payload = json!({
+        "prompt_cache_key": "cache-bucket",
+        "messages": [{ "role": "user", "content": "hello" }]
+    });
+    assert_eq!(
+        extract_request_session_id(&cache_only_payload, &headers),
+        None
+    );
+}
+
+#[test]
+fn extract_header_session_id_supports_cc_gw_standard_header() {
+    let payload = json!({});
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("x-cc-gw-session-id"),
+        HeaderValue::from_static("gateway-session"),
+    );
+
+    assert_eq!(
+        extract_request_session_id(&payload, &headers),
+        Some("gateway-session".to_string())
+    );
+    assert_eq!(
+        extract_profiler_session_id(&payload, &headers),
+        Some("gateway-session".to_string())
+    );
+}
+
+#[test]
 fn extract_profiler_session_id_ignores_user_fallback_and_uses_url_safe_id() {
     let payload_with_user_only = json!({
         "metadata": {

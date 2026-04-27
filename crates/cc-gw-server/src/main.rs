@@ -1012,11 +1012,21 @@ fn extract_string(value: Option<&Value>) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn extract_string_or_object_id(value: Option<&Value>) -> Option<String> {
+    value.and_then(|value| match value {
+        Value::String(_) => extract_string(Some(value)),
+        Value::Object(object) => extract_string(object.get("id")),
+        _ => None,
+    })
+}
+
 fn extract_body_session_id(body: &Value) -> Option<String> {
     let metadata = body.get("metadata");
     extract_string(metadata.and_then(|value| value.get("session_id")))
         .or_else(|| extract_string(metadata.and_then(|value| value.get("conversation_id"))))
         .or_else(|| extract_string(body.get("session_id")))
+        .or_else(|| extract_string_or_object_id(body.get("conversation")))
+        .or_else(|| extract_string_or_object_id(body.get("container")))
 }
 
 fn extract_body_user_session_id(body: &Value) -> Option<String> {
@@ -1027,6 +1037,7 @@ fn extract_body_user_session_id(body: &Value) -> Option<String> {
 
 fn extract_header_session_id(headers: &HeaderMap) -> Option<String> {
     [
+        "x-cc-gw-session-id",
         "x-session-id",
         "x-conversation-id",
         "x-app-session-id",
