@@ -97,6 +97,35 @@ fn extract_request_session_id_uses_stable_headers_before_user_fallbacks() {
 }
 
 #[test]
+fn extract_profiler_session_id_ignores_user_fallback_and_uses_url_safe_id() {
+    let payload_with_user_only = json!({
+        "metadata": {
+            "user_id": "user-fallback"
+        },
+        "user": "body-user"
+    });
+    let headers = HeaderMap::new();
+    assert_eq!(
+        extract_profiler_session_id(&payload_with_user_only, &headers),
+        None
+    );
+
+    let payload_with_session = json!({
+        "metadata": {
+            "session_id": "session/with/slash"
+        },
+        "user": "body-user"
+    });
+    let session_id =
+        extract_profiler_session_id(&payload_with_session, &headers).expect("profiler session id");
+    assert_eq!(session_id, "session/with/slash");
+
+    let profiler_id = profiler_session_id_for(&session_id);
+    assert!(profiler_id.starts_with("session_"));
+    assert!(!profiler_id.contains('/'));
+}
+
+#[test]
 fn infer_client_kind_prefers_known_cli_markers() {
     let mut claude_headers = HeaderMap::new();
     claude_headers.insert(
@@ -4433,6 +4462,112 @@ async fn profiler_sessions_list_and_clear() {
     assert_eq!(cleared["deleted"], 0);
 
     handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn profiler_records_real_requests_without_user_fallback_or_disabled_response_payloads() {
+    let upstream = Router::new().route("/v1/chat/completions", post(mock_openai_test));
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.defaults.completion = Some("gpt-test".to_string());
+    config.store_response_payloads = Some(false);
+    if let Some(openai) = config.endpoint_routing.get_mut("openai") {
+        openai.defaults.completion = Some("gpt-test".to_string());
+    }
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "profiler-real-requests").await;
+    let client = reqwest::Client::new();
+
+    let status: Value = client
+        .post(format!("http://{gateway_addr}/api/profiler/start"))
+        .send()
+        .await
+        .expect("start profiler")
+        .json()
+        .await
+        .expect("decode start profiler");
+    assert_eq!(status["active"], true);
+
+    let user_only = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-test",
+            "user": "not-a-profiler-session",
+            "messages": [{ "role": "user", "content": "user-only" }]
+        }))
+        .send()
+        .await
+        .expect("send user-only request");
+    assert_eq!(user_only.status(), StatusCode::OK);
+
+    let session_id = "session/with/slash";
+    let profiled = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-test",
+            "session_id": session_id,
+            "messages": [{ "role": "user", "content": "profiled" }]
+        }))
+        .send()
+        .await
+        .expect("send profiled request");
+    assert_eq!(profiled.status(), StatusCode::OK);
+
+    let list: Value = client
+        .get(format!(
+            "http://{gateway_addr}/api/profiler/sessions?limit=100"
+        ))
+        .send()
+        .await
+        .expect("list profiler sessions")
+        .json()
+        .await
+        .expect("decode profiler sessions");
+    assert_eq!(list["total"], 1);
+    let session = list["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("profiler session");
+    assert_eq!(session["sessionId"], session_id);
+    let profiler_id = session["id"].as_str().expect("profiler id");
+    assert!(!profiler_id.contains('/'));
+
+    let detail: Value = client
+        .get(format!(
+            "http://{gateway_addr}/api/profiler/sessions/{profiler_id}"
+        ))
+        .send()
+        .await
+        .expect("get profiler session")
+        .json()
+        .await
+        .expect("decode profiler detail");
+    assert_eq!(detail["turnCount"], 1);
+    assert_eq!(detail["records"][0]["sessionId"], session_id);
+    assert!(
+        detail["records"][0]["clientRequest"]
+            .as_str()
+            .is_some_and(|payload| payload.contains("profiled"))
+    );
+    assert!(detail["records"][0]["clientResponse"].is_null());
+
+    gateway_handle.abort();
+    upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
 }
 

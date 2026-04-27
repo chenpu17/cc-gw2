@@ -1,6 +1,5 @@
-import { FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { LogsFiltersCard } from '@/pages/logs/LogsFiltersCard'
 import { LogDetailsDrawer } from '@/pages/logs/LogDetailsDrawer'
 import { LogsPageActions } from '@/pages/logs/LogsPageActions'
@@ -12,15 +11,13 @@ export default function LogsPage() {
   const state = useLogsPageState()
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={<FileText className="h-5 w-5" aria-hidden="true" />}
-        title={t('logs.title')}
-        description={t('logs.description')}
-        eyebrow="Traffic Explorer"
-        breadcrumb="Gateway / Logs"
-        helper={t('logs.filtersDescription')}
-        badge={state.total > 0 ? t('logs.summary.total', { value: state.total.toLocaleString() }) : undefined}
+    <div className="flex flex-col gap-4">
+      <PageToolbar
+        info={state.total > 0 ? (
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+            {t('logs.summary.total', { value: state.total.toLocaleString() })}
+          </span>
+        ) : null}
         actions={
           <LogsPageActions
             columnOptions={state.columnOptions}

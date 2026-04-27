@@ -18,6 +18,7 @@ const ProfilerPage = lazy(() => import('@/pages/Profiler'))
 interface AppRouteNavMeta {
   icon: LucideIcon
   labelKey: string
+  titleKey?: string
   descriptionKey: string
   matchPaths?: string[]
 }
@@ -37,6 +38,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: BarChart3,
       labelKey: 'nav.dashboard',
+      titleKey: 'nav.dashboard',
       descriptionKey: 'dashboard.description',
       matchPaths: ['/']
     }
@@ -47,6 +49,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: FileText,
       labelKey: 'nav.logs',
+      titleKey: 'logs.title',
       descriptionKey: 'logs.description'
     }
   },
@@ -56,6 +59,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: Layers,
       labelKey: 'nav.models',
+      titleKey: 'providers.title',
       descriptionKey: 'providers.description',
       matchPaths: ['/models', '/providers']
     }
@@ -70,6 +74,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: GitBranch,
       labelKey: 'nav.routing',
+      titleKey: 'routingManagement.title',
       descriptionKey: 'routingManagement.description'
     }
   },
@@ -79,6 +84,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: AlertTriangle,
       labelKey: 'nav.events',
+      titleKey: 'events.title',
       descriptionKey: 'events.description'
     }
   },
@@ -88,6 +94,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: Key,
       labelKey: 'nav.apiKeys',
+      titleKey: 'apiKeys.title',
       descriptionKey: 'apiKeys.description'
     }
   },
@@ -97,6 +104,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: Activity,
       labelKey: 'nav.profiler',
+      titleKey: 'profiler.title',
       descriptionKey: 'profiler.description'
     }
   },
@@ -106,6 +114,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: Settings,
       labelKey: 'nav.settings',
+      titleKey: 'settings.title',
       descriptionKey: 'settings.description'
     }
   },
@@ -115,6 +124,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: LifeBuoy,
       labelKey: 'nav.help',
+      titleKey: 'help.title',
       descriptionKey: 'help.intro'
     }
   },
@@ -124,6 +134,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     nav: {
       icon: Cog,
       labelKey: 'nav.about',
+      titleKey: 'about.title',
       descriptionKey: 'about.description'
     }
   }

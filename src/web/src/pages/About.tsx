@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Info, LifeBuoy, RefreshCw, ServerCog, Sparkles } from 'lucide-react'
-import { PageHeader } from '@/components/PageHeader'
+import { LifeBuoy, RefreshCw, ServerCog, Sparkles } from 'lucide-react'
+import { PageToolbar } from '@/components/PageToolbar'
 import { PageSection } from '@/components/PageSection'
 import { PageLoadingState, PageState } from '@/components/PageState'
 import { useAppMutation } from '@/hooks/useAppMutation'
@@ -123,24 +123,22 @@ export default function AboutPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={<Info className="h-5 w-5" aria-hidden="true" />}
-        title={t('about.title')}
-        description={t('about.description')}
-        badge={<span data-visual-volatile="true">v{appVersion}</span>}
-        eyebrow="Runtime"
-        breadcrumb="Gateway / About"
-        helper={t('about.support.description')}
+      <PageToolbar
+        info={
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground" data-visual-volatile="true">
+            v{appVersion}
+          </span>
+        }
+        status={
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+            manual refresh only
+          </span>
+        }
         actions={
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <div className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-              manual refresh only
-            </div>
-            <Button onClick={() => versionCheckMutation.mutate()} disabled={versionCheckMutation.isPending} className="w-full sm:w-auto">
-              <Sparkles className={`mr-2 h-4 w-4${versionCheckMutation.isPending ? ' animate-spin' : ''}`} aria-hidden="true" />
-              {versionCheckMutation.isPending ? t('about.support.actions.checkingUpdates') : t('about.support.actions.checkUpdates')}
-            </Button>
-          </div>
+          <Button onClick={() => versionCheckMutation.mutate()} disabled={versionCheckMutation.isPending} size="sm">
+            <Sparkles className={`mr-2 h-4 w-4${versionCheckMutation.isPending ? ' animate-spin' : ''}`} aria-hidden="true" />
+            {versionCheckMutation.isPending ? t('about.support.actions.checkingUpdates') : t('about.support.actions.checkUpdates')}
+          </Button>
         }
       />
 

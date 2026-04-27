@@ -1,9 +1,9 @@
-import { GitBranch, Layers } from 'lucide-react'
+import { Layers } from 'lucide-react'
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { Button } from '@/components/ui/button'
 import { EndpointDrawer } from './model-management/EndpointDrawer'
 import { ModelManagementOverviewCard } from './model-management/ModelManagementOverviewCard'
@@ -26,25 +26,24 @@ export default function RoutingManagementPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={<GitBranch className="h-5 w-5" aria-hidden="true" />}
-        title={t('routingManagement.title')}
-        description={t('routingManagement.description')}
-        eyebrow={t('routingManagement.eyebrow')}
-        breadcrumb="Gateway / Routing"
-        badge={currentTabInfo?.label ?? currentEndpoint}
+      <PageToolbar
+        info={(currentTabInfo?.label ?? currentEndpoint) ? (
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+            {currentTabInfo?.label ?? currentEndpoint}
+          </span>
+        ) : null}
         actions={(
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <Button asChild variant="outline" className="w-full sm:w-auto">
+          <>
+            <Button asChild variant="outline" size="sm">
               <Link to="/models">
                 <Layers className="h-4 w-4" aria-hidden="true" />
                 {t('nav.models')}
               </Link>
             </Button>
-            <Button onClick={state.handleOpenCreateEndpoint} className="w-full sm:w-auto">
+            <Button size="sm" onClick={state.handleOpenCreateEndpoint}>
               {t('modelManagement.addEndpoint')}
             </Button>
-          </div>
+          </>
         )}
       />
 

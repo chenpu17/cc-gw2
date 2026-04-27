@@ -49,7 +49,7 @@ function NavGroup({
   return (
     <div className="space-y-0.5">
       {!compact && (
-        <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
+        <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
           {label}
         </p>
       )}
@@ -116,18 +116,19 @@ function SidebarContent({ compact, onNavigate }: { compact?: boolean; onNavigate
       {/* Logo */}
       <div className={cn(
         'flex shrink-0 items-center border-b border-[color:var(--surface-border)]',
-        compact ? 'h-14 w-full justify-center' : 'h-14 gap-3 px-4'
+        compact ? 'h-12 w-full justify-center' : 'h-12 gap-3 px-4'
       )}>
         <GatewayBrandMark compact={compact} />
         {!compact && (
-          <div className="min-w-0 space-y-1">
-            <div className="flex items-center gap-2">
-              <p className="truncate text-sm font-semibold text-foreground">{t('app.title')}</p>
-              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 before:h-1.5 before:w-1.5 before:rounded-full before:bg-emerald-500 dark:bg-emerald-950/30 dark:text-emerald-400">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="shrink-0 whitespace-nowrap text-sm font-semibold text-foreground" title={t('app.title')}>
+                cc-gw
+              </p>
+              <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 before:h-1.5 before:w-1.5 before:rounded-full before:bg-emerald-500 dark:bg-emerald-950/30 dark:text-emerald-400">
                 {t('app.online')}
               </span>
             </div>
-            <p className="truncate text-xs text-muted-foreground/60">{t('app.consoleSubtitle')}</p>
           </div>
         )}
       </div>
@@ -177,7 +178,7 @@ export function AppLayout() {
   }, [location.pathname])
 
   const activeItem = useMemo(() => getActiveNavigationRoute(location.pathname), [location.pathname])
-  const activeTitle = t(activeItem.nav.labelKey)
+  const activeTitle = t(activeItem.nav.titleKey ?? activeItem.nav.labelKey)
   const activeDescription = t(activeItem.nav.descriptionKey)
 
   const handleLogout = async () => {
@@ -201,15 +202,15 @@ export function AppLayout() {
       </aside>
 
       {/* Full sidebar (lg+) */}
-      <aside className="hidden w-56 shrink-0 flex-col bg-card lg:flex">
+      <aside className="hidden w-52 shrink-0 flex-col bg-card lg:flex">
         <SidebarContent />
       </aside>
 
       {/* Main area */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm lg:px-6">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm lg:px-6">
+          <div className="flex min-w-0 items-center gap-3">
             {/* Mobile menu button */}
             <Button
               variant="ghost"
@@ -222,9 +223,9 @@ export function AppLayout() {
             >
               {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
-            <div>
-              <p className="text-sm font-semibold text-foreground">{activeTitle}</p>
-              <p className="hidden text-xs text-muted-foreground/60 sm:block">{activeDescription}</p>
+            <div className="flex min-w-0 items-baseline gap-3">
+              <h1 className="truncate text-sm font-semibold text-foreground">{activeTitle}</h1>
+              <p className="hidden truncate text-xs text-muted-foreground/60 lg:block">{activeDescription}</p>
             </div>
           </div>
 
@@ -254,9 +255,9 @@ export function AppLayout() {
           id="main-content"
           role="main"
           tabIndex={-1}
-          className="flex-1 overflow-y-auto"
+          className="flex min-h-0 flex-1 flex-col"
         >
-          <div className="mx-auto max-w-6xl px-4 py-5 lg:px-6 lg:py-6">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 lg:px-6">
             <Outlet />
           </div>
         </main>
@@ -271,7 +272,7 @@ export function AppLayout() {
           />
           <div
             id="mobile-nav"
-            className="fixed inset-y-0 left-0 w-56 bg-card shadow-[var(--surface-shadow-lg)] animate-in slide-in-from-left duration-200"
+            className="fixed inset-y-0 left-0 w-52 bg-card shadow-[var(--surface-shadow-lg)] animate-in slide-in-from-left duration-200"
           >
             <SidebarContent onNavigate={() => setMobileNavOpen(false)} />
           </div>

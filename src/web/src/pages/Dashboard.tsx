@@ -1,6 +1,6 @@
-import { AlertTriangle, BarChart3, Database, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Database, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { PageState } from '@/components/PageState'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,23 +30,18 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
-        title={t('nav.dashboard')}
-        description={t('dashboard.description')}
-        badge={state.selectedEndpointLabel}
-        eyebrow="Operations"
-        breadcrumb="Gateway / Dashboard"
-        helper={t('dashboard.charts.requestsDesc')}
+      <PageToolbar
+        info={
+          <span className="text-xs text-muted-foreground">
+            {t('dashboard.filters.endpoint')}
+            {' · '}
+            {state.selectedEndpointLabel}
+          </span>
+        }
         actions={
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-            <div className="text-xs text-muted-foreground/60">
-              {t('dashboard.filters.endpoint')}
-              {' · '}
-              {state.selectedEndpointLabel}
-            </div>
+          <>
             <Select value={state.endpointFilter} onValueChange={state.setEndpointFilter}>
-              <SelectTrigger className="w-full sm:w-[168px]">
+              <SelectTrigger className="h-8 w-[168px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -60,15 +55,15 @@ export default function DashboardPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" onClick={() => void state.handleRefresh()} disabled={state.isRefreshing} className="w-full sm:w-auto">
+            <Button variant="outline" size="sm" onClick={() => void state.handleRefresh()} disabled={state.isRefreshing}>
               <RefreshCw className={cn('mr-2 h-4 w-4', state.isRefreshing && 'animate-spin')} aria-hidden="true" />
               {state.isRefreshing ? t('common.actions.refreshing') : t('common.actions.refresh')}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => void state.handleCompact()} disabled={state.compacting} className="w-full sm:w-auto">
+            <Button variant="outline" size="sm" onClick={() => void state.handleCompact()} disabled={state.compacting}>
               <Database className="mr-2 h-4 w-4" aria-hidden="true" />
               {state.compacting ? t('dashboard.actions.compacting') : t('dashboard.actions.compact')}
             </Button>
-          </div>
+          </>
         }
       />
 

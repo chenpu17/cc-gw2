@@ -1,8 +1,8 @@
-import { ArrowRight, Layers } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { Button } from '@/components/ui/button'
 import { NoModelConfiguredDialog } from './model-management/NoModelConfiguredDialog'
 import { ProvidersWorkspace } from './model-management/ProvidersWorkspace'
@@ -16,25 +16,24 @@ export default function ModelManagementPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={<Layers className="h-5 w-5" aria-hidden="true" />}
-        title={t('providers.title')}
-        description={t('providers.description')}
-        eyebrow={t('modelManagement.providersEyebrow')}
-        breadcrumb="Gateway / Providers"
-        badge={t('providers.count', { count: state.providerCount })}
+      <PageToolbar
+        info={
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+            {t('providers.count', { count: state.providerCount })}
+          </span>
+        }
         actions={(
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <Button asChild variant="outline" className="w-full sm:w-auto">
+          <>
+            <Button asChild variant="outline" size="sm">
               <Link to="/routing">
                 {t('nav.routing')}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
             </Button>
-            <Button onClick={state.handleOpenCreate} className="w-full sm:w-auto">
+            <Button size="sm" onClick={state.handleOpenCreate}>
               {t('providers.actions.add')}
             </Button>
-          </div>
+          </>
         )}
       />
 

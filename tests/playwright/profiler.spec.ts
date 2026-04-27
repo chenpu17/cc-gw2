@@ -1,8 +1,41 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { createGatewayHarness } from './harness'
 
 const harness = createGatewayHarness()
+const profilerTitle = /Profiler|性能分析/
+const startRecording = /Start Recording|开始录制/
+const stopRecording = /Stop Recording|停止录制/
+const timelineTab = /Timeline|时间线/
+const breakdownTab = /Breakdown|拆解视图/
+const flowTab = /Flow|交互流/
+const perTurnBreakdown = /Per-Turn Breakdown|逐轮拆解/
+const clearAction = /Clear|清空/
+const waitingForRequests = /Waiting for requests…|等待请求进入\.\.\./
+const toolCallsTab = /Tool Calls|工具调用/
+const turnOneTitleSelector = 'button[title="Turn 1"], button[title="第 1 轮"]'
+
+function sessionItemName(sessionId: string, turns: number) {
+  return new RegExp(`${sessionId}.*(${turns} turns|${turns} 轮)`)
+}
+
+function sessionSummaryName(sessionId: string, turns: number) {
+  return new RegExp(`${sessionId}.*(${turns} turns|${turns} 轮).*(tokens|tok)`)
+}
+
+function turnButtonName(turn: number) {
+  return new RegExp(`(T${turn}.*TTFT.*tool calls|T${turn}.*TTFT.*工具调用)`, 'i')
+}
+
+async function startProfilerFromUi(page: Page) {
+  await page.getByRole('button', { name: startRecording }).first().click()
+  await expect(page.getByRole('button', { name: stopRecording }).first()).toBeVisible()
+}
+
+async function stopProfilerFromUi(page: Page) {
+  await page.getByRole('button', { name: stopRecording }).first().click()
+  await expect(page.getByRole('button', { name: startRecording }).first()).toBeVisible()
+}
 
 test.beforeAll(async () => {
   await harness.start()
@@ -61,39 +94,42 @@ test('profiler UI records, displays, and explores a captured session', async ({ 
   await page.goto(`${baseUrl}/ui/`)
   await page.getByRole('link', { name: '性能分析' }).click()
   await expect(page).toHaveURL(/\/ui\/profiler$/)
-  await expect(page.getByText('Profiler')).toBeVisible()
+  await expect(page.getByText(profilerTitle).first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'Start Recording' }).click()
-  await expect(page.getByRole('button', { name: 'Stop Recording' })).toBeVisible()
+  await startProfilerFromUi(page)
 
   await sendChatTurn(request, baseUrl, sessionId, 'first profiler turn')
   await sendChatTurn(request, baseUrl, sessionId, 'second profiler turn')
   await pollForProfilerSession(request, baseUrl, sessionId, 2)
 
-  const sessionItem = page.getByRole('button', { name: new RegExp(`${sessionId}.*2 turns`) })
+  const sessionItem = page.getByRole('button', { name: sessionItemName(sessionId, 2) })
   await expect(sessionItem).toBeVisible({ timeout: 15_000 })
   await sessionItem.click()
 
-  await expect(page.getByText(new RegExp(`${sessionId}.*2 turns.*tokens`))).toBeVisible()
+  await expect(page.getByText(sessionSummaryName(sessionId, 2)).first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'Timeline' }).click()
-  await expect(page.getByText('Compressed overview').first()).toBeVisible()
-  await expect(page.getByText('Total latency').first()).toBeVisible()
-  await expect(page.getByText('Tool executing').first()).toBeVisible()
+  await page.getByRole('button', { name: timelineTab }).click()
+  await expect(page.getByText(/Compressed overview|压缩总览/).first()).toBeVisible()
+  await expect(page.getByText(/Total latency|总延迟/).first()).toBeVisible()
+  await expect(page.getByText(/Tool executing|工具调用/).first()).toBeVisible()
   await expect(page.getByText(/TTFT/).first()).toBeVisible()
-  await expect(page.locator('button[title="Turn 1"]').first()).toBeVisible()
+  await expect(page.locator(turnOneTitleSelector).first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'Breakdown' }).click()
-  await expect(page.getByText('Per-Turn Breakdown')).toBeVisible()
-  await expect(page.getByRole('button', { name: /T1.*TTFT.*tool calls/i })).toBeVisible()
+  await page.getByRole('button', { name: breakdownTab }).click()
+  await expect(page.getByText(perTurnBreakdown)).toBeVisible()
+  await expect(page.getByRole('button', { name: turnButtonName(1) })).toBeVisible()
   await expect(page.getByText('first profiler turn').first()).toBeVisible()
   await expect(page.getByText('Stub response:first profiler turn').first()).toBeVisible()
-  await page.getByRole('button', { name: /T2.*TTFT.*tool calls/i }).click()
+  await page.getByRole('button', { name: turnButtonName(2) }).click()
   await expect(page.getByText('second profiler turn').first()).toBeVisible()
   await expect(page.getByText('Stub response:second profiler turn').first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'Stop Recording' }).click()
-  await expect(page.getByRole('button', { name: 'Start Recording' })).toBeVisible()
+  await page.getByRole('button', { name: flowTab }).click()
+  await expect(page.getByText('2 turns').first()).toBeVisible()
+  await expect(page.getByText('Agent').first()).toBeVisible()
+  await expect(page.getByText('LLM').first()).toBeVisible()
+
+  await stopProfilerFromUi(page)
 })
 
 test('profiler clear removes old turns before reusing the same session id', async ({ page, request }) => {
@@ -105,34 +141,33 @@ test('profiler clear removes old turns before reusing the same session id', asyn
   await resetProfiler(request, baseUrl)
 
   await page.goto(`${baseUrl}/ui/profiler`)
-  await expect(page.getByText('Profiler')).toBeVisible()
+  await expect(page.getByText(profilerTitle).first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'Start Recording' }).click()
-  await expect(page.getByRole('button', { name: 'Stop Recording' })).toBeVisible()
+  await startProfilerFromUi(page)
 
   await sendChatTurn(request, baseUrl, sessionId, oldMessage)
   await pollForProfilerSession(request, baseUrl, sessionId, 1)
 
-  const firstSessionItem = page.getByRole('button', { name: new RegExp(`${sessionId}.*1 turns`) })
+  const firstSessionItem = page.getByRole('button', { name: sessionItemName(sessionId, 1) })
   await expect(firstSessionItem).toBeVisible({ timeout: 15_000 })
   await firstSessionItem.click()
-  await page.getByRole('button', { name: 'Breakdown' }).click()
+  await page.getByRole('button', { name: breakdownTab }).click()
   await expect(page.getByText(oldMessage).first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'Clear' }).click()
-  await expect(page.getByText('Waiting for requests…')).toBeVisible()
+  await page.getByRole('button', { name: clearAction }).click()
+  await expect(page.getByText(waitingForRequests)).toBeVisible()
 
   await sendChatTurn(request, baseUrl, sessionId, newMessage)
   await pollForProfilerSession(request, baseUrl, sessionId, 1)
 
-  const reusedSessionItem = page.getByRole('button', { name: new RegExp(`${sessionId}.*1 turns`) })
+  const reusedSessionItem = page.getByRole('button', { name: sessionItemName(sessionId, 1) })
   await expect(reusedSessionItem).toBeVisible({ timeout: 15_000 })
   await reusedSessionItem.click()
 
-  await page.getByRole('button', { name: 'Breakdown' }).click()
+  await page.getByRole('button', { name: breakdownTab }).click()
   await expect(page.getByText('new profiler turn').first()).toBeVisible()
   await expect(page.getByText('old profiler turn')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /T1.*TTFT.*tool calls/i })).toBeVisible()
+  await expect(page.getByRole('button', { name: turnButtonName(1) })).toBeVisible()
 })
 
 test('profiler timeline stays scrollable when a session has many turns', async ({ page, request }) => {
@@ -143,21 +178,20 @@ test('profiler timeline stays scrollable when a session has many turns', async (
   await resetProfiler(request, baseUrl)
 
   await page.goto(`${baseUrl}/ui/profiler`)
-  await expect(page.getByText('Profiler')).toBeVisible()
+  await expect(page.getByText(profilerTitle).first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'Start Recording' }).click()
-  await expect(page.getByRole('button', { name: 'Stop Recording' })).toBeVisible()
+  await startProfilerFromUi(page)
 
   for (let turn = 1; turn <= turnCount; turn += 1) {
     await sendChatTurn(request, baseUrl, sessionId, `many profiler turn ${turn}`)
   }
   await pollForProfilerSession(request, baseUrl, sessionId, turnCount)
 
-  const sessionItem = page.getByRole('button', { name: new RegExp(`${sessionId}.*${turnCount} turns`) })
+  const sessionItem = page.getByRole('button', { name: sessionItemName(sessionId, turnCount) })
   await expect(sessionItem).toBeVisible({ timeout: 15_000 })
   await sessionItem.click()
 
-  await page.getByRole('button', { name: 'Timeline' }).click()
+  await page.getByRole('button', { name: timelineTab }).click()
 
   const sessionContent = page.getByTestId('profiler-session-content')
   await expect(sessionContent).toBeVisible()
@@ -173,9 +207,8 @@ test('profiler timeline stays scrollable when a session has many turns', async (
   })
 
   await expect(page.getByTestId('profiler-turn-detail')).toBeInViewport()
-  await expect(page.getByRole('button', { name: 'Tool Calls' })).toBeVisible()
+  await expect(page.getByRole('button', { name: toolCallsTab })).toBeVisible()
   await expect(page.getByText('many profiler turn 1').first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'Stop Recording' }).click()
-  await expect(page.getByRole('button', { name: 'Start Recording' })).toBeVisible()
+  await stopProfilerFromUi(page)
 })

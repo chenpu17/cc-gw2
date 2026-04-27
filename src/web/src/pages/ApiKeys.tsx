@@ -1,7 +1,7 @@
-import { Key, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Loader } from '@/components/Loader'
-import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { Button } from '@/components/ui/button'
 import {
   ApiKeyCreatedDialog,
@@ -27,28 +27,24 @@ export default function ApiKeysPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={<Key className="h-5 w-5" aria-hidden="true" />}
-        title={t('apiKeys.title')}
-        description={t('apiKeys.description')}
-        eyebrow="Access Control"
-        breadcrumb="Gateway / API Keys"
-        helper={t('apiKeys.helper')}
-        badge={headerBadge}
+      <PageToolbar
+        info={headerBadge ? (
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">{headerBadge}</span>
+        ) : null}
+        status={
+          <span className="text-xs text-muted-foreground">
+            {t('apiKeys.summary.wildcard', { count: state.wildcardCount })}
+            {' / '}
+            {t('apiKeys.summary.restricted', { count: state.restrictedCount })}
+            {' / '}
+            {t('apiKeys.summary.unrestricted', { count: state.unrestrictedCount })}
+          </span>
+        }
         actions={
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <div className="rounded-full bg-secondary px-3.5 py-2 text-xs text-muted-foreground">
-              {t('apiKeys.summary.wildcard', { count: state.wildcardCount })}
-              {' / '}
-              {t('apiKeys.summary.restricted', { count: state.restrictedCount })}
-              {' / '}
-              {t('apiKeys.summary.unrestricted', { count: state.unrestrictedCount })}
-            </div>
-            <Button onClick={() => state.handleCreateDialogChange(true)} className="w-full sm:w-auto">
-              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-              {t('apiKeys.createNew')}
-            </Button>
-          </div>
+          <Button size="sm" onClick={() => state.handleCreateDialogChange(true)}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            {t('apiKeys.createNew')}
+          </Button>
         }
       />
 

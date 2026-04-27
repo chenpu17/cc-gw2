@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AlertTriangle, ChevronLeft, ChevronRight, Filter, RefreshCw, ShieldAlert, Siren, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { PageSection } from '@/components/PageSection'
 import { PageLoadingState, PageState } from '@/components/PageState'
 import { useApiQuery } from '@/hooks/useApiQuery'
@@ -96,24 +96,20 @@ export default function EventsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        icon={<ShieldAlert className="h-5 w-5" aria-hidden="true" />}
-        title={t('events.title')}
-        description={t('events.description')}
-        eyebrow="Audit"
-        breadcrumb="Gateway / Events"
-        helper={t('events.filters.title')}
-        badge={events.length > 0 ? `${events.length} events` : undefined}
+      <PageToolbar
+        info={events.length > 0 ? (
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">{events.length} events</span>
+        ) : null}
+        status={
+          <span className="text-xs text-muted-foreground">
+            {cursor ? t('events.actions.older') : t('events.actions.newest')}
+          </span>
+        }
         actions={
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <div className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-              {cursor ? t('events.actions.older') : t('events.actions.newest')}
-            </div>
-            <Button variant="outline" size="sm" onClick={() => void eventsQuery.refetch()} disabled={isRefreshing} className="w-full sm:w-auto">
-              <RefreshCw className={cn('mr-2 h-4 w-4', isRefreshing && 'animate-spin')} aria-hidden="true" />
-              {isRefreshing ? t('common.actions.refreshing') : t('common.actions.refresh')}
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" onClick={() => void eventsQuery.refetch()} disabled={isRefreshing}>
+            <RefreshCw className={cn('mr-2 h-4 w-4', isRefreshing && 'animate-spin')} aria-hidden="true" />
+            {isRefreshing ? t('common.actions.refreshing') : t('common.actions.refresh')}
+          </Button>
         }
       />
 

@@ -10,10 +10,11 @@ import {
   ChevronRight,
   Download,
   LayoutList,
+  Network,
   Search,
   Trash2,
 } from 'lucide-react'
-import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { PageLoadingState, PageState } from '@/components/PageState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,8 +23,9 @@ import { formatPayloadDisplay } from '@/pages/logs/utils'
 import { profilerApi } from '@/services/profiler'
 import { queryKeys } from '@/services/queryKeys'
 import type { ProfilerRecord, ProfilerSession, ProfilerSessionDetail } from '@/types/profiler'
+import { FlowPanel } from '@/pages/ProfilerFlow'
 
-type ActiveTab = 'timeline' | 'breakdown'
+type ActiveTab = 'timeline' | 'breakdown' | 'flow'
 type TimelineDetailTab = 'request' | 'response' | 'tools'
 
 function fmtMs(ms: number | null | undefined): string {
@@ -896,29 +898,21 @@ export default function ProfilerPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-3 lg:h-[calc(100vh-64px)]">
-      <PageHeader
-        className="flex-none"
-        icon={<Activity className="h-5 w-5" aria-hidden="true" />}
-        title={t('profiler.title')}
-        description={t('profiler.description')}
-        eyebrow={t('profiler.eyebrow')}
-        breadcrumb={t('profiler.breadcrumb')}
-        helper={selectedId ? t('profiler.empty.selectDescription') : undefined}
-        badge={(
-          <span className={cn('inline-flex items-center gap-1.5', isRecording ? 'text-red-600 dark:text-red-300' : 'text-muted-foreground')}>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <PageToolbar
+        status={
+          <span className={cn('inline-flex items-center gap-1.5 text-xs', isRecording ? 'text-red-600 dark:text-red-300' : 'text-muted-foreground')}>
             <span className={cn('inline-block h-1.5 w-1.5 rounded-full', isRecording ? 'bg-red-500' : 'bg-muted-foreground/70')} />
             {isRecording ? t('profiler.status.recording') : t('profiler.status.idle')}
           </span>
-        )}
+        }
+        info={
+          <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 text-[11px]">
+            {t('profiler.sessionsCount', { count: sessions.length })}
+          </Badge>
+        }
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant="secondary"
-              className="rounded-full px-3 py-1 text-[11px]"
-            >
-              {t('profiler.sessionsCount', { count: sessions.length })}
-            </Badge>
+          <>
             <Button
               size="sm"
               variant={isRecording ? 'destructive' : 'default'}
@@ -935,7 +929,7 @@ export default function ProfilerPage() {
               <Trash2 className="mr-1.5 h-3.5 w-3.5" />
               {t('profiler.actions.clear')}
             </Button>
-          </div>
+          </>
         }
       />
 
@@ -1045,6 +1039,7 @@ export default function ProfilerPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <SegmentedTab active={tab === 'timeline'} icon={LayoutList} label={t('profiler.tabs.timeline')} onClick={() => setTab('timeline')} />
                   <SegmentedTab active={tab === 'breakdown'} icon={BarChart3} label={t('profiler.tabs.breakdown')} onClick={() => setTab('breakdown')} />
+                  <SegmentedTab active={tab === 'flow'} icon={Network} label={t('profiler.tabs.flow')} onClick={() => setTab('flow')} />
                 </div>
               </div>
 
@@ -1062,6 +1057,8 @@ export default function ProfilerPage() {
                       onSelectTurn={setSelectedTurn}
                       onDetailTabChange={setTimelineDetailTab}
                     />
+                  ) : tab === 'flow' ? (
+                    <FlowPanel detail={detail} />
                   ) : (
                     <BreakdownPanel
                       detail={detail}

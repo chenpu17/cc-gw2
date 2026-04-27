@@ -322,6 +322,42 @@ fn today_key() -> String {
     chrono::Utc::now().format("%Y-%m-%d").to_string()
 }
 
+fn local_datetime_millis(value: chrono::NaiveDateTime) -> i64 {
+    match value.and_local_timezone(chrono::Local) {
+        chrono::LocalResult::Single(value) => value.timestamp_millis(),
+        chrono::LocalResult::Ambiguous(earliest, _) => earliest.timestamp_millis(),
+        chrono::LocalResult::None => value.and_utc().timestamp_millis(),
+    }
+}
+
+fn local_day_bounds_millis(date: chrono::NaiveDate) -> (i64, i64) {
+    let start = date
+        .and_hms_opt(0, 0, 0)
+        .expect("midnight is a valid local time");
+    let next_start = date
+        .succ_opt()
+        .expect("local date has a next day")
+        .and_hms_opt(0, 0, 0)
+        .expect("midnight is a valid local time");
+    (
+        local_datetime_millis(start),
+        local_datetime_millis(next_start),
+    )
+}
+
+fn local_today_bounds_millis() -> (i64, i64) {
+    local_day_bounds_millis(chrono::Local::now().date_naive())
+}
+
+fn local_daily_range_start_millis(days: i64) -> i64 {
+    let days = days.max(1) as u64;
+    let today = chrono::Local::now().date_naive();
+    let start_date = today
+        .checked_sub_days(chrono::Days::new(days.saturating_sub(1)))
+        .unwrap_or(today);
+    local_day_bounds_millis(start_date).0
+}
+
 pub fn insert_request_log(db_path: &Path, input: &RequestLogInput) -> Result<i64> {
     let conn = open_db(db_path)?;
     conn.execute(
@@ -748,12 +784,22 @@ pub fn export_logs(db_path: &Path, query: &LogQuery) -> Result<Vec<ExportLogReco
     Ok(items)
 }
 
-fn metrics_section(
+fn request_log_metrics_section(
     conn: &Connection,
-    sql: &str,
-    params_slice: &[&dyn rusqlite::ToSql],
+    range: Option<(i64, i64)>,
+    endpoint: Option<&str>,
 ) -> Result<MetricsOverviewSection> {
-    let row = conn.query_row(sql, params_slice, |row| {
+    let select = "SELECT
+       COUNT(*),
+       COALESCE(SUM(COALESCE(input_tokens, 0)), 0),
+       COALESCE(SUM(COALESCE(output_tokens, 0)), 0),
+       COALESCE(SUM(COALESCE(cached_tokens, 0)), 0),
+       COALESCE(SUM(COALESCE(cache_read_tokens, 0)), 0),
+       COALESCE(SUM(COALESCE(cache_creation_tokens, 0)), 0),
+       COALESCE(SUM(COALESCE(latency_ms, 0)), 0),
+       COUNT(latency_ms)
+     FROM request_logs";
+    let map_row = |row: &rusqlite::Row<'_>| {
         Ok((
             row.get::<_, i64>(0)?,
             row.get::<_, i64>(1)?,
@@ -762,9 +808,27 @@ fn metrics_section(
             row.get::<_, i64>(4)?,
             row.get::<_, i64>(5)?,
             row.get::<_, i64>(6)?,
+            row.get::<_, i64>(7)?,
         ))
-    })?;
-    let avg_latency_ms = if row.0 > 0 { row.6 / row.0 } else { 0 };
+    };
+    let row = match (range, endpoint) {
+        (Some((since, until)), Some(endpoint)) => conn.query_row(
+            &format!("{select} WHERE timestamp >= ?1 AND timestamp < ?2 AND endpoint = ?3"),
+            params![since, until, endpoint],
+            map_row,
+        )?,
+        (Some((since, until)), None) => conn.query_row(
+            &format!("{select} WHERE timestamp >= ?1 AND timestamp < ?2"),
+            params![since, until],
+            map_row,
+        )?,
+        (None, Some(endpoint)) => conn.query_row(
+            &format!("{select} WHERE endpoint = ?1"),
+            params![endpoint],
+            map_row,
+        )?,
+        (None, None) => conn.query_row(select, [], map_row)?,
+    };
     Ok(MetricsOverviewSection {
         requests: row.0,
         input_tokens: row.1,
@@ -772,57 +836,16 @@ fn metrics_section(
         cached_tokens: row.3,
         cache_read_tokens: row.4,
         cache_creation_tokens: row.5,
-        avg_latency_ms,
+        avg_latency_ms: if row.7 > 0 { row.6 / row.7 } else { 0 },
     })
 }
 
 pub fn get_metrics_overview(db_path: &Path, endpoint: Option<&str>) -> Result<MetricsOverview> {
     let conn = open_db(db_path)?;
-    let totals_sql = format!(
-        "SELECT
-           COALESCE(SUM(request_count), 0),
-           COALESCE(SUM(total_input_tokens), 0),
-           COALESCE(SUM(total_output_tokens), 0),
-           COALESCE(SUM(total_cached_tokens), 0),
-           COALESCE(SUM(total_cache_read_tokens), 0),
-           COALESCE(SUM(total_cache_creation_tokens), 0),
-           COALESCE(SUM(total_latency_ms), 0)
-         FROM daily_metrics {}",
-        if endpoint.is_some() {
-            "WHERE endpoint = ?1"
-        } else {
-            ""
-        }
-    );
-    let totals = if let Some(endpoint) = endpoint {
-        metrics_section(&conn, &totals_sql, &[&endpoint])?
-    } else {
-        metrics_section(&conn, &totals_sql, &[])?
-    };
-
-    let today = today_key();
-    let today_sql = format!(
-        "SELECT
-           COALESCE(SUM(request_count), 0),
-           COALESCE(SUM(total_input_tokens), 0),
-           COALESCE(SUM(total_output_tokens), 0),
-           COALESCE(SUM(total_cached_tokens), 0),
-           COALESCE(SUM(total_cache_read_tokens), 0),
-           COALESCE(SUM(total_cache_creation_tokens), 0),
-           COALESCE(SUM(total_latency_ms), 0)
-         FROM daily_metrics
-         WHERE date = ?1 {}",
-        if endpoint.is_some() {
-            "AND endpoint = ?2"
-        } else {
-            ""
-        }
-    );
-    let today_section = if let Some(endpoint) = endpoint {
-        metrics_section(&conn, &today_sql, &[&today, &endpoint])?
-    } else {
-        metrics_section(&conn, &today_sql, &[&today])?
-    };
+    let totals = request_log_metrics_section(&conn, None, endpoint)?;
+    let (today_start, tomorrow_start) = local_today_bounds_millis();
+    let today_section =
+        request_log_metrics_section(&conn, Some((today_start, tomorrow_start)), endpoint)?;
 
     Ok(MetricsOverview {
         totals,
@@ -836,37 +859,51 @@ pub fn get_daily_metrics(
     endpoint: Option<&str>,
 ) -> Result<Vec<DailyMetric>> {
     let conn = open_db(db_path)?;
+    let since = local_daily_range_start_millis(days);
     let sql = if endpoint.is_some() {
-        "SELECT date, request_count, total_input_tokens, total_output_tokens,
-                total_cached_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_latency_ms
-         FROM daily_metrics
-         WHERE endpoint = ?1
-         ORDER BY date DESC
-         LIMIT ?2"
-    } else {
-        "SELECT date,
-                SUM(request_count),
-                SUM(total_input_tokens),
-                SUM(total_output_tokens),
-                SUM(total_cached_tokens),
-                SUM(total_cache_read_tokens),
-                SUM(total_cache_creation_tokens),
-                SUM(total_latency_ms)
-         FROM daily_metrics
+        "SELECT
+           strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime') AS date,
+           COUNT(*),
+           COALESCE(SUM(COALESCE(input_tokens, 0)), 0),
+           COALESCE(SUM(COALESCE(output_tokens, 0)), 0),
+           COALESCE(SUM(COALESCE(cached_tokens, 0)), 0),
+           COALESCE(SUM(COALESCE(cache_read_tokens, 0)), 0),
+           COALESCE(SUM(COALESCE(cache_creation_tokens, 0)), 0),
+           COALESCE(SUM(COALESCE(latency_ms, 0)), 0),
+           COUNT(latency_ms)
+         FROM request_logs
+         WHERE timestamp >= ?1 AND endpoint = ?2
          GROUP BY date
          ORDER BY date DESC
-         LIMIT ?1"
+         LIMIT ?3"
+    } else {
+        "SELECT
+           strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime') AS date,
+           COUNT(*),
+           COALESCE(SUM(COALESCE(input_tokens, 0)), 0),
+           COALESCE(SUM(COALESCE(output_tokens, 0)), 0),
+           COALESCE(SUM(COALESCE(cached_tokens, 0)), 0),
+           COALESCE(SUM(COALESCE(cache_read_tokens, 0)), 0),
+           COALESCE(SUM(COALESCE(cache_creation_tokens, 0)), 0),
+           COALESCE(SUM(COALESCE(latency_ms, 0)), 0),
+           COUNT(latency_ms)
+         FROM request_logs
+         WHERE timestamp >= ?1
+         GROUP BY date
+         ORDER BY date DESC
+         LIMIT ?2"
     };
     let mut stmt = conn.prepare(sql)?;
     let mut rows = if let Some(endpoint) = endpoint {
-        stmt.query(params![endpoint, days])?
+        stmt.query(params![since, endpoint, days])?
     } else {
-        stmt.query(params![days])?
+        stmt.query(params![since, days])?
     };
     let mut items = Vec::new();
     while let Some(row) = rows.next()? {
         let request_count: i64 = row.get(1)?;
         let total_latency: i64 = row.get(7)?;
+        let latency_count: i64 = row.get(8)?;
         items.push(DailyMetric {
             date: row.get(0)?,
             request_count,
@@ -875,8 +912,8 @@ pub fn get_daily_metrics(
             cached_tokens: row.get(4)?,
             cache_read_tokens: row.get(5)?,
             cache_creation_tokens: row.get(6)?,
-            avg_latency_ms: if request_count > 0 {
-                total_latency / request_count
+            avg_latency_ms: if latency_count > 0 {
+                total_latency / latency_count
             } else {
                 0
             },
@@ -1124,7 +1161,7 @@ mod tests {
     }
 
     #[test]
-    fn metrics_overview_today_aggregates_all_endpoints() {
+    fn metrics_overview_today_uses_local_request_logs() {
         let root = std::env::temp_dir().join(format!(
             "cc-gw2-observability-metrics-tests-{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
@@ -1133,43 +1170,195 @@ mod tests {
         let db_path = root.join("gateway.db");
         initialize_database(&db_path).expect("init database");
 
+        // Seed a stale aggregate that should not affect the live "today" section.
         increment_daily_metrics(
             &db_path,
             "anthropic",
-            120,
+            999,
             &UsageStats {
-                input_tokens: 10,
-                output_tokens: 5,
-                cached_tokens: 3,
-                cache_read_tokens: 3,
-                cache_creation_tokens: 1,
+                input_tokens: 999,
+                output_tokens: 999,
                 ..UsageStats::default()
             },
         )
-        .expect("increment anthropic metrics");
-        increment_daily_metrics(
+        .expect("increment stale metrics");
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let anthropic_id = insert_request_log(
             &db_path,
-            "openai",
-            80,
-            &UsageStats {
-                input_tokens: 6,
-                output_tokens: 4,
-                cached_tokens: 4,
-                cache_read_tokens: 4,
-                cache_creation_tokens: 2,
-                ..UsageStats::default()
+            &RequestLogInput {
+                timestamp: now,
+                session_id: None,
+                source_ip: None,
+                endpoint: "anthropic".to_string(),
+                provider: "mock".to_string(),
+                model: "mock-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
             },
         )
-        .expect("increment openai metrics");
+        .expect("insert anthropic request log");
+        finalize_request_log(
+            &db_path,
+            anthropic_id,
+            &RequestLogUpdate {
+                latency_ms: Some(120),
+                status_code: Some(200),
+                input_tokens: Some(10),
+                output_tokens: Some(5),
+                cached_tokens: Some(3),
+                cache_read_tokens: Some(3),
+                cache_creation_tokens: Some(1),
+                ..RequestLogUpdate::default()
+            },
+        )
+        .expect("finalize anthropic request log");
+
+        let openai_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now,
+                session_id: None,
+                source_ip: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "mock-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert openai request log");
+        finalize_request_log(
+            &db_path,
+            openai_id,
+            &RequestLogUpdate {
+                latency_ms: Some(80),
+                status_code: Some(200),
+                input_tokens: Some(6),
+                output_tokens: Some(4),
+                cached_tokens: Some(4),
+                cache_read_tokens: Some(4),
+                cache_creation_tokens: Some(2),
+                ..RequestLogUpdate::default()
+            },
+        )
+        .expect("finalize openai request log");
+
+        insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now,
+                session_id: None,
+                source_ip: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "pending-model".to_string(),
+                client_model: None,
+                stream: true,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert pending openai request log");
 
         let overview = get_metrics_overview(&db_path, None).expect("query overview");
-        assert_eq!(overview.today.requests, 2);
+        assert_eq!(overview.totals.requests, 3);
+        assert_eq!(overview.totals.input_tokens, 16);
+        assert_eq!(overview.totals.output_tokens, 9);
+        assert_eq!(overview.totals.avg_latency_ms, 100);
+        assert_eq!(overview.today.requests, 3);
         assert_eq!(overview.today.input_tokens, 16);
         assert_eq!(overview.today.output_tokens, 9);
         assert_eq!(overview.today.cached_tokens, 7);
         assert_eq!(overview.today.cache_read_tokens, 7);
         assert_eq!(overview.today.cache_creation_tokens, 3);
         assert_eq!(overview.today.avg_latency_ms, 100);
+
+        let openai = get_metrics_overview(&db_path, Some("openai")).expect("query openai overview");
+        assert_eq!(openai.totals.requests, 2);
+        assert_eq!(openai.today.requests, 2);
+        assert_eq!(openai.today.input_tokens, 6);
+        assert_eq!(openai.today.output_tokens, 4);
+        assert_eq!(openai.today.avg_latency_ms, 80);
+
+        let today_date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let daily = get_daily_metrics(&db_path, 14, None).expect("query daily metrics");
+        assert_eq!(daily.len(), 1);
+        assert_eq!(daily[0].date, today_date);
+        assert_eq!(daily[0].request_count, 3);
+        assert_eq!(daily[0].input_tokens, 16);
+        assert_eq!(daily[0].output_tokens, 9);
+        assert_eq!(daily[0].avg_latency_ms, 100);
+
+        let openai_daily =
+            get_daily_metrics(&db_path, 14, Some("openai")).expect("query openai daily metrics");
+        assert_eq!(openai_daily.len(), 1);
+        assert_eq!(openai_daily[0].request_count, 2);
+        assert_eq!(openai_daily[0].input_tokens, 6);
+        assert_eq!(openai_daily[0].output_tokens, 4);
+        assert_eq!(openai_daily[0].avg_latency_ms, 80);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn metrics_overview_today_respects_local_day_boundary() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-local-day-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let (today_start, tomorrow_start) = local_today_bounds_millis();
+        for (timestamp, model) in [
+            (today_start - 1, "previous-local-day"),
+            (today_start, "today-start"),
+            (tomorrow_start - 1, "today-end"),
+            (tomorrow_start, "next-local-day"),
+        ] {
+            let request_id = insert_request_log(
+                &db_path,
+                &RequestLogInput {
+                    timestamp,
+                    session_id: None,
+                    source_ip: None,
+                    endpoint: "anthropic".to_string(),
+                    provider: "mock".to_string(),
+                    model: model.to_string(),
+                    client_model: None,
+                    stream: false,
+                    api_key_id: None,
+                    api_key_name: None,
+                    api_key_value: None,
+                },
+            )
+            .expect("insert request log");
+            finalize_request_log(
+                &db_path,
+                request_id,
+                &RequestLogUpdate {
+                    latency_ms: Some(10),
+                    status_code: Some(200),
+                    output_tokens: Some(1),
+                    ..RequestLogUpdate::default()
+                },
+            )
+            .expect("finalize request log");
+        }
+
+        let overview = get_metrics_overview(&db_path, None).expect("query overview");
+        assert_eq!(overview.today.requests, 2);
+        assert_eq!(overview.today.output_tokens, 2);
+        assert_eq!(overview.today.avg_latency_ms, 10);
 
         let _ = std::fs::remove_dir_all(root);
     }

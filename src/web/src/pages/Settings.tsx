@@ -1,8 +1,7 @@
-import { Settings as SettingsIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Loader } from '@/components/Loader'
-import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -21,35 +20,30 @@ export default function SettingsPage() {
   const { t } = useTranslation()
   const state = useSettingsPageState()
   const dirtyCount = Number(state.isConfigDirty) + Number(state.isAuthDirty)
-  const headerHelper = state.protocolChangesPending
-    ? t('settings.protocol.restartHint')
-    : t('settings.overview.description')
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={<SettingsIcon className="h-5 w-5" aria-hidden="true" />}
-        title={t('settings.title')}
-        description={t('settings.description')}
-        eyebrow="Gateway Controls"
-        breadcrumb="Gateway / Settings"
-        helper={headerHelper}
-        badge={dirtyCount > 0 ? t('settings.overview.unsavedCount', { count: dirtyCount }) : undefined}
-        actions={
-          state.config ? (
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              <div className="rounded-full bg-secondary px-3.5 py-2 text-xs text-muted-foreground">
-                {state.protocolChangesPending ? t('settings.protocol.restartWarning') : t('common.status.success')}
-              </div>
-              <Button variant="outline" onClick={state.handleReset} disabled={state.saving || !state.isConfigDirty} className="w-full sm:w-auto">
-                {t('common.actions.reset')}
-              </Button>
-              <Button onClick={() => void state.handleSave()} disabled={state.saving || !state.isConfigDirty} className="w-full sm:w-auto">
-                {state.saving ? t('common.actions.saving') : t('common.actions.save')}
-              </Button>
-            </div>
-          ) : null
-        }
+      <PageToolbar
+        info={dirtyCount > 0 ? (
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+            {t('settings.overview.unsavedCount', { count: dirtyCount })}
+          </span>
+        ) : null}
+        status={state.config ? (
+          <span className="text-xs text-muted-foreground">
+            {state.protocolChangesPending ? t('settings.protocol.restartWarning') : t('common.status.success')}
+          </span>
+        ) : null}
+        actions={state.config ? (
+          <>
+            <Button variant="outline" size="sm" onClick={state.handleReset} disabled={state.saving || !state.isConfigDirty}>
+              {t('common.actions.reset')}
+            </Button>
+            <Button size="sm" onClick={() => void state.handleSave()} disabled={state.saving || !state.isConfigDirty}>
+              {state.saving ? t('common.actions.saving') : t('common.actions.save')}
+            </Button>
+          </>
+        ) : null}
       />
 
       {state.isLoading ? (

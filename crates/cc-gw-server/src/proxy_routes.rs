@@ -1291,7 +1291,8 @@ pub(super) async fn proxy_standard_request(
 
     let stream = body.get("stream").and_then(Value::as_bool).unwrap_or(false);
     let profiling_active = state.profiling_active.load(Ordering::Relaxed) != 0;
-    let profiler_session_id = session_id
+    let profiler_source_session_id = extract_profiler_session_id(&body, &headers);
+    let profiler_session_id = profiler_source_session_id
         .as_deref()
         .filter(|_| profiling_active)
         .map(profiler_session_id_for);
@@ -1579,14 +1580,15 @@ pub(super) async fn proxy_standard_request(
                         &usage,
                     );
                     let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                    let store_response_payload = response_payload_storage_enabled(&config);
                     if profiling_active {
-                        if let (Some(session_id), Some(profiler_session_id)) =
-                            (&session_id, &profiler_session_id)
+                        if let (Some(profiler_source_session_id), Some(profiler_session_id)) =
+                            (&profiler_source_session_id, &profiler_session_id)
                         {
                             let tpot = compute_tpot_ms(latency_ms, usage.output_tokens, None);
                             record_profiler_turn(
                                 &state.paths.db_path,
-                                session_id,
+                                profiler_source_session_id,
                                 profiler_session_id,
                                 log_id,
                                 started_at,
@@ -1601,11 +1603,13 @@ pub(super) async fn proxy_standard_request(
                                 &usage,
                                 None,
                                 client_request_payload.as_deref(),
-                                client_response_payload.as_deref(),
+                                store_response_payload
+                                    .then_some(client_response_payload.as_deref())
+                                    .flatten(),
                             );
                         }
                     }
-                    if response_payload_storage_enabled(&config) {
+                    if store_response_payload {
                         let _ = upsert_request_payload(
                             &state.paths.db_path,
                             log_id,
@@ -1644,14 +1648,15 @@ pub(super) async fn proxy_standard_request(
                         &usage,
                     );
                     let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                    let store_response_payload = response_payload_storage_enabled(&config);
                     if profiling_active {
-                        if let (Some(session_id), Some(profiler_session_id)) =
-                            (&session_id, &profiler_session_id)
+                        if let (Some(profiler_source_session_id), Some(profiler_session_id)) =
+                            (&profiler_source_session_id, &profiler_session_id)
                         {
                             let tpot = compute_tpot_ms(latency_ms, usage.output_tokens, None);
                             record_profiler_turn(
                                 &state.paths.db_path,
-                                session_id,
+                                profiler_source_session_id,
                                 profiler_session_id,
                                 log_id,
                                 started_at,
@@ -1666,11 +1671,13 @@ pub(super) async fn proxy_standard_request(
                                 &usage,
                                 None,
                                 client_request_payload.as_deref(),
-                                response_payload.as_deref(),
+                                store_response_payload
+                                    .then_some(response_payload.as_deref())
+                                    .flatten(),
                             );
                         }
                     }
-                    if response_payload_storage_enabled(&config) {
+                    if store_response_payload {
                         let _ = upsert_request_payload(
                             &state.paths.db_path,
                             log_id,

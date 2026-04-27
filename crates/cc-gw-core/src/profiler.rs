@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use brotli::CompressorWriter;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
 use std::io::Write;
 
@@ -235,7 +235,12 @@ fn upsert_profiler_session_on(
            total_latency_ms
          ) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(id) DO UPDATE SET
-           ended_at = COALESCE(excluded.ended_at, profiler_sessions.ended_at),
+           started_at = MIN(profiler_sessions.started_at, excluded.started_at),
+           ended_at = CASE
+             WHEN profiler_sessions.ended_at IS NULL THEN excluded.ended_at
+             WHEN excluded.ended_at IS NULL THEN profiler_sessions.ended_at
+             ELSE MAX(profiler_sessions.ended_at, excluded.ended_at)
+           END,
            turn_count = profiler_sessions.turn_count + 1,
            total_input_tokens = profiler_sessions.total_input_tokens + excluded.total_input_tokens,
            total_output_tokens = profiler_sessions.total_output_tokens + excluded.total_output_tokens,
@@ -330,7 +335,7 @@ pub fn insert_profiler_record(
 
 pub fn append_profiler_turn(db_path: &Path, input: &AppendProfilerTurnInput<'_>) -> Result<i64> {
     let mut conn = open_db(db_path)?;
-    let tx = conn.transaction()?;
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let turn_index = next_turn_index(&tx, input.profiler_session_id)?;
     upsert_profiler_session_on(
         &tx,
@@ -374,6 +379,19 @@ pub fn append_profiler_turn(db_path: &Path, input: &AppendProfilerTurnInput<'_>)
         ],
     )?;
     let record_id = tx.last_insert_rowid();
+    tx.execute(
+        "WITH ranked AS (
+           SELECT id, ROW_NUMBER() OVER (ORDER BY timestamp ASC, id ASC) - 1 AS next_turn_index
+           FROM profiler_records
+           WHERE profiler_session_id = ?1
+         )
+         UPDATE profiler_records
+         SET turn_index = (
+           SELECT next_turn_index FROM ranked WHERE ranked.id = profiler_records.id
+         )
+         WHERE profiler_session_id = ?1",
+        params![input.profiler_session_id],
+    )?;
     tx.commit()?;
     Ok(record_id)
 }
@@ -688,6 +706,77 @@ mod tests {
             detail.records[0].client_request.as_deref(),
             Some(r#"{"message":"new"}"#)
         );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn append_profiler_turn_orders_by_request_start_and_keeps_session_bounds() {
+        let db_path = temp_db_path("out-of-order");
+        init_profiler_db(&db_path);
+
+        append_profiler_turn(
+            &db_path,
+            &AppendProfilerTurnInput {
+                profiler_session_id: "session-order",
+                log_id: 10,
+                session_id: "session-order",
+                timestamp: 2_000,
+                model: "slow-model",
+                client_kind: Some("openai-compatible"),
+                client_model: None,
+                stream: false,
+                latency_ms: Some(50),
+                ttft_ms: None,
+                tpot_ms: None,
+                status_code: Some(200),
+                input_tokens: Some(1),
+                output_tokens: Some(1),
+                cache_read_tokens: Some(0),
+                cache_creation_tokens: Some(0),
+                error: None,
+                client_request: None,
+                client_response: None,
+            },
+        )
+        .expect("append later turn first");
+
+        append_profiler_turn(
+            &db_path,
+            &AppendProfilerTurnInput {
+                profiler_session_id: "session-order",
+                log_id: 11,
+                session_id: "session-order",
+                timestamp: 1_000,
+                model: "early-model",
+                client_kind: Some("openai-compatible"),
+                client_model: None,
+                stream: false,
+                latency_ms: Some(1_500),
+                ttft_ms: None,
+                tpot_ms: None,
+                status_code: Some(200),
+                input_tokens: Some(2),
+                output_tokens: Some(2),
+                cache_read_tokens: Some(0),
+                cache_creation_tokens: Some(0),
+                error: None,
+                client_request: None,
+                client_response: None,
+            },
+        )
+        .expect("append earlier turn second");
+
+        let detail = get_profiler_session_detail(&db_path, "session-order")
+            .expect("read ordered session detail")
+            .expect("ordered session exists");
+        assert_eq!(detail.session.started_at, 1_000);
+        assert_eq!(detail.session.ended_at, Some(2_500));
+        assert_eq!(detail.session.turn_count, 2);
+        assert_eq!(detail.records[0].log_id, 11);
+        assert_eq!(detail.records[0].turn_index, 0);
+        assert_eq!(detail.records[1].log_id, 10);
+        assert_eq!(detail.records[1].turn_index, 1);
 
         let _ = std::fs::remove_file(db_path);
     }

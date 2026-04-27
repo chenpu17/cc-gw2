@@ -18,6 +18,7 @@ use axum::{
     routing::{get, patch, post},
 };
 use axum_server::tls_rustls::RustlsConfig;
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cc_gw_core::{
     api_keys::{
         ApiKeyError, AuthFailureCode, create_api_key, decrypt_log_api_key_value, delete_api_key,
@@ -996,11 +997,11 @@ fn response_payload_storage_enabled(config: &GatewayConfig) -> bool {
         .unwrap_or(true)
 }
 
-/// For a given session, generate a stable profiler session ID.
-/// We use the session_id itself as the profiler session key so all turns in one
-/// session are grouped together in `profiler_sessions`.
+/// For a given session, generate a stable URL-safe profiler session ID.
+/// The original session_id is still stored separately for display and grouping
+/// semantics, while this ID is safe to use in route paths.
 fn profiler_session_id_for(session_id: &str) -> String {
-    session_id.to_string()
+    format!("session_{}", URL_SAFE_NO_PAD.encode(session_id.as_bytes()))
 }
 
 fn extract_string(value: Option<&Value>) -> Option<String> {
@@ -1047,6 +1048,10 @@ fn extract_request_session_id(body: &Value, headers: &HeaderMap) -> Option<Strin
         .or_else(|| extract_body_user_session_id(body))
 }
 
+fn extract_profiler_session_id(body: &Value, headers: &HeaderMap) -> Option<String> {
+    extract_body_session_id(body).or_else(|| extract_header_session_id(headers))
+}
+
 fn infer_client_kind(
     headers: &HeaderMap,
     user_agent: Option<&str>,
@@ -1078,6 +1083,7 @@ fn infer_client_kind(
     }
 }
 
+#[cfg(test)]
 fn extract_session_id(body: &Value) -> Option<String> {
     extract_body_session_id(body).or_else(|| extract_body_user_session_id(body))
 }

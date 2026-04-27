@@ -76,7 +76,10 @@ export function GatewayStatusBar({
   const { t } = useTranslation()
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl bg-card p-6 shadow-[var(--surface-shadow)] sm:flex-row sm:items-center sm:justify-between">
+    <div
+      className="flex flex-col gap-4 rounded-xl bg-card p-6 shadow-[var(--surface-shadow)] sm:flex-row sm:items-center sm:justify-between"
+      data-testid="dashboard-overview-panel"
+    >
       <div className="flex items-center gap-4">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
           <Sparkles className="h-5 w-5 text-primary" aria-hidden="true" />
@@ -87,7 +90,9 @@ export function GatewayStatusBar({
             <Badge variant="success">{t('dashboard.status.listeningLabel')}</Badge>
           </div>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
+            <span data-testid="dashboard-runtime-address">
+              {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
+            </span>
             <span className="mx-2 text-border">·</span>
             {t('dashboard.labels.todayRequests')}: {todayRequests.toLocaleString()}
             <span className="mx-2 text-border">·</span>
@@ -193,7 +198,7 @@ export function MonitoringGrid({
   ]
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-testid="dashboard-spotlight-grid">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {spotlightMetrics.map((item, index) => (
           <MonitoringCard
