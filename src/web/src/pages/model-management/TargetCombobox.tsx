@@ -80,7 +80,6 @@ export function TargetCombobox({
       .filter((option): option is TargetOption => Boolean(option))
       .filter((option) => matchesSearch(option, normalizedSearch))
       .slice(0, RECENT_LIMIT)
-    const recentSet = new Set(recentOptions.map((option) => option.value))
     const nextGroups: OptionGroup[] = []
 
     if (recentOptions.length > 0) {
@@ -94,7 +93,6 @@ export function TargetCombobox({
     const providerGroups = new Map<string, OptionGroup>()
     const customOptions: TargetOption[] = []
     for (const option of filteredOptions) {
-      if (recentSet.has(option.value)) continue
       if (option.kind === 'custom' || !option.providerId) {
         customOptions.push(option)
         continue
@@ -182,7 +180,7 @@ export function TargetCombobox({
         />
       </PopoverTrigger>
       <PopoverContent
-        className="max-h-80 overflow-hidden rounded-xl border border-[color:var(--surface-border)] bg-popover/96 p-0 shadow-[var(--surface-shadow-lg)] backdrop-blur"
+        className="flex max-h-[min(28rem,var(--radix-popover-content-available-height))] flex-col overflow-hidden rounded-xl border border-[color:var(--surface-border)] bg-popover/96 p-0 shadow-[var(--surface-shadow-lg)] backdrop-blur"
         style={{ width: 'max(var(--radix-popover-trigger-width), 360px)' }}
         align="start"
         onOpenAutoFocus={(event) => {
@@ -208,7 +206,7 @@ export function TargetCombobox({
         {filteredCount === 0 ? (
           <div className="px-3 py-4 text-center text-xs text-muted-foreground">{t('common.noMatches')}</div>
         ) : (
-          <div className="max-h-72 overflow-y-auto p-1.5">
+          <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {groups.map((group) => (
               <div key={group.key} className="py-1">
                 <div className={cn(
