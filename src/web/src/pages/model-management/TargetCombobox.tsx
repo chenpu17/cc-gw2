@@ -44,6 +44,7 @@ export function TargetCombobox({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const suppressImmediateReopenRef = useRef(false)
   const [recentTargets, setRecentTargets] = usePersistentState<string[]>(
     storageKeys.modelManagement.recentRouteTargets,
     []
@@ -133,7 +134,18 @@ export function TargetCombobox({
       ...previous.filter((target) => target !== nextValue)
     ].slice(0, RECENT_LIMIT))
     setSearch('')
+    suppressImmediateReopenRef.current = true
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
     setOpen(false)
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        suppressImmediateReopenRef.current = false
+      })
+    } else {
+      suppressImmediateReopenRef.current = false
+    }
   }
 
   const kindLabel = (option: TargetOption) => {
@@ -153,6 +165,9 @@ export function TargetCombobox({
     <Popover
       open={open}
       onOpenChange={(nextOpen) => {
+        if (nextOpen && suppressImmediateReopenRef.current) {
+          return
+        }
         setOpen(nextOpen)
         if (nextOpen) {
           setSearch('')
@@ -227,8 +242,8 @@ export function TargetCombobox({
                       )}
                       onMouseDown={(event) => {
                         event.preventDefault()
-                        selectOption(option.value)
                       }}
+                      onClick={() => selectOption(option.value)}
                     >
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium">

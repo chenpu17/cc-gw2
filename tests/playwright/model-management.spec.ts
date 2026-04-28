@@ -110,7 +110,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   await page.getByLabel('route-source-1').fill(sourceModel)
   await page.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('stub-model-playwright')
-  await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-playwright`) }).dispatchEvent('mousedown')
+  await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-playwright`) }).click()
   await page.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
@@ -124,7 +124,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
 
   await page.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('透传')
-  await page.getByRole('button', { name: new RegExp(`${providerId}.*透传原始模型`) }).dispatchEvent('mousedown')
+  await page.getByRole('button', { name: new RegExp(`${providerId}.*透传原始模型`) }).click()
   await page.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
@@ -186,7 +186,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   expect(finalConfig.providers.find((provider: any) => provider.id === providerId)).toBeFalsy()
 })
 
-test('model management supports provider edit, delete, route reset, and preset delete', async ({ page }) => {
+test('model management supports provider edit, delete, route reset, and preset delete', async ({ page, request }) => {
   const baseUrl = harness.baseUrl()
   await page.goto(`${baseUrl}/ui/models`)
   await expect(page.getByRole('heading', { name: '模型提供商', level: 1 })).toBeVisible()
@@ -233,15 +233,19 @@ test('model management supports provider edit, delete, route reset, and preset d
   await page.getByLabel('route-source-1').fill('reset-source')
   await page.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('stub-model-edit')
-  await page.getByRole('button', { name: /stub-model-edit/ }).first().dispatchEvent('mousedown')
+  await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-edit`) }).click()
   await page.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
   await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-edit`) }).click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('透传')
-  await page.getByRole('button', { name: new RegExp(`${providerId}.*透传原始模型`) }).dispatchEvent('mousedown')
-  await page.getByRole('button', { name: '重置' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-edit`) })).toBeVisible()
+  await page.getByRole('button', { name: new RegExp(`${providerId}.*透传原始模型`) }).click()
+  await page.getByRole('button', { name: '重置' }).click({ force: true })
+  await page.getByRole('button', { name: '保存路由' }).click({ force: true })
+  await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
+
+  let resetEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
+  expect(resetEndpoint.routing.modelRoutes['reset-source']).toBe(`${providerId}:stub-model-edit`)
 
   await page.getByRole('button', { name: /路由模板/ }).click()
   await page.getByPlaceholder('输入模板名称，例如 fox').fill('preset-delete-test')
