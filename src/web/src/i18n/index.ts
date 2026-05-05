@@ -374,7 +374,15 @@ const resources = {
             outputTokens: '输出 Tokens',
             ttft: 'TTFT (首 Token 耗时)',
             tpot: 'TPOT (平均 ms/Token)',
-            error: '错误信息'
+            error: '错误信息',
+            errorSource: '错误来源'
+          },
+          errorSource: {
+            none: '无',
+            client: '客户端中断',
+            gateway: '网关错误',
+            upstream: '后端服务错误',
+            unknown: '未分类'
           },
           summary: {
             route: '{{from}} → {{to}}',
@@ -1939,7 +1947,15 @@ const resources = {
             outputTokens: 'Output Tokens',
             ttft: 'TTFT (first token latency)',
             tpot: 'TPOT (avg ms/token)',
-            error: 'Error'
+            error: 'Error',
+            errorSource: 'Error source'
+          },
+          errorSource: {
+            none: 'None',
+            client: 'Client disconnected',
+            gateway: 'Gateway error',
+            upstream: 'Backend provider error',
+            unknown: 'Unknown'
           },
           summary: {
             route: '{{from}} → {{to}}',

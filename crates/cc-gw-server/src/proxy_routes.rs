@@ -3,6 +3,14 @@ use cc_gw_core::profiler::{AppendProfilerTurnInput, append_profiler_turn};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+const ERROR_SOURCE_CLIENT: &str = "client";
+const ERROR_SOURCE_GATEWAY: &str = "gateway";
+const ERROR_SOURCE_UPSTREAM: &str = "upstream";
+
+fn upstream_error_source_for_status(status_code: i64) -> Option<String> {
+    (status_code >= 400).then(|| ERROR_SOURCE_UPSTREAM.to_string())
+}
+
 #[derive(Clone)]
 struct NetworkByteRecorder {
     state: AppState,
@@ -1565,6 +1573,7 @@ pub(super) async fn proxy_standard_request(
                     let update = RequestLogUpdate {
                         latency_ms: Some(latency_ms),
                         status_code: Some(status_code),
+                        error_source: upstream_error_source_for_status(status_code),
                         input_tokens: Some(usage.input_tokens),
                         output_tokens: Some(usage.output_tokens),
                         cached_tokens: Some(usage.cached_tokens),
@@ -1633,6 +1642,7 @@ pub(super) async fn proxy_standard_request(
                     let update = RequestLogUpdate {
                         latency_ms: Some(latency_ms),
                         status_code: Some(status_code),
+                        error_source: upstream_error_source_for_status(status_code),
                         input_tokens: Some(usage.input_tokens),
                         output_tokens: Some(usage.output_tokens),
                         cached_tokens: Some(usage.cached_tokens),
@@ -1698,6 +1708,7 @@ pub(super) async fn proxy_standard_request(
                     latency_ms: Some(latency_ms),
                     status_code: Some(502),
                     error: Some(error.to_string()),
+                    error_source: Some(ERROR_SOURCE_UPSTREAM.to_string()),
                     ..RequestLogUpdate::default()
                 };
                 let _ = finalize_request_log(&state.paths.db_path, log_id, &update);
@@ -1888,6 +1899,7 @@ async fn into_streaming_converted_response(
             upstream_response_payload,
             client_response_payload,
             None,
+            upstream_error_source_for_status(status.as_u16() as i64),
         );
         drop(activity_guard);
         return result;
@@ -1930,6 +1942,7 @@ async fn into_streaming_converted_response(
                     None,
                     client_response_payload,
                     Some(error.to_string()),
+                    Some(ERROR_SOURCE_GATEWAY.to_string()),
                 );
                 drop(activity_guard);
                 return result;
@@ -1947,6 +1960,7 @@ async fn into_streaming_converted_response(
         capture_response,
         capture_response,
         capture_response.then_some(target_protocol),
+        upstream_error_source_for_status(status_code),
     );
 
     let stream = stream! {
@@ -1970,9 +1984,13 @@ async fn into_streaming_converted_response(
                 }
                 Ok(None) => break,
                 Err(error) => {
-                    yield Err::<Bytes, std::io::Error>(std::io::Error::other(format!(
-                        "upstream stream read failed: {error}"
-                    )));
+                    let message = format!("upstream stream read failed: {error}");
+                    finalizer.fail(
+                        StatusCode::BAD_GATEWAY.as_u16() as i64,
+                        message.clone(),
+                        ERROR_SOURCE_UPSTREAM.to_string(),
+                    );
+                    yield Err::<Bytes, std::io::Error>(std::io::Error::other(message));
                     return;
                 }
             }
@@ -2248,6 +2266,7 @@ async fn into_streaming_proxy_response(
             None,
             response_payload,
             None,
+            upstream_error_source_for_status(status.as_u16() as i64),
         );
         drop(activity_guard);
         return result;
@@ -2267,6 +2286,7 @@ async fn into_streaming_proxy_response(
         false,
         capture_response,
         None,
+        upstream_error_source_for_status(status_code),
     );
 
     let stream = stream! {
@@ -2287,9 +2307,13 @@ async fn into_streaming_proxy_response(
                 }
                 Ok(None) => break,
                 Err(error) => {
-                    yield Err::<Bytes, std::io::Error>(std::io::Error::other(format!(
-                        "upstream stream read failed: {error}"
-                    )));
+                    let message = format!("upstream stream read failed: {error}");
+                    finalizer.fail(
+                        StatusCode::BAD_GATEWAY.as_u16() as i64,
+                        message.clone(),
+                        ERROR_SOURCE_UPSTREAM.to_string(),
+                    );
+                    yield Err::<Bytes, std::io::Error>(std::io::Error::other(message));
                     return;
                 }
             }
@@ -2412,6 +2436,7 @@ struct StreamingResponseFinalizer {
     upstream_response_protocol: Option<ProviderProtocol>,
     upstream_response_payload: Option<String>,
     client_response_payload: Option<String>,
+    error_source: Option<String>,
     completed: bool,
 }
 
@@ -2423,6 +2448,7 @@ impl StreamingResponseFinalizer {
         capture_upstream_response: bool,
         capture_client_response: bool,
         upstream_response_protocol: Option<ProviderProtocol>,
+        error_source: Option<String>,
     ) -> Self {
         Self {
             log_context,
@@ -2437,6 +2463,7 @@ impl StreamingResponseFinalizer {
             },
             upstream_response_payload: capture_upstream_response.then(String::new),
             client_response_payload: capture_client_response.then(String::new),
+            error_source,
             completed: false,
         }
     }
@@ -2484,6 +2511,29 @@ impl StreamingResponseFinalizer {
             self.upstream_response_payload.take(),
             self.client_response_payload.take(),
             None,
+            self.error_source.take(),
+        );
+    }
+
+    fn fail(mut self, status_code: i64, error: String, error_source: String) {
+        let latency_ms = self
+            .log_context
+            .as_ref()
+            .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
+            .unwrap_or_default();
+        self.completed = true;
+        finalize_stream_logging(
+            self.log_context.take(),
+            self.client_response_protocol,
+            status_code,
+            latency_ms,
+            self.usage.clone(),
+            self.ttft_ms,
+            self.upstream_response_protocol,
+            self.upstream_response_payload.take(),
+            self.client_response_payload.take(),
+            Some(error),
+            Some(error_source),
         );
     }
 }
@@ -2510,6 +2560,7 @@ impl Drop for StreamingResponseFinalizer {
             self.upstream_response_payload.take(),
             self.client_response_payload.take(),
             Some("stream terminated before completion".to_string()),
+            Some(ERROR_SOURCE_CLIENT.to_string()),
         );
     }
 }
@@ -2525,6 +2576,7 @@ fn finalize_stream_logging(
     upstream_response_payload: Option<String>,
     client_response_payload: Option<String>,
     error: Option<String>,
+    error_source: Option<String>,
 ) {
     let Some(context) = log_context else {
         return;
@@ -2541,6 +2593,7 @@ fn finalize_stream_logging(
         ttft_ms,
         tpot_ms: compute_tpot_ms(latency_ms, usage.output_tokens, ttft_ms),
         error: error.clone(),
+        error_source,
         ..RequestLogUpdate::default()
     };
     let _ = finalize_request_log(&context.db_path, context.log_id, &update);

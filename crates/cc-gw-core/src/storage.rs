@@ -284,6 +284,7 @@ pub fn initialize_database(path: &Path) -> Result<()> {
           ttft_ms INTEGER,
           tpot_ms REAL,
           error TEXT,
+          error_source TEXT,
           api_key_id INTEGER,
           api_key_name TEXT,
           api_key_value TEXT
@@ -385,6 +386,7 @@ pub fn initialize_database(path: &Path) -> Result<()> {
     )?;
     maybe_add_column(&conn, "request_logs", "ttft_ms", "INTEGER")?;
     maybe_add_column(&conn, "request_logs", "tpot_ms", "REAL")?;
+    maybe_add_column(&conn, "request_logs", "error_source", "TEXT")?;
     maybe_add_column(&conn, "request_logs", "stream", "INTEGER")?;
     maybe_add_column(
         &conn,

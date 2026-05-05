@@ -402,6 +402,26 @@ async fn mock_anthropic_slow_stream() -> Response {
         .expect("build slow anthropic stream response")
 }
 
+async fn mock_anthropic_failing_stream() -> Response {
+    let stream = stream! {
+        yield Ok::<Bytes, std::io::Error>(Bytes::from(
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-test\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n",
+        ));
+        yield Err::<Bytes, std::io::Error>(std::io::Error::other("mock upstream stream failure"));
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .body(Body::from_stream(stream))
+        .expect("build failing anthropic stream response")
+}
+
 fn record_payload(recorder: &Arc<Mutex<Vec<Value>>>, payload: &Value) {
     recorder
         .lock()
@@ -2734,6 +2754,10 @@ async fn dropped_streams_finalize_logs_as_interrupted() {
         item.get("error").and_then(Value::as_str),
         Some("stream terminated before completion")
     );
+    assert_eq!(
+        item.get("error_source").and_then(Value::as_str),
+        Some("client")
+    );
     assert!(item.get("latency_ms").and_then(Value::as_i64).is_some());
 
     let success_logs: Value = client
@@ -2759,6 +2783,87 @@ async fn dropped_streams_finalize_logs_as_interrupted() {
         .await
         .expect("decode error logs");
     assert_eq!(error_logs.get("total").and_then(Value::as_u64), Some(1));
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn upstream_stream_failures_are_logged_as_upstream_errors() {
+    let upstream = Router::new().route("/v1/messages", post(mock_anthropic_failing_stream));
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "upstream-stream-failure").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "stream": true,
+                "input": "hello"
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send streaming request");
+
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        if chunk.is_err() {
+            break;
+        }
+    }
+
+    sleep(Duration::from_millis(250)).await;
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs after upstream stream failure")
+        .json()
+        .await
+        .expect("decode logs after upstream stream failure");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("stream log item");
+    assert_eq!(item.get("status_code").and_then(Value::as_i64), Some(502));
+    assert_eq!(
+        item.get("error_source").and_then(Value::as_str),
+        Some("upstream")
+    );
+    assert!(
+        item.get("error")
+            .and_then(Value::as_str)
+            .is_some_and(|error| error.contains("error sending request")
+                || error.contains("upstream stream read failed"))
+    );
 
     gateway_handle.abort();
     upstream_handle.abort();

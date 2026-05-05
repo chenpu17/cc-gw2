@@ -74,6 +74,42 @@ export function getLogStatusMeta(
   }
 }
 
+export function getLogErrorSourceMeta(
+  record: Pick<LogRecord, 'error_source' | 'status_code' | 'error'>,
+  t: TFunction
+) {
+  const hasError = Boolean(record.error) || (record.status_code ?? 0) >= 400
+  if (!hasError) {
+    return {
+      label: t('logs.detail.errorSource.none'),
+      tone: 'none' as const
+    }
+  }
+
+  switch (record.error_source) {
+    case 'client':
+      return {
+        label: t('logs.detail.errorSource.client'),
+        tone: 'client' as const
+      }
+    case 'gateway':
+      return {
+        label: t('logs.detail.errorSource.gateway'),
+        tone: 'gateway' as const
+      }
+    case 'upstream':
+      return {
+        label: t('logs.detail.errorSource.upstream'),
+        tone: 'upstream' as const
+      }
+    default:
+      return {
+        label: t('logs.detail.errorSource.unknown'),
+        tone: 'unknown' as const
+      }
+  }
+}
+
 function hashSessionId(value: string): number {
   let hash = 0
   for (let index = 0; index < value.length; index += 1) {

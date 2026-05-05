@@ -31,6 +31,7 @@ export function LogDetailsDrawer({
   const { t } = useTranslation()
   const {
     apiKeyMeta,
+    errorSourceMeta,
     errorMessage,
     handleCopy,
     isError,
@@ -162,11 +163,12 @@ export function LogDetailsDrawer({
                   </div>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-4">
+                <div className="grid gap-3 md:grid-cols-5">
                   <DetailStatCard label={t('logs.detail.info.latency')} value={formatLatency(record.latency_ms, t('common.units.ms'))} />
                   <DetailStatCard label={t('logs.detail.info.ttft')} value={formatLatency(record.ttft_ms, t('common.units.ms'))} />
                   <DetailStatCard label={t('logs.detail.info.tpot')} value={formatLatency(record.tpot_ms, t('common.units.msPerToken'))} />
                   <DetailStatCard label={t('logs.detail.info.status')} value={statusMeta?.label ?? '-'} />
+                  <DetailStatCard label={t('logs.detail.info.errorSource')} value={errorSourceMeta?.label ?? '-'} />
                 </div>
 
                 <dl className="grid gap-x-4 gap-y-3 md:grid-cols-2 xl:grid-cols-4">
@@ -178,6 +180,7 @@ export function LogDetailsDrawer({
                   <DetailItem label={t('logs.detail.info.model')} value={record.model} />
                   <DetailItem label={t('logs.detail.info.stream')} value={formatStreamLabel(record.stream)} />
                   <DetailItem label={t('logs.detail.info.status')} value={statusMeta?.label ?? '-'} />
+                  <DetailItem label={t('logs.detail.info.errorSource')} value={errorSourceMeta?.label ?? '-'} />
                 </dl>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

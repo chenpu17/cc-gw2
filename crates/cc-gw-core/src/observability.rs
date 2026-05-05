@@ -37,6 +37,7 @@ pub struct RequestLogUpdate {
     pub ttft_ms: Option<i64>,
     pub tpot_ms: Option<f64>,
     pub error: Option<String>,
+    pub error_source: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +60,7 @@ pub struct LogRecord {
     pub ttft_ms: Option<i64>,
     pub tpot_ms: Option<f64>,
     pub error: Option<String>,
+    pub error_source: Option<String>,
     pub api_key_id: Option<i64>,
     pub api_key_name: Option<String>,
     pub api_key_value: Option<String>,
@@ -395,7 +397,8 @@ pub fn finalize_request_log(db_path: &Path, id: i64, update: &RequestLogUpdate) 
              cache_creation_tokens = ?8,
              ttft_ms = ?9,
              tpot_ms = ?10,
-             error = ?11
+             error = ?11,
+             error_source = ?12
          WHERE id = ?1",
         params![
             id,
@@ -408,7 +411,8 @@ pub fn finalize_request_log(db_path: &Path, id: i64, update: &RequestLogUpdate) 
             update.cache_creation_tokens,
             update.ttft_ms,
             update.tpot_ms,
-            update.error
+            update.error,
+            update.error_source
         ],
     )?;
     Ok(())
@@ -584,9 +588,10 @@ fn bind_strings<'a>(
             ttft_ms: row.get(15)?,
             tpot_ms: row.get(16)?,
             error: row.get(17)?,
-            api_key_id: row.get(18)?,
-            api_key_name: row.get(19)?,
-            api_key_value: row.get(20)?,
+            error_source: row.get(18)?,
+            api_key_id: row.get(19)?,
+            api_key_name: row.get(20)?,
+            api_key_value: row.get(21)?,
         })
     })?;
 
@@ -645,7 +650,7 @@ pub fn query_logs(db_path: &Path, query: &LogQuery) -> Result<LogListResult> {
         "SELECT id, timestamp, session_id, endpoint, provider, model, client_model,
                 stream, latency_ms, status_code, input_tokens, output_tokens,
                 cached_tokens, cache_read_tokens, cache_creation_tokens, ttft_ms, tpot_ms,
-                error, api_key_id, api_key_name, api_key_value
+                error, error_source, api_key_id, api_key_name, api_key_value
          FROM request_logs
          {where_clause}
          ORDER BY timestamp DESC
@@ -663,7 +668,7 @@ pub fn get_log_detail(db_path: &Path, id: i64) -> Result<Option<LogDetail>> {
         "SELECT id, timestamp, session_id, endpoint, provider, model, client_model,
                 stream, latency_ms, status_code, input_tokens, output_tokens,
                 cached_tokens, cache_read_tokens, cache_creation_tokens, ttft_ms, tpot_ms,
-                error, api_key_id, api_key_name, api_key_value
+                error, error_source, api_key_id, api_key_name, api_key_value
          FROM request_logs WHERE id = ?1",
     )?;
     let result: Option<LogRecord> = stmt
@@ -687,9 +692,10 @@ pub fn get_log_detail(db_path: &Path, id: i64) -> Result<Option<LogDetail>> {
                 ttft_ms: row.get(15)?,
                 tpot_ms: row.get(16)?,
                 error: row.get(17)?,
-                api_key_id: row.get(18)?,
-                api_key_name: row.get(19)?,
-                api_key_value: row.get(20)?,
+                error_source: row.get(18)?,
+                api_key_id: row.get(19)?,
+                api_key_name: row.get(20)?,
+                api_key_value: row.get(21)?,
             })
         })
         .optional()?;
@@ -727,7 +733,7 @@ pub fn export_logs(db_path: &Path, query: &LogQuery) -> Result<Vec<ExportLogReco
         "SELECT l.id, l.timestamp, l.session_id, l.endpoint, l.provider, l.model, l.client_model,
                 l.stream, l.latency_ms, l.status_code, l.input_tokens, l.output_tokens,
                 l.cached_tokens, l.cache_read_tokens, l.cache_creation_tokens, l.ttft_ms, l.tpot_ms,
-                l.error, l.api_key_id, l.api_key_name, l.api_key_value,
+                l.error, l.error_source, l.api_key_id, l.api_key_name, l.api_key_value,
                 p.prompt, p.response, p.client_request, p.upstream_request, p.upstream_response, p.client_response
          FROM request_logs l
          LEFT JOIN request_payloads p ON p.request_id = l.id
@@ -763,17 +769,18 @@ pub fn export_logs(db_path: &Path, query: &LogQuery) -> Result<Vec<ExportLogReco
                 ttft_ms: row.get(15)?,
                 tpot_ms: row.get(16)?,
                 error: row.get(17)?,
-                api_key_id: row.get(18)?,
-                api_key_name: row.get(19)?,
-                api_key_value: row.get(20)?,
+                error_source: row.get(18)?,
+                api_key_id: row.get(19)?,
+                api_key_name: row.get(20)?,
+                api_key_value: row.get(21)?,
             },
             payload: build_log_payload(
-                row.get::<_, Option<Vec<u8>>>(21)?,
                 row.get::<_, Option<Vec<u8>>>(22)?,
                 row.get::<_, Option<Vec<u8>>>(23)?,
                 row.get::<_, Option<Vec<u8>>>(24)?,
                 row.get::<_, Option<Vec<u8>>>(25)?,
                 row.get::<_, Option<Vec<u8>>>(26)?,
+                row.get::<_, Option<Vec<u8>>>(27)?,
             ),
         })
     })?;

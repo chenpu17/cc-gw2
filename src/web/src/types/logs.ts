@@ -17,6 +17,7 @@ export interface LogRecord {
   ttft_ms: number | null
   tpot_ms: number | null
   error: string | null
+  error_source: 'client' | 'gateway' | 'upstream' | string | null
   api_key_id: number | null
   api_key_name: string | null
   api_key_value_masked?: string | null
