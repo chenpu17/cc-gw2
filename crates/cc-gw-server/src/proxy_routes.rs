@@ -1985,6 +1985,12 @@ async fn into_streaming_converted_response(
                 Ok(None) => break,
                 Err(error) => {
                     let message = format!("upstream stream read failed: {error}");
+                    if observer.is_complete() {
+                        finalizer.record_usage(observer.usage_stats());
+                        finalizer.finish();
+                        tracing::warn!(error = %message, "ignoring upstream stream read error after terminal SSE event");
+                        return;
+                    }
                     finalizer.fail(
                         StatusCode::BAD_GATEWAY.as_u16() as i64,
                         message.clone(),
@@ -2308,6 +2314,12 @@ async fn into_streaming_proxy_response(
                 Ok(None) => break,
                 Err(error) => {
                     let message = format!("upstream stream read failed: {error}");
+                    if observer.is_complete() {
+                        finalizer.record_usage(observer.usage_stats());
+                        finalizer.finish();
+                        tracing::warn!(error = %message, "ignoring upstream stream read error after terminal SSE event");
+                        return;
+                    }
                     finalizer.fail(
                         StatusCode::BAD_GATEWAY.as_u16() as i64,
                         message.clone(),

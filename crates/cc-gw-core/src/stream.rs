@@ -183,6 +183,7 @@ impl UsageState {
 #[derive(Debug, Clone, Default)]
 pub struct StreamObservation {
     pub saw_first_token: bool,
+    pub saw_terminal_event: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -191,6 +192,7 @@ pub struct SseStreamObserver {
     buffer: String,
     usage: UsageState,
     first_content_seen: bool,
+    terminal_event_seen: bool,
 }
 
 impl SseStreamObserver {
@@ -200,6 +202,7 @@ impl SseStreamObserver {
             buffer: String::new(),
             usage: UsageState::default(),
             first_content_seen: false,
+            terminal_event_seen: false,
         }
     }
 
@@ -230,6 +233,10 @@ impl SseStreamObserver {
         self.usage.to_usage_stats()
     }
 
+    pub fn is_complete(&self) -> bool {
+        self.terminal_event_seen
+    }
+
     fn observe_event_block(&mut self, block: &str, observation: &mut StreamObservation) {
         if block.trim().is_empty() {
             return;
@@ -244,7 +251,11 @@ impl SseStreamObserver {
         }
 
         let data = data_lines.join("\n");
-        if data.is_empty() || data == "[DONE]" {
+        if data.is_empty() {
+            return;
+        }
+        if data == "[DONE]" {
+            self.mark_terminal(observation);
             return;
         }
 
@@ -255,6 +266,10 @@ impl SseStreamObserver {
         if !self.first_content_seen && self.detect_content(&event) {
             self.first_content_seen = true;
             observation.saw_first_token = true;
+        }
+
+        if self.detect_terminal_event(&event) {
+            self.mark_terminal(observation);
         }
 
         match self.protocol {
@@ -285,6 +300,34 @@ impl SseStreamObserver {
                             .and_then(|response| response.get("usage"))
                     }));
             }
+        }
+    }
+
+    fn mark_terminal(&mut self, observation: &mut StreamObservation) {
+        self.terminal_event_seen = true;
+        observation.saw_terminal_event = true;
+    }
+
+    fn detect_terminal_event(&self, event: &Value) -> bool {
+        match self.protocol {
+            ProviderProtocol::AnthropicMessages => {
+                event.get("type").and_then(Value::as_str) == Some("message_stop")
+            }
+            ProviderProtocol::OpenAiChatCompletions => event
+                .get("choices")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .any(|choice| {
+                    !choice
+                        .get("finish_reason")
+                        .unwrap_or(&Value::Null)
+                        .is_null()
+                }),
+            ProviderProtocol::OpenAiResponses => matches!(
+                event.get("type").and_then(Value::as_str),
+                Some("response.completed") | Some("response.done")
+            ),
         }
     }
 
@@ -2088,6 +2131,36 @@ mod tests {
         assert_eq!(usage.cache_read_tokens, 2);
         assert_eq!(usage.cache_creation_tokens, 1);
         assert_eq!(usage.cached_tokens, 2);
+    }
+
+    #[test]
+    fn sse_observer_tracks_terminal_events_by_protocol() {
+        let mut anthropic = SseStreamObserver::new(ProviderProtocol::AnthropicMessages);
+        let anthropic_observation = anthropic.push(
+            "event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        );
+        assert!(anthropic_observation.saw_terminal_event);
+        assert!(anthropic.is_complete());
+
+        let mut openai_chat = SseStreamObserver::new(ProviderProtocol::OpenAiChatCompletions);
+        let chat_observation = openai_chat.push(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        );
+        assert!(chat_observation.saw_terminal_event);
+        assert!(openai_chat.is_complete());
+
+        let mut openai_responses = SseStreamObserver::new(ProviderProtocol::OpenAiResponses);
+        let responses_observation = openai_responses.push(
+            "data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
+        );
+        assert!(responses_observation.saw_terminal_event);
+        assert!(openai_responses.is_complete());
+
+        let mut done = SseStreamObserver::new(ProviderProtocol::OpenAiChatCompletions);
+        let done_observation = done.push("data: [DONE]\n\n");
+        assert!(done_observation.saw_terminal_event);
+        assert!(done.is_complete());
     }
 
     #[test]

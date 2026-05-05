@@ -4,6 +4,7 @@ use axum::http::{HeaderName, HeaderValue};
 use futures_util::StreamExt;
 use std::fs as stdfs;
 use std::sync::{Arc, Mutex};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
@@ -293,6 +294,47 @@ async fn spawn_router(app: Router) -> (SocketAddr, JoinHandle<()>) {
         )
         .await
         .expect("serve router");
+    });
+    (addr, handle)
+}
+
+async fn spawn_bad_chunked_anthropic_upstream_after_terminal() -> (SocketAddr, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind bad chunked listener");
+    let addr = listener.local_addr().expect("bad chunked listener addr");
+    let handle = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept bad chunked request");
+        let mut request_buf = [0_u8; 4096];
+        let _ = socket.read(&mut request_buf).await;
+        let stream_payload = concat!(
+            "event: message_start\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-test\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n",
+            "event: content_block_start\n",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n",
+            "event: message_delta\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":11,\"output_tokens\":2,\"cache_read_input_tokens\":1}}\n\n",
+            "event: message_stop\n",
+            "data: {\"type\":\"message_stop\"}\n\n"
+        );
+        let response_head = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "content-type: text/event-stream\r\n",
+            "transfer-encoding: chunked\r\n",
+            "connection: close\r\n",
+            "\r\n"
+        );
+        let response = format!(
+            "{response_head}{:x}\r\n{stream_payload}\r\nnot-a-chunk-size\r\n",
+            stream_payload.len()
+        );
+        socket
+            .write_all(response.as_bytes())
+            .await
+            .expect("write bad chunked response");
+        let _ = socket.shutdown().await;
     });
     (addr, handle)
 }
@@ -2864,6 +2906,91 @@ async fn upstream_stream_failures_are_logged_as_upstream_errors() {
             .is_some_and(|error| error.contains("error sending request")
                 || error.contains("upstream stream read failed"))
     );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn trailing_upstream_stream_errors_after_terminal_event_are_logged_as_success() {
+    let (upstream_addr, upstream_handle) =
+        spawn_bad_chunked_anthropic_upstream_after_terminal().await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "trailing-upstream-stream-failure").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "stream": true,
+                "input": "hello"
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send streaming request");
+
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        if chunk.is_err() {
+            break;
+        }
+    }
+
+    sleep(Duration::from_millis(250)).await;
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs after trailing upstream stream failure")
+        .json()
+        .await
+        .expect("decode logs after trailing upstream stream failure");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("stream log item");
+    assert_eq!(item.get("status_code").and_then(Value::as_i64), Some(200));
+    assert_eq!(item.get("error").and_then(Value::as_str), None);
+    assert_eq!(item.get("error_source").and_then(Value::as_str), None);
+
+    let success_logs: Value = client
+        .get(format!(
+            "http://{gateway_addr}/api/logs?status=success&limit=10"
+        ))
+        .send()
+        .await
+        .expect("request success logs")
+        .json()
+        .await
+        .expect("decode success logs");
+    assert_eq!(success_logs.get("total").and_then(Value::as_u64), Some(1));
 
     gateway_handle.abort();
     upstream_handle.abort();
