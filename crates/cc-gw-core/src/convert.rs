@@ -104,6 +104,47 @@ fn stringify_value(value: &Value) -> String {
     }
 }
 
+fn anthropic_message_content_blocks(message: &Value, role: &str) -> Vec<Value> {
+    match message.get("content") {
+        Some(Value::Array(blocks)) => blocks.clone(),
+        Some(Value::String(text)) => {
+            let block_type = if role == "assistant" {
+                "output_text"
+            } else {
+                "text"
+            };
+            vec![json!({
+                "type": block_type,
+                "text": text
+            })]
+        }
+        Some(content) => {
+            let text = extract_text(content);
+            if text.trim().is_empty() {
+                Vec::new()
+            } else {
+                vec![json!({
+                    "type": "text",
+                    "text": text
+                })]
+            }
+        }
+        None => Vec::new(),
+    }
+}
+
+fn anthropic_tool_result_content_to_openai(content: Option<&Value>) -> String {
+    let Some(content) = content else {
+        return String::new();
+    };
+    let text = extract_text(content);
+    if text.trim().is_empty() {
+        stringify_value(content)
+    } else {
+        text
+    }
+}
+
 fn anthropic_source_to_openai_image_url(source: &Value) -> Option<String> {
     match source.get("type").and_then(Value::as_str) {
         Some("url") => source
@@ -696,11 +737,7 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
             .get("role")
             .and_then(Value::as_str)
             .unwrap_or("user");
-        let content_blocks = message
-            .get("content")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let content_blocks = anthropic_message_content_blocks(message, role);
 
         match role {
             "user" => {
@@ -739,7 +776,7 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
                                 "role": "tool",
                                 "tool_call_id": tool_use_id,
                                 "name": tool_name,
-                                "content": block.get("content").map(stringify_value).unwrap_or_default()
+                                "content": anthropic_tool_result_content_to_openai(block.get("content"))
                             }));
                         }
                         _ => {}
@@ -1219,11 +1256,7 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
             .get("role")
             .and_then(Value::as_str)
             .unwrap_or("user");
-        let content_blocks = message
-            .get("content")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let content_blocks = anthropic_message_content_blocks(message, role);
 
         match role {
             "user" => {
@@ -1893,8 +1926,43 @@ mod tests {
                 "role": "tool",
                 "tool_call_id": "call_1",
                 "name": "call_1",
-                "content": "[{\"text\":\"done\",\"type\":\"text\"}]"
+                "content": "done"
             })
+        );
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_chat_preserves_string_message_content() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [
+                { "role": "user", "content": "run the command" },
+                { "role": "assistant", "content": "I will run it" }
+            ]
+        }));
+
+        assert_eq!(
+            converted["messages"][0]["content"][0]["text"],
+            json!("run the command")
+        );
+        assert_eq!(converted["messages"][1]["content"], json!("I will run it"));
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_response_preserves_string_message_content() {
+        let converted = anthropic_request_to_openai_response(&json!({
+            "messages": [
+                { "role": "user", "content": "run the command" },
+                { "role": "assistant", "content": "I will run it" }
+            ]
+        }));
+
+        assert_eq!(
+            converted["input"][0]["content"][0]["text"],
+            json!("run the command")
+        );
+        assert_eq!(
+            converted["input"][1]["content"][0]["text"],
+            json!("I will run it")
         );
     }
 

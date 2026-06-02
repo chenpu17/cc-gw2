@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import { cn } from '@/lib/utils'
@@ -21,17 +22,48 @@ export function ApiKeyFilter({
 }: ApiKeyFilterProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  const updateMenuPosition = () => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    const width = Math.max(rect.width, 256)
+    const availableRight = window.innerWidth - 12
+    setMenuStyle({
+      left: Math.min(rect.left, availableRight - width),
+      top: rect.bottom + 8,
+      width
+    })
+  }
 
   useEffect(() => {
     if (!open) return
     const handle = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node
+      if (
+        !containerRef.current?.contains(target)
+        && !menuRef.current?.contains(target)
+      ) {
         setOpen(false)
       }
     }
     window.addEventListener('mousedown', handle)
     return () => window.removeEventListener('mousedown', handle)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    updateMenuPosition()
+    window.addEventListener('resize', updateMenuPosition)
+    window.addEventListener('scroll', updateMenuPosition, true)
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition)
+      window.removeEventListener('scroll', updateMenuPosition, true)
+    }
   }, [open])
 
   const selectedLabels = useMemo(() => {
@@ -68,8 +100,12 @@ export function ApiKeyFilter({
     <div className={cn('relative space-y-2', className)} ref={containerRef}>
       <Label>{t('logs.filters.apiKey')}</Label>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => {
+          updateMenuPosition()
+          setOpen((prev) => !prev)
+        }}
         disabled={disabled || apiKeys.length === 0}
         title={t('logs.filters.apiKeyHint')}
         className={cn(
@@ -98,8 +134,12 @@ export function ApiKeyFilter({
           />
         </svg>
       </button>
-      {open && (
-        <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-lg border bg-popover p-2 shadow-[var(--surface-shadow-lg)]">
+      {open && menuStyle && createPortal((
+        <div
+          ref={menuRef}
+          className="fixed z-50 rounded-lg border bg-popover p-2 shadow-[var(--surface-shadow-lg)]"
+          style={menuStyle}
+        >
           <div className="flex items-center justify-between rounded-lg bg-secondary px-3 py-2 text-xs">
             <span>{summaryText}</span>
             <button
@@ -140,7 +180,7 @@ export function ApiKeyFilter({
             )}
           </div>
         </div>
-      )}
+      ), document.body)}
     </div>
   )
 }
