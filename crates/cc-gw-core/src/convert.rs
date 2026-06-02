@@ -133,6 +133,18 @@ fn anthropic_message_content_blocks(message: &Value, role: &str) -> Vec<Value> {
     }
 }
 
+fn anthropic_tool_result_content_to_openai(content: Option<&Value>) -> String {
+    let Some(content) = content else {
+        return String::new();
+    };
+    let text = extract_text(content);
+    if text.trim().is_empty() {
+        stringify_value(content)
+    } else {
+        text
+    }
+}
+
 fn anthropic_source_to_openai_image_url(source: &Value) -> Option<String> {
     match source.get("type").and_then(Value::as_str) {
         Some("url") => source
@@ -764,7 +776,7 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
                                 "role": "tool",
                                 "tool_call_id": tool_use_id,
                                 "name": tool_name,
-                                "content": block.get("content").map(stringify_value).unwrap_or_default()
+                                "content": anthropic_tool_result_content_to_openai(block.get("content"))
                             }));
                         }
                         _ => {}
@@ -1914,7 +1926,7 @@ mod tests {
                 "role": "tool",
                 "tool_call_id": "call_1",
                 "name": "call_1",
-                "content": "[{\"text\":\"done\",\"type\":\"text\"}]"
+                "content": "done"
             })
         );
     }
