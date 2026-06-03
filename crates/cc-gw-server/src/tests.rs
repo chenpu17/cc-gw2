@@ -1527,6 +1527,118 @@ data: [DONE]\n\n",
 }
 
 #[tokio::test]
+async fn openai_chat_non_stream_via_stream_surfaces_sse_error_event() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|AxumJson(payload): AxumJson<Value>| async move {
+            assert_eq!(payload["stream"].as_bool(), Some(true));
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from(
+                    "data:{\"text\":\"[DONE]\",\"error\":{\"error_msg\":\"Inference request route failed, try again later or request other model\",\"error_code\":\"InferHub.002002001.429\"},\"error_code\":\"InferHub.002002001.429\",\"error_msg\":\"Inference request route failed, try again later or request other model\"}\n\n",
+                ))
+                .expect("build sse error response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.store_request_payloads = Some(true);
+    config.store_response_payloads = Some(true);
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-stream-only".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-stream-only".to_string(),
+            label: Some("GPT Stream Only".to_string()),
+            non_stream_via_stream: Some(true),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("mock-openai:gpt-stream-only".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-chat-non-stream-via-stream-sse-error").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-stream-only",
+            "stream": false,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send non-stream request");
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let body: Value = response.json().await.expect("decode error response");
+    assert_eq!(
+        body["error"]["message"].as_str(),
+        Some("Inference request route failed, try again later or request other model")
+    );
+    assert_eq!(
+        body["error"]["code"].as_str(),
+        Some("InferHub.002002001.429")
+    );
+    assert!(
+        !serde_json::to_string(&body)
+            .expect("serialize body")
+            .contains("failed to decode upstream JSON")
+    );
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let item = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("log item");
+    assert_eq!(item["status_code"].as_i64(), Some(429));
+
+    let log_id = item["id"].as_i64().expect("log id");
+    let detail: Value = client
+        .get(format!("http://{gateway_addr}/api/logs/{log_id}"))
+        .send()
+        .await
+        .expect("request log detail")
+        .json()
+        .await
+        .expect("decode log detail");
+    let payload = detail.get("payload").expect("payload object");
+    assert!(
+        payload["upstream_response"]
+            .as_str()
+            .is_some_and(|value| value.contains("data:{\"text\":\"[DONE]\""))
+    );
+    let client_response_json: Value = serde_json::from_str(
+        payload["client_response"]
+            .as_str()
+            .expect("client response payload"),
+    )
+    .expect("decode client response payload");
+    assert_eq!(
+        client_response_json["error"]["message"].as_str(),
+        Some("Inference request route failed, try again later or request other model")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn openai_chat_non_stream_via_stream_preserves_utf8_split_across_chunks() {
     let upstream = Router::new().route(
         "/v1/chat/completions",
@@ -1767,6 +1879,78 @@ data: [DONE]\n\n",
     assert_eq!(captured[0]["model"].as_str(), Some("gpt-stream-only"));
     assert_eq!(captured[0]["stream"].as_bool(), Some(true));
     drop(captured);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_to_openai_non_stream_via_stream_surfaces_sse_error_event() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|AxumJson(payload): AxumJson<Value>| async move {
+            assert_eq!(payload["stream"].as_bool(), Some(true));
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from(
+                    "data:{\"text\":\"[DONE]\",\"error\":{\"error_msg\":\"Inference request route failed, try again later or request other model\",\"error_code\":\"InferHub.002002001.429\"},\"error_code\":\"InferHub.002002001.429\",\"error_msg\":\"Inference request route failed, try again later or request other model\"}\n\n",
+                ))
+                .expect("build sse error response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("glm-stream-only".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "glm-stream-only".to_string(),
+            label: Some("GLM Stream Only".to_string()),
+            non_stream_via_stream: Some(true),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-sonnet-4-6".to_string(),
+            "mock-openai:glm-stream-only".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-openai-non-stream-via-stream-sse-error").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 64,
+            "stream": false,
+            "messages": [{ "role": "user", "content": "Bash touch ../auto-mode-test.txt" }]
+        }))
+        .send()
+        .await
+        .expect("send anthropic non-stream request");
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let body: Value = response.json().await.expect("decode anthropic error");
+    assert_eq!(body["type"].as_str(), Some("error"));
+    assert_eq!(body["error"]["type"].as_str(), Some("api_error"));
+    assert_eq!(
+        body["error"]["message"].as_str(),
+        Some("Inference request route failed, try again later or request other model")
+    );
+    assert!(
+        !serde_json::to_string(&body)
+            .expect("serialize body")
+            .contains("failed to decode upstream JSON")
+    );
 
     gateway_handle.abort();
     upstream_handle.abort();

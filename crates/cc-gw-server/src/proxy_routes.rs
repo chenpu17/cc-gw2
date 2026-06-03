@@ -1942,6 +1942,20 @@ async fn into_converted_response(
     let payload: Value = match serde_json::from_slice(&body_bytes) {
         Ok(payload) => payload,
         Err(error) => {
+            if let Some((payload, fallback_status)) = extract_sse_upstream_error_payload(
+                target_protocol,
+                upstream_payload.as_deref().unwrap_or_default(),
+            ) {
+                let converted = convert_error_payload(&payload, request_protocol, target_protocol);
+                let (result, client_payload) =
+                    build_json_response(fallback_status, &headers, &converted, &network_recorder);
+                return (
+                    result,
+                    UsageStats::default(),
+                    upstream_payload,
+                    client_payload,
+                );
+            }
             if !status.is_success() {
                 let payload = non_json_upstream_error_payload(
                     request_protocol,
@@ -2090,6 +2104,21 @@ async fn into_materialized_stream_response(
     }
 
     let raw_stream = String::from_utf8_lossy(&raw_stream_bytes).to_string();
+    if let Some((payload, error_status)) =
+        extract_sse_upstream_error_payload(target_protocol, &raw_stream)
+    {
+        let converted = convert_error_payload(&payload, request_protocol, target_protocol);
+        let (result, client_payload) =
+            build_json_response(error_status, &headers, &converted, &network_recorder);
+        return (
+            result,
+            UsageStats::default(),
+            Some(raw_stream),
+            client_payload,
+            error_status,
+        );
+    }
+
     let Some(materialized) = materialize_stream_response(target_protocol, &raw_stream) else {
         let payload = protocol_error_payload(
             request_protocol,
@@ -2415,6 +2444,119 @@ fn protocol_error_payload(protocol: ProviderProtocol, message: &str) -> Value {
                 "message": message,
                 "type": "api_error",
                 "code": Value::Null,
+                "param": Value::Null
+            }
+        }),
+    }
+}
+
+fn extract_sse_upstream_error_payload(
+    protocol: ProviderProtocol,
+    sse_stream: &str,
+) -> Option<(Value, StatusCode)> {
+    for event in sse_json_data_events(sse_stream) {
+        let Some((message, error_type, code)) = extract_upstream_error_fields(&event) else {
+            continue;
+        };
+        let status = upstream_error_status(code.as_deref(), &message);
+        let payload = upstream_error_payload(protocol, &message, &error_type, code.as_deref());
+        return Some((payload, status));
+    }
+    None
+}
+
+fn sse_json_data_events(sse_stream: &str) -> Vec<Value> {
+    let normalized = sse_stream.replace("\r\n", "\n");
+    let mut events = Vec::new();
+    for block in normalized.split("\n\n") {
+        if block.trim().is_empty() {
+            continue;
+        }
+
+        let data = block
+            .lines()
+            .filter_map(|line| line.strip_prefix("data:").map(str::trim))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if data.is_empty() || data == "[DONE]" {
+            continue;
+        }
+        if let Ok(event) = serde_json::from_str::<Value>(&data) {
+            events.push(event);
+        }
+    }
+    events
+}
+
+fn extract_upstream_error_fields(event: &Value) -> Option<(String, String, Option<String>)> {
+    let nested = event.get("error");
+    let message = nested
+        .and_then(|error| error.get("message"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            nested
+                .and_then(|error| error.get("error_msg"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| event.get("message").and_then(Value::as_str))
+        .or_else(|| event.get("error_msg").and_then(Value::as_str))
+        .or_else(|| nested.and_then(Value::as_str))?
+        .trim()
+        .to_string();
+    if message.is_empty() {
+        return None;
+    }
+
+    let error_type = nested
+        .and_then(|error| error.get("type"))
+        .and_then(Value::as_str)
+        .or_else(|| event.get("type").and_then(Value::as_str))
+        .unwrap_or("api_error")
+        .to_string();
+    let code = nested
+        .and_then(|error| error.get("code").or_else(|| error.get("error_code")))
+        .or_else(|| event.get("code").or_else(|| event.get("error_code")))
+        .and_then(|value| {
+            value
+                .as_str()
+                .map(ToString::to_string)
+                .or_else(|| value.as_i64().map(|number| number.to_string()))
+        });
+
+    Some((message, error_type, code))
+}
+
+fn upstream_error_status(code: Option<&str>, message: &str) -> StatusCode {
+    let code = code.unwrap_or_default();
+    if code == "429"
+        || code.ends_with(".429")
+        || message.to_ascii_lowercase().contains("rate limit")
+    {
+        StatusCode::TOO_MANY_REQUESTS
+    } else {
+        StatusCode::BAD_GATEWAY
+    }
+}
+
+fn upstream_error_payload(
+    protocol: ProviderProtocol,
+    message: &str,
+    error_type: &str,
+    code: Option<&str>,
+) -> Value {
+    match protocol {
+        ProviderProtocol::AnthropicMessages => json!({
+            "type": "error",
+            "error": {
+                "type": error_type,
+                "message": message
+            }
+        }),
+        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => json!({
+            "error": {
+                "message": message,
+                "type": error_type,
+                "code": code.map(|value| Value::String(value.to_string())).unwrap_or(Value::Null),
                 "param": Value::Null
             }
         }),
