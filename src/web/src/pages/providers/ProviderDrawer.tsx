@@ -3,6 +3,14 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import type { ProviderConfig, ProviderModelConfig } from '@/types/providers'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +36,7 @@ interface FormState {
   defaultModel: string
   models: FormModel[]
   authMode: 'apiKey' | 'authToken' | 'xAuthToken'
+  nonStreamViaStream: boolean
 }
 
 interface FormErrors {
@@ -97,7 +106,8 @@ function buildInitialState(provider?: ProviderConfig): FormState {
       type: 'custom',
       defaultModel: '',
       models: [],
-      authMode: defaultAuthModeForType('custom')
+      authMode: defaultAuthModeForType('custom'),
+      nonStreamViaStream: false
     }
   }
 
@@ -112,7 +122,8 @@ function buildInitialState(provider?: ProviderConfig): FormState {
       ...model,
       _key: createKey()
     })),
-    authMode: provider.authMode ?? defaultAuthModeForType(provider.type ?? 'custom')
+    authMode: provider.authMode ?? defaultAuthModeForType(provider.type ?? 'custom'),
+    nonStreamViaStream: provider.nonStreamViaStream ?? false
   }
 }
 
@@ -120,7 +131,8 @@ function mapPresetModel(model: Omit<FormModel, '_key'>): FormModel {
   return {
     _key: createKey(),
     id: model.id,
-    label: model.label
+    label: model.label,
+    nonStreamViaStream: model.nonStreamViaStream
   }
 }
 
@@ -307,6 +319,18 @@ export function ProviderDrawer({
     }))
   }
 
+  const handleProviderNonStreamViaStreamChange = (checked: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      nonStreamViaStream: checked
+    }))
+  }
+
+  const handleModelNonStreamViaStreamChange = (index: number, value: string) => {
+    const nextValue = value === 'inherit' ? undefined : value === 'enabled'
+    handleModelChange(index, { nonStreamViaStream: nextValue })
+  }
+
   const validate = (): boolean => {
     const nextErrors: FormErrors = {}
     const trimmedId = form.id.trim()
@@ -366,7 +390,8 @@ export function ProviderDrawer({
     const trimmedModels: ProviderModelConfig[] = form.models
       .map((model) => ({
         id: model.id.trim(),
-        label: model.label?.trim() ? model.label.trim() : undefined
+        label: model.label?.trim() ? model.label.trim() : undefined,
+        nonStreamViaStream: model.nonStreamViaStream
       }))
       .filter((model) => model.id.length > 0)
 
@@ -376,7 +401,7 @@ export function ProviderDrawer({
         ? undefined
         : form.authMode
 
-    return {
+    const payload: ProviderConfig = {
       id: form.id.trim(),
       label: form.label.trim() || form.id.trim(),
       baseUrl: form.baseUrl.trim(),
@@ -387,6 +412,10 @@ export function ProviderDrawer({
       extraHeaders,
       authMode
     }
+    if (form.nonStreamViaStream) {
+      payload.nonStreamViaStream = true
+    }
+    return payload
   }
 
   const handleSubmit = async () => {
@@ -606,6 +635,22 @@ export function ProviderDrawer({
                   <span>{t('providers.drawer.fields.authModeXAuthToken')}</span>
                 </label>
               </fieldset>
+
+              {showAdvanced ? (
+                <div className="flex items-start justify-between gap-4 rounded-xl border border-transparent bg-card p-4 shadow-[var(--surface-shadow)]">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{t('providers.drawer.fields.nonStreamViaStream')}</p>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {t('providers.drawer.fields.nonStreamViaStreamHint')}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.nonStreamViaStream}
+                    onCheckedChange={handleProviderNonStreamViaStreamChange}
+                    aria-label={t('providers.drawer.fields.nonStreamViaStream')}
+                  />
+                </div>
+              ) : null}
             </section>
 
             <section className="mt-8 space-y-4" aria-labelledby="provider-model-fields">
@@ -653,6 +698,31 @@ export function ProviderDrawer({
                         </Label>
                       ) : null}
                     </div>
+
+                    {showAdvanced ? (
+                      <Label className="mt-4 flex flex-col gap-2 text-sm">
+                        <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.modelNonStreamViaStream')}</span>
+                        <Select
+                          value={
+                            model.nonStreamViaStream === undefined
+                              ? 'inherit'
+                              : model.nonStreamViaStream
+                                ? 'enabled'
+                                : 'disabled'
+                          }
+                          onValueChange={(value) => handleModelNonStreamViaStreamChange(index, value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="inherit">{t('providers.drawer.fields.modelNonStreamViaStreamInherit')}</SelectItem>
+                            <SelectItem value="enabled">{t('providers.drawer.fields.modelNonStreamViaStreamEnabled')}</SelectItem>
+                            <SelectItem value="disabled">{t('providers.drawer.fields.modelNonStreamViaStreamDisabled')}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Label>
+                    ) : null}
 
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
                       <label className="flex items-center gap-2 text-muted-foreground">

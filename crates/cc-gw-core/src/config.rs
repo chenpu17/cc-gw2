@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -26,6 +26,7 @@ pub struct GatewayPaths {
 pub struct ProviderModelConfig {
     pub id: String,
     pub label: Option<String>,
+    pub non_stream_via_stream: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -68,6 +69,7 @@ pub struct ProviderConfig {
     pub api_key: Option<String>,
     pub auth_mode: Option<String>,
     pub default_model: Option<String>,
+    pub non_stream_via_stream: Option<bool>,
     pub models: Vec<ProviderModelConfig>,
     pub extra_headers: HashMap<String, String>,
     #[serde(rename = "type")]
@@ -83,6 +85,7 @@ impl Default for ProviderConfig {
             api_key: None,
             auth_mode: None,
             default_model: None,
+            non_stream_via_stream: None,
             models: Vec::new(),
             extra_headers: HashMap::new(),
             provider_type: None,
@@ -313,6 +316,87 @@ impl GatewayConfig {
         if !http_enabled && !https_enabled {
             bail!("至少需要启用 HTTP 或 HTTPS 协议");
         }
+
+        self.validate_provider_ids()?;
+        Ok(())
+    }
+
+    pub fn validate_for_save(&self) -> Result<()> {
+        self.validate()?;
+        self.validate_route_provider_references()
+    }
+
+    fn validate_provider_ids(&self) -> Result<HashSet<String>> {
+        let mut provider_ids = HashSet::new();
+        for provider in &self.providers {
+            let provider_id = provider.id.trim();
+            if provider_id.is_empty() {
+                bail!("Provider ID 不能为空");
+            }
+            if !provider_ids.insert(provider_id.to_string()) {
+                bail!("Provider ID 重复: {provider_id}");
+            }
+        }
+        Ok(provider_ids)
+    }
+
+    fn validate_route_provider_references(&self) -> Result<()> {
+        let provider_ids = self.validate_provider_ids()?;
+        let validate_route_target = |scope: &str, target: &str| -> Result<()> {
+            let Some((provider_id, _)) = target.split_once(':') else {
+                return Ok(());
+            };
+            let provider_id = provider_id.trim();
+            if provider_id.is_empty() {
+                bail!("{scope} 的路由目标 provider 不能为空: {target}");
+            }
+            if !provider_ids.contains(provider_id) {
+                bail!("{scope} 的路由目标引用了不存在的 Provider: {provider_id}");
+            }
+            Ok(())
+        };
+        let validate_defaults = |scope: &str, defaults: &DefaultsConfig| -> Result<()> {
+            if let Some(target) = defaults.completion.as_deref() {
+                validate_route_target(&format!("{scope}.completion"), target)?;
+            }
+            if let Some(target) = defaults.reasoning.as_deref() {
+                validate_route_target(&format!("{scope}.reasoning"), target)?;
+            }
+            if let Some(target) = defaults.background.as_deref() {
+                validate_route_target(&format!("{scope}.background"), target)?;
+            }
+            Ok(())
+        };
+        let validate_routes = |scope: &str, routes: &ModelRouteMap| -> Result<()> {
+            for (source, target) in routes {
+                validate_route_target(&format!("{scope}.{source}"), target)?;
+            }
+            Ok(())
+        };
+        validate_defaults("defaults", &self.defaults)?;
+        validate_routes("modelRoutes", &self.model_routes)?;
+        for (endpoint, routing) in &self.endpoint_routing {
+            validate_defaults(
+                &format!("endpointRouting.{endpoint}.defaults"),
+                &routing.defaults,
+            )?;
+            validate_routes(
+                &format!("endpointRouting.{endpoint}.modelRoutes"),
+                &routing.model_routes,
+            )?;
+        }
+        for endpoint in &self.custom_endpoints {
+            if let Some(routing) = endpoint.routing.as_ref() {
+                validate_defaults(
+                    &format!("customEndpoints.{}.routing.defaults", endpoint.id),
+                    &routing.defaults,
+                )?;
+                validate_routes(
+                    &format!("customEndpoints.{}.routing.modelRoutes", endpoint.id),
+                    &routing.model_routes,
+                )?;
+            }
+        }
         Ok(())
     }
 
@@ -510,5 +594,99 @@ mod tests {
         assert!(!raw.contains("responseLogging"));
 
         let _ = fs::remove_dir_all(paths.home_dir);
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_provider_ids() {
+        let config = GatewayConfig {
+            providers: vec![
+                ProviderConfig {
+                    id: "mock".to_string(),
+                    base_url: "https://mock.example.com".to_string(),
+                    ..ProviderConfig::default()
+                },
+                ProviderConfig {
+                    id: "mock".to_string(),
+                    base_url: "https://mock-2.example.com".to_string(),
+                    ..ProviderConfig::default()
+                },
+            ],
+            ..GatewayConfig::default()
+        };
+
+        let error = config.validate().expect_err("duplicate provider id");
+        assert!(error.to_string().contains("Provider ID 重复"));
+    }
+
+    #[test]
+    fn validate_allows_stale_route_targets_on_startup() {
+        let mut config = GatewayConfig {
+            providers: vec![ProviderConfig {
+                id: "mock-openai".to_string(),
+                base_url: "https://mock.example.com".to_string(),
+                ..ProviderConfig::default()
+            }],
+            ..GatewayConfig::default()
+        };
+        config
+            .endpoint_routing
+            .get_mut("openai")
+            .unwrap()
+            .model_routes
+            .insert(
+                "client-model".to_string(),
+                "missing:upstream-model".to_string(),
+            );
+
+        config
+            .validate()
+            .expect("startup validation tolerates stale route");
+    }
+
+    #[test]
+    fn validate_for_save_rejects_route_targets_with_missing_provider_prefix() {
+        let mut config = GatewayConfig {
+            providers: vec![ProviderConfig {
+                id: "mock-openai".to_string(),
+                base_url: "https://mock.example.com".to_string(),
+                ..ProviderConfig::default()
+            }],
+            ..GatewayConfig::default()
+        };
+        config
+            .endpoint_routing
+            .get_mut("openai")
+            .unwrap()
+            .model_routes
+            .insert(
+                "client-model".to_string(),
+                "missing:upstream-model".to_string(),
+            );
+
+        let error = config.validate_for_save().expect_err("missing provider");
+        assert!(error.to_string().contains("不存在的 Provider"));
+    }
+
+    #[test]
+    fn validate_allows_provider_qualified_unregistered_model_targets() {
+        let mut config = GatewayConfig {
+            providers: vec![ProviderConfig {
+                id: "mock-openai".to_string(),
+                base_url: "https://mock.example.com".to_string(),
+                ..ProviderConfig::default()
+            }],
+            ..GatewayConfig::default()
+        };
+        config
+            .endpoint_routing
+            .get_mut("openai")
+            .unwrap()
+            .model_routes
+            .insert(
+                "client-model".to_string(),
+                "mock-openai:upstream-unregistered-model".to_string(),
+            );
+
+        config.validate_for_save().expect("valid route target");
     }
 }

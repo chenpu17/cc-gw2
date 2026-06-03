@@ -11,7 +11,8 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { useLogDetailState } from './useLogDetailState'
-import { formatDateTime, formatLatency, formatNumber, formatPayloadDisplay, formatStreamLabel } from './utils'
+import { buildPayloadDisplay, formatDateTime, formatLatency, formatNumber, formatStreamLabel } from './utils'
+import type { PayloadDisplay } from './utils'
 
 interface LogDetailsDrawerProps {
   open: boolean
@@ -89,7 +90,7 @@ export function LogDetailsDrawer({
 
     return sections.map((section) => ({
       ...section,
-      displayValue: formatPayloadDisplay(section.value, section.emptyLabel)
+      display: buildPayloadDisplay(section.value, section.emptyLabel)
     }))
   }, [record, t])
 
@@ -259,8 +260,7 @@ export function LogDetailsDrawer({
                       <PayloadPanel
                         key={section.key}
                         title={section.title}
-                        value={section.value}
-                        displayValue={section.displayValue}
+                        display={section.display}
                         onCopy={() => handleCopy(section.title, section.value, section.copyToast)}
                         t={t}
                       />
@@ -297,17 +297,15 @@ function DetailItem({ label, value }: { label: string; value: string | number | 
 }
 
 function PayloadPanel({
-  displayValue,
+  display,
   onCopy,
   title,
-  value,
   t
 }: {
-  displayValue: string
+  display: PayloadDisplay
   onCopy: () => void
   title: string
-  value: string | null
-  t: (key: string) => string
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   return (
     <div className="space-y-3 rounded-lg border bg-secondary/40 p-4">
@@ -319,8 +317,16 @@ function PayloadPanel({
           {t('common.actions.copy')}
         </Button>
       </div>
-      <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border bg-secondary p-3 text-xs">
-        {displayValue}
+      {display.isTruncated ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+          {t('logs.detail.payload.truncated', {
+            shown: display.displayedLength.toLocaleString(),
+            total: display.originalLength.toLocaleString()
+          })}
+        </p>
+      ) : null}
+      <pre className="max-h-72 overflow-auto whitespace-pre rounded-lg border bg-secondary p-3 text-xs">
+        {display.text}
       </pre>
     </div>
   )

@@ -511,6 +511,7 @@ async fn provider_test_matches_key_node_behaviors() {
             models: vec![cc_gw_core::config::ProviderModelConfig {
                 id: "gpt-test".to_string(),
                 label: Some("GPT Test".to_string()),
+                ..Default::default()
             }],
             ..cc_gw_core::config::ProviderConfig::default()
         },
@@ -523,6 +524,7 @@ async fn provider_test_matches_key_node_behaviors() {
             models: vec![cc_gw_core::config::ProviderModelConfig {
                 id: "claude-test".to_string(),
                 label: Some("Claude Test".to_string()),
+                ..Default::default()
             }],
             ..cc_gw_core::config::ProviderConfig::default()
         },
@@ -535,6 +537,7 @@ async fn provider_test_matches_key_node_behaviors() {
             models: vec![cc_gw_core::config::ProviderModelConfig {
                 id: "gpt-responses-test".to_string(),
                 label: Some("GPT Responses Test".to_string()),
+                ..Default::default()
             }],
             ..cc_gw_core::config::ProviderConfig::default()
         },
@@ -732,6 +735,7 @@ async fn direct_proxy_responses_do_not_forward_upstream_set_cookie() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -761,6 +765,123 @@ async fn direct_proxy_responses_do_not_forward_upstream_set_cookie() {
             .get("x-request-id")
             .and_then(|value| value.to_str().ok()),
         Some("req_123")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn non_stream_response_logging_does_not_store_compressed_payload_gibberish() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|headers: HeaderMap| async move {
+            if headers.get(header::ACCEPT_ENCODING).is_some() {
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(header::CONTENT_ENCODING, "gzip")
+                    .body(Body::from(vec![0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00]))
+                    .expect("build compressed response");
+            }
+
+            Json(json!({
+                "id": "chatcmpl_plain",
+                "object": "chat.completion",
+                "model": "gpt-test",
+                "choices": [{
+                    "index": 0,
+                    "message": { "role": "assistant", "content": "plain response" },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 2,
+                    "total_tokens": 3
+                }
+            }))
+            .into_response()
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.store_response_payloads = Some(true);
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("mock-openai:gpt-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "non-stream-response-logging-encoding").await;
+    let client = reqwest::Client::builder()
+        .no_gzip()
+        .no_brotli()
+        .no_zstd()
+        .no_deflate()
+        .build()
+        .expect("client");
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .header(header::ACCEPT_ENCODING, "gzip")
+        .json(&json!({
+            "model": "gpt-test",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send non-stream request")
+        .json()
+        .await
+        .expect("decode response");
+    assert_eq!(
+        response["choices"][0]["message"]["content"].as_str(),
+        Some("plain response")
+    );
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let log_id = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .and_then(|item| item["id"].as_i64())
+        .expect("log id");
+    let detail: Value = client
+        .get(format!("http://{gateway_addr}/api/logs/{log_id}"))
+        .send()
+        .await
+        .expect("request log detail")
+        .json()
+        .await
+        .expect("decode log detail");
+    let response_payload = detail["payload"]["client_response"]
+        .as_str()
+        .expect("client response payload");
+    let response_payload_json: Value =
+        serde_json::from_str(response_payload).expect("response payload is plain json");
+    assert_eq!(
+        response_payload_json["choices"][0]["message"]["content"].as_str(),
+        Some("plain response")
     );
 
     gateway_handle.abort();
@@ -808,6 +929,7 @@ async fn openai_root_routes_match_openai_prefixed_routes() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -908,6 +1030,7 @@ async fn anthropic_messages_forward_query_and_identity_headers_to_anthropic_prov
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1029,6 +1152,853 @@ async fn anthropic_messages_forward_query_and_identity_headers_to_anthropic_prov
 }
 
 #[tokio::test]
+async fn openai_chat_non_stream_routes_model_and_records_rewritten_upstream_payload() {
+    let captures = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captures_for_route = Arc::clone(&captures);
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let captures = Arc::clone(&captures_for_route);
+            async move {
+                record_payload(&captures, &payload);
+                Json(json!({
+                    "id": "chatcmpl_route",
+                    "object": "chat.completion",
+                    "model": payload.get("model").cloned().unwrap_or(Value::Null),
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "routed"
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 3,
+                        "completion_tokens": 1,
+                        "total_tokens": 4
+                    }
+                }))
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.store_request_payloads = Some(true);
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.model_routes.insert(
+            "client-model-a".to_string(),
+            "mock-openai:upstream-model-b".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-route-model-rewrite").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "client-model-a",
+            "stream": false,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send non-stream openai request")
+        .json()
+        .await
+        .expect("decode openai response");
+
+    assert_eq!(response["model"].as_str(), Some("upstream-model-b"));
+
+    let captured = captures.lock().expect("lock captures");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0]["model"].as_str(), Some("upstream-model-b"));
+    assert_eq!(captured[0]["stream"].as_bool(), Some(false));
+    drop(captured);
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let item = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("log item");
+    assert_eq!(item["model"].as_str(), Some("upstream-model-b"));
+    assert_eq!(item["client_model"].as_str(), Some("client-model-a"));
+    assert_eq!(item["stream"].as_bool(), Some(false));
+
+    let log_id = item["id"].as_i64().expect("log id");
+    let detail: Value = client
+        .get(format!("http://{gateway_addr}/api/logs/{log_id}"))
+        .send()
+        .await
+        .expect("request log detail")
+        .json()
+        .await
+        .expect("decode log detail");
+    let payload = detail.get("payload").expect("payload object");
+    let client_request_json: Value = serde_json::from_str(
+        payload["client_request"]
+            .as_str()
+            .expect("client request payload"),
+    )
+    .expect("decode client request");
+    let upstream_request_json: Value = serde_json::from_str(
+        payload["upstream_request"]
+            .as_str()
+            .expect("upstream request payload"),
+    )
+    .expect("decode upstream request");
+
+    assert_eq!(
+        client_request_json["model"].as_str(),
+        Some("client-model-a")
+    );
+    assert_eq!(
+        upstream_request_json["model"].as_str(),
+        Some("upstream-model-b")
+    );
+    assert_eq!(upstream_request_json["stream"].as_bool(), Some(false));
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn openai_chat_routes_model_for_stream_and_non_stream_requests() {
+    let captures = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captures_for_route = Arc::clone(&captures);
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let captures = Arc::clone(&captures_for_route);
+            async move {
+                record_payload(&captures, &payload);
+                if payload
+                    .get("stream")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "text/event-stream")
+                        .body(Body::from(
+                            "data: {\"id\":\"chatcmpl_route\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl_route\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+data: [DONE]\n\n",
+                        ))
+                        .expect("build stream response")
+                } else {
+                    Json(json!({
+                        "id": "chatcmpl_route",
+                        "object": "chat.completion",
+                        "model": payload.get("model").cloned().unwrap_or(Value::Null),
+                        "choices": [{
+                            "index": 0,
+                            "message": { "role": "assistant", "content": "ok" },
+                            "finish_reason": "stop"
+                        }]
+                    }))
+                    .into_response()
+                }
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("glm-5.1".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "glm-5.1".to_string(),
+            label: Some("GLM 5.1".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.model_routes.insert(
+            "glm-5.1".to_string(),
+            "mock-openai:maas-glm-5.1".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-chat-route-stream-non-stream").await;
+    let client = reqwest::Client::new();
+
+    let stream_response = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "glm-5.1",
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send stream chat request");
+    assert_eq!(stream_response.status(), StatusCode::OK);
+    let _ = stream_response
+        .text()
+        .await
+        .expect("read stream chat response");
+
+    let non_stream_response: Value = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "glm-5.1",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send non-stream chat request")
+        .json()
+        .await
+        .expect("decode non-stream chat response");
+    assert_eq!(non_stream_response["model"].as_str(), Some("maas-glm-5.1"));
+
+    let captured = captures.lock().expect("lock captures");
+    assert_eq!(captured.len(), 2);
+    assert_eq!(captured[0]["model"].as_str(), Some("maas-glm-5.1"));
+    assert_eq!(captured[0]["stream"].as_bool(), Some(true));
+    assert_eq!(captured[1]["model"].as_str(), Some("maas-glm-5.1"));
+    assert!(captured[1].get("stream").is_none());
+    drop(captured);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn openai_chat_non_stream_via_stream_materializes_response_when_model_enabled() {
+    let captures = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captures_for_route = Arc::clone(&captures);
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let captures = Arc::clone(&captures_for_route);
+            async move {
+                record_payload(&captures, &payload);
+                assert_eq!(payload["stream"].as_bool(), Some(true));
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "text/event-stream")
+                    .body(Body::from(
+                        "data: {\"id\":\"chatcmpl_via_stream\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-stream-only\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hel\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl_via_stream\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-stream-only\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n\
+data: {\"id\":\"chatcmpl_via_stream\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-stream-only\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n\
+data: [DONE]\n\n",
+                    ))
+                    .expect("build stream response")
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.store_request_payloads = Some(true);
+    config.store_response_payloads = Some(true);
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-stream-only".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-stream-only".to_string(),
+            label: Some("GPT Stream Only".to_string()),
+            non_stream_via_stream: Some(true),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("mock-openai:gpt-stream-only".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-chat-non-stream-via-stream").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-stream-only",
+            "stream": false,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send non-stream request");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.starts_with("application/json")),
+        Some(true)
+    );
+    let response_json: Value = response.json().await.expect("decode materialized response");
+    assert_eq!(
+        response_json["choices"][0]["message"]["content"].as_str(),
+        Some("hello")
+    );
+    assert_eq!(
+        response_json["choices"][0]["finish_reason"].as_str(),
+        Some("stop")
+    );
+    assert_eq!(response_json["usage"]["total_tokens"].as_u64(), Some(5));
+
+    let captured = captures.lock().expect("lock captures");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0]["model"].as_str(), Some("gpt-stream-only"));
+    assert_eq!(captured[0]["stream"].as_bool(), Some(true));
+    drop(captured);
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let item = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("log item");
+    assert_eq!(item["stream"].as_bool(), Some(false));
+    assert_eq!(item["input_tokens"].as_i64(), Some(3));
+    assert_eq!(item["output_tokens"].as_i64(), Some(2));
+
+    let log_id = item["id"].as_i64().expect("log id");
+    let detail: Value = client
+        .get(format!("http://{gateway_addr}/api/logs/{log_id}"))
+        .send()
+        .await
+        .expect("request log detail")
+        .json()
+        .await
+        .expect("decode log detail");
+    let payload = detail.get("payload").expect("payload object");
+    let upstream_request_json: Value = serde_json::from_str(
+        payload["upstream_request"]
+            .as_str()
+            .expect("upstream request payload"),
+    )
+    .expect("decode upstream request");
+    assert_eq!(upstream_request_json["stream"].as_bool(), Some(true));
+
+    let client_response_json: Value = serde_json::from_str(
+        payload["client_response"]
+            .as_str()
+            .expect("client response payload"),
+    )
+    .expect("decode client response");
+    assert_eq!(
+        client_response_json["choices"][0]["message"]["content"].as_str(),
+        Some("hello")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn openai_chat_non_stream_via_stream_preserves_utf8_split_across_chunks() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|AxumJson(payload): AxumJson<Value>| async move {
+            assert_eq!(payload["stream"].as_bool(), Some(true));
+
+            let first = "data: {\"id\":\"chatcmpl_utf8\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-stream-only\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\""
+                .as_bytes();
+            let text = "你好".as_bytes();
+            let second = "\"},\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n\
+data: {\"id\":\"chatcmpl_utf8\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-stream-only\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n\
+data: [DONE]\n\n"
+                .as_bytes();
+
+            let stream = stream! {
+                let mut chunk = Vec::new();
+                chunk.extend_from_slice(first);
+                chunk.extend_from_slice(&text[..1]);
+                yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(chunk));
+
+                let mut chunk = Vec::new();
+                chunk.extend_from_slice(&text[1..]);
+                chunk.extend_from_slice(second);
+                yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(chunk));
+            };
+
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from_stream(stream))
+                .expect("build split utf8 stream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-stream-only".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-stream-only".to_string(),
+            label: Some("GPT Stream Only".to_string()),
+            non_stream_via_stream: Some(true),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("mock-openai:gpt-stream-only".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-chat-non-stream-via-stream-utf8").await;
+    let client = reqwest::Client::new();
+
+    let response_json: Value = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-stream-only",
+            "stream": false,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send split utf8 non-stream request")
+        .json()
+        .await
+        .expect("decode split utf8 response");
+    assert_eq!(
+        response_json["choices"][0]["message"]["content"].as_str(),
+        Some("你好")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn openai_chat_non_stream_via_stream_latency_includes_full_upstream_stream() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|AxumJson(payload): AxumJson<Value>| async move {
+            assert_eq!(payload["stream"].as_bool(), Some(true));
+            let stream = stream! {
+                yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(
+                    "data: {\"id\":\"chatcmpl_latency\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-stream-only\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"slow\"},\"finish_reason\":null}]}\n\n",
+                ));
+                sleep(Duration::from_millis(120)).await;
+                yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(
+                    "data: {\"id\":\"chatcmpl_latency\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-stream-only\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n\
+data: [DONE]\n\n",
+                ));
+            };
+
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from_stream(stream))
+                .expect("build slow stream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-stream-only".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-stream-only".to_string(),
+            label: Some("GPT Stream Only".to_string()),
+            non_stream_via_stream: Some(true),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("mock-openai:gpt-stream-only".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-chat-non-stream-via-stream-latency").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-stream-only",
+            "stream": false,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send slow non-stream request");
+    assert_eq!(response.status(), StatusCode::OK);
+    let _: Value = response.json().await.expect("decode slow response");
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let item = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("log item");
+    assert!(
+        item["latency_ms"].as_i64().unwrap_or_default() >= 100,
+        "latency_ms should include delayed upstream stream, got {:?}",
+        item["latency_ms"]
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_to_openai_non_stream_via_stream_materializes_and_converts_response() {
+    let captures = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captures_for_route = Arc::clone(&captures);
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let captures = Arc::clone(&captures_for_route);
+            async move {
+                record_payload(&captures, &payload);
+                assert_eq!(payload["stream"].as_bool(), Some(true));
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "text/event-stream")
+                    .body(Body::from(
+                        "data: {\"id\":\"chatcmpl_cross_via_stream\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-stream-only\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"cross\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl_cross_via_stream\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-stream-only\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":2,\"total_tokens\":6}}\n\n\
+data: [DONE]\n\n",
+                    ))
+                    .expect("build stream response")
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-stream-only".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-stream-only".to_string(),
+            label: Some("GPT Stream Only".to_string()),
+            non_stream_via_stream: Some(true),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-client".to_string(),
+            "mock-openai:gpt-stream-only".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-openai-non-stream-via-stream").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-client",
+            "max_tokens": 64,
+            "stream": false,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send anthropic non-stream request")
+        .json()
+        .await
+        .expect("decode anthropic materialized response");
+
+    assert_eq!(response["type"].as_str(), Some("message"));
+    assert_eq!(response["model"].as_str(), Some("claude-client"));
+    assert_eq!(response["content"][0]["text"].as_str(), Some("cross"));
+    assert_eq!(response["usage"]["input_tokens"].as_u64(), Some(4));
+    assert_eq!(response["usage"]["output_tokens"].as_u64(), Some(2));
+
+    let captured = captures.lock().expect("lock captures");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0]["model"].as_str(), Some("gpt-stream-only"));
+    assert_eq!(captured[0]["stream"].as_bool(), Some(true));
+    drop(captured);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn claude_code_auto_mode_classifier_non_stream_via_stream_strips_thinking_blocks() {
+    let captures = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captures_for_route = Arc::clone(&captures);
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let captures = Arc::clone(&captures_for_route);
+            async move {
+                record_payload(&captures, &payload);
+                assert_eq!(payload["stream"].as_bool(), Some(true));
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "text/event-stream")
+                    .body(Body::from(
+                        "data: {\"id\":\"chatcmpl_classifier\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"glm-stream-only\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"hidden reasoning \"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl_classifier\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"glm-stream-only\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"must not leak\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl_classifier\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"glm-stream-only\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<block>no\"},\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":1,\"total_tokens\":11}}\n\n\
+data: {\"id\":\"chatcmpl_classifier\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"glm-stream-only\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":1,\"total_tokens\":11}}\n\n\
+data: [DONE]\n\n",
+                    ))
+                    .expect("build stream response")
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.store_request_payloads = Some(true);
+    config.store_response_payloads = Some(true);
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("glm-stream-only".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "glm-stream-only".to_string(),
+            label: Some("GLM Stream Only".to_string()),
+            non_stream_via_stream: Some(true),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-sonnet-4-6".to_string(),
+            "mock-openai:glm-stream-only".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "claude-code-classifier-non-stream-via-stream").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 64,
+            "stream": false,
+            "thinking": { "type": "disabled" },
+            "stop_sequences": ["</block>"],
+            "system": [{
+                "type": "text",
+                "text": "You are a security monitor for autonomous AI coding agents."
+            }],
+            "messages": [{ "role": "user", "content": "Bash touch ../auto-mode-test.txt" }]
+        }))
+        .send()
+        .await
+        .expect("send classifier request")
+        .json()
+        .await
+        .expect("decode classifier response");
+
+    assert_eq!(response["type"].as_str(), Some("message"));
+    assert_eq!(response["model"].as_str(), Some("claude-sonnet-4-6"));
+    let content = response["content"].as_array().expect("content blocks");
+    assert_eq!(content.len(), 1);
+    assert_eq!(content[0]["type"].as_str(), Some("text"));
+    assert_eq!(content[0]["text"].as_str(), Some("<block>no"));
+    assert!(
+        !serde_json::to_string(&response)
+            .expect("serialize response")
+            .contains("hidden reasoning")
+    );
+
+    let captured = captures.lock().expect("lock captures");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0]["model"].as_str(), Some("glm-stream-only"));
+    assert_eq!(captured[0]["stream"].as_bool(), Some(true));
+    assert_eq!(
+        captured[0]["max_completion_tokens"].as_u64(),
+        Some(64),
+        "thinking disabled requests still use the existing Anthropic-to-OpenAI token mapping"
+    );
+    drop(captured);
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let item = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("log item");
+    assert_eq!(item["stream"].as_bool(), Some(false));
+
+    let log_id = item["id"].as_i64().expect("log id");
+    let detail: Value = client
+        .get(format!("http://{gateway_addr}/api/logs/{log_id}"))
+        .send()
+        .await
+        .expect("request log detail")
+        .json()
+        .await
+        .expect("decode log detail");
+    let payload = detail.get("payload").expect("payload object");
+    let upstream_request_json: Value = serde_json::from_str(
+        payload["upstream_request"]
+            .as_str()
+            .expect("upstream request payload"),
+    )
+    .expect("decode upstream request");
+    assert_eq!(upstream_request_json["stream"].as_bool(), Some(true));
+
+    let client_response_json: Value = serde_json::from_str(
+        payload["client_response"]
+            .as_str()
+            .expect("client response payload"),
+    )
+    .expect("decode client response");
+    assert_eq!(client_response_json["content"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        client_response_json["content"][0]["text"].as_str(),
+        Some("<block>no")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn openai_responses_non_stream_routes_unregistered_target_model() {
+    let captures = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captures_for_route = Arc::clone(&captures);
+    let upstream = Router::new().route(
+        "/v1/responses",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let captures = Arc::clone(&captures_for_route);
+            async move {
+                record_payload(&captures, &payload);
+                Json(json!({
+                    "id": "resp_route",
+                    "object": "response",
+                    "status": "completed",
+                    "model": payload.get("model").cloned().unwrap_or(Value::Null),
+                    "output_text": "routed",
+                    "output": [{
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{ "type": "output_text", "text": "routed" }]
+                    }],
+                    "usage": {
+                        "input_tokens": 3,
+                        "output_tokens": 1,
+                        "total_tokens": 4
+                    }
+                }))
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai-responses".to_string(),
+        label: "Mock OpenAI Responses".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai-responses".to_string()),
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.model_routes.insert(
+            "client-model-a".to_string(),
+            "mock-openai-responses:upstream-model-b".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-responses-route-model-rewrite").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .json(&json!({
+            "model": "client-model-a",
+            "stream": false,
+            "input": "hello"
+        }))
+        .send()
+        .await
+        .expect("send non-stream responses request")
+        .json()
+        .await
+        .expect("decode responses response");
+
+    assert_eq!(response["model"].as_str(), Some("upstream-model-b"));
+
+    let captured = captures.lock().expect("lock captures");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0]["model"].as_str(), Some("upstream-model-b"));
+    assert_eq!(captured[0]["stream"].as_bool(), Some(false));
+    drop(captured);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn anthropic_endpoint_accepts_bearer_auth_for_gateway_api_keys() {
     let upstream = Router::new().route("/v1/messages", post(mock_anthropic_test));
     let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
@@ -1043,6 +2013,7 @@ async fn anthropic_endpoint_accepts_bearer_auth_for_gateway_api_keys() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1131,6 +2102,7 @@ async fn anthropic_messages_validation_accepts_string_or_block_content_in_claude
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1225,6 +2197,7 @@ async fn anthropic_messages_validation_rejects_unknown_block_types_in_claude_cod
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1350,6 +2323,7 @@ async fn openai_responses_stream_from_anthropic_provider_emits_richer_events() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1438,6 +2412,7 @@ async fn cross_protocol_non_stream_responses_preserve_observability_headers() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1529,6 +2504,7 @@ async fn cross_protocol_stream_responses_preserve_observability_headers() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1598,6 +2574,7 @@ async fn streaming_logs_store_materialized_response_instead_of_raw_sse_chunks() 
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1693,6 +2670,7 @@ async fn cross_protocol_logs_capture_four_payload_blocks_on_one_record() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1823,6 +2801,7 @@ async fn logs_export_archive_includes_four_payload_fields() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2163,6 +3142,7 @@ async fn custom_endpoint_and_api_key_restrictions_work_end_to_end() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2295,6 +3275,7 @@ async fn disabled_custom_endpoint_is_not_exposed() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2367,6 +3348,7 @@ async fn api_key_admin_reveal_and_stats_work_end_to_end() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2517,6 +3499,7 @@ async fn api_status_reports_live_and_recent_client_activity() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2727,6 +3710,7 @@ async fn dropped_streams_finalize_logs_as_interrupted() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2846,6 +3830,7 @@ async fn upstream_stream_failures_are_logged_as_upstream_errors() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2927,6 +3912,7 @@ async fn trailing_upstream_stream_errors_after_terminal_event_are_logged_as_succ
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -3040,6 +4026,7 @@ async fn anthropic_to_openai_retry_drops_metadata_and_tool_choice() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -3125,6 +4112,7 @@ async fn anthropic_to_openai_does_not_retry_when_compatibility_disabled() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -3233,6 +4221,7 @@ async fn anthropic_to_openai_retry_summarizes_tool_roundtrip_and_normalizes_toke
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -3495,6 +4484,7 @@ async fn openai_responses_same_protocol_does_not_retry_or_strip_metadata() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -3567,6 +4557,7 @@ async fn openai_responses_from_anthropic_provider_emits_function_call_items() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -3661,6 +4652,7 @@ async fn anthropic_messages_can_target_anthropic_compatible_custom_provider() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-compatible".to_string(),
             label: Some("Claude Compatible".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -3751,6 +4743,7 @@ async fn anthropic_to_openai_maps_required_tool_choice_and_stop_sequences() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -3835,6 +4828,7 @@ async fn anthropic_to_openai_routes_thinking_requests_to_explicit_responses_prov
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -3913,6 +4907,7 @@ async fn anthropic_to_openai_non_stream_error_is_converted_to_anthropic_shape() 
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -3984,6 +4979,7 @@ async fn anthropic_to_openai_non_json_error_uses_anthropic_error_fallback() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -4097,6 +5093,7 @@ async fn anthropic_to_openai_stream_handshake_error_is_converted_to_anthropic_sh
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -4171,6 +5168,7 @@ async fn openai_to_anthropic_error_is_converted_to_openai_shape() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "claude-test".to_string(),
             label: Some("Claude Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -4247,6 +5245,7 @@ async fn anthropic_to_custom_provider_strips_tooling_and_metadata() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "custom-model".to_string(),
             label: Some("Custom Model".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -4363,6 +5362,7 @@ async fn openai_responses_to_custom_provider_preserves_same_protocol_tooling() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "custom-model".to_string(),
             label: Some("Custom Model".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -4780,6 +5780,7 @@ async fn profiler_records_real_requests_without_user_fallback_or_disabled_respon
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -4900,6 +5901,7 @@ async fn api_key_concurrency_limit_returns_429_and_records_event() {
         models: vec![cc_gw_core::config::ProviderModelConfig {
             id: "gpt-test".to_string(),
             label: Some("GPT Test".to_string()),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];

@@ -3,6 +3,14 @@ import type { LogRecord } from '@/types/logs'
 
 const SESSION_ROW_HUES = [168, 184, 198, 208, 218, 228, 238, 248, 258, 268, 278, 292] as const
 const MAX_PRETTY_PRINT_PAYLOAD_LENGTH = 200_000
+const MAX_RENDER_PAYLOAD_LENGTH = 120_000
+
+export interface PayloadDisplay {
+  displayedLength: number
+  isTruncated: boolean
+  originalLength: number
+  text: string
+}
 
 export function formatDateTime(timestamp: number): string {
   const date = new Date(timestamp)
@@ -37,6 +45,28 @@ export function formatPayloadDisplay(value: string | null | undefined, fallback:
   } catch {
     return value
   }
+}
+
+export function buildTextDisplay(text: string): PayloadDisplay {
+  if (text.length <= MAX_RENDER_PAYLOAD_LENGTH) {
+    return {
+      displayedLength: text.length,
+      isTruncated: false,
+      originalLength: text.length,
+      text
+    }
+  }
+
+  return {
+    displayedLength: MAX_RENDER_PAYLOAD_LENGTH,
+    isTruncated: true,
+    originalLength: text.length,
+    text: `${text.slice(0, MAX_RENDER_PAYLOAD_LENGTH)}\n\n...`
+  }
+}
+
+export function buildPayloadDisplay(value: string | null | undefined, fallback: string): PayloadDisplay {
+  return buildTextDisplay(formatPayloadDisplay(value, fallback))
 }
 
 export function getLogStatusMeta(

@@ -1005,6 +1005,70 @@ fn openai_compatibility_enabled_for_endpoint(
         .is_some_and(|compatibility| compatibility.enabled)
 }
 
+fn target_uses_non_stream_via_stream(provider: &ProviderConfig, model_id: &str) -> bool {
+    provider
+        .models
+        .iter()
+        .find(|model| model.id == model_id)
+        .and_then(|model| model.non_stream_via_stream)
+        .or(provider.non_stream_via_stream)
+        .unwrap_or(false)
+}
+
+fn is_claude_code_auto_mode_classifier_request(protocol: ProviderProtocol, body: &Value) -> bool {
+    if protocol != ProviderProtocol::AnthropicMessages {
+        return false;
+    }
+    let max_tokens = body.get("max_tokens").and_then(Value::as_u64);
+    if max_tokens != Some(64) {
+        return false;
+    }
+    if body
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_some_and(|tools| !tools.is_empty())
+    {
+        return false;
+    }
+    if body
+        .get("thinking")
+        .and_then(|thinking| thinking.get("type"))
+        .and_then(Value::as_str)
+        != Some("disabled")
+    {
+        return false;
+    }
+    let stops_at_block = body
+        .get("stop_sequences")
+        .and_then(Value::as_array)
+        .is_some_and(|items| items.iter().any(|item| item.as_str() == Some("</block>")));
+    if !stops_at_block {
+        return false;
+    }
+    match body.get("system") {
+        Some(Value::String(text)) => {
+            text.contains("security monitor for autonomous AI coding agents")
+        }
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|item| item.get("text").and_then(Value::as_str))
+            .any(|text| text.contains("security monitor for autonomous AI coding agents")),
+        _ => false,
+    }
+}
+
+fn strip_anthropic_thinking_blocks_for_classifier(response: &mut Value) {
+    let Some(content) = response.get_mut("content").and_then(Value::as_array_mut) else {
+        return;
+    };
+    content.retain(|block| {
+        !matches!(
+            block.get("type").and_then(Value::as_str),
+            Some("thinking" | "redacted_thinking")
+        )
+    });
+}
+
 fn block_type_allowed(block_type: &str, _mode: &str, allow_experimental_blocks: bool) -> bool {
     match block_type {
         "text" | "image" | "document" | "tool_use" | "tool_result" => true,
@@ -1391,8 +1455,17 @@ pub(super) async fn proxy_standard_request(
         target_protocol,
         openai_compatibility_mode,
     );
-    let mut upstream_request_payload = if request_payload_storage && initial_request_body != body {
-        serde_json::to_string(&initial_request_body).ok()
+    let target_model_id = target.model_id.clone();
+    let sanitize_classifier_response = is_claude_code_auto_mode_classifier_request(protocol, &body);
+    let upstream_stream =
+        stream || target_uses_non_stream_via_stream(&target.provider, &target_model_id);
+    let initial_upstream_body = prepare_proxy_payload(
+        initial_request_body.clone(),
+        &target_model_id,
+        upstream_stream,
+    );
+    let mut upstream_request_payload = if request_payload_storage && initial_upstream_body != body {
+        serde_json::to_string(&initial_upstream_body).ok()
     } else {
         None
     };
@@ -1408,7 +1481,6 @@ pub(super) async fn proxy_standard_request(
         );
     }
 
-    let target_model_id = target.model_id.clone();
     let upstream_query = query.clone();
     let proxy_result = forward_request(
         &state.http_client,
@@ -1417,7 +1489,7 @@ pub(super) async fn proxy_standard_request(
         ProxyRequest {
             model: target_model_id.clone(),
             body: initial_request_body.clone(),
-            stream,
+            stream: upstream_stream,
             incoming_headers: headers.clone(),
             passthrough_headers: HeaderMap::new(),
             query: upstream_query.clone(),
@@ -1447,7 +1519,7 @@ pub(super) async fn proxy_standard_request(
                         ProxyRequest {
                             model: target_model_id.clone(),
                             body: retry_body.clone(),
-                            stream,
+                            stream: upstream_stream,
                             incoming_headers: headers.clone(),
                             passthrough_headers: HeaderMap::new(),
                             query: upstream_query.clone(),
@@ -1497,9 +1569,14 @@ pub(super) async fn proxy_standard_request(
                                     ..RecordEventInput::default()
                                 },
                             );
+                            let retry_upstream_body = prepare_proxy_payload(
+                                retry_body.clone(),
+                                &target_model_id,
+                                upstream_stream,
+                            );
                             upstream_request_payload =
-                                if request_payload_storage && retry_body != body {
-                                    serde_json::to_string(&retry_body).ok()
+                                if request_payload_storage && retry_upstream_body != body {
+                                    serde_json::to_string(&retry_upstream_body).ok()
                                 } else {
                                     None
                                 };
@@ -1535,7 +1612,90 @@ pub(super) async fn proxy_standard_request(
                 client_model: requested_model.map(ToString::to_string),
                 stream,
             });
-            if cross_protocol && stream {
+            if upstream_stream && !stream {
+                let (
+                    result,
+                    usage,
+                    upstream_response_payload,
+                    client_response_payload,
+                    response_status,
+                ) = into_materialized_stream_response(
+                    response,
+                    protocol,
+                    target_protocol,
+                    &target.provider_id,
+                    requested_model.unwrap_or(""),
+                    sanitize_classifier_response,
+                    network_recorder.clone(),
+                )
+                .await;
+                let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
+                let status_code = response_status.as_u16() as i64;
+                if let Some(log_id) = request_log_id {
+                    let update = RequestLogUpdate {
+                        latency_ms: Some(latency_ms),
+                        status_code: Some(status_code),
+                        error_source: upstream_error_source_for_status(status_code),
+                        input_tokens: Some(usage.input_tokens),
+                        output_tokens: Some(usage.output_tokens),
+                        cached_tokens: Some(usage.cached_tokens),
+                        cache_read_tokens: Some(usage.cache_read_tokens),
+                        cache_creation_tokens: Some(usage.cache_creation_tokens),
+                        ..RequestLogUpdate::default()
+                    };
+                    let _ = finalize_request_log(&state.paths.db_path, log_id, &update);
+                    let _ = increment_daily_metrics(
+                        &state.paths.db_path,
+                        &endpoint_id,
+                        latency_ms,
+                        &usage,
+                    );
+                    let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                    let store_response_payload = response_payload_storage_enabled(&config);
+                    if profiling_active {
+                        if let (Some(profiler_source_session_id), Some(profiler_session_id)) =
+                            (&profiler_source_session_id, &profiler_session_id)
+                        {
+                            let tpot = compute_tpot_ms(latency_ms, usage.output_tokens, None);
+                            record_profiler_turn(
+                                &state.paths.db_path,
+                                profiler_source_session_id,
+                                profiler_session_id,
+                                log_id,
+                                started_at,
+                                &target.model_id,
+                                &client_kind,
+                                requested_model,
+                                stream,
+                                latency_ms,
+                                None,
+                                tpot,
+                                status_code,
+                                &usage,
+                                None,
+                                client_request_payload.as_deref(),
+                                store_response_payload
+                                    .then_some(client_response_payload.as_deref())
+                                    .flatten(),
+                            );
+                        }
+                    }
+                    if store_response_payload {
+                        let _ = upsert_request_payload(
+                            &state.paths.db_path,
+                            log_id,
+                            &LogPayloadUpdate {
+                                upstream_response: upstream_response_payload.as_deref().filter(
+                                    |payload| Some(*payload) != client_response_payload.as_deref(),
+                                ),
+                                client_response: client_response_payload.as_deref(),
+                                ..LogPayloadUpdate::default()
+                            },
+                        );
+                    }
+                }
+                result
+            } else if cross_protocol && stream {
                 into_streaming_converted_response(
                     response,
                     protocol,
@@ -1860,6 +2020,146 @@ async fn into_converted_response(
     let (result, response_payload) =
         build_json_response(status, &headers, &converted, &network_recorder);
     (result, usage, upstream_payload, response_payload)
+}
+
+async fn into_materialized_stream_response(
+    response: reqwest::Response,
+    request_protocol: ProviderProtocol,
+    target_protocol: ProviderProtocol,
+    provider_id: &str,
+    requested_model: &str,
+    sanitize_classifier_response: bool,
+    network_recorder: NetworkByteRecorder,
+) -> (
+    Response,
+    UsageStats,
+    Option<String>,
+    Option<String>,
+    StatusCode,
+) {
+    let status = response.status();
+    let headers = response.headers().clone();
+    if !status.is_success() {
+        if request_protocol == target_protocol {
+            let (result, usage, response_payload) =
+                into_proxy_response(response, true, network_recorder).await;
+            return (result, usage, None, response_payload, status);
+        }
+        let (result, usage, upstream_payload, response_payload) = into_converted_response(
+            response,
+            request_protocol,
+            target_protocol,
+            provider_id,
+            requested_model,
+            network_recorder,
+        )
+        .await;
+        return (result, usage, upstream_payload, response_payload, status);
+    }
+
+    let mut stream = response.bytes_stream();
+    let mut raw_stream_bytes = Vec::new();
+
+    loop {
+        match stream.try_next().await {
+            Ok(Some(chunk)) => {
+                raw_stream_bytes.extend_from_slice(&chunk);
+            }
+            Ok(None) => break,
+            Err(error) => {
+                let raw_stream = String::from_utf8_lossy(&raw_stream_bytes).to_string();
+                let payload = protocol_error_payload(
+                    request_protocol,
+                    &format!("failed to read upstream stream: {error}"),
+                );
+                let (result, client_payload) = build_json_response(
+                    StatusCode::BAD_GATEWAY,
+                    &headers,
+                    &payload,
+                    &network_recorder,
+                );
+                return (
+                    result,
+                    UsageStats::default(),
+                    Some(raw_stream),
+                    client_payload,
+                    StatusCode::BAD_GATEWAY,
+                );
+            }
+        }
+    }
+
+    let raw_stream = String::from_utf8_lossy(&raw_stream_bytes).to_string();
+    let Some(materialized) = materialize_stream_response(target_protocol, &raw_stream) else {
+        let payload = protocol_error_payload(
+            request_protocol,
+            "failed to materialize upstream streaming response",
+        );
+        let (result, client_payload) = build_json_response(
+            StatusCode::BAD_GATEWAY,
+            &headers,
+            &payload,
+            &network_recorder,
+        );
+        return (
+            result,
+            UsageStats::default(),
+            Some(raw_stream),
+            client_payload,
+            StatusCode::BAD_GATEWAY,
+        );
+    };
+
+    let payload: Value = match serde_json::from_str(&materialized) {
+        Ok(payload) => payload,
+        Err(error) => {
+            let payload = protocol_error_payload(
+                request_protocol,
+                &format!("failed to decode materialized upstream response: {error}"),
+            );
+            let (result, client_payload) = build_json_response(
+                StatusCode::BAD_GATEWAY,
+                &headers,
+                &payload,
+                &network_recorder,
+            );
+            return (
+                result,
+                UsageStats::default(),
+                Some(raw_stream),
+                client_payload,
+                StatusCode::BAD_GATEWAY,
+            );
+        }
+    };
+
+    let usage = extract_usage_stats(&payload);
+    let mut converted = if status.is_success() {
+        match (request_protocol, target_protocol) {
+            (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions) => {
+                openai_chat_response_to_anthropic(&payload, requested_model)
+            }
+            (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiResponses) => {
+                openai_responses_response_to_anthropic(&payload, requested_model)
+            }
+            (ProviderProtocol::OpenAiChatCompletions, ProviderProtocol::AnthropicMessages) => {
+                anthropic_response_to_openai_chat(&payload, requested_model)
+            }
+            (ProviderProtocol::OpenAiResponses, ProviderProtocol::AnthropicMessages) => {
+                anthropic_response_to_openai_response(&payload, requested_model)
+            }
+            _ => payload,
+        }
+    } else {
+        convert_error_payload(&payload, request_protocol, target_protocol)
+    };
+    if sanitize_classifier_response && request_protocol == ProviderProtocol::AnthropicMessages {
+        strip_anthropic_thinking_blocks_for_classifier(&mut converted);
+    }
+
+    let (result, response_payload) =
+        build_json_response(status, &headers, &converted, &network_recorder);
+    (result, usage, Some(materialized), response_payload, status)
 }
 
 async fn into_streaming_converted_response(

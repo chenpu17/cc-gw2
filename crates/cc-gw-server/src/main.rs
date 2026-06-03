@@ -28,7 +28,8 @@ use cc_gw_core::{
     },
     config::{
         CustomEndpointConfig, DEFAULT_BODY_LIMIT, EndpointPathConfig, EndpointRoutingConfig,
-        GatewayConfig, GatewayPaths, RoutingPreset, load_or_init_config, save_config,
+        GatewayConfig, GatewayPaths, ProviderConfig, RoutingPreset, load_or_init_config,
+        save_config,
     },
     convert::{
         anthropic_error_to_openai, anthropic_request_to_openai_chat,
@@ -48,8 +49,8 @@ use cc_gw_core::{
         upsert_request_payload,
     },
     provider::{
-        ProviderProtocol, ProxyRequest, forward_request, provider_prefers_anthropic_protocol,
-        provider_prefers_openai_responses_protocol,
+        ProviderProtocol, ProxyRequest, forward_request, prepare_proxy_payload,
+        provider_prefers_anthropic_protocol, provider_prefers_openai_responses_protocol,
     },
     routing::{GatewayEndpoint, resolve_route},
     storage::initialize_database,
@@ -579,7 +580,7 @@ fn config_snapshot(state: &AppState) -> GatewayConfig {
 }
 
 fn replace_config(state: &AppState, config: GatewayConfig) -> Result<()> {
-    config.validate()?;
+    config.validate_for_save()?;
     save_config(&state.paths, &config)?;
     *state.config.write().expect("config lock poisoned") = config;
     Ok(())

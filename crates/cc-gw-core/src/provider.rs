@@ -119,6 +119,7 @@ fn should_forward_client_header(name: &HeaderName) -> bool {
             | "connection"
             | "authorization"
             | "x-api-key"
+            | "accept-encoding"
             | "cookie"
             | "content-length"
             | "content-encoding"
@@ -139,6 +140,7 @@ fn should_forward_passthrough_header(name: &HeaderName) -> bool {
         name.as_str(),
         "host"
             | "connection"
+            | "accept-encoding"
             | "cookie"
             | "content-length"
             | "content-encoding"
@@ -263,21 +265,26 @@ pub fn provider_prefers_openai_responses_protocol(provider: &ProviderConfig) -> 
         .ends_with("/responses")
 }
 
+pub fn prepare_proxy_payload(body: Value, model: &str, stream: bool) -> Value {
+    let mut payload = body;
+    if let Some(object) = payload.as_object_mut() {
+        if object.get("model").and_then(Value::as_str) != Some(model) {
+            object.insert("model".to_string(), Value::String(model.to_string()));
+        }
+        if stream || object.contains_key("stream") {
+            object.insert("stream".to_string(), Value::Bool(stream));
+        }
+    }
+    payload
+}
+
 pub async fn forward_request(
     client: &Client,
     provider: &ProviderConfig,
     protocol: ProviderProtocol,
     request: ProxyRequest,
 ) -> Result<reqwest::Response> {
-    let mut payload = request.body;
-    if let Some(object) = payload.as_object_mut() {
-        if object.get("model").and_then(Value::as_str) != Some(request.model.as_str()) {
-            object.insert("model".to_string(), Value::String(request.model));
-        }
-        if request.stream || object.contains_key("stream") {
-            object.insert("stream".to_string(), Value::Bool(request.stream));
-        }
-    }
+    let payload = prepare_proxy_payload(request.body, &request.model, request.stream);
 
     let headers = build_headers(
         provider,
@@ -377,6 +384,10 @@ mod tests {
             HeaderValue::from_static("Bearer caller-key"),
         );
         incoming.insert(
+            HeaderName::from_static("accept-encoding"),
+            HeaderValue::from_static("gzip, br"),
+        );
+        incoming.insert(
             HeaderName::from_static("cookie"),
             HeaderValue::from_static("session=abc"),
         );
@@ -416,6 +427,7 @@ mod tests {
             Some("Bearer provider-secret")
         );
         assert!(headers.get("x-api-key").is_none());
+        assert!(headers.get("accept-encoding").is_none());
         assert!(headers.get("cookie").is_none());
         assert!(headers.get("content-encoding").is_none());
         assert_eq!(

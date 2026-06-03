@@ -19,7 +19,8 @@ import { PageLoadingState, PageState } from '@/components/PageState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { formatPayloadDisplay } from '@/pages/logs/utils'
+import { buildPayloadDisplay, buildTextDisplay } from '@/pages/logs/utils'
+import type { PayloadDisplay } from '@/pages/logs/utils'
 import { profilerApi } from '@/services/profiler'
 import { queryKeys } from '@/services/queryKeys'
 import type { ProfilerRecord, ProfilerSession, ProfilerSessionDetail } from '@/types/profiler'
@@ -152,8 +153,29 @@ function formatTurnRange(record: ProfilerRecord, sessionStart: number): string {
   return `${(start / 1000).toFixed(3)}s → ${(end / 1000).toFixed(3)}s`
 }
 
-function codeBlockContent(payload: string | null | undefined, emptyLabel: string): string {
-  return formatPayloadDisplay(payload ?? null, emptyLabel)
+function codeBlockContent(payload: string | null | undefined, emptyLabel: string): PayloadDisplay {
+  return buildPayloadDisplay(payload ?? null, emptyLabel)
+}
+
+function literalCodeBlockContent(text: string): PayloadDisplay {
+  return buildTextDisplay(text)
+}
+
+function PayloadTruncationNotice({ display }: { display: PayloadDisplay }) {
+  const { t } = useTranslation()
+
+  if (!display.isTruncated) {
+    return null
+  }
+
+  return (
+    <p className="mb-2 rounded-lg border border-amber-300/50 bg-amber-500/12 px-3 py-2 text-xs text-amber-100">
+      {t('profiler.payload.truncated', {
+        shown: display.displayedLength.toLocaleString(),
+        total: display.originalLength.toLocaleString()
+      })}
+    </p>
+  )
 }
 
 function downloadJson(filename: string, data: unknown) {
@@ -481,8 +503,8 @@ function TurnDetail({
       : detailTab === 'response'
         ? codeBlockContent(record.clientResponse, t('profiler.payload.emptyResponse'))
         : toolCalls.length > 0
-          ? JSON.stringify(toolCalls, null, 2)
-          : t('profiler.payload.noToolCalls')
+          ? literalCodeBlockContent(JSON.stringify(toolCalls, null, 2))
+          : literalCodeBlockContent(t('profiler.payload.noToolCalls'))
 
   return (
     <div data-testid="profiler-turn-detail" className="mt-3 shrink-0 rounded-xl bg-card shadow-[var(--surface-shadow)]">
@@ -539,8 +561,9 @@ function TurnDetail({
       </div>
 
       <div className="bg-secondary/30 p-5">
+        <PayloadTruncationNotice display={tabContent} />
         <pre className="max-h-[420px] overflow-auto rounded-xl bg-[#1E1E2E] p-4 text-xs leading-5 text-slate-200">
-          {tabContent}
+          {tabContent.text}
         </pre>
         {record.error && (
           <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -590,11 +613,14 @@ function PayloadBlock({
   accentClass: string
   emptyLabel: string
 }) {
+  const display = codeBlockContent(payload, emptyLabel)
+
   return (
     <div className="rounded-xl border border-white/45 bg-white/88 p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-slate-950/[0.58] dark:shadow-[0_12px_28px_rgba(0,0,0,0.28)]">
       <p className={cn('mb-2 text-[11px] font-semibold uppercase tracking-wider', accentClass)}>{title}</p>
+      <PayloadTruncationNotice display={display} />
       <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs leading-5 text-slate-200">
-        {codeBlockContent(payload, emptyLabel)}
+        {display.text}
       </pre>
     </div>
   )
@@ -633,6 +659,9 @@ function BreakdownRow({
 }) {
   const { t } = useTranslation()
   const toolCalls = extractToolCalls(record)
+  const toolCallsDisplay = literalCodeBlockContent(
+    toolCalls.length > 0 ? JSON.stringify(toolCalls, null, 2) : t('profiler.payload.noToolCalls')
+  )
 
   return (
     <div className="overflow-hidden rounded-xl bg-card shadow-sm">
@@ -672,8 +701,9 @@ function BreakdownRow({
           <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
             <div className="rounded-xl bg-card p-3 shadow-sm">
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-amber-600">{t('profiler.payload.toolCalls')}</p>
+              <PayloadTruncationNotice display={toolCallsDisplay} />
               <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950/95 p-3 text-xs leading-5 text-slate-200">
-                {toolCalls.length > 0 ? JSON.stringify(toolCalls, null, 2) : t('profiler.payload.noToolCalls')}
+                {toolCallsDisplay.text}
               </pre>
             </div>
             <div className="rounded-xl bg-card p-3 shadow-sm">

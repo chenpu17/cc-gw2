@@ -1,6 +1,7 @@
 export interface ProviderModelConfig {
   id: string
   label?: string
+  nonStreamViaStream?: boolean
 }
 
 export interface ProviderConfig {
@@ -10,6 +11,7 @@ export interface ProviderConfig {
   apiKey?: string
   authMode?: 'apiKey' | 'authToken' | 'xAuthToken'
   defaultModel?: string
+  nonStreamViaStream?: boolean
   models?: ProviderModelConfig[]
   extraHeaders?: Record<string, string>
   type?: 'openai' | 'deepseek' | 'kimi' | 'anthropic' | 'huawei' | 'custom'

@@ -400,7 +400,8 @@ const resources = {
             upstreamResponse: '上游响应体',
             clientResponse: '客户端响应体',
             emptyRequest: '暂无请求内容',
-            emptyResponse: '暂无响应内容'
+            emptyResponse: '暂无响应内容',
+            truncated: '仅显示前 {{shown}} / {{total}} 个字符。复制按钮仍会复制完整内容。'
           },
           apiKey: {
             title: '密钥信息',
@@ -626,6 +627,8 @@ const resources = {
             authModeProviderDefault: 'Provider 默认',
             authModeAuthToken: 'Authorization: Bearer',
             authModeXAuthToken: 'X-Auth-Token',
+            nonStreamViaStream: '非流式请求转上游流式',
+            nonStreamViaStreamHint: '仅在客户端请求非流式时生效。网关向上游发送流式请求，读取完整 SSE 后一次性返回 JSON。',
             models: '模型配置',
             showAdvanced: '显示高级选项',
             hideAdvanced: '隐藏高级选项',
@@ -634,6 +637,10 @@ const resources = {
             modelIdPlaceholder: '如 claude-sonnet-4-5-20250929',
             modelLabel: '显示名称（可选）',
             modelLabelPlaceholder: '如 GPT-4 旗舰',
+            modelNonStreamViaStream: '非流式转流式',
+            modelNonStreamViaStreamInherit: '使用 Provider 默认',
+            modelNonStreamViaStreamEnabled: '启用',
+            modelNonStreamViaStreamDisabled: '禁用',
             setDefault: '设为默认模型',
             removeModel: '删除模型'
           },
@@ -1526,7 +1533,8 @@ const resources = {
           empty: '（空）',
           emptyRequest: '（空请求）',
           emptyResponse: '（空响应）',
-          noToolCalls: '（无工具调用）'
+          noToolCalls: '（无工具调用）',
+          truncated: '仅显示前 {{shown}} / {{total}} 个字符。'
         },
         breakdown: {
           total: '总计 {{value}}',
@@ -1973,7 +1981,8 @@ const resources = {
             upstreamResponse: 'Upstream response',
             clientResponse: 'Client response',
             emptyRequest: 'No request content',
-            emptyResponse: 'No response content'
+            emptyResponse: 'No response content',
+            truncated: 'Showing the first {{shown}} of {{total}} characters. Copy still includes the full payload.'
           },
           apiKey: {
             title: 'API key',
@@ -2199,6 +2208,8 @@ const resources = {
             authModeProviderDefault: 'Provider default',
             authModeAuthToken: 'Authorization: Bearer',
             authModeXAuthToken: 'X-Auth-Token',
+            nonStreamViaStream: 'Send non-stream requests upstream as streams',
+            nonStreamViaStreamHint: 'Only applies when the client request is non-streaming. The gateway sends a streaming upstream request, reads the full SSE response, then returns JSON once.',
             models: 'Model configuration',
             showAdvanced: 'Show advanced options',
             hideAdvanced: 'Hide advanced options',
@@ -2207,6 +2218,10 @@ const resources = {
             modelIdPlaceholder: 'e.g. claude-sonnet-4-5-20250929',
             modelLabel: 'Display name (optional)',
             modelLabelPlaceholder: 'e.g. GPT-4 Flagship',
+            modelNonStreamViaStream: 'Non-stream via stream',
+            modelNonStreamViaStreamInherit: 'Use provider default',
+            modelNonStreamViaStreamEnabled: 'Enabled',
+            modelNonStreamViaStreamDisabled: 'Disabled',
             setDefault: 'Set as default',
             removeModel: 'Remove model'
           },
@@ -3085,7 +3100,8 @@ const resources = {
           empty: '(empty)',
           emptyRequest: '(empty request)',
           emptyResponse: '(empty response)',
-          noToolCalls: '(no tool calls)'
+          noToolCalls: '(no tool calls)',
+          truncated: 'Showing the first {{shown}} of {{total}} characters.'
         },
         breakdown: {
           total: 'Total {{value}}',

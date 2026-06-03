@@ -1,6 +1,6 @@
 {
   "name": "@cc-gw/cli",
-  "version": "0.8.23",
+  "version": "0.8.24",
   "type": "module",
   "bin": {
     "cc-gw": "dist/index.js"

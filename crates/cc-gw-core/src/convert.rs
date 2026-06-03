@@ -1413,7 +1413,12 @@ fn map_openai_finish_to_anthropic(reason: Option<&str>) -> Option<&'static str> 
     match reason {
         Some("stop") => Some("end_turn"),
         Some("tool_calls") => Some("tool_use"),
-        Some("length") => Some("max_tokens"),
+        Some("length")
+        | Some("max_tokens")
+        | Some("max_output_tokens")
+        | Some("context_length_exceeded")
+        | Some("context_window_exceeded")
+        | Some("model_context_window_exceeded") => Some("max_tokens"),
         Some("content_filter") => Some("refusal"),
         _ => None,
     }
@@ -1435,6 +1440,35 @@ fn map_anthropic_stop_to_openai_status(reason: Option<&str>) -> &'static str {
         Some("max_tokens") | Some("stop_sequence") => "incomplete",
         _ => "completed",
     }
+}
+
+fn openai_response_indicates_context_limit(body: &Value) -> bool {
+    let matches_context_limit = |value: Option<&str>| {
+        matches!(
+            value,
+            Some(
+                "length"
+                    | "max_tokens"
+                    | "max_output_tokens"
+                    | "context_length_exceeded"
+                    | "context_window_exceeded"
+                    | "model_context_window_exceeded"
+            )
+        )
+    };
+
+    matches_context_limit(body.get("status").and_then(Value::as_str))
+        || matches_context_limit(body.get("stop_reason").and_then(Value::as_str))
+        || matches_context_limit(
+            body.get("incomplete_details")
+                .and_then(|details| details.get("reason"))
+                .and_then(Value::as_str),
+        )
+        || matches_context_limit(
+            body.get("error")
+                .and_then(|error| error.get("code").or_else(|| error.get("type")))
+                .and_then(Value::as_str),
+        )
 }
 
 pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
@@ -1644,6 +1678,8 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
         Some("refusal")
     } else if saw_tool_use {
         Some("tool_use")
+    } else if openai_response_indicates_context_limit(body) {
+        Some("max_tokens")
     } else {
         match status {
             Some("requires_action") => Some("tool_use"),
@@ -2443,6 +2479,52 @@ mod tests {
             json!("I can't help with that.")
         );
         assert_eq!(converted["stop_reason"], json!("refusal"));
+    }
+
+    #[test]
+    fn openai_chat_response_to_anthropic_maps_context_window_finish_to_max_tokens() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "id": "chatcmpl_context_limit",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": "model_context_window_exceeded",
+                    "message": { "role": "assistant" }
+                }],
+                "usage": {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0
+                }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(converted["stop_reason"], json!("max_tokens"));
+        assert_eq!(converted["content"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn openai_responses_response_to_anthropic_maps_context_window_status_to_max_tokens() {
+        let converted = openai_responses_response_to_anthropic(
+            &json!({
+                "id": "resp_context_limit",
+                "status": "incomplete",
+                "incomplete_details": {
+                    "reason": "context_length_exceeded"
+                },
+                "output": [],
+                "usage": {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0
+                }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(converted["stop_reason"], json!("max_tokens"));
+        assert_eq!(converted["content"].as_array().unwrap().len(), 0);
     }
 
     #[test]

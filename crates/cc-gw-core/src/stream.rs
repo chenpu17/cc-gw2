@@ -1611,7 +1611,14 @@ fn map_anthropic_stop_reason_to_openai_status(reason: Option<&str>) -> &'static 
 fn map_openai_finish_reason_to_anthropic(reason: Option<&str>) -> &'static str {
     match reason {
         Some("tool_calls") => "tool_use",
-        Some("length") => "max_tokens",
+        Some(
+            "length"
+            | "max_tokens"
+            | "max_output_tokens"
+            | "context_length_exceeded"
+            | "context_window_exceeded"
+            | "model_context_window_exceeded",
+        ) => "max_tokens",
         _ => "end_turn",
     }
 }
@@ -1629,7 +1636,12 @@ fn resolve_anthropic_stop_reason(reason: Option<&str>) -> &'static str {
 fn map_openai_responses_stop_reason_to_anthropic(reason: &str) -> Option<&'static str> {
     match reason {
         "tool_use" | "tool_calls" => Some("tool_use"),
-        "max_tokens" | "length" | "max_output_tokens" => Some("max_tokens"),
+        "max_tokens"
+        | "length"
+        | "max_output_tokens"
+        | "context_length_exceeded"
+        | "context_window_exceeded"
+        | "model_context_window_exceeded" => Some("max_tokens"),
         "stop_sequence" => Some("stop_sequence"),
         "end_turn" | "stop" => Some("end_turn"),
         _ => None,
@@ -1646,8 +1658,27 @@ fn infer_openai_responses_stop_reason(event: &Value) -> Option<&'static str> {
                 .and_then(|response| response.get("stop_reason"))
                 .and_then(Value::as_str)
         });
-    if let Some(reason) = explicit_reason {
-        return map_openai_responses_stop_reason_to_anthropic(reason);
+    if let Some(reason) = explicit_reason
+        && let Some(mapped) = map_openai_responses_stop_reason_to_anthropic(reason)
+    {
+        return Some(mapped);
+    }
+
+    let incomplete_reason = event
+        .get("incomplete_details")
+        .and_then(|details| details.get("reason"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            event
+                .get("response")
+                .and_then(|response| response.get("incomplete_details"))
+                .and_then(|details| details.get("reason"))
+                .and_then(Value::as_str)
+        });
+    if let Some(reason) = incomplete_reason
+        && let Some(mapped) = map_openai_responses_stop_reason_to_anthropic(reason)
+    {
+        return Some(mapped);
     }
 
     let status = event.get("status").and_then(Value::as_str).or_else(|| {
@@ -1680,7 +1711,12 @@ fn infer_openai_responses_stop_reason(event: &Value) -> Option<&'static str> {
     }
     match status {
         Some("requires_action") => Some("tool_use"),
-        Some("incomplete") => Some("max_tokens"),
+        Some(
+            "incomplete"
+            | "context_length_exceeded"
+            | "context_window_exceeded"
+            | "model_context_window_exceeded",
+        ) => Some("max_tokens"),
         Some("completed") => Some("end_turn"),
         _ => None,
     }
@@ -2393,6 +2429,57 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn openai_chat_to_anthropic_stream_maps_context_window_finish_to_max_tokens() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "test-model",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_context_limit\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"model_context_window_exceeded\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"stop_reason\":\"max_tokens\""));
+        assert!(!joined.contains("\"stop_reason\":\"end_turn\""));
+    }
+
+    #[test]
+    fn openai_responses_to_anthropic_stream_maps_context_window_reason_to_max_tokens() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_context_limit\",\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"context_length_exceeded\"},\"usage\":{\"input_tokens\":0,\"output_tokens\":0},\"output\":[]}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"stop_reason\":\"max_tokens\""));
+        assert!(!joined.contains("\"stop_reason\":\"end_turn\""));
+    }
+
+    #[test]
+    fn openai_responses_to_anthropic_stream_falls_back_to_incomplete_status_for_unknown_reason() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_incomplete_unknown\",\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"vendor_specific_reason\"},\"usage\":{\"input_tokens\":0,\"output_tokens\":0},\"output\":[]}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"stop_reason\":\"max_tokens\""));
+        assert!(!joined.contains("\"stop_reason\":\"end_turn\""));
     }
 
     #[test]

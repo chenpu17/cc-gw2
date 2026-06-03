@@ -124,13 +124,24 @@ fn resolve_by_identifier(
     requested_model: Option<&str>,
 ) -> Option<RouteTarget> {
     if let Some((provider_id, model_id)) = identifier.split_once(':') {
+        let provider_id = provider_id.trim();
         let provider = providers
             .iter()
             .find(|provider| provider.id == provider_id)?;
+        let model_id = model_id.trim();
         let resolved_model = if model_id == "*" {
-            requested_model?.trim().to_string()
+            let requested_model = requested_model?.trim();
+            if requested_model.is_empty() {
+                return None;
+            }
+            requested_model.to_string()
+        } else if let Some(resolved_model) = resolve_provider_model(provider, model_id) {
+            resolved_model
         } else {
-            resolve_provider_model(provider, model_id)?
+            if model_id.is_empty() {
+                return None;
+            }
+            model_id.to_string()
         };
 
         return Some(RouteTarget {
@@ -301,6 +312,7 @@ mod tests {
             models: vec![ProviderModelConfig {
                 id: model.to_string(),
                 label: None,
+                ..Default::default()
             }],
             provider_type: Some("openai".to_string()),
             ..ProviderConfig::default()
@@ -419,5 +431,67 @@ mod tests {
 
         assert_eq!(route.provider_id, "alpha");
         assert_eq!(route.model_id, "gpt-4o");
+    }
+
+    #[test]
+    fn provider_qualified_route_can_target_unregistered_model() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![ProviderConfig {
+            id: "mock-openai".to_string(),
+            label: "Mock OpenAI".to_string(),
+            base_url: "https://mock-openai.example.com".to_string(),
+            provider_type: Some("openai".to_string()),
+            ..ProviderConfig::default()
+        }];
+        config
+            .endpoint_routing
+            .get_mut("openai")
+            .unwrap()
+            .model_routes
+            .insert(
+                "client-model-a".to_string(),
+                "mock-openai:upstream-model-b".to_string(),
+            );
+
+        let route = resolve_route(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            Some("client-model-a"),
+            false,
+        )
+        .expect("resolve explicit route target");
+
+        assert_eq!(route.provider_id, "mock-openai");
+        assert_eq!(route.model_id, "upstream-model-b");
+    }
+
+    #[test]
+    fn provider_qualified_route_trims_provider_and_model_target_before_resolution() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("mock-openai", "upstream-model-b")];
+        config
+            .endpoint_routing
+            .get_mut("openai")
+            .unwrap()
+            .model_routes
+            .insert(
+                "client-model-a".to_string(),
+                " mock-openai : * ".to_string(),
+            );
+
+        let route = resolve_route(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            Some("client-model-a"),
+            false,
+        )
+        .expect("resolve wildcard route target");
+
+        assert_eq!(route.provider_id, "mock-openai");
+        assert_eq!(route.model_id, "client-model-a");
     }
 }
