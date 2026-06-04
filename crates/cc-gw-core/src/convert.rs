@@ -93,8 +93,25 @@ fn extract_text(value: &Value) -> String {
     }
 }
 
-fn parse_json_string(input: &str) -> Value {
-    serde_json::from_str(input).unwrap_or_else(|_| Value::String(input.to_string()))
+fn parse_tool_input_object(input: &str) -> Value {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return json!({});
+    }
+
+    match serde_json::from_str::<Value>(trimmed) {
+        Ok(Value::Object(map)) => Value::Object(map),
+        _ => json!({ "_raw": input }),
+    }
+}
+
+fn normalize_tool_input_object(value: Value) -> Value {
+    match value {
+        Value::Object(_) => value,
+        Value::Null => json!({}),
+        Value::String(text) => parse_tool_input_object(&text),
+        other => json!({ "_raw": other }),
+    }
 }
 
 fn stringify_value(value: &Value) -> String {
@@ -973,7 +990,7 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
                         .get("function")
                         .and_then(|value| value.get("arguments"))
                         .and_then(Value::as_str)
-                        .map(parse_json_string)
+                        .map(parse_tool_input_object)
                         .unwrap_or_else(|| json!({}));
                     blocks.push(json!({
                         "type": "tool_use",
@@ -1089,7 +1106,7 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
             let arguments = item
                 .get("arguments")
                 .and_then(Value::as_str)
-                .map(parse_json_string)
+                .map(parse_tool_input_object)
                 .unwrap_or_else(|| json!({}));
             messages.push(json!({
                 "role": "assistant",
@@ -1154,7 +1171,7 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
                     .get("function")
                     .and_then(|value| value.get("arguments"))
                     .and_then(Value::as_str)
-                    .map(parse_json_string)
+                    .map(parse_tool_input_object)
                     .unwrap_or_else(|| json!({}));
                 blocks.push(json!({
                     "type": "tool_use",
@@ -1424,6 +1441,22 @@ fn map_openai_finish_to_anthropic(reason: Option<&str>) -> Option<&'static str> 
     }
 }
 
+fn infer_openai_chat_stop_reason(choice: &Value, message: &Value) -> &'static str {
+    let mapped =
+        map_openai_finish_to_anthropic(choice.get("finish_reason").and_then(Value::as_str));
+    let has_tool_calls = message
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .is_some_and(|tool_calls| !tool_calls.is_empty());
+
+    match mapped {
+        Some(reason @ ("max_tokens" | "refusal")) => reason,
+        _ if has_tool_calls => "tool_use",
+        Some(reason) => reason,
+        None => "end_turn",
+    }
+}
+
 fn map_anthropic_stop_to_openai_chat(reason: Option<&str>) -> Option<&'static str> {
     match reason {
         Some("tool_use") => Some("tool_calls"),
@@ -1523,7 +1556,7 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
             .get("function")
             .and_then(|value| value.get("arguments"))
             .and_then(Value::as_str)
-            .map(parse_json_string)
+            .map(parse_tool_input_object)
             .unwrap_or_else(|| json!({}));
         content.push(json!({
             "type": "tool_use",
@@ -1573,7 +1606,7 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
         "role": "assistant",
         "model": model,
         "content": content,
-        "stop_reason": map_openai_finish_to_anthropic(choice.get("finish_reason").and_then(Value::as_str)),
+        "stop_reason": infer_openai_chat_stop_reason(&choice, &message),
         "stop_sequence": Value::Null,
         "usage": anthropic_usage,
         "metadata": metadata
@@ -1607,16 +1640,15 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
                     }
                     "tool_use" | "function_call" => {
                         saw_tool_use = true;
-                        let input = block
-                            .get("input")
-                            .cloned()
-                            .or_else(|| {
-                                block
-                                    .get("arguments")
-                                    .and_then(Value::as_str)
-                                    .map(parse_json_string)
-                            })
-                            .unwrap_or_else(|| json!({}));
+                        let input = if let Some(input) = block.get("input").cloned() {
+                            normalize_tool_input_object(input)
+                        } else {
+                            block
+                                .get("arguments")
+                                .and_then(Value::as_str)
+                                .map(parse_tool_input_object)
+                                .unwrap_or_else(|| json!({}))
+                        };
                         content.push(json!({
                             "type": "tool_use",
                             "id": block.get("id").or_else(|| block.get("call_id")).cloned().unwrap_or(Value::String("tool".to_string())),
@@ -2415,6 +2447,195 @@ mod tests {
     }
 
     #[test]
+    fn openai_chat_response_to_anthropic_defaults_null_finish_reason_to_end_turn() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "id": "chatcmpl_null_finish",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": null,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Generate the HTML analysis document for algo-lab3 project into docs/ directory.",
+                        "reasoning_content": "The user wants me to generate an HTML document."
+                    }
+                }],
+                "usage": {
+                    "cached_tokens": 0,
+                    "completion_tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "prompt_tokens": 0,
+                    "total_tokens": 0
+                }
+            }),
+            "claude-sonnet-4-6",
+        );
+
+        assert_eq!(converted["stop_reason"].as_str(), Some("end_turn"));
+        assert_eq!(
+            converted["content"][0]["text"].as_str(),
+            Some("Generate the HTML analysis document for algo-lab3 project into docs/ directory.")
+        );
+    }
+
+    #[test]
+    fn openai_chat_response_to_anthropic_defaults_null_finish_reason_with_tools_to_tool_use() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "id": "chatcmpl_null_tool",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": null,
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "Bash",
+                                "arguments": "{\"command\":\"git status\"}"
+                            }
+                        }]
+                    }
+                }],
+                "usage": {
+                    "prompt_tokens": 9,
+                    "completion_tokens": 4
+                }
+            }),
+            "claude-sonnet-4-6",
+        );
+
+        assert_eq!(converted["stop_reason"].as_str(), Some("tool_use"));
+        assert_eq!(converted["content"][0]["type"].as_str(), Some("tool_use"));
+        assert_eq!(
+            converted["content"][0]["input"],
+            json!({ "command": "git status" })
+        );
+    }
+
+    #[test]
+    fn openai_chat_response_to_anthropic_treats_stop_with_tools_as_tool_use() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "id": "chatcmpl_stop_tool",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "Bash",
+                                "arguments": "{\"command\":\"git status\"}"
+                            }
+                        }]
+                    }
+                }],
+                "usage": {
+                    "prompt_tokens": 9,
+                    "completion_tokens": 4
+                }
+            }),
+            "claude-sonnet-4-6",
+        );
+
+        assert_eq!(converted["stop_reason"].as_str(), Some("tool_use"));
+        assert_eq!(converted["content"][0]["type"].as_str(), Some("tool_use"));
+    }
+
+    #[test]
+    fn openai_chat_response_to_anthropic_preserves_max_tokens_with_tools() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "id": "chatcmpl_length_tool",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": "length",
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "Bash",
+                                "arguments": "{\"command\":\"git status\""
+                            }
+                        }]
+                    }
+                }],
+                "usage": {
+                    "prompt_tokens": 9,
+                    "completion_tokens": 4
+                }
+            }),
+            "claude-sonnet-4-6",
+        );
+
+        assert_eq!(converted["stop_reason"].as_str(), Some("max_tokens"));
+    }
+
+    #[test]
+    fn openai_chat_response_to_anthropic_keeps_tool_input_as_object() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "id": "chatcmpl_raw_tool",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [
+                            {
+                                "id": "call_empty",
+                                "type": "function",
+                                "function": {
+                                    "name": "Noop",
+                                    "arguments": "   "
+                                }
+                            },
+                            {
+                                "id": "call_bad",
+                                "type": "function",
+                                "function": {
+                                    "name": "Bash",
+                                    "arguments": "{\"command\":\"git status\""
+                                }
+                            },
+                            {
+                                "id": "call_array",
+                                "type": "function",
+                                "function": {
+                                    "name": "List",
+                                    "arguments": "[\"git\", \"status\"]"
+                                }
+                            }
+                        ]
+                    }
+                }]
+            }),
+            "claude-sonnet-4-6",
+        );
+
+        assert_eq!(converted["content"][0]["input"], json!({}));
+        assert_eq!(
+            converted["content"][1]["input"],
+            json!({ "_raw": "{\"command\":\"git status\"" })
+        );
+        assert_eq!(
+            converted["content"][2]["input"],
+            json!({ "_raw": "[\"git\", \"status\"]" })
+        );
+    }
+
+    #[test]
     fn openai_chat_response_to_anthropic_preserves_reasoning_content() {
         let converted = openai_chat_response_to_anthropic(
             &json!({
@@ -2748,6 +2969,118 @@ mod tests {
         assert_eq!(converted["content"][0]["name"].as_str(), Some("weather"));
         assert_eq!(converted["content"][0]["input"], json!({ "city": "Paris" }));
         assert_eq!(converted["stop_reason"].as_str(), Some("tool_use"));
+    }
+
+    #[test]
+    fn openai_responses_response_to_anthropic_keeps_tool_input_as_object() {
+        let converted = openai_responses_response_to_anthropic(
+            &json!({
+                "id": "resp_tool",
+                "status": "requires_action",
+                "output": [{
+                    "id": "out_1",
+                    "type": "output_message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "function_call",
+                            "id": "call_empty",
+                            "call_id": "call_empty",
+                            "name": "Noop",
+                            "arguments": ""
+                        },
+                        {
+                            "type": "function_call",
+                            "id": "call_bad",
+                            "call_id": "call_bad",
+                            "name": "Bash",
+                            "arguments": "{\"command\":\"git status\""
+                        },
+                        {
+                            "type": "function_call",
+                            "id": "call_array",
+                            "call_id": "call_array",
+                            "name": "List",
+                            "arguments": "[\"git\", \"status\"]"
+                        }
+                    ]
+                }]
+            }),
+            "test-model",
+        );
+
+        assert_eq!(converted["content"][0]["input"], json!({}));
+        assert_eq!(
+            converted["content"][1]["input"],
+            json!({ "_raw": "{\"command\":\"git status\"" })
+        );
+        assert_eq!(
+            converted["content"][2]["input"],
+            json!({ "_raw": "[\"git\", \"status\"]" })
+        );
+    }
+
+    #[test]
+    fn openai_responses_response_to_anthropic_normalizes_tool_use_input_values() {
+        let converted = openai_responses_response_to_anthropic(
+            &json!({
+                "id": "resp_tool_input",
+                "status": "requires_action",
+                "output": [{
+                    "id": "out_1",
+                    "type": "output_message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "call_obj",
+                            "name": "ObjectInput",
+                            "input": { "command": "git status" }
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "call_empty",
+                            "name": "EmptyInput",
+                            "input": "   "
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "call_bad",
+                            "name": "BadInput",
+                            "input": "{\"command\":\"git status\""
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "call_array",
+                            "name": "ArrayInput",
+                            "input": ["git", "status"]
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "call_null",
+                            "name": "NullInput",
+                            "input": null
+                        }
+                    ]
+                }]
+            }),
+            "test-model",
+        );
+
+        assert_eq!(
+            converted["content"][0]["input"],
+            json!({ "command": "git status" })
+        );
+        assert_eq!(converted["content"][1]["input"], json!({}));
+        assert_eq!(
+            converted["content"][2]["input"],
+            json!({ "_raw": "{\"command\":\"git status\"" })
+        );
+        assert_eq!(
+            converted["content"][3]["input"],
+            json!({ "_raw": ["git", "status"] })
+        );
+        assert_eq!(converted["content"][4]["input"], json!({}));
     }
 
     #[test]

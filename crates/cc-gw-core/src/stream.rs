@@ -1462,12 +1462,19 @@ impl CrossProtocolStreamTransformer {
                 json!({ "type": "content_block_stop", "index": index }),
             ));
         }
+        let stop_reason = match self.mode {
+            StreamMode::OpenAiChatToAnthropic => resolve_openai_chat_anthropic_stop_reason(
+                self.stop_reason.as_deref(),
+                !self.openai_tool_calls.is_empty(),
+            ),
+            _ => resolve_anthropic_stop_reason(self.stop_reason.as_deref()),
+        };
         out.push(anthropic_event(
             "message_delta",
             json!({
                 "type": "message_delta",
                 "delta": {
-                    "stop_reason": resolve_anthropic_stop_reason(self.stop_reason.as_deref()),
+                    "stop_reason": stop_reason,
                     "stop_sequence": Value::Null
                 },
                 "usage": self.usage.anthropic_usage_value()
@@ -1615,6 +1622,7 @@ fn map_anthropic_stop_reason_to_openai_status(reason: Option<&str>) -> &'static 
 fn map_openai_finish_reason_to_anthropic(reason: Option<&str>) -> &'static str {
     match reason {
         Some("tool_calls") => "tool_use",
+        Some("content_filter") => "refusal",
         Some(
             "length"
             | "max_tokens"
@@ -1627,6 +1635,18 @@ fn map_openai_finish_reason_to_anthropic(reason: Option<&str>) -> &'static str {
     }
 }
 
+fn parse_tool_input_object(input: &str) -> Value {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return json!({});
+    }
+
+    match serde_json::from_str::<Value>(trimmed) {
+        Ok(Value::Object(map)) => Value::Object(map),
+        _ => json!({ "_raw": input }),
+    }
+}
+
 fn resolve_anthropic_stop_reason(reason: Option<&str>) -> &'static str {
     match reason {
         Some("tool_use") => "tool_use",
@@ -1634,6 +1654,18 @@ fn resolve_anthropic_stop_reason(reason: Option<&str>) -> &'static str {
         Some("stop_sequence") => "stop_sequence",
         Some("end_turn") => "end_turn",
         other => map_openai_finish_reason_to_anthropic(other),
+    }
+}
+
+fn resolve_openai_chat_anthropic_stop_reason(
+    reason: Option<&str>,
+    has_tool_calls: bool,
+) -> &'static str {
+    let mapped = map_openai_finish_reason_to_anthropic(reason);
+    match mapped {
+        "max_tokens" | "refusal" => mapped,
+        _ if has_tool_calls => "tool_use",
+        _ => mapped,
     }
 }
 
@@ -1815,6 +1847,13 @@ fn materialize_anthropic_stream(sse_stream: &str) -> Option<String> {
                         "text" => {
                             content_blocks.insert(index, json!({ "type": "text", "text": "" }));
                         }
+                        "thinking" => {
+                            content_blocks
+                                .insert(index, json!({ "type": "thinking", "thinking": "" }));
+                        }
+                        "redacted_thinking" => {
+                            content_blocks.insert(index, content_block.clone());
+                        }
                         "tool_use" => {
                             content_blocks.insert(
                                 index,
@@ -1848,6 +1887,27 @@ fn materialize_anthropic_stream(sse_stream: &str) -> Option<String> {
                         next.push_str(text);
                         block["text"] = Value::String(next);
                     }
+                    "thinking_delta" => {
+                        let text = delta.get("thinking").and_then(Value::as_str).unwrap_or("");
+                        let block = content_blocks
+                            .entry(index)
+                            .or_insert_with(|| json!({ "type": "thinking", "thinking": "" }));
+                        let mut next = block
+                            .get("thinking")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        next.push_str(text);
+                        block["thinking"] = Value::String(next);
+                    }
+                    "signature_delta" => {
+                        if let Some(signature) = delta.get("signature").and_then(Value::as_str) {
+                            let block = content_blocks
+                                .entry(index)
+                                .or_insert_with(|| json!({ "type": "thinking", "thinking": "" }));
+                            block["signature"] = Value::String(signature.to_string());
+                        }
+                    }
                     "input_json_delta" => {
                         let partial = delta
                             .get("partial_json")
@@ -1875,8 +1935,7 @@ fn materialize_anthropic_stream(sse_stream: &str) -> Option<String> {
 
     for (index, raw_input) in tool_inputs {
         if let Some(block) = content_blocks.get_mut(&index) {
-            block["input"] = serde_json::from_str::<Value>(&raw_input)
-                .unwrap_or_else(|_| Value::String(raw_input));
+            block["input"] = parse_tool_input_object(&raw_input);
         }
     }
     let content = content_blocks
@@ -2472,6 +2531,81 @@ mod tests {
     }
 
     #[test]
+    fn openai_chat_to_anthropic_stream_infers_tool_use_without_finish_reason() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "claude-sonnet-4-6",
+        )
+        .expect("supported transformer");
+        let mut chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"git status\\\"}\"}}]}}]}\n\n\
+             data: [DONE]\n\n",
+        );
+        chunks.extend(transformer.finish());
+        let joined = chunks.join("");
+
+        assert!(
+            joined
+                .contains("\"id\":\"call_1\",\"input\":{},\"name\":\"Bash\",\"type\":\"tool_use\"")
+        );
+        assert!(joined.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[test]
+    fn openai_chat_to_anthropic_stream_treats_stop_with_tools_as_tool_use() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "claude-sonnet-4-6",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"git status\\\"}\"}}]}}]}\n\n\
+             data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[test]
+    fn openai_chat_to_anthropic_stream_preserves_max_tokens_with_tools() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "claude-sonnet-4-6",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"git status\\\"\"}}]}}]}\n\n\
+             data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"finish_reason\":\"length\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"stop_reason\":\"max_tokens\""));
+        assert!(!joined.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[test]
+    fn openai_chat_to_anthropic_stream_preserves_refusal_with_tools() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "claude-sonnet-4-6",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"git status\\\"}\"}}]}}]}\n\n\
+             data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"finish_reason\":\"content_filter\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"stop_reason\":\"refusal\""));
+        assert!(!joined.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[test]
     fn materialize_anthropic_stream_drops_empty_text_blocks_before_tool_use() {
         let payload = materialize_stream_response(
             ProviderProtocol::AnthropicMessages,
@@ -2496,6 +2630,83 @@ mod tests {
         assert_eq!(content[0]["type"].as_str(), Some("tool_use"));
         assert_eq!(content[0]["input"], json!({ "command": "git status" }));
         assert_eq!(body["stop_reason"].as_str(), Some("tool_use"));
+    }
+
+    #[test]
+    fn materialize_anthropic_stream_keeps_bad_tool_input_as_object() {
+        let payload = materialize_stream_response(
+            ProviderProtocol::AnthropicMessages,
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_tool_bad\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-6\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_1\",\"name\":\"Bash\",\"input\":{}}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"command\\\":\\\"git status\\\"\"}}\n\n\
+             event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"input_tokens\":9,\"output_tokens\":4}}\n\n\
+             event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        )
+        .expect("materialized payload");
+        let body: Value = serde_json::from_str(&payload).expect("decode materialized payload");
+        let content = body["content"].as_array().expect("content array");
+
+        assert_eq!(content[0]["type"].as_str(), Some("tool_use"));
+        assert_eq!(
+            content[0]["input"],
+            json!({ "_raw": "{\"command\":\"git status\"" })
+        );
+    }
+
+    #[test]
+    fn materialize_anthropic_stream_preserves_thinking_blocks() {
+        let payload = materialize_stream_response(
+            ProviderProtocol::AnthropicMessages,
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_thinking\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-6\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"considering \"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"options\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig_123\"}}\n\n\
+             event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":9,\"output_tokens\":4}}\n\n\
+             event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        )
+        .expect("materialized payload");
+        let body: Value = serde_json::from_str(&payload).expect("decode materialized payload");
+        let content = body["content"].as_array().expect("content array");
+
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0]["type"].as_str(), Some("thinking"));
+        assert_eq!(content[0]["thinking"].as_str(), Some("considering options"));
+        assert_eq!(content[0]["signature"].as_str(), Some("sig_123"));
+    }
+
+    #[test]
+    fn materialize_anthropic_stream_preserves_redacted_thinking_blocks() {
+        let payload = materialize_stream_response(
+            ProviderProtocol::AnthropicMessages,
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_redacted\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-6\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"redacted_thinking\",\"data\":\"encrypted\"}}\n\n\
+             event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":9,\"output_tokens\":4}}\n\n\
+             event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        )
+        .expect("materialized payload");
+        let body: Value = serde_json::from_str(&payload).expect("decode materialized payload");
+        let content = body["content"].as_array().expect("content array");
+
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0]["type"].as_str(), Some("redacted_thinking"));
+        assert_eq!(content[0]["data"].as_str(), Some("encrypted"));
     }
 
     #[test]
