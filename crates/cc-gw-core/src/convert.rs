@@ -2367,6 +2367,54 @@ mod tests {
     }
 
     #[test]
+    fn openai_chat_response_to_anthropic_omits_empty_text_before_tool_use() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "id": "chatcmpl_tool",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [{
+                            "id": "call_261b2a20d01a4c46b7857574",
+                            "type": "function",
+                            "function": {
+                                "name": "Bash",
+                                "arguments": "{\"command\":\"git add output/ clean.jsonl\",\"description\":\"Stage output dir and clean.jsonl\"}"
+                            }
+                        }]
+                    }
+                }],
+                "usage": {
+                    "cached_tokens": 103847,
+                    "completion_tokens": 30,
+                    "input_tokens": 115386,
+                    "output_tokens": 30,
+                    "prompt_tokens": 115386,
+                    "total_tokens": 115416
+                }
+            }),
+            "claude-sonnet-4-6",
+        );
+
+        let content = converted["content"].as_array().expect("content array");
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0]["type"].as_str(), Some("tool_use"));
+        assert_eq!(
+            content[0]["input"],
+            json!({
+                "command": "git add output/ clean.jsonl",
+                "description": "Stage output dir and clean.jsonl"
+            })
+        );
+        assert_eq!(converted["stop_reason"].as_str(), Some("tool_use"));
+        assert_eq!(converted["usage"]["input_tokens"], json!(11539));
+        assert_eq!(converted["usage"]["cache_read_input_tokens"], json!(103847));
+    }
+
+    #[test]
     fn openai_chat_response_to_anthropic_preserves_reasoning_content() {
         let converted = openai_chat_response_to_anthropic(
             &json!({

@@ -683,7 +683,11 @@ impl CrossProtocolStreamTransformer {
             ));
         }
 
-        if let Some(text) = delta.get("content").and_then(Value::as_str) {
+        if let Some(text) = delta
+            .get("content")
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+        {
             let index = self.ensure_text_block_started(&mut out);
             out.push(anthropic_event(
                 "content_block_delta",
@@ -1875,13 +1879,23 @@ fn materialize_anthropic_stream(sse_stream: &str) -> Option<String> {
                 .unwrap_or_else(|_| Value::String(raw_input));
         }
     }
+    let content = content_blocks
+        .into_values()
+        .filter(|block| {
+            block.get("type").and_then(Value::as_str) != Some("text")
+                || block
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .is_some_and(|text| !text.is_empty())
+        })
+        .collect::<Vec<_>>();
 
     serde_json::to_string(&json!({
         "id": id.unwrap_or_else(|| format!("msg_{}", nanoid_like())),
         "type": "message",
         "role": "assistant",
         "model": model.unwrap_or_else(|| "unknown-model".to_string()),
-        "content": content_blocks.into_values().collect::<Vec<_>>(),
+        "content": content,
         "stop_reason": stop_reason,
         "stop_sequence": stop_sequence,
         "usage": usage.anthropic_usage_value()
@@ -2149,6 +2163,7 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
 mod tests {
     use super::{CrossProtocolStreamTransformer, SseStreamObserver, materialize_stream_response};
     use crate::provider::ProviderProtocol;
+    use serde_json::{Value, json};
 
     #[test]
     fn anthropic_observer_tracks_ttft_and_usage() {
@@ -2429,6 +2444,58 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn openai_chat_to_anthropic_stream_omits_empty_text_before_tool_use() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "claude-sonnet-4-6",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"}}]}\n\n\
+             data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"git status\\\"}\"}}]}}]}\n\n\
+             data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("event: message_start"));
+        assert!(!joined.contains("\"type\":\"text\",\"text\":\"\""));
+        assert!(
+            joined
+                .contains("\"id\":\"call_1\",\"input\":{},\"name\":\"Bash\",\"type\":\"tool_use\"")
+        );
+        assert!(joined.contains("\"partial_json\":\"{\\\"command\\\":\\\"git status\\\"}\""));
+        assert!(joined.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[test]
+    fn materialize_anthropic_stream_drops_empty_text_blocks_before_tool_use() {
+        let payload = materialize_stream_response(
+            ProviderProtocol::AnthropicMessages,
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_tool\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-6\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_1\",\"name\":\"Bash\",\"input\":{}}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"command\\\":\\\"git status\\\"}\"}}\n\n\
+             event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"input_tokens\":9,\"output_tokens\":4}}\n\n\
+             event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        )
+        .expect("materialized payload");
+        let body: Value = serde_json::from_str(&payload).expect("decode materialized payload");
+        let content = body["content"].as_array().expect("content array");
+
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0]["type"].as_str(), Some("tool_use"));
+        assert_eq!(content[0]["input"], json!({ "command": "git status" }));
+        assert_eq!(body["stop_reason"].as_str(), Some("tool_use"));
     }
 
     #[test]
