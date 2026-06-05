@@ -68,6 +68,33 @@ export function useLogDetailState({
     [pushToast, t]
   )
 
+  const handleDownloadPayload = useCallback(
+    (label: string, content: string | null | undefined) => {
+      if (!content) {
+        pushToast({ title: t('logs.detail.copy.empty', { label }), variant: 'info' })
+        return
+      }
+
+      const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const safeLabel = label
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, '-')
+        .replace(/^-+|-+$/g, '') || 'payload'
+
+      anchor.href = url
+      anchor.download = `cc-gw-log-${logId ?? 'payload'}-${safeLabel}-${timestamp}.json`
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      URL.revokeObjectURL(url)
+    },
+    [logId, pushToast, t]
+  )
+
   const record = logDetailQuery.data
   const providerLabel = record ? providerLabelMap.get(record.provider) ?? record.provider : ''
   const apiKeyMeta = record && record.api_key_id != null ? apiKeyMap.get(record.api_key_id) : undefined
@@ -79,6 +106,7 @@ export function useLogDetailState({
     errorSourceMeta,
     errorMessage: logDetailQuery.isError ? logDetailQuery.error?.message ?? null : null,
     handleCopy,
+    handleDownloadPayload,
     isError: logDetailQuery.isError,
     isPending: logDetailQuery.isPending,
     providerLabel,

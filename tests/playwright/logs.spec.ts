@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import fs from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { createGatewayHarness } from './harness'
 
@@ -89,9 +90,12 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
   await expect(detailDialog).toBeVisible()
   await expect(detailDialog.getByText('客户端请求体')).toBeVisible()
   await expect(detailDialog.getByText('客户端响应体')).toBeVisible()
-  await detailDialog.getByRole('button', { name: '复制' }).first().click()
+  await detailDialog.getByTestId('log-payload-client-request').getByRole('button', { name: '复制' }).click()
   await expect(page.getByText('请求体已复制到剪贴板。')).toBeVisible()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Hello from Playwright logs test')
+  await detailDialog.getByTestId('log-payload-client-response').getByRole('button', { name: '复制' }).click()
+  await expect(page.getByText('响应体已复制到剪贴板。')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Stub response:')
   await page.keyboard.press('Escape')
   await expect(detailDialog).not.toBeVisible()
 
@@ -99,6 +103,46 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
   await page.getByRole('button', { name: /导出(?: ZIP)? 日志/ }).click()
   const download = await downloadPromise
   expect(download.suggestedFilename()).toMatch(/cc-gw-logs-.*\.zip$/)
+})
+
+test('log detail response payload copy and download preserve large full content', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl })
+
+  const marker = 'large-log-response-marker'
+  const largeContent = `${marker}:${'x'.repeat(180_000)}`
+  const valid = await request.post(`${baseUrl}/v1/chat/completions`, {
+    data: {
+      model: 'stub-model',
+      messages: [{ role: 'user', content: largeContent }]
+    },
+    headers: { 'content-type': 'application/json' }
+  })
+  expect(valid.status()).toBe(200)
+
+  await pollForAnyLog(request, baseUrl)
+
+  await page.goto(`${baseUrl}/ui/logs`)
+  await page.getByRole('button', { name: '详情' }).first().click()
+
+  const detailDialog = page.getByRole('dialog', { name: '日志详情' })
+  const responsePanel = detailDialog.getByTestId('log-payload-client-response')
+  await expect(responsePanel.getByText(/仅显示前/)).toBeVisible()
+
+  await responsePanel.getByRole('button', { name: '复制' }).click()
+  await expect(page.getByText('响应体已复制到剪贴板。')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(marker)
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('x'.repeat(1000))
+
+  const downloadPromise = page.waitForEvent('download')
+  await responsePanel.getByRole('button', { name: '下载' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toMatch(/cc-gw-log-.*客户端响应体.*\.json$/)
+  const downloadPath = await download.path()
+  expect(downloadPath).toBeTruthy()
+  const downloadedText = await fs.readFile(downloadPath!, 'utf8')
+  expect(downloadedText).toContain(marker)
+  expect(downloadedText.length).toBeGreaterThan(180_000)
 })
 
 test('logs table controls respect column toggles, pagination, and export payloads', async ({ page, request }) => {

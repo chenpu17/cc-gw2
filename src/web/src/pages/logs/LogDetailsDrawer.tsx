@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Copy, Download } from 'lucide-react'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import { AppDialogBody, AppDialogContent, AppDialogHeader } from '@/components/DialogShell'
 import { PageLoadingState, PageState } from '@/components/PageState'
@@ -35,6 +36,7 @@ export function LogDetailsDrawer({
     errorSourceMeta,
     errorMessage,
     handleCopy,
+    handleDownloadPayload,
     isError,
     isPending,
     providerLabel,
@@ -262,6 +264,8 @@ export function LogDetailsDrawer({
                         title={section.title}
                         display={section.display}
                         onCopy={() => handleCopy(section.title, section.value, section.copyToast)}
+                        onDownload={() => handleDownloadPayload(section.title, section.value)}
+                        panelKey={section.key}
                         t={t}
                       />
                     ))}
@@ -299,23 +303,34 @@ function DetailItem({ label, value }: { label: string; value: string | number | 
 function PayloadPanel({
   display,
   onCopy,
+  onDownload,
+  panelKey,
   title,
   t
 }: {
   display: PayloadDisplay
   onCopy: () => void
+  onDownload: () => void
+  panelKey: string
   title: string
   t: (key: string, options?: Record<string, unknown>) => string
 }) {
   return (
-    <div className="space-y-3 rounded-lg border bg-secondary/40 p-4">
+    <div className="space-y-3 rounded-lg border bg-secondary/40 p-4" data-testid={`log-payload-${panelKey}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {title}
         </h4>
-        <Button variant="outline" size="sm" onClick={onCopy}>
-          {t('common.actions.copy')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onCopy}>
+            <Copy className="mr-2 h-3.5 w-3.5" />
+            {t('common.actions.copy')}
+          </Button>
+          <Button variant="outline" size="sm" onClick={onDownload}>
+            <Download className="mr-2 h-3.5 w-3.5" />
+            {t('common.actions.download')}
+          </Button>
+        </div>
       </div>
       {display.isTruncated ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">

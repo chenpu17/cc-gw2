@@ -23,21 +23,23 @@ export async function copyToClipboard(text: string): Promise<void> {
     : []
 
   textarea.value = text
+  textarea.setAttribute('readonly', 'true')
   textarea.setAttribute('aria-hidden', 'true')
   textarea.setAttribute('tabindex', '-1')
-  // Prevent scrolling to bottom
   textarea.style.position = 'fixed'
-  textarea.style.top = '-1000px'
-  textarea.style.left = '-1000px'
-  textarea.style.width = '1px'
-  textarea.style.height = '1px'
+  textarea.style.top = '0'
+  textarea.style.left = '0'
+  textarea.style.width = '2px'
+  textarea.style.height = '2px'
   textarea.style.padding = '0'
   textarea.style.border = 'none'
   textarea.style.outline = 'none'
   textarea.style.boxShadow = 'none'
   textarea.style.background = 'transparent'
-  textarea.style.opacity = '0'
-  textarea.style.pointerEvents = 'none'
+  textarea.style.color = 'transparent'
+  textarea.style.fontSize = '16px'
+  textarea.style.userSelect = 'text'
+  textarea.style.clipPath = 'inset(50%)'
 
   document.body.appendChild(textarea)
 
