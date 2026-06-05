@@ -335,14 +335,25 @@ pub(super) async fn anthropic_count_tokens(
     };
     record_network_ingress(&state, "anthropic", body_len);
 
-    fn walk(value: &Value) -> usize {
+    fn estimate_count_tokens(value: &Value) -> usize {
+        fn text_tokens(text: &str) -> usize {
+            text.len().div_ceil(3).max(1)
+        }
+
         match value {
             Value::Null => 0,
             Value::Bool(_) => 1,
             Value::Number(_) => 2,
-            Value::String(text) => text.len() / 4 + 1,
-            Value::Array(values) => values.iter().map(walk).sum(),
-            Value::Object(map) => map.values().map(walk).sum(),
+            Value::String(text) => text_tokens(text),
+            Value::Array(values) => {
+                values.iter().map(estimate_count_tokens).sum::<usize>() + values.len() + 2
+            }
+            Value::Object(map) => {
+                map.iter()
+                    .map(|(key, value)| text_tokens(key) + estimate_count_tokens(value) + 2)
+                    .sum::<usize>()
+                    + 2
+            }
         }
     }
 
@@ -350,7 +361,7 @@ pub(super) async fn anthropic_count_tokens(
         &state,
         "anthropic",
         StatusCode::OK,
-        &json!({ "input_tokens": walk(&body) }),
+        &json!({ "input_tokens": estimate_count_tokens(&body) }),
     )
 }
 

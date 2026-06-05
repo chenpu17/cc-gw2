@@ -1566,10 +1566,13 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
         }));
     }
     if !reasoning.is_empty() {
-        content.push(json!({
-            "type": "thinking",
-            "thinking": reasoning.join("\n")
-        }));
+        content.insert(
+            0,
+            json!({
+                "type": "thinking",
+                "thinking": reasoning.join("\n")
+            }),
+        );
     }
 
     let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
@@ -1697,10 +1700,13 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
         }
     }
     if !reasoning.is_empty() {
-        content.push(json!({
-            "type": "thinking",
-            "thinking": reasoning.join("\n")
-        }));
+        content.insert(
+            0,
+            json!({
+                "type": "thinking",
+                "thinking": reasoning.join("\n")
+            }),
+        );
     }
 
     let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
@@ -2473,8 +2479,9 @@ mod tests {
         );
 
         assert_eq!(converted["stop_reason"].as_str(), Some("end_turn"));
+        assert_eq!(converted["content"][0]["type"].as_str(), Some("thinking"));
         assert_eq!(
-            converted["content"][0]["text"].as_str(),
+            converted["content"][1]["text"].as_str(),
             Some("Generate the HTML analysis document for algo-lab3 project into docs/ directory.")
         );
     }
@@ -2649,11 +2656,12 @@ mod tests {
             "claude-test",
         );
 
-        assert_eq!(converted["content"][1]["type"].as_str(), Some("thinking"));
+        assert_eq!(converted["content"][0]["type"].as_str(), Some("thinking"));
         assert_eq!(
-            converted["content"][1]["thinking"].as_str(),
+            converted["content"][0]["thinking"].as_str(),
             Some("considering options")
         );
+        assert_eq!(converted["content"][1]["type"].as_str(), Some("text"));
     }
 
     #[test]
@@ -2969,6 +2977,42 @@ mod tests {
         assert_eq!(converted["content"][0]["name"].as_str(), Some("weather"));
         assert_eq!(converted["content"][0]["input"], json!({ "city": "Paris" }));
         assert_eq!(converted["stop_reason"].as_str(), Some("tool_use"));
+    }
+
+    #[test]
+    fn openai_responses_response_to_anthropic_places_reasoning_before_text() {
+        let converted = openai_responses_response_to_anthropic(
+            &json!({
+                "id": "resp_reasoning",
+                "status": "completed",
+                "output": [
+                    {
+                        "id": "rs_1",
+                        "type": "reasoning",
+                        "summary": [{ "type": "summary_text", "text": "considering options" }]
+                    },
+                    {
+                        "id": "out_1",
+                        "type": "output_message",
+                        "role": "assistant",
+                        "content": [{ "type": "output_text", "text": "done" }]
+                    }
+                ],
+                "usage": {
+                    "input_tokens": 8,
+                    "output_tokens": 1
+                }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(converted["content"][0]["type"].as_str(), Some("thinking"));
+        assert_eq!(
+            converted["content"][0]["thinking"].as_str(),
+            Some("considering options")
+        );
+        assert_eq!(converted["content"][1]["type"].as_str(), Some("text"));
+        assert_eq!(converted["content"][1]["text"].as_str(), Some("done"));
     }
 
     #[test]

@@ -2508,6 +2508,74 @@ async fn anthropic_endpoint_accepts_bearer_auth_for_gateway_api_keys() {
 }
 
 #[tokio::test]
+async fn anthropic_count_tokens_accounts_for_schema_keys_and_structure() {
+    let config = GatewayConfig::default();
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-count-tokens-schema-keys").await;
+    let client = reqwest::Client::new();
+
+    let base_request = json!({
+        "model": "claude-client",
+        "messages": [{ "role": "user", "content": "hello" }]
+    });
+    let tool_request = json!({
+        "model": "claude-client",
+        "messages": [{ "role": "user", "content": "hello" }],
+        "tools": [{
+            "name": "Write",
+            "description": "Write text to a file.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "The path where the file should be written."
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The full file content."
+                    }
+                },
+                "required": ["file_path", "content"]
+            }
+        }]
+    });
+
+    let base_response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages/count_tokens"))
+        .json(&base_request)
+        .send()
+        .await
+        .expect("send base count_tokens request")
+        .json()
+        .await
+        .expect("decode base count_tokens response");
+    let tool_response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages/count_tokens"))
+        .json(&tool_request)
+        .send()
+        .await
+        .expect("send tool count_tokens request")
+        .json()
+        .await
+        .expect("decode tool count_tokens response");
+
+    let base_tokens = base_response["input_tokens"]
+        .as_u64()
+        .expect("base token estimate");
+    let tool_tokens = tool_response["input_tokens"]
+        .as_u64()
+        .expect("tool token estimate");
+    assert!(
+        tool_tokens > base_tokens + 50,
+        "tool schema keys and structure should materially increase token estimate: base={base_tokens}, tool={tool_tokens}"
+    );
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn anthropic_messages_validation_accepts_string_or_block_content_in_claude_code_mode() {
     let attempts = Arc::new(Mutex::new(0usize));
     let attempts_for_route = Arc::clone(&attempts);
