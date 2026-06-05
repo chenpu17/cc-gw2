@@ -2105,6 +2105,84 @@ data: [DONE]\n\n",
 }
 
 #[tokio::test]
+async fn claude_code_auto_mode_classifier_does_not_fallback_to_reasoning_text() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|AxumJson(payload): AxumJson<Value>| async move {
+            assert_eq!(payload["stream"].as_bool(), Some(true));
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from(
+                    "data: {\"id\":\"chatcmpl_classifier\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"glm-stream-only\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"classifier scratchpad\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl_classifier\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"glm-stream-only\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+data: [DONE]\n\n",
+                ))
+                .expect("build stream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("glm-stream-only".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "glm-stream-only".to_string(),
+            label: Some("GLM Stream Only".to_string()),
+            non_stream_via_stream: Some(true),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-sonnet-4-6".to_string(),
+            "mock-openai:glm-stream-only".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "claude-code-classifier-no-reasoning-fallback").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 64,
+            "stream": false,
+            "thinking": { "type": "disabled" },
+            "stop_sequences": ["</block>"],
+            "system": [{
+                "type": "text",
+                "text": "You are a security monitor for autonomous AI coding agents."
+            }],
+            "messages": [{ "role": "user", "content": "Bash touch ../auto-mode-test.txt" }]
+        }))
+        .send()
+        .await
+        .expect("send classifier request")
+        .json()
+        .await
+        .expect("decode classifier response");
+
+    assert_eq!(response["type"].as_str(), Some("message"));
+    assert_eq!(response["content"].as_array().map(Vec::len), Some(0));
+    assert!(
+        !serde_json::to_string(&response)
+            .expect("serialize response")
+            .contains("classifier scratchpad")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn anthropic_openai_chat_without_thinking_strips_reasoning_content() {
     let upstream = Router::new().route(
         "/v1/chat/completions",
@@ -2197,6 +2275,94 @@ async fn anthropic_openai_chat_without_thinking_strips_reasoning_content() {
 }
 
 #[tokio::test]
+async fn anthropic_openai_chat_without_thinking_falls_back_when_only_reasoning_content_remains() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "chatcmpl_reasoning_only",
+                        "object": "chat.completion",
+                        "created": 1700000000,
+                        "model": "glm-test",
+                        "choices": [{
+                            "index": 0,
+                            "finish_reason": null,
+                            "message": {
+                                "role": "assistant",
+                                "reasoning_content": "I should create the HTML file now."
+                            }
+                        }],
+                        "usage": {
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "total_tokens": 0
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("build upstream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("glm-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "glm-test".to_string(),
+            label: Some("GLM Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-sonnet-4-6".to_string(),
+            "mock-openai:glm-test".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-openai-chat-reasoning-only-fallback").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 128,
+            "messages": [{ "role": "user", "content": "create the html" }]
+        }))
+        .send()
+        .await
+        .expect("send anthropic request")
+        .json()
+        .await
+        .expect("decode response");
+
+    let content = response["content"].as_array().expect("content blocks");
+    assert_eq!(content.len(), 1);
+    assert_eq!(content[0]["type"].as_str(), Some("text"));
+    assert_eq!(
+        content[0]["text"].as_str(),
+        Some("I should create the HTML file now.")
+    );
+    assert_eq!(response["stop_reason"].as_str(), Some("end_turn"));
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn anthropic_openai_chat_non_stream_via_stream_without_thinking_strips_reasoning_content() {
     let upstream = Router::new().route(
         "/v1/chat/completions",
@@ -2264,6 +2430,82 @@ data: [DONE]\n\n",
         !serde_json::to_string(&response)
             .expect("serialize response")
             .contains("hidden stream reasoning")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_openai_chat_non_stream_via_stream_without_thinking_falls_back_when_only_reasoning_content_remains()
+ {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|AxumJson(payload): AxumJson<Value>| async move {
+            assert_eq!(payload["stream"].as_bool(), Some(true));
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from(
+                    "data: {\"id\":\"chatcmpl_reasoning_only\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"glm-stream-only\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"I should create the HTML file now.\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl_reasoning_only\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"glm-stream-only\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0}}\n\n\
+data: [DONE]\n\n",
+                ))
+                .expect("build upstream stream")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("glm-stream-only".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "glm-stream-only".to_string(),
+            label: Some("GLM Stream Only".to_string()),
+            non_stream_via_stream: Some(true),
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-sonnet-4-6".to_string(),
+            "mock-openai:glm-stream-only".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) = spawn_test_gateway(
+        config,
+        "anthropic-openai-chat-materialized-reasoning-only-fallback",
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 128,
+            "stream": false,
+            "messages": [{ "role": "user", "content": "create the html" }]
+        }))
+        .send()
+        .await
+        .expect("send anthropic request")
+        .json()
+        .await
+        .expect("decode response");
+
+    let content = response["content"].as_array().expect("content blocks");
+    assert_eq!(content.len(), 1);
+    assert_eq!(content[0]["type"].as_str(), Some("text"));
+    assert_eq!(
+        content[0]["text"].as_str(),
+        Some("I should create the HTML file now.")
     );
 
     gateway_handle.abort();

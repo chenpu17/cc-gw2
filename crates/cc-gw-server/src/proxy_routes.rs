@@ -1080,16 +1080,37 @@ fn is_claude_code_auto_mode_classifier_request(protocol: ProviderProtocol, body:
     }
 }
 
-fn strip_anthropic_thinking_blocks(response: &mut Value) {
+fn strip_anthropic_thinking_blocks(response: &mut Value, allow_text_fallback: bool) {
     let Some(content) = response.get_mut("content").and_then(Value::as_array_mut) else {
         return;
     };
+    let mut fallback_text = Vec::new();
+    if allow_text_fallback {
+        for block in content.iter() {
+            match block.get("type").and_then(Value::as_str) {
+                Some("thinking") => {
+                    if let Some(text) = block.get("thinking").and_then(Value::as_str) {
+                        if !text.trim().is_empty() {
+                            fallback_text.push(text.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     content.retain(|block| {
         !matches!(
             block.get("type").and_then(Value::as_str),
             Some("thinking" | "redacted_thinking")
         )
     });
+    if content.is_empty() && allow_text_fallback && !fallback_text.is_empty() {
+        content.push(json!({
+            "type": "text",
+            "text": fallback_text.join("\n")
+        }));
+    }
 }
 
 fn block_type_allowed(block_type: &str, _mode: &str, allow_experimental_blocks: bool) -> bool {
@@ -1482,6 +1503,7 @@ pub(super) async fn proxy_standard_request(
     let sanitize_classifier_response = is_claude_code_auto_mode_classifier_request(protocol, &body);
     let emit_anthropic_reasoning =
         protocol != ProviderProtocol::AnthropicMessages || thinking_explicitly_enabled(&body);
+    let allow_anthropic_reasoning_fallback = !sanitize_classifier_response;
     let upstream_stream =
         stream || target_uses_non_stream_via_stream(&target.provider, &target_model_id);
     let initial_upstream_body = prepare_proxy_payload(
@@ -1652,6 +1674,7 @@ pub(super) async fn proxy_standard_request(
                     requested_model.unwrap_or(""),
                     sanitize_classifier_response,
                     emit_anthropic_reasoning,
+                    allow_anthropic_reasoning_fallback,
                     network_recorder.clone(),
                 )
                 .await;
@@ -1729,6 +1752,7 @@ pub(super) async fn proxy_standard_request(
                     &target.provider_id,
                     requested_model.unwrap_or(""),
                     emit_anthropic_reasoning,
+                    allow_anthropic_reasoning_fallback,
                     network_recorder.clone(),
                     streaming_log_context,
                     Some(activity_guard),
@@ -1754,6 +1778,7 @@ pub(super) async fn proxy_standard_request(
                         &target.provider_id,
                         requested_model.unwrap_or(""),
                         emit_anthropic_reasoning,
+                        allow_anthropic_reasoning_fallback,
                         network_recorder.clone(),
                     )
                     .await;
@@ -1946,6 +1971,7 @@ async fn into_converted_response(
     provider_id: &str,
     requested_model: &str,
     emit_anthropic_reasoning: bool,
+    allow_anthropic_reasoning_fallback: bool,
     network_recorder: NetworkByteRecorder,
 ) -> (Response, UsageStats, Option<String>, Option<String>) {
     let status = response.status();
@@ -2063,7 +2089,7 @@ async fn into_converted_response(
         && request_protocol == ProviderProtocol::AnthropicMessages
         && !emit_anthropic_reasoning
     {
-        strip_anthropic_thinking_blocks(&mut converted);
+        strip_anthropic_thinking_blocks(&mut converted, allow_anthropic_reasoning_fallback);
     }
 
     let (result, response_payload) =
@@ -2079,6 +2105,7 @@ async fn into_materialized_stream_response(
     requested_model: &str,
     sanitize_classifier_response: bool,
     emit_anthropic_reasoning: bool,
+    allow_anthropic_reasoning_fallback: bool,
     network_recorder: NetworkByteRecorder,
 ) -> (
     Response,
@@ -2102,6 +2129,7 @@ async fn into_materialized_stream_response(
             provider_id,
             requested_model,
             emit_anthropic_reasoning,
+            allow_anthropic_reasoning_fallback,
             network_recorder,
         )
         .await;
@@ -2222,7 +2250,7 @@ async fn into_materialized_stream_response(
     if request_protocol == ProviderProtocol::AnthropicMessages
         && (sanitize_classifier_response || !emit_anthropic_reasoning)
     {
-        strip_anthropic_thinking_blocks(&mut converted);
+        strip_anthropic_thinking_blocks(&mut converted, allow_anthropic_reasoning_fallback);
     }
 
     let (result, response_payload) =
@@ -2237,6 +2265,7 @@ async fn into_streaming_converted_response(
     provider_id: &str,
     requested_model: &str,
     emit_anthropic_reasoning: bool,
+    allow_anthropic_reasoning_fallback: bool,
     network_recorder: NetworkByteRecorder,
     log_context: Option<StreamingLogContext>,
     activity_guard: Option<RequestActivityGuard>,
@@ -2255,6 +2284,7 @@ async fn into_streaming_converted_response(
                 provider_id,
                 requested_model,
                 emit_anthropic_reasoning,
+                allow_anthropic_reasoning_fallback,
                 network_recorder,
             )
             .await;
@@ -2286,7 +2316,9 @@ async fn into_streaming_converted_response(
     let mut transformer =
         match CrossProtocolStreamTransformer::new(request_protocol, target_protocol, model)
             .map(|transformer| transformer.with_anthropic_reasoning(emit_anthropic_reasoning))
-        {
+            .map(|transformer| {
+                transformer.with_anthropic_reasoning_fallback(allow_anthropic_reasoning_fallback)
+            }) {
             Ok(transformer) => transformer,
             Err(error) => {
                 let latency_ms = log_context

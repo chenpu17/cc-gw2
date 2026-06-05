@@ -481,6 +481,8 @@ pub struct CrossProtocolStreamTransformer {
     responses_text: String,
     responses_reasoning_content: String,
     emit_anthropic_reasoning: bool,
+    allow_anthropic_reasoning_fallback: bool,
+    suppressed_anthropic_reasoning: String,
     finished: bool,
 }
 
@@ -530,12 +532,19 @@ impl CrossProtocolStreamTransformer {
             responses_text: String::new(),
             responses_reasoning_content: String::new(),
             emit_anthropic_reasoning: true,
+            allow_anthropic_reasoning_fallback: true,
+            suppressed_anthropic_reasoning: String::new(),
             finished: false,
         })
     }
 
     pub fn with_anthropic_reasoning(mut self, emit: bool) -> Self {
         self.emit_anthropic_reasoning = emit;
+        self
+    }
+
+    pub fn with_anthropic_reasoning_fallback(mut self, allow: bool) -> Self {
+        self.allow_anthropic_reasoning_fallback = allow;
         self
     }
 
@@ -706,21 +715,21 @@ impl CrossProtocolStreamTransformer {
             ));
         }
 
-        if let Some(text) = delta
-            .get("reasoning_content")
-            .and_then(Value::as_str)
-            .filter(|_| self.emit_anthropic_reasoning)
-        {
+        if let Some(text) = delta.get("reasoning_content").and_then(Value::as_str) {
             if !text.is_empty() {
-                let index = self.ensure_reasoning_block_started(&mut out);
-                out.push(anthropic_event(
-                    "content_block_delta",
-                    json!({
-                        "type": "content_block_delta",
-                        "index": index,
-                        "delta": { "type": "thinking_delta", "thinking": text }
-                    }),
-                ));
+                if self.emit_anthropic_reasoning {
+                    let index = self.ensure_reasoning_block_started(&mut out);
+                    out.push(anthropic_event(
+                        "content_block_delta",
+                        json!({
+                            "type": "content_block_delta",
+                            "index": index,
+                            "delta": { "type": "thinking_delta", "thinking": text }
+                        }),
+                    ));
+                } else {
+                    self.suppressed_anthropic_reasoning.push_str(text);
+                }
             }
         }
 
@@ -1238,17 +1247,21 @@ impl CrossProtocolStreamTransformer {
                     ));
                 }
             }
-            Some("reasoning") if self.emit_anthropic_reasoning => {
+            Some("reasoning") => {
                 if let Some(text) = extract_openai_reasoning_text(block) {
-                    let index = self.ensure_reasoning_block_started(&mut out);
-                    out.push(anthropic_event(
-                        "content_block_delta",
-                        json!({
-                            "type": "content_block_delta",
-                            "index": index,
-                            "delta": { "type": "thinking_delta", "thinking": text }
-                        }),
-                    ));
+                    if self.emit_anthropic_reasoning {
+                        let index = self.ensure_reasoning_block_started(&mut out);
+                        out.push(anthropic_event(
+                            "content_block_delta",
+                            json!({
+                                "type": "content_block_delta",
+                                "index": index,
+                                "delta": { "type": "thinking_delta", "thinking": text }
+                            }),
+                        ));
+                    } else {
+                        self.suppressed_anthropic_reasoning.push_str(&text);
+                    }
                 }
             }
             _ => {}
@@ -1444,6 +1457,24 @@ impl CrossProtocolStreamTransformer {
                         "stop_sequence": Value::Null,
                         "usage": { "input_tokens": 0, "output_tokens": 0 }
                     }
+                }),
+            ));
+        }
+        if self.allow_anthropic_reasoning_fallback
+            && !self.emit_anthropic_reasoning
+            && !self.suppressed_anthropic_reasoning.trim().is_empty()
+            && !self.reasoning_block_started
+            && !self.text_block_started
+            && self.openai_tool_calls.is_empty()
+        {
+            let fallback_text = self.suppressed_anthropic_reasoning.clone();
+            let index = self.ensure_text_block_started(&mut out);
+            out.push(anthropic_event(
+                "content_block_delta",
+                json!({
+                    "type": "content_block_delta",
+                    "index": index,
+                    "delta": { "type": "text_delta", "text": fallback_text }
                 }),
             ));
         }
@@ -2848,6 +2879,53 @@ mod tests {
         assert!(joined.contains("\"text\":\"hello\",\"type\":\"text_delta\""));
         assert!(!joined.contains("\"type\":\"thinking\""));
         assert!(!joined.contains("hidden reasoning"));
+    }
+
+    #[test]
+    fn openai_chat_to_anthropic_stream_falls_back_when_only_reasoning_is_suppressed() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "test-model",
+        )
+        .expect("supported transformer")
+        .with_anthropic_reasoning(false);
+        let chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_reason\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"I should create the HTML file now.\"}}]}\n\n\
+             data: {\"id\":\"chatcmpl_reason\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("event: message_start"));
+        assert!(joined.contains("\"text\":\"\",\"type\":\"text\""));
+        assert!(
+            joined.contains(
+                "\"text\":\"I should create the HTML file now.\",\"type\":\"text_delta\""
+            )
+        );
+        assert!(!joined.contains("\"type\":\"thinking\""));
+    }
+
+    #[test]
+    fn openai_chat_to_anthropic_stream_can_disable_suppressed_reasoning_fallback() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "test-model",
+        )
+        .expect("supported transformer")
+        .with_anthropic_reasoning(false)
+        .with_anthropic_reasoning_fallback(false);
+        let chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_reason\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"classifier scratchpad\"}}]}\n\n\
+             data: {\"id\":\"chatcmpl_reason\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\"}]}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("event: message_start"));
+        assert!(!joined.contains("classifier scratchpad"));
+        assert!(!joined.contains("\"type\":\"thinking\""));
+        assert!(!joined.contains("\"type\":\"text_delta\""));
     }
 
     #[test]
