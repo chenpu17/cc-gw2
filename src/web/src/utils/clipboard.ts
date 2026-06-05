@@ -16,29 +16,48 @@ export async function copyToClipboard(text: string): Promise<void> {
 
   // Fallback: use execCommand with a temporary textarea
   const textarea = document.createElement('textarea')
+  const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  const selection = document.getSelection()
+  const selectedRanges = selection
+    ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index).cloneRange())
+    : []
+
   textarea.value = text
+  textarea.setAttribute('aria-hidden', 'true')
+  textarea.setAttribute('tabindex', '-1')
   // Prevent scrolling to bottom
   textarea.style.position = 'fixed'
-  textarea.style.top = '0'
-  textarea.style.left = '0'
-  textarea.style.width = '2em'
-  textarea.style.height = '2em'
+  textarea.style.top = '-1000px'
+  textarea.style.left = '-1000px'
+  textarea.style.width = '1px'
+  textarea.style.height = '1px'
   textarea.style.padding = '0'
   textarea.style.border = 'none'
   textarea.style.outline = 'none'
   textarea.style.boxShadow = 'none'
   textarea.style.background = 'transparent'
-  textarea.setAttribute('readonly', '')
+  textarea.style.opacity = '0'
+  textarea.style.pointerEvents = 'none'
 
   document.body.appendChild(textarea)
-  textarea.select()
 
   try {
+    textarea.focus({ preventScroll: true })
+    textarea.select()
+    textarea.setSelectionRange(0, textarea.value.length)
+
     const success = document.execCommand('copy')
     if (!success) {
       throw new Error('execCommand copy failed')
     }
   } finally {
     document.body.removeChild(textarea)
+    if (selection) {
+      selection.removeAllRanges()
+      for (const range of selectedRanges) {
+        selection.addRange(range)
+      }
+    }
+    activeElement?.focus({ preventScroll: true })
   }
 }

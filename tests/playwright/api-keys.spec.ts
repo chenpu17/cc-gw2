@@ -75,6 +75,7 @@ function apiKeyRow(page: any, name: string) {
 test('api key web ui covers create, reveal, restrict, toggle, analytics, and delete flows', async ({ page, request }) => {
   const baseUrl = harness.baseUrl()
   await disableWildcard(request, baseUrl)
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl })
 
   await page.goto(`${baseUrl}/ui/api-keys`)
   await expect(page.getByRole('heading', { name: 'API 密钥管理', level: 1 })).toBeVisible()
@@ -95,6 +96,7 @@ test('api key web ui covers create, reveal, restrict, toggle, analytics, and del
   expect(apiKeyValue).toBeTruthy()
   await createdDialog.getByRole('button', { name: '复制' }).click()
   await expect(page.getByText('密钥已复制到剪贴板')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(apiKeyValue)
 
   const createResponse = await request.get(`${baseUrl}/api/keys`)
   expect(createResponse.status()).toBe(200)
@@ -132,6 +134,7 @@ test('api key web ui covers create, reveal, restrict, toggle, analytics, and del
   await expect(createdKeyCard.getByRole('button', { name: '隐藏密钥' })).toBeVisible()
   await createdKeyCard.getByRole('button', { name: '复制' }).click()
   await expect(page.getByText('密钥已复制到剪贴板')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(apiKeyValue)
   await createdKeyCard.getByRole('button', { name: '隐藏密钥' }).click()
   await expect(createdKeyCard.getByRole('button', { name: '显示完整密钥' })).toBeVisible()
 

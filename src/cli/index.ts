@@ -13,7 +13,13 @@ import { green, yellow } from 'colorette'
 const program = new Command()
 
 const DEFAULT_PORT = 4100
-const HOME_DIR = path.join(os.homedir(), '.cc-gw')
+
+function resolveHomeDir(): string {
+  const override = process.env.CC_GW_HOME?.trim()
+  return override ? override : path.join(os.homedir(), '.cc-gw')
+}
+
+const HOME_DIR = resolveHomeDir()
 const PID_FILE = path.join(HOME_DIR, 'cc-gw.pid')
 const LOG_DIR = path.join(HOME_DIR, 'logs')
 const LOG_FILE = path.join(LOG_DIR, 'cc-gw.log')
@@ -290,6 +296,7 @@ async function handleStart(options: { daemon?: boolean; port?: string; foregroun
   const configCreated = await ensureConfigTemplate(options.port)
   const server = resolveServerCommand()
   const env = { ...process.env }
+  env.CC_GW_HOME = env.CC_GW_HOME || HOME_DIR
 
   if (options.port) {
     env.PORT = options.port

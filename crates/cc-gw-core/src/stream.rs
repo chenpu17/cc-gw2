@@ -480,6 +480,7 @@ pub struct CrossProtocolStreamTransformer {
     responses_tool_names: BTreeMap<String, String>,
     responses_text: String,
     responses_reasoning_content: String,
+    emit_anthropic_reasoning: bool,
     finished: bool,
 }
 
@@ -528,8 +529,14 @@ impl CrossProtocolStreamTransformer {
             responses_tool_names: BTreeMap::new(),
             responses_text: String::new(),
             responses_reasoning_content: String::new(),
+            emit_anthropic_reasoning: true,
             finished: false,
         })
+    }
+
+    pub fn with_anthropic_reasoning(mut self, emit: bool) -> Self {
+        self.emit_anthropic_reasoning = emit;
+        self
     }
 
     pub fn push(&mut self, chunk: &str) -> Vec<String> {
@@ -657,7 +664,7 @@ impl CrossProtocolStreamTransformer {
 
         if !self.message_started
             && (delta.get("content").is_some()
-                || delta.get("reasoning_content").is_some()
+                || (self.emit_anthropic_reasoning && delta.get("reasoning_content").is_some())
                 || delta.get("tool_calls").is_some()
                 || choice.get("finish_reason").is_some())
         {
@@ -699,7 +706,11 @@ impl CrossProtocolStreamTransformer {
             ));
         }
 
-        if let Some(text) = delta.get("reasoning_content").and_then(Value::as_str) {
+        if let Some(text) = delta
+            .get("reasoning_content")
+            .and_then(Value::as_str)
+            .filter(|_| self.emit_anthropic_reasoning)
+        {
             if !text.is_empty() {
                 let index = self.ensure_reasoning_block_started(&mut out);
                 out.push(anthropic_event(
@@ -1227,7 +1238,7 @@ impl CrossProtocolStreamTransformer {
                     ));
                 }
             }
-            Some("reasoning") => {
+            Some("reasoning") if self.emit_anthropic_reasoning => {
                 if let Some(text) = extract_openai_reasoning_text(block) {
                     let index = self.ensure_reasoning_block_started(&mut out);
                     out.push(anthropic_event(
@@ -2818,6 +2829,28 @@ mod tests {
     }
 
     #[test]
+    fn openai_chat_to_anthropic_stream_can_suppress_reasoning_content() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "test-model",
+        )
+        .expect("supported transformer")
+        .with_anthropic_reasoning(false);
+        let chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_reason\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"hidden reasoning\"}}]}\n\n\
+             data: {\"id\":\"chatcmpl_reason\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hello\"}}]}\n\n\
+             data: {\"id\":\"chatcmpl_reason\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("event: message_start"));
+        assert!(joined.contains("\"text\":\"hello\",\"type\":\"text_delta\""));
+        assert!(!joined.contains("\"type\":\"thinking\""));
+        assert!(!joined.contains("hidden reasoning"));
+    }
+
+    #[test]
     fn openai_responses_to_anthropic_reconciles_reasoning_output_items() {
         let mut transformer = CrossProtocolStreamTransformer::new(
             ProviderProtocol::AnthropicMessages,
@@ -2835,6 +2868,26 @@ mod tests {
             joined.contains("\"thinking\":\"considering options\",\"type\":\"thinking_delta\"")
         );
         assert!(joined.contains("\"text\":\"done\",\"type\":\"text_delta\""));
+    }
+
+    #[test]
+    fn openai_responses_to_anthropic_stream_can_suppress_reasoning_items() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer")
+        .with_anthropic_reasoning(false);
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_reason\"}}\n\n\
+             data: {\"type\":\"response.completed\",\"status\":\"completed\",\"response\":{\"id\":\"resp_reason\",\"status\":\"completed\",\"usage\":{\"input_tokens\":8,\"output_tokens\":1},\"output\":[{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"hidden reasoning\"}]},{\"id\":\"out_1\",\"type\":\"output_message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"done\"}]}]}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"text\":\"done\",\"type\":\"text_delta\""));
+        assert!(!joined.contains("\"type\":\"thinking\""));
+        assert!(!joined.contains("hidden reasoning"));
     }
 
     #[test]

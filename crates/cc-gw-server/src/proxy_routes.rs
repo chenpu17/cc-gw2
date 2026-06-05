@@ -457,6 +457,18 @@ fn extract_thinking(body: &Value) -> bool {
     }
 }
 
+fn thinking_explicitly_enabled(body: &Value) -> bool {
+    match body.get("thinking") {
+        Some(Value::Bool(value)) => *value,
+        Some(Value::Object(map)) => map
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value == "enabled"),
+        Some(Value::String(text)) => text.trim().eq_ignore_ascii_case("enabled"),
+        _ => false,
+    }
+}
+
 fn provider_type_name(provider: &cc_gw_core::config::ProviderConfig) -> &str {
     provider.provider_type.as_deref().unwrap_or("openai")
 }
@@ -1057,7 +1069,7 @@ fn is_claude_code_auto_mode_classifier_request(protocol: ProviderProtocol, body:
     }
 }
 
-fn strip_anthropic_thinking_blocks_for_classifier(response: &mut Value) {
+fn strip_anthropic_thinking_blocks(response: &mut Value) {
     let Some(content) = response.get_mut("content").and_then(Value::as_array_mut) else {
         return;
     };
@@ -1457,6 +1469,8 @@ pub(super) async fn proxy_standard_request(
     );
     let target_model_id = target.model_id.clone();
     let sanitize_classifier_response = is_claude_code_auto_mode_classifier_request(protocol, &body);
+    let emit_anthropic_reasoning =
+        protocol != ProviderProtocol::AnthropicMessages || thinking_explicitly_enabled(&body);
     let upstream_stream =
         stream || target_uses_non_stream_via_stream(&target.provider, &target_model_id);
     let initial_upstream_body = prepare_proxy_payload(
@@ -1626,6 +1640,7 @@ pub(super) async fn proxy_standard_request(
                     &target.provider_id,
                     requested_model.unwrap_or(""),
                     sanitize_classifier_response,
+                    emit_anthropic_reasoning,
                     network_recorder.clone(),
                 )
                 .await;
@@ -1702,6 +1717,7 @@ pub(super) async fn proxy_standard_request(
                     target_protocol,
                     &target.provider_id,
                     requested_model.unwrap_or(""),
+                    emit_anthropic_reasoning,
                     network_recorder.clone(),
                     streaming_log_context,
                     Some(activity_guard),
@@ -1726,6 +1742,7 @@ pub(super) async fn proxy_standard_request(
                         target_protocol,
                         &target.provider_id,
                         requested_model.unwrap_or(""),
+                        emit_anthropic_reasoning,
                         network_recorder.clone(),
                     )
                     .await;
@@ -1917,6 +1934,7 @@ async fn into_converted_response(
     target_protocol: ProviderProtocol,
     provider_id: &str,
     requested_model: &str,
+    emit_anthropic_reasoning: bool,
     network_recorder: NetworkByteRecorder,
 ) -> (Response, UsageStats, Option<String>, Option<String>) {
     let status = response.status();
@@ -2011,7 +2029,7 @@ async fn into_converted_response(
     };
 
     let usage = extract_usage_stats(&payload);
-    let converted = if status.is_success() {
+    let mut converted = if status.is_success() {
         match (request_protocol, target_protocol) {
             (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions) => {
                 openai_chat_response_to_anthropic(&payload, model)
@@ -2030,6 +2048,12 @@ async fn into_converted_response(
     } else {
         convert_error_payload(&payload, request_protocol, target_protocol)
     };
+    if status.is_success()
+        && request_protocol == ProviderProtocol::AnthropicMessages
+        && !emit_anthropic_reasoning
+    {
+        strip_anthropic_thinking_blocks(&mut converted);
+    }
 
     let (result, response_payload) =
         build_json_response(status, &headers, &converted, &network_recorder);
@@ -2043,6 +2067,7 @@ async fn into_materialized_stream_response(
     provider_id: &str,
     requested_model: &str,
     sanitize_classifier_response: bool,
+    emit_anthropic_reasoning: bool,
     network_recorder: NetworkByteRecorder,
 ) -> (
     Response,
@@ -2065,6 +2090,7 @@ async fn into_materialized_stream_response(
             target_protocol,
             provider_id,
             requested_model,
+            emit_anthropic_reasoning,
             network_recorder,
         )
         .await;
@@ -2182,8 +2208,10 @@ async fn into_materialized_stream_response(
     } else {
         convert_error_payload(&payload, request_protocol, target_protocol)
     };
-    if sanitize_classifier_response && request_protocol == ProviderProtocol::AnthropicMessages {
-        strip_anthropic_thinking_blocks_for_classifier(&mut converted);
+    if request_protocol == ProviderProtocol::AnthropicMessages
+        && (sanitize_classifier_response || !emit_anthropic_reasoning)
+    {
+        strip_anthropic_thinking_blocks(&mut converted);
     }
 
     let (result, response_payload) =
@@ -2197,6 +2225,7 @@ async fn into_streaming_converted_response(
     target_protocol: ProviderProtocol,
     provider_id: &str,
     requested_model: &str,
+    emit_anthropic_reasoning: bool,
     network_recorder: NetworkByteRecorder,
     log_context: Option<StreamingLogContext>,
     activity_guard: Option<RequestActivityGuard>,
@@ -2214,6 +2243,7 @@ async fn into_streaming_converted_response(
                 target_protocol,
                 provider_id,
                 requested_model,
+                emit_anthropic_reasoning,
                 network_recorder,
             )
             .await;
@@ -2243,7 +2273,9 @@ async fn into_streaming_converted_response(
     let headers = response.headers().clone();
     let mut upstream = response.bytes_stream();
     let mut transformer =
-        match CrossProtocolStreamTransformer::new(request_protocol, target_protocol, model) {
+        match CrossProtocolStreamTransformer::new(request_protocol, target_protocol, model)
+            .map(|transformer| transformer.with_anthropic_reasoning(emit_anthropic_reasoning))
+        {
             Ok(transformer) => transformer,
             Err(error) => {
                 let latency_ms = log_context

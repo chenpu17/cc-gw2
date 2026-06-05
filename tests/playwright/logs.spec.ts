@@ -44,6 +44,7 @@ async function pollForAnyLog(request: any, baseUrl: string) {
 
 test('logs web ui supports filters, columns, detail modal and export', async ({ page, request }) => {
   const baseUrl = harness.baseUrl()
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl })
 
   const valid = await request.post(`${baseUrl}/v1/messages`, {
     data: messagePayload,
@@ -88,6 +89,9 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
   await expect(detailDialog).toBeVisible()
   await expect(detailDialog.getByText('客户端请求体')).toBeVisible()
   await expect(detailDialog.getByText('客户端响应体')).toBeVisible()
+  await detailDialog.getByRole('button', { name: '复制' }).first().click()
+  await expect(page.getByText('请求体已复制到剪贴板。')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Hello from Playwright logs test')
   await page.keyboard.press('Escape')
   await expect(detailDialog).not.toBeVisible()
 

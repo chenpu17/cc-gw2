@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::path::PathBuf;
 
@@ -411,13 +412,32 @@ impl GatewayConfig {
     }
 }
 
-pub fn resolve_paths() -> Result<GatewayPaths> {
-    let home_dir = if let Ok(override_path) = env::var("CC_GW_HOME") {
-        PathBuf::from(override_path)
-    } else if let Ok(home) = env::var("HOME") {
-        PathBuf::from(home).join(".cc-gw")
+fn env_path<F>(get_var: &mut F, key: &str) -> Option<PathBuf>
+where
+    F: FnMut(&str) -> Option<OsString>,
+{
+    get_var(key)
+        .filter(|value| !value.as_os_str().is_empty())
+        .map(PathBuf::from)
+}
+
+fn resolve_paths_with_env<F>(mut get_var: F) -> Result<GatewayPaths>
+where
+    F: FnMut(&str) -> Option<OsString>,
+{
+    let home_dir = if let Some(override_path) = env_path(&mut get_var, "CC_GW_HOME") {
+        override_path
+    } else if let Some(home) = env_path(&mut get_var, "HOME") {
+        home.join(".cc-gw")
+    } else if let Some(user_profile) = env_path(&mut get_var, "USERPROFILE") {
+        user_profile.join(".cc-gw")
+    } else if let (Some(home_drive), Some(home_path)) = (
+        env_path(&mut get_var, "HOMEDRIVE"),
+        env_path(&mut get_var, "HOMEPATH"),
+    ) {
+        home_drive.join(home_path).join(".cc-gw")
     } else {
-        bail!("无法确定 HOME 目录，请设置 HOME 或 CC_GW_HOME");
+        bail!("无法确定 HOME 目录，请设置 HOME、USERPROFILE 或 CC_GW_HOME");
     };
 
     let config_path = home_dir.join("config.json");
@@ -432,6 +452,10 @@ pub fn resolve_paths() -> Result<GatewayPaths> {
         db_path,
         log_dir,
     })
+}
+
+pub fn resolve_paths() -> Result<GatewayPaths> {
+    resolve_paths_with_env(|key| env::var_os(key))
 }
 
 fn apply_protocol_migration(config: &mut GatewayConfig) {
@@ -521,6 +545,15 @@ pub fn save_config(paths: &GatewayPaths, config: &GatewayConfig) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+
+    fn resolve_paths_from_pairs(pairs: &[(&str, &str)]) -> Result<GatewayPaths> {
+        let vars = pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), OsString::from(value)))
+            .collect::<HashMap<_, _>>();
+        resolve_paths_with_env(|key| vars.get(key).cloned())
+    }
 
     fn test_paths(label: &str) -> GatewayPaths {
         let home_dir = std::env::temp_dir().join(format!(
@@ -557,6 +590,48 @@ mod tests {
         );
         assert_eq!(config.port, Some(4999));
         assert_eq!(config.host.as_deref(), Some("0.0.0.0"));
+    }
+
+    #[test]
+    fn resolve_paths_prefers_explicit_cc_gw_home() {
+        let paths = resolve_paths_from_pairs(&[
+            ("CC_GW_HOME", "C:\\cc-gw-data"),
+            ("HOME", "C:\\Users\\user"),
+            ("USERPROFILE", "C:\\Users\\other"),
+        ])
+        .expect("resolve paths");
+
+        assert_eq!(paths.home_dir, PathBuf::from("C:\\cc-gw-data"));
+        assert_eq!(
+            paths.config_path,
+            PathBuf::from("C:\\cc-gw-data").join("config.json")
+        );
+    }
+
+    #[test]
+    fn resolve_paths_uses_userprofile_when_home_is_missing() {
+        let paths = resolve_paths_from_pairs(&[("USERPROFILE", "C:\\Users\\w00836447")])
+            .expect("resolve paths");
+
+        assert_eq!(
+            paths.home_dir,
+            PathBuf::from("C:\\Users\\w00836447").join(".cc-gw")
+        );
+        assert_eq!(paths.data_dir, paths.home_dir.join("data"));
+    }
+
+    #[test]
+    fn resolve_paths_uses_homedrive_and_homepath_when_profile_is_missing() {
+        let paths =
+            resolve_paths_from_pairs(&[("HOMEDRIVE", "C:"), ("HOMEPATH", "\\Users\\w00836447")])
+                .expect("resolve paths");
+
+        assert_eq!(
+            paths.home_dir,
+            PathBuf::from("C:")
+                .join("\\Users\\w00836447")
+                .join(".cc-gw")
+        );
     }
 
     #[test]
