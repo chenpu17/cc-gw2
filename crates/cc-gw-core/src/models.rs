@@ -2,7 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
-use crate::config::GatewayConfig;
+use crate::{
+    config::GatewayConfig,
+    provider::ProviderProtocol,
+    routing::{GatewayEndpoint, endpoint_routing},
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelEntry {
@@ -16,10 +20,23 @@ pub struct ModelEntry {
 }
 
 pub fn build_models_response(config: &GatewayConfig, endpoint_id: &str) -> Vec<ModelEntry> {
+    let endpoint = match endpoint_id {
+        "anthropic" => GatewayEndpoint::Anthropic,
+        "openai" => GatewayEndpoint::OpenAi,
+        id => GatewayEndpoint::Custom(id),
+    };
+    build_models_response_for_endpoint(config, endpoint, ProviderProtocol::OpenAiChatCompletions)
+}
+
+pub fn build_models_response_for_endpoint(
+    config: &GatewayConfig,
+    endpoint: GatewayEndpoint<'_>,
+    protocol: ProviderProtocol,
+) -> Vec<ModelEntry> {
     let now = chrono::Utc::now().timestamp();
     let mut models = BTreeMap::<String, BTreeSet<String>>::new();
 
-    if let Some(routing) = config.endpoint_routing.get(endpoint_id) {
+    if let Some(routing) = endpoint_routing(config, endpoint, protocol) {
         for (source, target) in &routing.model_routes {
             if !source.trim().is_empty() {
                 models

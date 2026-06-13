@@ -39,7 +39,7 @@ use cc_gw_core::{
         openai_responses_request_to_anthropic, openai_responses_response_to_anthropic,
     },
     events::{RecordEventInput, list_events, record_event},
-    models::build_models_response,
+    models::{build_models_response, build_models_response_for_endpoint},
     observability::{
         LogPayloadUpdate, LogQuery, RequestLogInput, RequestLogUpdate, RuntimeMetricsSampler,
         UsageStats, cleanup_logs_before, clear_all_logs, compact_database, export_logs,
@@ -650,10 +650,15 @@ fn json_response_with_network(
 
 fn normalize_path(path: &str) -> String {
     let trimmed = path.trim();
-    if trimmed.starts_with('/') {
+    let with_leading_slash = if trimmed.starts_with('/') {
         trimmed.to_string()
     } else {
         format!("/{trimmed}")
+    };
+    if with_leading_slash == "/" {
+        with_leading_slash
+    } else {
+        with_leading_slash.trim_end_matches('/').to_string()
     }
 }
 
@@ -692,7 +697,7 @@ fn parse_preset_endpoint(config: &GatewayConfig, endpoint: &str) -> Option<Strin
 enum CustomRouteMatch {
     AnthropicMessages(String),
     AnthropicCountTokens(String),
-    OpenAiModels(String),
+    OpenAiModels(String, ProviderProtocol),
     OpenAiChat(String),
     OpenAiResponses(String),
 }
@@ -719,7 +724,10 @@ fn match_custom_route(config: &GatewayConfig, path: &str) -> Option<CustomRouteM
                 }
                 "openai-chat" => {
                     if path == format!("{base}/v1/models") {
-                        return Some(CustomRouteMatch::OpenAiModels(endpoint.id.clone()));
+                        return Some(CustomRouteMatch::OpenAiModels(
+                            endpoint.id.clone(),
+                            ProviderProtocol::OpenAiChatCompletions,
+                        ));
                     }
                     if path == format!("{base}/v1/chat/completions") {
                         return Some(CustomRouteMatch::OpenAiChat(endpoint.id.clone()));
@@ -727,7 +735,10 @@ fn match_custom_route(config: &GatewayConfig, path: &str) -> Option<CustomRouteM
                 }
                 "openai-responses" => {
                     if path == format!("{base}/v1/models") {
-                        return Some(CustomRouteMatch::OpenAiModels(endpoint.id.clone()));
+                        return Some(CustomRouteMatch::OpenAiModels(
+                            endpoint.id.clone(),
+                            ProviderProtocol::OpenAiResponses,
+                        ));
                     }
                     if path == format!("{base}/v1/responses") {
                         return Some(CustomRouteMatch::OpenAiResponses(endpoint.id.clone()));
@@ -735,7 +746,10 @@ fn match_custom_route(config: &GatewayConfig, path: &str) -> Option<CustomRouteM
                 }
                 "openai-auto" => {
                     if path == format!("{base}/v1/models") {
-                        return Some(CustomRouteMatch::OpenAiModels(endpoint.id.clone()));
+                        return Some(CustomRouteMatch::OpenAiModels(
+                            endpoint.id.clone(),
+                            ProviderProtocol::OpenAiChatCompletions,
+                        ));
                     }
                     if path == format!("{base}/v1/chat/completions") {
                         return Some(CustomRouteMatch::OpenAiChat(endpoint.id.clone()));
@@ -765,13 +779,17 @@ async fn dynamic_fallback(
     };
 
     match (method, route_match) {
-        (Method::GET, CustomRouteMatch::OpenAiModels(endpoint_id)) => {
+        (Method::GET, CustomRouteMatch::OpenAiModels(endpoint_id, protocol)) => {
             if let Err(response) = authorize_request(&state, &headers, &endpoint_id) {
                 return response;
             }
             Json(json!({
                 "object": "list",
-                "data": build_models_response(&config, "openai")
+                "data": build_models_response_for_endpoint(
+                    &config,
+                    GatewayEndpoint::Custom(endpoint_id.as_str()),
+                    protocol
+                )
             }))
             .into_response()
         }

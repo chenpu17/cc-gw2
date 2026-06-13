@@ -63,6 +63,13 @@ fn extract_session_id_prefers_session_fields_over_user_fields() {
 }
 
 #[test]
+fn normalize_path_trims_trailing_slashes_except_root() {
+    assert_eq!(normalize_path("test/"), "/test");
+    assert_eq!(normalize_path("/test/"), "/test");
+    assert_eq!(normalize_path("/"), "/");
+}
+
+#[test]
 fn extract_request_session_id_uses_stable_headers_before_user_fallbacks() {
     let payload_with_user_only = json!({
         "metadata": {
@@ -3687,6 +3694,76 @@ async fn custom_proxy_routes_accept_payloads_larger_than_two_mib() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let text = response.text().await.expect("read custom response");
     assert!(text.contains("未配置任何模型提供商"));
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn custom_models_route_uses_custom_endpoint_routing() {
+    let mut config = GatewayConfig::default();
+    if let Some(openai) = config.endpoint_routing.get_mut("openai") {
+        openai.model_routes.insert(
+            "openai-visible".to_string(),
+            "mock-openai:openai-upstream".to_string(),
+        );
+    }
+    config.endpoint_routing.insert(
+        "test".to_string(),
+        cc_gw_core::config::EndpointRoutingConfig {
+            model_routes: [(
+                "test-visible".to_string(),
+                "mock-openai:test-upstream".to_string(),
+            )]
+            .into_iter()
+            .collect(),
+            ..cc_gw_core::config::EndpointRoutingConfig::default()
+        },
+    );
+    config.custom_endpoints = vec![cc_gw_core::config::CustomEndpointConfig {
+        id: "test".to_string(),
+        label: "Test".to_string(),
+        path: Some("/test/".to_string()),
+        protocol: Some("openai-chat".to_string()),
+        enabled: Some(true),
+        ..cc_gw_core::config::CustomEndpointConfig::default()
+    }];
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("provider-model".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "provider-model".to_string(),
+            label: Some("Provider Model".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "custom-models-route").await;
+    let client = reqwest::Client::new();
+
+    let response: Value = client
+        .get(format!("http://{gateway_addr}/test/v1/models"))
+        .send()
+        .await
+        .expect("request custom models route")
+        .json()
+        .await
+        .expect("decode custom models response");
+    let model_ids: Vec<&str> = response
+        .get("data")
+        .and_then(Value::as_array)
+        .expect("models data")
+        .iter()
+        .filter_map(|model| model.get("id").and_then(Value::as_str))
+        .collect();
+
+    assert!(model_ids.contains(&"test-visible"));
+    assert!(model_ids.contains(&"provider-model"));
+    assert!(!model_ids.contains(&"openai-visible"));
 
     gateway_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);

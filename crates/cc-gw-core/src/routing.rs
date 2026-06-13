@@ -181,7 +181,7 @@ fn find_custom_endpoint<'a>(
         .find(|endpoint| endpoint.id == id)
 }
 
-fn endpoint_routing<'a>(
+pub fn endpoint_routing<'a>(
     config: &'a GatewayConfig,
     endpoint: GatewayEndpoint<'_>,
     protocol: ProviderProtocol,
