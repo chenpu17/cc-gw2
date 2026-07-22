@@ -155,8 +155,10 @@ test('api key web ui covers create, reveal, restrict, toggle, analytics, and del
   await expect(page.getByText('API 密钥已更新').first()).toBeVisible()
   await expect(createdKeyCard.getByText(/^已启用$/).first()).toBeVisible()
 
+  await page.getByRole('tab', { name: '用量' }).click()
   await page.getByRole('button', { name: '近 30 天' }).click()
   await expect(page.getByText('展示最近 30 天的密钥调用情况')).toBeVisible()
+  await page.getByRole('tab', { name: '密钥' }).click()
 
   await createdKeyCard.getByRole('button', { name: '删除' }).last().click()
   const deleteDialog = page.getByRole('dialog', { name: '删除 API 密钥' })

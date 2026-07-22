@@ -15,6 +15,7 @@ import { formatRelativeTime, formatTimestamp } from '@/utils/date'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Disclosure } from '@/components/ui/disclosure'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -121,7 +122,7 @@ export default function EventsPage() {
 
       <Card
         data-testid="events-filters-card"
-        className="overflow-hidden rounded-[1.25rem] border border-white/70 bg-card/95 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.24)]"
+        className="overflow-hidden"
       >
         <CardContent className="space-y-3 p-4">
           <div className="flex flex-col gap-3">
@@ -255,7 +256,7 @@ function SummaryCard({
   value: string
 }) {
   return (
-      <Card className="rounded-[1.15rem] border border-white/70 bg-card/95 shadow-[0_18px_42px_-38px_rgba(15,23,42,0.22)]">
+      <Card>
       <CardContent className="flex items-center justify-between gap-3 p-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
@@ -279,7 +280,7 @@ function EventCard({ event }: { event: GatewayEvent }) {
 
   return (
     <Card
-      className={cn('overflow-hidden rounded-[1.05rem] border border-white/70 border-l-2 bg-card/96 shadow-[0_18px_38px_-34px_rgba(15,23,42,0.2)]', borderClass)}
+      className={cn('overflow-hidden border-l-2 hover:bg-muted/30', borderClass)}
     >
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
@@ -312,12 +313,16 @@ function EventCard({ event }: { event: GatewayEvent }) {
         </div>
 
         {event.details ? (
-          <details className="rounded-[0.9rem] bg-secondary/50 px-3 py-2 text-sm">
-            <summary className="cursor-pointer text-xs font-medium text-primary">{t('events.details')}</summary>
-            <pre className="mt-2.5 overflow-x-auto rounded-lg bg-secondary p-3 text-xs leading-6">
+          <Disclosure
+            summary={t('events.details')}
+            className="rounded-lg bg-secondary px-3 py-2 text-sm"
+            summaryClassName="px-0 py-0 text-xs font-medium text-primary hover:text-primary"
+            contentClassName="mt-2.5"
+          >
+            <pre className="overflow-x-auto rounded-lg bg-secondary p-3 text-xs leading-6">
               {JSON.stringify(event.details, null, 2)}
             </pre>
-          </details>
+          </Disclosure>
         ) : null}
       </CardContent>
     </Card>

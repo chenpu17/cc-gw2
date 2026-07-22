@@ -62,6 +62,18 @@ export function useApiKeysPageState() {
       deserialize: (raw) => (raw === 'cards' ? 'cards' : 'compact')
     }
   )
+  const [activeTab, setActiveTab] = usePersistentState<'inventory' | 'analytics'>(
+    storageKeys.apiKeys.activeTab,
+    'inventory',
+    {
+      serialize: (value) => value,
+      deserialize: (raw) => (raw === 'analytics' ? 'analytics' : 'inventory')
+    }
+  )
+  const [quickStartDismissed, setQuickStartDismissed] = usePersistentState<boolean>(
+    storageKeys.apiKeys.quickStartDismissed,
+    false
+  )
 
   const availableEndpoints = useAvailableEndpoints()
 
@@ -324,6 +336,7 @@ export function useApiKeysPageState() {
 
   return {
     activeKeysValue,
+    activeTab,
     availableEndpoints,
     deleteTarget,
     editEndpointsKey,
@@ -352,11 +365,14 @@ export function useApiKeysPageState() {
     newKeyMaxConcurrency,
     newKeyName,
     newlyCreatedKey,
+    quickStartDismissed,
     rangeDays,
     requestsChartOption,
     restrictedCount,
     revealedKeys,
     search,
+    setQuickStartDismissed,
+    setActiveTab,
     setDeleteTarget,
     setEditEndpointsKey,
     setEditEndpointsSelection,

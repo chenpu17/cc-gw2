@@ -4,6 +4,7 @@ import { Globe, Loader2, Boxes, ShieldCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { PageState } from '@/components/PageState'
 import { Input } from '@/components/ui/input'
 import type { ProviderConfig } from '@/types/providers'
 
@@ -45,15 +46,15 @@ export function ProvidersWorkspace({
   }
 
   return (
-    <Card className="rounded-[1.35rem] border border-white/70 bg-card/95 shadow-[0_22px_56px_-46px_rgba(15,23,42,0.24)]">
+    <Card>
       <CardContent className="space-y-4 p-4 sm:p-5">
-        <div className="flex flex-col gap-3 rounded-[1.1rem] bg-secondary/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl bg-secondary/60 p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 flex-1">
             <Input
               value={providerSearch}
               onChange={(event) => onProviderSearchChange(event.target.value)}
               placeholder={t('providers.filters.searchPlaceholder')}
-              className="h-10 bg-card/90 sm:max-w-[520px]"
+              className="h-10 sm:max-w-[520px]"
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -77,14 +78,9 @@ export function ProvidersWorkspace({
             {t('common.loading')}
           </div>
         ) : providersLength === 0 ? (
-          <div className="rounded-lg border-2 border-dashed border-border/30 p-12 text-center text-sm text-muted-foreground">
-            <p className="font-medium">{t('providers.emptyState')}</p>
-            <p className="mt-2 text-xs">{t('providers.emptyStateSub', { default: '点击上方按钮添加您的第一个提供商' })}</p>
-          </div>
+          <PageState compact title={t('providers.emptyState')} description={t('providers.emptyStateSub', { default: '点击上方按钮添加您的第一个提供商' })} />
         ) : filteredProviders.length === 0 ? (
-          <div className="rounded-lg border-2 border-dashed border-border/30 p-12 text-center text-sm text-muted-foreground">
-            <p className="font-medium">{t('providers.emptyFiltered')}</p>
-          </div>
+          <PageState compact title={t('providers.emptyFiltered')} />
         ) : (
           <div className="space-y-3">
             <div className="grid gap-2.5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -144,7 +140,7 @@ function ProviderCard({
   return (
     <Card
       data-testid="provider-card"
-      className="overflow-hidden rounded-[1rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.97)_0%,rgba(250,251,253,0.94)_100%)] shadow-[0_14px_32px_-30px_rgba(15,23,42,0.2)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_38px_-32px_rgba(59,130,246,0.18)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92)_0%,rgba(2,6,23,0.88)_100%)]"
+      className="overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[var(--surface-shadow-lg)]"
     >
       <CardContent className="space-y-2.5 p-3">
         <div className="flex items-start justify-between gap-2.5">
@@ -172,7 +168,7 @@ function ProviderCard({
           />
         </div>
 
-        <div className="space-y-1.5 rounded-[0.85rem] bg-secondary/45 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:bg-slate-900/[0.42]">
+        <div className="space-y-1.5 rounded-lg bg-secondary/60 p-2">
           <div className="flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
             <Globe className="h-3.5 w-3.5 shrink-0" />
             <code className="truncate" title={provider.baseUrl}>{provider.baseUrl}</code>
@@ -182,7 +178,7 @@ function ProviderCard({
               {t('providers.card.defaultModelLabel')}
             </span>
             {defaultModel ? (
-              <code className="min-w-0 truncate rounded-full border border-border/65 bg-background/82 px-2 py-0.5 text-[10px] text-foreground dark:border-white/10 dark:bg-slate-950/[0.58]" title={defaultModel}>
+              <code className="min-w-0 truncate rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-foreground" title={defaultModel}>
                 {defaultModel}
               </code>
             ) : (
@@ -230,7 +226,7 @@ function MetaPill({
   value: string
 }) {
   return (
-    <div className="min-w-0 rounded-[0.75rem] bg-secondary/55 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)] dark:bg-slate-900/[0.5]">
+    <div className="min-w-0 rounded-lg bg-secondary/60 px-2 py-1.5">
       <div className="mb-0.5 flex min-w-0 items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
         {icon}
         <span className="truncate">{label}</span>

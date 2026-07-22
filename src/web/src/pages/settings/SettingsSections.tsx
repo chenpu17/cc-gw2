@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { Loader } from '@/components/Loader'
+import { PageLoadingState } from '@/components/PageState'
 import { cn } from '@/lib/utils'
 import { LOG_LEVEL_OPTIONS, SETTINGS_SECTIONS, type AuthFormErrors, type AuthFormState, type FormErrors, type FormState, type LogLevel } from './shared'
 
@@ -30,7 +30,7 @@ export function SettingsSectionNav({
   return (
     <>
       <nav className="hidden xl:block">
-        <div className="sticky top-20 rounded-[1.1rem] border border-white/70 bg-card/95 p-3.5 shadow-[0_20px_48px_-42px_rgba(15,23,42,0.24)]">
+        <Card className="sticky top-20 p-3.5">
           <p className="mb-2.5 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             {t('settings.sections.jump')}
           </p>
@@ -41,9 +41,9 @@ export function SettingsSectionNav({
                 type="button"
                 onClick={() => onSelectSection(section.id)}
                 className={cn(
-                  'flex w-full items-center gap-2.5 rounded-[0.85rem] px-3 py-2 text-left text-sm font-semibold transition-all duration-200',
+                  'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-semibold transition-all duration-200',
                   activeSection === section.id
-                    ? 'bg-secondary text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]'
+                    ? 'bg-secondary text-foreground'
                     : 'text-muted-foreground hover:text-foreground'
                 )}
               >
@@ -60,7 +60,7 @@ export function SettingsSectionNav({
               </button>
             ))}
           </div>
-        </div>
+        </Card>
       </nav>
 
       <div className="xl:hidden">
@@ -85,76 +85,6 @@ export function SettingsSectionNav({
         </div>
       </div>
     </>
-  )
-}
-
-export function SettingsOverviewPanel({
-  configPath,
-  defaultsSummary,
-  form,
-  protocolSummaryLabel,
-  protocolChangesPending,
-  isAuthDirty,
-  isConfigDirty,
-  authEnabled,
-  authUsername
-}: {
-  configPath: string
-  defaultsSummary: string | null
-  form: FormState
-  protocolSummaryLabel: string
-  protocolChangesPending: boolean
-  isAuthDirty: boolean
-  isConfigDirty: boolean
-  authEnabled: boolean
-  authUsername?: string
-}) {
-  const { t } = useTranslation()
-
-  return (
-    <Card
-      variant="ghost"
-      className="rounded-[1.25rem] border border-white/70 bg-card/95 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.24)]"
-    >
-      <CardContent className="space-y-3 p-4">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/75">
-              {t('settings.overview.title')}
-            </p>
-            <p className="text-sm text-muted-foreground">{t('settings.overview.description')}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant={isConfigDirty || isAuthDirty ? 'warning' : 'success'}>
-              {isConfigDirty || isAuthDirty ? t('modelManagement.actions.unsaved') : t('common.status.success')}
-            </Badge>
-            {protocolChangesPending ? (
-              <Badge variant="outline" className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300">
-                {t('settings.protocol.restartWarning')}
-              </Badge>
-            ) : null}
-          </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <OverviewCard
-            label={t('settings.overview.cards.protocols')}
-            value={protocolSummaryLabel}
-            helper={`${form.httpHost || '127.0.0.1'}:${form.httpPort}${form.httpsEnabled ? ` / ${form.httpsHost || '127.0.0.1'}:${form.httpsPort}` : ''}`}
-          />
-          <OverviewCard
-            label={t('settings.overview.cards.security')}
-            value={authEnabled ? t('settings.overview.values.authEnabled') : t('settings.overview.values.authDisabled')}
-            helper={authUsername ? `${t('settings.auth.username')}: ${authUsername}` : t('settings.auth.enableHint')}
-          />
-          <OverviewCard
-            label={t('settings.overview.cards.configFile')}
-            value={configPath || t('settings.file.unknown')}
-            helper={defaultsSummary ?? t('settings.defaults.none')}
-            mono
-          />
-        </div>
-      </CardContent>
-    </Card>
   )
 }
 
@@ -277,11 +207,13 @@ export function ProtocolSection({
   errors,
   form,
   onSetForm,
+  protocolChangesPending,
   sectionRef
 }: {
   errors: FormErrors
   form: FormState
   onSetForm: Dispatch<SetStateAction<FormState>>
+  protocolChangesPending: boolean
   sectionRef?: Ref<HTMLDivElement>
 }) {
   const { t } = useTranslation()
@@ -298,17 +230,19 @@ export function ProtocolSection({
           <p className="mt-1 text-xs text-muted-foreground">{t('settings.protocol.description')}</p>
         </div>
 
-        <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200/50 p-4 shadow-sm dark:bg-amber-950/24 dark:ring-amber-500/20">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">{t('settings.protocol.restartWarning')}</p>
-              <p className="text-xs text-muted-foreground">{t('settings.protocol.restartHint')}</p>
-              <code className="block rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-mono text-foreground dark:bg-secondary dark:border-border">cc-gw restart --daemon</code>
-              <p className="text-xs text-muted-foreground">{t('settings.protocol.restartTip')}</p>
+        {protocolChangesPending ? (
+          <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200/50 p-4 shadow-sm dark:bg-amber-950/24 dark:ring-amber-500/20">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">{t('settings.protocol.restartWarning')}</p>
+                <p className="text-xs text-muted-foreground">{t('settings.protocol.restartHint')}</p>
+                <code className="block rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-mono text-foreground dark:bg-secondary dark:border-border">cc-gw restart --daemon</code>
+                <p className="text-xs text-muted-foreground">{t('settings.protocol.restartTip')}</p>
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
 
         {errors.protocol ? (
           <div className="rounded-xl bg-destructive/10 ring-1 ring-destructive/30 p-4 text-sm text-destructive shadow-sm">
@@ -374,11 +308,9 @@ export function ProtocolSection({
               <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200/50 p-4 shadow-sm dark:bg-amber-950/24 dark:ring-amber-500/20">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-                  <div className="flex-1 space-y-2">
+                  <div className="flex-1 space-y-1.5">
                     <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{t('settings.protocol.https.warning')}</p>
-                    <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-300"><strong>{t('settings.protocol.https.invalidCert')}</strong>{t('settings.protocol.https.invalidCertDetail')}</p>
-                    <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-300"><strong>{t('settings.protocol.https.recommended')}</strong>{t('settings.protocol.https.recommendedDetail')}</p>
-                    <p className="text-xs leading-relaxed text-amber-600 dark:text-amber-400">{t('settings.protocol.https.tip')}</p>
+                    <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-300">{t('settings.protocol.https.tip')}</p>
                   </div>
                 </div>
               </div>
@@ -430,9 +362,7 @@ export function SecuritySection({
         </div>
 
         {authLoading && !authSettings ? (
-          <div className="flex min-h-[120px] items-center justify-center">
-            <Loader />
-          </div>
+          <PageLoadingState compact label={t('common.loading')} />
         ) : (
           <div className="space-y-6">
             <div className="flex flex-col gap-4 rounded-xl bg-secondary p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -658,16 +588,6 @@ export function StickySettingsSaveBar({
           </>
         ) : null}
       </div>
-    </div>
-  )
-}
-
-function OverviewCard({ label, value, helper, mono = false }: { label: string; value: string; helper: string; mono?: boolean }) {
-  return (
-    <div className="min-w-0 rounded-[0.95rem] bg-secondary/65 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{label}</p>
-      <p className={cn('mt-1.5 truncate text-xl font-semibold text-foreground', mono ? 'font-mono text-sm leading-tight' : '')} title={typeof value === 'string' ? value : undefined}>{value}</p>
-      <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{helper}</p>
     </div>
   )
 }

@@ -18,7 +18,6 @@ use axum::{
     routing::{get, patch, post},
 };
 use axum_server::tls_rustls::RustlsConfig;
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cc_gw_core::{
     api_keys::{
         ApiKeyError, AuthFailureCode, create_api_key, decrypt_log_api_key_value, delete_api_key,
@@ -71,7 +70,6 @@ use zip::write::SimpleFileOptions;
 mod admin_routes;
 mod auth;
 mod auth_routes;
-mod profiler_routes;
 mod proxy_routes;
 mod ui_routes;
 mod web_middleware;
@@ -98,7 +96,6 @@ struct AppState {
     version_check_registry_base_url: String,
     version_check_package_name: String,
     sessions: auth::SessionStore,
-    profiling_active: Arc<AtomicU64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,14 +200,6 @@ struct StreamingLogContext {
     api_key_id: i64,
     started_at: i64,
     store_response_payload: bool,
-    profiling_active: bool,
-    session_id: Option<String>,
-    profiler_session_id: Option<String>,
-    client_request_payload: Option<String>,
-    model: String,
-    client_kind: String,
-    client_model: Option<String>,
-    stream: bool,
 }
 
 fn join_non_empty_texts(texts: Vec<String>) -> Option<String> {
@@ -362,7 +351,6 @@ async fn main() -> Result<()> {
         version_check_package_name: std::env::var("CC_GW_VERSION_CHECK_PACKAGE_NAME")
             .unwrap_or_else(|_| "@chenpu17/cc-gw".to_string()),
         sessions: auth::SessionStore::default(),
-        profiling_active: Arc::new(AtomicU64::new(0)),
     };
 
     let app = build_router(state.clone());
@@ -482,34 +470,6 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/api/stats/api-keys/usage",
             get(admin_routes::api_stats_api_keys_usage),
-        )
-        .route(
-            "/api/profiler/status",
-            get(profiler_routes::api_profiler_status),
-        )
-        .route(
-            "/api/profiler/start",
-            post(profiler_routes::api_profiler_start),
-        )
-        .route(
-            "/api/profiler/stop",
-            post(profiler_routes::api_profiler_stop),
-        )
-        .route(
-            "/api/profiler/sessions",
-            get(profiler_routes::api_profiler_sessions),
-        )
-        .route(
-            "/api/profiler/sessions/clear",
-            post(profiler_routes::api_profiler_clear),
-        )
-        .route(
-            "/api/profiler/sessions/{id}",
-            get(profiler_routes::api_profiler_session_detail),
-        )
-        .route(
-            "/api/profiler/sessions/{id}",
-            axum::routing::delete(profiler_routes::api_profiler_session_delete),
         )
         .route(
             "/anthropic/api/event_logging/batch",
@@ -1016,13 +976,6 @@ fn response_payload_storage_enabled(config: &GatewayConfig) -> bool {
         .unwrap_or(true)
 }
 
-/// For a given session, generate a stable URL-safe profiler session ID.
-/// The original session_id is still stored separately for display and grouping
-/// semantics, while this ID is safe to use in route paths.
-fn profiler_session_id_for(session_id: &str) -> String {
-    format!("session_{}", URL_SAFE_NO_PAD.encode(session_id.as_bytes()))
-}
-
 fn extract_string(value: Option<&Value>) -> Option<String> {
     value
         .and_then(Value::as_str)
@@ -1076,10 +1029,6 @@ fn extract_request_session_id(body: &Value, headers: &HeaderMap) -> Option<Strin
     extract_body_session_id(body)
         .or_else(|| extract_header_session_id(headers))
         .or_else(|| extract_body_user_session_id(body))
-}
-
-fn extract_profiler_session_id(body: &Value, headers: &HeaderMap) -> Option<String> {
-    extract_body_session_id(body).or_else(|| extract_header_session_id(headers))
 }
 
 fn infer_client_kind(

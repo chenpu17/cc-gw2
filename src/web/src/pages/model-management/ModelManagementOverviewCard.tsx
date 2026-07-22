@@ -37,10 +37,10 @@ export function ModelManagementOverviewCard({
   const activeTabInfo = [...systemTabs, ...customTabs].find((tab) => tab.key === activeTab) ?? null
 
   return (
-    <Card className="overflow-hidden rounded-[1.35rem] border border-white/70 bg-card/95 shadow-[0_22px_56px_-46px_rgba(15,23,42,0.22)]">
+    <Card className="overflow-hidden">
       <CardContent className="space-y-4 p-4 sm:p-5">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.6fr)]">
-          <div className="rounded-[1.1rem] bg-secondary/60 p-2.5">
+          <div className="rounded-xl bg-secondary/60 p-2.5">
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/75">
                 {t('modelManagement.overview.providerAndSystem')}
@@ -57,10 +57,10 @@ export function ModelManagementOverviewCard({
                   onClick={() => onSelectTab(tab.key)}
                   aria-pressed={isActive}
                   className={cn(
-                    'group flex min-h-[76px] flex-col justify-between rounded-[0.95rem] px-3 py-3 text-left transition-all',
+                    'group flex min-h-[76px] flex-col justify-between rounded-lg px-3 py-3 text-left transition-all',
                     isActive
-                      ? 'bg-card text-foreground shadow-[0_14px_34px_-28px_rgba(15,23,42,0.3)] ring-1 ring-primary/10'
-                      : 'bg-transparent text-muted-foreground hover:bg-card/58 hover:text-foreground'
+                      ? 'bg-card text-foreground ring-1 ring-primary/10'
+                      : 'bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground'
                   )}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -91,7 +91,7 @@ export function ModelManagementOverviewCard({
           </div>
 
           {activeTabInfo ? (
-            <div className="flex min-h-[116px] flex-col justify-between rounded-[1.1rem] bg-[linear-gradient(135deg,hsl(var(--primary)/0.1),rgba(255,255,255,0.78))] p-4 ring-1 ring-primary/10 dark:bg-[linear-gradient(135deg,rgba(14,165,233,0.14),rgba(15,23,42,0.72))] dark:ring-white/10">
+            <div className="flex min-h-[116px] flex-col justify-between rounded-xl bg-primary/5 p-4 ring-1 ring-primary/10">
               <div className="flex items-center gap-3">
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <ArrowDown className="h-4 w-4" />
@@ -122,10 +122,10 @@ export function ModelManagementOverviewCard({
                   <div
                     key={tab.key}
                     className={cn(
-                      'group relative flex min-w-0 flex-col gap-2.5 overflow-hidden rounded-[1.05rem] border px-3 py-3 text-left transition-all sm:px-3.5',
+                      'group relative flex min-w-0 flex-col gap-2.5 overflow-hidden rounded-xl border px-3 py-3 text-left transition-all sm:px-3.5',
                       isActive
-                        ? 'border-primary/20 bg-secondary/80 text-foreground shadow-[0_14px_34px_-30px_rgba(59,130,246,0.32)]'
-                        : 'border-border/55 bg-background/42 hover:bg-secondary/50'
+                        ? 'border-primary/20 bg-secondary text-foreground'
+                        : 'border-border bg-background hover:bg-secondary'
                     )}
                   >
                     <button
@@ -174,7 +174,7 @@ export function ModelManagementOverviewCard({
                         </Badge>
                       ))}
                     </div>
-                    <div className="min-w-0 rounded-[0.8rem] bg-secondary/55 px-2.5 py-2">
+                    <div className="min-w-0 rounded-lg bg-secondary/60 px-2.5 py-2">
                       <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
                         {t('modelManagement.overview.endpointPaths')}
                       </p>

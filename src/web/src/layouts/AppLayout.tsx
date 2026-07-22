@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight, Menu, X } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import { getActiveNavigationRoute, navigationRoutes } from '@/app/routes'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
@@ -19,7 +19,7 @@ function isNavigationItemActive(pathname: string, item: (typeof navigationRoutes
   })
 }
 
-const overviewPaths = ['/', '/logs', '/models', '/routing', '/events', '/profiler']
+const overviewPaths = ['/', '/logs', '/models', '/routing', '/events']
 const adminPaths = ['/api-keys', '/settings', '/help', '/about']
 
 function GatewayBrandMark({ compact }: { compact?: boolean }) {
@@ -66,13 +66,20 @@ function NavGroup({
                   onClick={onNavigate}
                   end={item.path === '/'}
                   className={cn(
-                    'mx-1 flex items-center justify-center rounded-lg p-2 transition-colors',
+                    'relative mx-1 flex items-center justify-center rounded-lg p-2 transition-colors',
                     isActive
                       ? 'bg-secondary text-foreground'
                       : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                   )}
                   aria-label={label}
                 >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 origin-left rounded-full bg-primary motion-surface',
+                      isActive ? 'scale-x-100' : 'scale-x-0'
+                    )}
+                  />
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </NavLink>
               </TooltipTrigger>
@@ -87,15 +94,21 @@ function NavGroup({
             onClick={onNavigate}
             end={item.path === '/'}
             className={cn(
-              'mx-2 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+              'relative mx-2 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
               isActive
                 ? 'bg-secondary text-foreground'
                 : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
             )}
           >
+            <span
+              aria-hidden
+              className={cn(
+                'absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 origin-left rounded-full bg-primary motion-surface',
+                isActive ? 'scale-x-100' : 'scale-x-0'
+              )}
+            />
             <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="flex-1 truncate">{label}</span>
-            {isActive && <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60" />}
           </NavLink>
         )
       })}
@@ -223,7 +236,7 @@ export function AppLayout() {
             >
               {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
-            <div className="flex min-w-0 items-baseline gap-3">
+            <div key={location.pathname} className="flex min-w-0 animate-fade-in items-baseline gap-3">
               <h1 className="truncate text-sm font-semibold text-foreground">{activeTitle}</h1>
               <p className="hidden truncate text-xs text-muted-foreground/60 lg:block">{activeDescription}</p>
             </div>

@@ -143,7 +143,7 @@ export default function AboutPage() {
       />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
-        <Card className="overflow-hidden rounded-[1.25rem] border border-white/70 bg-card/95 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.24)]">
+        <Card className="overflow-hidden">
           <CardContent className="p-5">
             <div className="space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -170,7 +170,7 @@ export default function AboutPage() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden rounded-[1.25rem] border border-white/70 bg-card/95 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.24)]">
+        <Card className="overflow-hidden">
           <CardContent className="p-5">
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Build</p>
@@ -191,7 +191,7 @@ export default function AboutPage() {
                   </p>
                 </div>
               ) : null}
-              <div className="rounded-[0.95rem] bg-secondary/65 px-3.5 py-3 text-sm text-muted-foreground">
+              <div className="rounded-lg bg-secondary px-3.5 py-3 text-sm text-muted-foreground">
                 {t('about.support.tip')}
               </div>
             </div>
@@ -278,7 +278,7 @@ function InfoGrid({ items }: { items: InfoGridItem[] }) {
   return (
     <dl className="grid gap-3 sm:grid-cols-2">
       {items.map((item) => (
-        <Card key={item.label} className="rounded-[1rem] border border-white/70 bg-secondary/45 shadow-none">
+        <Card key={item.label} className="rounded-xl border border-border bg-secondary shadow-none">
           <CardContent className="p-4">
             <dt className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{item.label}</dt>
             <dd className="metric-number mt-2 text-sm font-semibold text-foreground">{item.value}</dd>
@@ -292,7 +292,7 @@ function InfoGrid({ items }: { items: InfoGridItem[] }) {
 
 function RuntimePill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[0.9rem] bg-secondary/65 px-3 py-2 text-right">
+    <div className="rounded-lg bg-secondary px-3 py-2 text-right">
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
       <p className="metric-number mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>

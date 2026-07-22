@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { ArrowRight, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Disclosure } from '@/components/ui/disclosure'
+import { PageState } from '@/components/PageState'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -106,6 +109,18 @@ export function RoutingWorkspace({
   const compatibilityEnabled = openaiProtocol ? (compatibility?.enabled ?? false) : false
   const existingSources = new Set(routes.map((entry) => entry.source.trim()).filter(Boolean))
   const validationModeDescriptionKey = `modelManagement.claudeValidation.options.${validationMode}.description`
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+  const showPolicy = anthropicProtocol || openaiProtocol
+  const policyTitle = anthropicProtocol
+    ? t('modelManagement.claudeValidation.title')
+    : t('modelManagement.openaiCompatibility.title')
+  const policyBadge = anthropicProtocol
+    ? (validationMode !== 'off'
+        ? <Badge variant="secondary" className="text-[11px]">{t(`modelManagement.claudeValidation.options.${validationMode}.label`)}</Badge>
+        : null)
+    : (compatibilityEnabled
+        ? <Badge variant="secondary" className="text-[11px]">{t('modelManagement.openaiCompatibility.toggleLabel')}</Badge>
+        : null)
 
   return (
     <Card>
@@ -114,64 +129,67 @@ export function RoutingWorkspace({
           {t('settings.routing.wildcardHint')}
         </div>
 
-        {anthropicProtocol ? (
-          <div className="rounded-xl border border-primary/12 bg-[linear-gradient(135deg,hsl(var(--primary)/0.08),hsl(var(--accent)/0.72))] p-4 shadow-[var(--surface-shadow)] dark:border-sky-300/12 dark:bg-[linear-gradient(135deg,rgba(14,165,233,0.12),rgba(15,23,42,0.72))]">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-primary dark:text-sky-100">
-                  {t('modelManagement.claudeValidation.title')}
-                </p>
-                <p className="max-w-2xl text-xs leading-5 text-muted-foreground dark:text-slate-300">
-                  {t('modelManagement.claudeValidation.description')}
-                </p>
+        {showPolicy ? (
+          <Disclosure
+            variant="card"
+            summary={<span className="text-sm font-medium text-primary">{policyTitle}</span>}
+            badge={policyBadge}
+            summaryClassName="px-4 py-3"
+            contentClassName="space-y-5 border-t border-border px-4 py-4"
+          >
+            {anthropicProtocol ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-primary">
+                    {t('modelManagement.claudeValidation.title')}
+                  </p>
+                  <p className="max-w-2xl text-xs leading-5 text-muted-foreground">
+                    {t('modelManagement.claudeValidation.description')}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/70">
+                    {t('modelManagement.claudeValidation.modeLabel')}
+                  </Label>
+                  <Select
+                    value={validationMode}
+                    onValueChange={(value) => onValidationModeChange(value as EndpointValidationMode)}
+                    disabled={savingClaudeValidation}
+                  >
+                    <SelectTrigger className="border-primary/15 bg-card">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="off">{t('modelManagement.claudeValidation.options.off.label')}</SelectItem>
+                      <SelectItem value="anthropic-strict">{t('modelManagement.claudeValidation.options.anthropic-strict.label')}</SelectItem>
+                      <SelectItem value="claude-code">{t('modelManagement.claudeValidation.options.claude-code.label')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className={cn(
+                    'text-xs',
+                    validationMode === 'off' ? 'text-muted-foreground' : 'text-primary/80'
+                  )}>
+                    {t(validationModeDescriptionKey)}
+                  </span>
+                </div>
               </div>
-              <div className="flex w-full max-w-xs flex-col gap-2 self-start sm:self-auto">
-                <Label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/70 dark:text-sky-200/75">
-                  {t('modelManagement.claudeValidation.modeLabel')}
-                </Label>
-                <Select
-                  value={validationMode}
-                  onValueChange={(value) => onValidationModeChange(value as EndpointValidationMode)}
-                  disabled={savingClaudeValidation}
-                >
-                  <SelectTrigger className="border-primary/15 bg-card/90 dark:border-white/10 dark:bg-slate-950/50">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="off">{t('modelManagement.claudeValidation.options.off.label')}</SelectItem>
-                    <SelectItem value="anthropic-strict">{t('modelManagement.claudeValidation.options.anthropic-strict.label')}</SelectItem>
-                    <SelectItem value="claude-code">{t('modelManagement.claudeValidation.options.claude-code.label')}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span className={cn(
-                  'text-xs',
-                  validationMode === 'off' ? 'text-muted-foreground dark:text-slate-400' : 'text-primary/80 dark:text-sky-200/80'
-                )}>
-                  {t(validationModeDescriptionKey)}
-                </span>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {openaiProtocol ? (
-          <div className="rounded-xl border border-primary/12 bg-[linear-gradient(135deg,hsl(var(--primary)/0.08),hsl(var(--accent)/0.72))] p-4 shadow-[var(--surface-shadow)] dark:border-sky-300/12 dark:bg-[linear-gradient(135deg,rgba(14,165,233,0.12),rgba(15,23,42,0.72))]">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-primary dark:text-sky-100">
-                  {t('modelManagement.openaiCompatibility.title')}
-                </p>
-                <p className="max-w-2xl text-xs leading-5 text-muted-foreground dark:text-slate-300">
-                  {t('modelManagement.openaiCompatibility.description')}
-                </p>
-              </div>
-              <div className="flex w-full max-w-xs flex-col gap-2 self-start sm:self-auto">
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/12 bg-card/85 px-3 py-2 dark:border-white/10 dark:bg-slate-950/50">
+            ) : null}
+            {openaiProtocol ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-primary">
+                    {t('modelManagement.openaiCompatibility.title')}
+                  </p>
+                  <p className="max-w-2xl text-xs leading-5 text-muted-foreground">
+                    {t('modelManagement.openaiCompatibility.description')}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/15 bg-card px-3 py-2">
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/70 dark:text-sky-200/75">
+                    <Label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/70">
                       {t('modelManagement.openaiCompatibility.toggleLabel')}
                     </Label>
-                    <p className="text-xs text-muted-foreground dark:text-slate-300">
+                    <p className="text-xs text-muted-foreground">
                       {compatibilityEnabled
                         ? t('modelManagement.openaiCompatibility.enabledHint')
                         : t('modelManagement.openaiCompatibility.disabledHint')}
@@ -185,8 +203,8 @@ export function RoutingWorkspace({
                   />
                 </div>
               </div>
-            </div>
-          </div>
+            ) : null}
+          </Disclosure>
         ) : null}
 
         {routeError ? <p className="text-sm text-destructive">{routeError}</p> : null}
@@ -221,10 +239,7 @@ export function RoutingWorkspace({
           </div>
 
           {routes.length === 0 ? (
-            <div className="rounded-xl border-2 border-dashed border-border/30 bg-background/60 p-12 text-center text-sm text-muted-foreground">
-              <p className="font-medium">{t('settings.routing.empty')}</p>
-              <p className="mt-2 text-xs">{t('modelManagement.emptyRoutesHint')}</p>
-            </div>
+            <PageState compact title={t('settings.routing.empty')} description={t('modelManagement.emptyRoutesHint')} />
           ) : (
             <div className="space-y-2">
               <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-3 px-1 text-xs font-medium text-muted-foreground md:grid">
@@ -313,14 +328,20 @@ export function RoutingWorkspace({
           </div>
         </div>
 
-        <div className="space-y-3 rounded-xl bg-secondary/50 p-4">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <Label className="text-sm font-medium text-foreground">{t('settings.routing.suggested')}</Label>
+        <Disclosure
+          open={suggestionsOpen}
+          onOpenChange={setSuggestionsOpen}
+          summary={(
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-foreground">{t('settings.routing.suggested')}</span>
               <Badge variant="outline" className="text-[11px]">{suggestions.length}</Badge>
-            </div>
-            <p className="text-[11px] text-muted-foreground">{t('modelManagement.overview.suggestionHint')}</p>
-          </div>
+            </span>
+          )}
+          className="rounded-xl bg-secondary/50 px-4 py-3"
+          summaryClassName="px-0 py-0"
+          contentClassName="mt-3"
+        >
+          <p className="mb-2 text-[11px] text-muted-foreground">{t('modelManagement.overview.suggestionHint')}</p>
           <div className="flex flex-wrap gap-1.5">
             {suggestions.map((model) => {
               const alreadyAdded = existingSources.has(model)
@@ -333,7 +354,7 @@ export function RoutingWorkspace({
                   disabled={savingRoute || alreadyAdded}
                   className={cn(
                     'h-7 rounded-md px-2.5 text-[11px] font-normal',
-                    alreadyAdded ? 'opacity-45' : 'bg-background/70'
+                    alreadyAdded ? 'opacity-45' : 'bg-background'
                   )}
                 >
                   {model}
@@ -341,7 +362,7 @@ export function RoutingWorkspace({
               )
             })}
           </div>
-        </div>
+        </Disclosure>
 
         <datalist id={sourceListId}>
           {suggestions.map((model) => (

@@ -22,7 +22,6 @@ const resources = {
         settings: '设置',
         help: '使用指南',
         about: '关于',
-        profiler: '性能分析',
         group: {
           overview: '概览',
           admin: '管理'
@@ -50,6 +49,8 @@ const resources = {
           refreshing: '刷新中...',
           manualRefresh: '手动刷新',
           reset: '重置',
+          previous: '上一步',
+          next: '下一步',
           close: '关闭',
           openNavigation: '打开导航',
           closeNavigation: '关闭导航',
@@ -177,7 +178,8 @@ const resources = {
           todayCacheCreation: '今日缓存写入',
           todayOutput: '今日输出 Tokens',
           todayCached: '今日缓存 Tokens',
-          avgLatency: '平均响应耗时'
+          avgLatency: '平均响应耗时',
+          systemResources: '系统资源'
         },
         charts: {
           requestsTitle: '请求趋势',
@@ -300,14 +302,13 @@ const resources = {
             requestedModel: '请求模型',
             routedModel: '路由模型',
             apiKey: 'API Key',
-            inputTokens: '输入 Tokens',
-            cacheReadTokens: '缓存读取',
-            cacheCreationTokens: '缓存写入',
-            outputTokens: '输出 Tokens',
-            stream: 'Stream',
-            latency: '耗时(ms)',
-            ttft: 'TTFT(ms)',
-            tpot: 'TPOT(ms/Token)',
+            tokens: 'Tokens',
+            duration: '耗时',
+            tokenIn: '输入',
+            tokenOut: '输出',
+            tokenCache: '缓存',
+            latencyTtft: 'TTFT',
+            latencyTpot: 'TPOT',
             status: '状态',
             error: '错误信息',
             actions: '操作'
@@ -601,6 +602,12 @@ const resources = {
             auth: '3. 设置认证',
             checklist: '提交前检查'
           },
+          steps: {
+            type: '类型',
+            basic: '基础信息',
+            auth: '认证',
+            models: '模型'
+          },
           hints: {
             type: '先选择 Provider 模板，可自动填入推荐 Base URL。',
             basic: 'ID 用于路由映射；显示名称用于界面展示。',
@@ -633,6 +640,7 @@ const resources = {
             models: '模型配置',
             showAdvanced: '显示高级选项',
             hideAdvanced: '隐藏高级选项',
+            advancedOptions: '高级选项',
             addModel: '新增模型',
             modelId: '模型 ID',
             modelIdPlaceholder: '如 claude-sonnet-4-5-20250929',
@@ -1119,7 +1127,6 @@ const resources = {
               '**模型供应商 / Models**：管理 Provider（上游接入信息：Base URL、认证、模型清单）。这是上游资源池，不直接对外暴露。',
               '**路由管理 / Routing**：把客户端请求的模型名映射到具体 `providerId:modelId`。每个端点（`/anthropic`、`/openai`、自定义）都有独立的路由空间，互不影响。',
               '**API 密钥 / API Keys**：为不同客户端、环境、自动化任务发放专属密钥，便于审计、限权和吊销。默认存在通配符密钥，启用即代表"任意密钥都允许"。',
-              '**性能分析 / Profiler**：录制一段时间内的请求，按会话查看 Agent–LLM–Tools 的时序交互流，定位慢请求、TTFT 异常和工具调用顺序问题。',
               '**事件 / Events**：网关层面的系统事件流（启动、配置变更、安全告警等），供审计和故障回溯使用。',
               '**设置 / Settings**：调整端口、日志保留、payload 存储、清理策略、Web UI 登录保护等运行参数。'
             ]
@@ -1201,10 +1208,6 @@ const resources = {
             {
               q: '如何配置多个客户端使用不同模型？',
               a: '推荐为不同客户端创建专用自定义接入点，并在每个端点维护独立路由规则；也可以让客户端使用不同的 Base URL 指向 `/anthropic`、`/openai` 或自定义端点。API Key 主要用于审计、区分来源和吊销访问，不单独承载路由规则。'
-            },
-            {
-              q: '如何使用性能分析（Profiler）？',
-              a: '进入"性能分析"页面，点击"开始录制"，然后让客户端正常发起请求；录制期间所有请求都会被采样为带有 Agent ↔ LLM ↔ Tools 时序的会话。停止录制后，左侧选择会话即可在"交互流"中查看每一轮的请求/响应箭头、激活条、TTFT 与工具调用结果，便于定位慢请求或工具链异常。'
             },
             {
               q: '如何启用 Web UI 登录保护？',
@@ -1394,6 +1397,10 @@ const resources = {
           cards: '卡片视图',
           compact: '紧凑列表'
         },
+        tabs: {
+          inventory: '密钥',
+          analytics: '用量'
+        },
         table: {
           name: '密钥',
           access: '访问范围',
@@ -1480,109 +1487,6 @@ const resources = {
         deleteConfirm: '确定要删除端点 "{{label}}" 吗？此操作无法撤销。',
         validationError: '请填写所有必填字段'
       },
-      profiler: {
-        title: '性能分析',
-        eyebrow: '会话性能分析',
-        breadcrumb: '网关 / 性能分析',
-        description: '记录并分析 LLM 会话的延迟与 token 用量。',
-        sessionsTitle: '会话列表',
-        sessionsCount: '{{count}} 个会话',
-        searchPlaceholder: '搜索会话...',
-        loadingSession: '正在加载会话...',
-        sessionSummary: '{{turns}} 轮 · {{duration}} · {{tokens}} tokens',
-        metricTurns: '{{count}} 轮',
-        metricTokens: '{{value}} tok',
-        tabs: {
-          timeline: '时间线',
-          breakdown: '拆解视图',
-          flow: '交互流'
-        },
-        status: {
-          recording: '录制中',
-          idle: '未录制'
-        },
-        actions: {
-          start: '开始录制',
-          stop: '停止录制',
-          export: '导出',
-          clear: '清空'
-        },
-        timeline: {
-          summary: '压缩总览 · 自动折叠空闲间隔 · 按轮次换行展示',
-          mode: '模式：',
-          compressed: '压缩',
-          sessionDuration: '会话 {{duration}}',
-          start: '开始',
-          startAt: '开始 {{time}}s',
-          tools: '工具',
-          legend: {
-            totalLatency: '总延迟',
-            firstToken: '首 token（TTFT）',
-            toolExecuting: '工具调用',
-            selectedTurn: '选中轮次'
-          }
-        },
-        turn: {
-          title: '第 {{index}} 轮',
-          previous: '上一轮',
-          next: '下一轮'
-        },
-        payload: {
-          request: '请求',
-          response: '响应',
-          toolCalls: '工具调用',
-          empty: '（空）',
-          emptyRequest: '（空请求）',
-          emptyResponse: '（空响应）',
-          noToolCalls: '（无工具调用）',
-          truncated: '仅显示前 {{shown}} / {{total}} 个字符。'
-        },
-        breakdown: {
-          total: '总计 {{value}}',
-          toolCallsCount: '{{count}} 次工具调用',
-          error: '错误',
-          turnMetrics: '轮次指标',
-          duration: '耗时',
-          status: '状态',
-          input: '输入',
-          output: '输出',
-          totalDuration: '总耗时',
-          llmTime: 'LLM 时间',
-          avgTtft: '平均 TTFT',
-          avgTpot: '平均 TPOT',
-          inputTokens: '输入 Tokens',
-          outputTokens: '输出 Tokens',
-          turnsSub: '{{count}} 轮',
-          sessionShare: '占会话 {{value}}%',
-          perTurnTitle: '逐轮拆解',
-          perTurnDescription: '展开任意轮次，检查请求、响应、工具调用与错误。'
-        },
-        empty: {
-          waitingTitle: '等待请求进入...',
-          waitingDescription: '只有带可识别会话标识的请求才会显示在这里，例如 session_id、conversation_id 或兼容的会话请求头。',
-          idleTitle: '暂无会话',
-          idleDescription: '开始录制后即可捕获带可识别会话标识的 LLM 会话。',
-          searchTitle: '未找到匹配会话',
-          searchDescription: '换个关键词试试，或清空搜索查看全部已录制会话。',
-          noTurnsTitle: '该会话还没有记录到轮次',
-          noTurnsDescription: '会话壳已创建，但还没有写入 turn 级别的请求或响应内容。',
-          selectTitle: '选择一个会话',
-          selectDescription: '从左侧选择会话，查看其时间线、消息载荷和统计数据。未携带可识别会话标识的请求仍可在日志中查看。',
-          actions: {
-            logs: '查看请求日志'
-          }
-        },
-        errors: {
-          loadFailed: '加载会话失败',
-          notFound: '未找到会话'
-        },
-        relativeTime: {
-          justNow: '刚刚',
-          minutesAgo: '{{count}} 分钟前',
-          hoursAgo: '{{count}} 小时前',
-          daysAgo: '{{count}} 天前'
-        }
-      }
     }
   },
   en: {
@@ -1604,7 +1508,6 @@ const resources = {
         settings: 'Settings',
         help: 'Help',
         about: 'About',
-        profiler: 'Profiler',
         group: {
           overview: 'Overview',
           admin: 'Admin'
@@ -1632,6 +1535,8 @@ const resources = {
           refreshing: 'Refreshing...',
           manualRefresh: 'Manual refresh',
           reset: 'Reset',
+          previous: 'Previous',
+          next: 'Next',
           close: 'Close',
           openNavigation: 'Open navigation',
           closeNavigation: 'Close navigation',
@@ -1759,7 +1664,8 @@ const resources = {
           todayCacheCreation: 'Cache Creation Today',
           todayOutput: 'Output Tokens Today',
           todayCached: 'Cached Tokens Today',
-          avgLatency: 'Average Latency'
+          avgLatency: 'Average Latency',
+          systemResources: 'System Resources'
         },
         charts: {
           requestsTitle: 'Request Trends',
@@ -1882,14 +1788,13 @@ const resources = {
             requestedModel: 'Requested model',
             routedModel: 'Routed model',
             apiKey: 'API Key',
-            inputTokens: 'Input Tokens',
-            cacheReadTokens: 'Cache Read',
-            cacheCreationTokens: 'Cache Creation',
-            outputTokens: 'Output Tokens',
-            stream: 'Stream',
-            latency: 'Latency (ms)',
-            ttft: 'TTFT (ms)',
-            tpot: 'TPOT (ms/token)',
+            tokens: 'Tokens',
+            duration: 'Latency',
+            tokenIn: 'In',
+            tokenOut: 'Out',
+            tokenCache: 'Cache',
+            latencyTtft: 'TTFT',
+            latencyTpot: 'TPOT',
             status: 'Status',
             error: 'Error',
             actions: 'Actions'
@@ -2183,6 +2088,12 @@ const resources = {
             auth: '3. Authentication',
             checklist: 'Pre-flight checks'
           },
+          steps: {
+            type: 'Type',
+            basic: 'Basics',
+            auth: 'Auth',
+            models: 'Models'
+          },
           hints: {
             type: 'Start from a provider template to prefill the recommended Base URL.',
             basic: 'The ID is used by routing rules; the display name is used in the UI.',
@@ -2215,6 +2126,7 @@ const resources = {
             models: 'Model configuration',
             showAdvanced: 'Show advanced options',
             hideAdvanced: 'Hide advanced options',
+            advancedOptions: 'Advanced options',
             addModel: 'Add model',
             modelId: 'Model ID',
             modelIdPlaceholder: 'e.g. claude-sonnet-4-5-20250929',
@@ -2696,7 +2608,6 @@ const resources = {
               '**Model Providers**: Manage upstream Providers (Base URL, auth, model list). Providers form the resource pool — they are not exposed publicly without routing.',
               '**Routing**: Map the model name a client requests to a concrete `providerId:modelId`. Each endpoint (`/anthropic`, `/openai`, custom) has its own independent routing workspace.',
               '**API Keys**: Issue keys per client / environment / automation task for auditing, scoping and revocation. The default wildcard key, when enabled, accepts any key.',
-              '**Profiler**: Record a window of requests, then inspect each session as an Agent–LLM–Tools sequence diagram to find slow turns, abnormal TTFT, or unexpected tool-call ordering.',
               '**Events**: Gateway-level system event stream (startup, config changes, security alerts) for auditing and incident review.',
               '**Settings**: Adjust port, log retention, payload storage, cleanup, and Web UI login protection.'
             ]
@@ -2716,7 +2627,7 @@ const resources = {
             items: [
               'Set environment variables (recommended):\n```bash\nexport ANTHROPIC_BASE_URL=http://127.0.0.1:4100/anthropic\nexport ANTHROPIC_API_KEY=sk-ant-oat01-8HEmUDacamV1...\n```\nAdd them to `~/.bashrc` or `~/.zshrc` and run `source ~/.bashrc` / `source ~/.zshrc`. Claude Code reads these variables on startup and routes through cc-gw.',
               'Which API key to use: If you have enabled API key restrictions in cc-gw, use a key created on the "API Keys" page. If not (the default wildcard key is still enabled), any non-empty placeholder string works.',
-              'Quick verification:\n```bash\nclaude "Hello, please respond briefly"\n```\nA successful reply means the gateway is wired up — check "Request Logs" to see the request. To inspect the full Agent ↔ LLM ↔ Tools timeline, start a Profiler recording before issuing the request.'
+              'Quick verification:\n```bash\nclaude "Hello, please respond briefly"\n```\nA successful reply means the gateway is wired up — check "Request Logs" to see the request.'
             ]
           },
           codexConfig: {
@@ -2732,7 +2643,6 @@ const resources = {
             items: [
               'Use the dashboard to keep an eye on request volume, token usage, cache hits, and TTFT/TPOT trends — filterable by endpoint.',
               '“Request Logs” provides rich filters plus separated client/upstream payload blocks, which makes protocol-rewrite debugging much easier.',
-              'Use the Profiler to record real traffic and inspect each session as an Agent–LLM–Tools sequence diagram — great for tracking down slow turns and tool-call ordering issues.',
               'Use “Routing” to maintain model mappings per endpoint. Built-in `/anthropic` and `/openai` have separate routing workspaces, and each custom endpoint keeps its own routing rules.',
               '“Settings” controls log retention, payload storage, and runtime parameters to suit your operations.'
             ]
@@ -2775,10 +2685,6 @@ const resources = {
             {
               q: 'How can I use different models for different clients?',
               a: 'The recommended approach is to create dedicated custom endpoints for different clients and maintain independent routing rules per endpoint. You can also point clients at `/anthropic`, `/openai`, or custom Base URLs. API keys are mainly for auditing, source separation, and revocation; they do not carry separate routing rules by themselves.'
-            },
-            {
-              q: 'How do I use the Profiler?',
-              a: 'Open "Profiler", click "Start recording", then exercise your client. Every request issued during the recording window is captured as a session and parsed into an Agent–LLM–Tools sequence diagram. Stop recording, pick a session on the left, and inspect the timeline (request/response arrows, activation bars, TTFT, tool results) to pinpoint slow turns or unexpected tool ordering.'
             },
             {
               q: 'How do I enable login protection for the Web UI?',
@@ -2894,6 +2800,10 @@ const resources = {
         views: {
           cards: 'Cards',
           compact: 'Compact list'
+        },
+        tabs: {
+          inventory: 'Keys',
+          analytics: 'Usage'
         },
         table: {
           name: 'Key',
@@ -3048,109 +2958,6 @@ const resources = {
         deleteConfirm: 'Are you sure you want to delete endpoint "{{label}}"? This action cannot be undone.',
         validationError: 'Please fill in all required fields'
       },
-      profiler: {
-        title: 'Profiler',
-        eyebrow: 'Session Profiler',
-        breadcrumb: 'Gateway / Profiler',
-        description: 'Record and analyze LLM session latency and token usage.',
-        sessionsTitle: 'Sessions',
-        sessionsCount: '{{count}} sessions',
-        searchPlaceholder: 'Search sessions...',
-        loadingSession: 'Loading session...',
-        sessionSummary: '{{turns}} turns · {{duration}} · {{tokens}} tokens',
-        metricTurns: '{{count}} turns',
-        metricTokens: '{{value}} tok',
-        tabs: {
-          timeline: 'Timeline',
-          breakdown: 'Breakdown',
-          flow: 'Flow'
-        },
-        status: {
-          recording: 'Recording',
-          idle: 'Not Recording'
-        },
-        actions: {
-          start: 'Start Recording',
-          stop: 'Stop Recording',
-          export: 'Export',
-          clear: 'Clear'
-        },
-        timeline: {
-          summary: 'Compressed overview · idle gaps folded · wraps as turns grow',
-          mode: 'Mode:',
-          compressed: 'Compressed',
-          sessionDuration: 'Session {{duration}}',
-          start: 'start',
-          startAt: 'start {{time}}s',
-          tools: 'Tools',
-          legend: {
-            totalLatency: 'Total latency',
-            firstToken: 'First token (TTFT)',
-            toolExecuting: 'Tool executing',
-            selectedTurn: 'Selected turn'
-          }
-        },
-        turn: {
-          title: 'Turn {{index}}',
-          previous: 'Previous turn',
-          next: 'Next turn'
-        },
-        payload: {
-          request: 'Request',
-          response: 'Response',
-          toolCalls: 'Tool Calls',
-          empty: '(empty)',
-          emptyRequest: '(empty request)',
-          emptyResponse: '(empty response)',
-          noToolCalls: '(no tool calls)',
-          truncated: 'Showing the first {{shown}} of {{total}} characters.'
-        },
-        breakdown: {
-          total: 'Total {{value}}',
-          toolCallsCount: '{{count}} tool calls',
-          error: 'Error',
-          turnMetrics: 'Turn Metrics',
-          duration: 'Duration',
-          status: 'Status',
-          input: 'Input',
-          output: 'Output',
-          totalDuration: 'Total Duration',
-          llmTime: 'LLM Time',
-          avgTtft: 'Avg TTFT',
-          avgTpot: 'Avg TPOT',
-          inputTokens: 'Input Tokens',
-          outputTokens: 'Output Tokens',
-          turnsSub: '{{count}} turns',
-          sessionShare: '{{value}}% of session',
-          perTurnTitle: 'Per-Turn Breakdown',
-          perTurnDescription: 'Expand a turn to inspect request, response, tool calls, and errors.'
-        },
-        empty: {
-          waitingTitle: 'Waiting for requests…',
-          waitingDescription: 'Only requests with a recognizable session identifier appear here, such as session_id, conversation_id, or compatible session headers.',
-          idleTitle: 'No sessions',
-          idleDescription: 'Start recording to capture LLM sessions with recognizable session identifiers.',
-          searchTitle: 'No matching sessions',
-          searchDescription: 'Try a different keyword, or clear the search to see every recorded session.',
-          noTurnsTitle: 'No turns recorded',
-          noTurnsDescription: 'The session exists, but no turn-level payloads have been captured yet.',
-          selectTitle: 'Select a session',
-          selectDescription: 'Choose a session from the left to inspect its timeline, message payloads, and stats. Requests without a recognizable session identifier still appear in logs.',
-          actions: {
-            logs: 'Open request logs'
-          }
-        },
-        errors: {
-          loadFailed: 'Failed to load session',
-          notFound: 'Session not found'
-        },
-        relativeTime: {
-          justNow: 'just now',
-          minutesAgo: '{{count}} min ago',
-          hoursAgo: '{{count}} hr ago',
-          daysAgo: '{{count}} days ago'
-        }
-      }
     }
   }
 }

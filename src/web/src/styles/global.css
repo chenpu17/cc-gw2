@@ -45,6 +45,9 @@
     --surface-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 4px 12px rgba(0, 0, 0, 0.04);
     --surface-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.03), 0 8px 24px rgba(0, 0, 0, 0.06);
     --surface-border: rgba(0, 0, 0, 0.06);
+
+    /* Shared motion easing — snappy ease-out-quint; neutralized globally under reduced motion */
+    --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .dark,
@@ -122,6 +125,14 @@
 }
 .animate-fade-in  { animation: fadeIn    0.2s ease-out; }
 .animate-slide-in { animation: slideInUp 0.25s ease-out; }
+
+/* Shared surface motion — for cards, metric tiles, interactive rows.
+   The global prefers-reduced-motion block below zeroes these durations. */
+.motion-surface {
+  transition-property: transform, box-shadow, border-color, background-color, color;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-surface, cubic-bezier(0.22, 1, 0.36, 1));
+}
 
 .metric-number {
   font-family: "Inter", "SF Mono", "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;

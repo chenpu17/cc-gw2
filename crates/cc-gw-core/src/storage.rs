@@ -420,7 +420,6 @@ pub fn initialize_database(path: &Path) -> Result<()> {
     maybe_add_column(&conn, "api_keys", "allowed_endpoints", "TEXT DEFAULT NULL")?;
     maybe_add_column(&conn, "api_keys", "max_concurrency", "INTEGER DEFAULT NULL")?;
 
-    crate::profiler::initialize_profiler_tables(&conn)?;
     migrate_daily_metrics_table(&conn)?;
     maybe_add_column(
         &conn,

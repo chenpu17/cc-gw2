@@ -1,4 +1,3 @@
-import { useTranslation } from 'react-i18next'
 import { PageToolbar } from '@/components/PageToolbar'
 import { LogsFiltersCard } from '@/pages/logs/LogsFiltersCard'
 import { LogDetailsDrawer } from '@/pages/logs/LogDetailsDrawer'
@@ -7,17 +6,11 @@ import { LogsTableCard } from '@/pages/logs/LogsTableCard'
 import { useLogsPageState } from '@/pages/logs/useLogsPageState'
 
 export default function LogsPage() {
-  const { t } = useTranslation()
   const state = useLogsPageState()
 
   return (
     <div className="flex flex-col gap-4">
       <PageToolbar
-        info={state.total > 0 ? (
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
-            {t('logs.summary.total', { value: state.total.toLocaleString() })}
-          </span>
-        ) : null}
         actions={
           <LogsPageActions
             columnOptions={state.columnOptions}
@@ -29,7 +22,6 @@ export default function LogsPage() {
             onToggleColumn={state.toggleColumn}
             refreshing={state.logsQuery.isFetching}
             rowDensity={state.rowDensity}
-            total={state.total}
             visibleColumns={state.visibleColumns}
             visibleColumnSet={state.visibleColumnSet}
           />
@@ -37,7 +29,6 @@ export default function LogsPage() {
       />
 
       <LogsFiltersCard
-        total={state.total}
         activeFilters={state.activeFilters}
         filtersExpanded={state.filtersExpanded}
         setFiltersExpanded={state.setFiltersExpanded}
@@ -72,6 +63,7 @@ export default function LogsPage() {
         logsPending={state.logsQuery.isPending}
         items={state.items}
         activeFiltersCount={state.activeFilters.length}
+        total={state.total}
         handleResetFilters={state.handleResetFilters}
         handleRetry={() => void state.logsQuery.refetch()}
         providerLabelMap={state.providerLabelMap}

@@ -103,7 +103,6 @@ test('dashboard supports refresh, endpoint filters, compaction, and recent reque
   await page.getByRole('option', { name: 'openai' }).click()
   await filterResponse
   await expect(endpointSelect).toContainText('openai')
-  await expect(page.getByText('端点筛选 · openai')).toBeVisible()
 
   await page.reload()
   await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()

@@ -1,7 +1,7 @@
 import { lazy } from 'react'
 import type { LazyExoticComponent, ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Activity, AlertTriangle, BarChart3, Cog, FileText, GitBranch, Key, Layers, LifeBuoy, Settings } from 'lucide-react'
+import { AlertTriangle, BarChart3, Cog, FileText, GitBranch, Key, Layers, LifeBuoy, Settings } from 'lucide-react'
 
 const DashboardPage = lazy(() => import('@/pages/Dashboard'))
 const LogsPage = lazy(() => import('@/pages/Logs'))
@@ -13,7 +13,6 @@ const SettingsPage = lazy(() => import('@/pages/Settings'))
 const AboutPage = lazy(() => import('@/pages/About'))
 const HelpPage = lazy(() => import('@/pages/Help'))
 const LoginPage = lazy(() => import('@/pages/Login'))
-const ProfilerPage = lazy(() => import('@/pages/Profiler'))
 
 interface AppRouteNavMeta {
   icon: LucideIcon
@@ -96,16 +95,6 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
       labelKey: 'nav.apiKeys',
       titleKey: 'apiKeys.title',
       descriptionKey: 'apiKeys.description'
-    }
-  },
-  {
-    path: '/profiler',
-    element: ProfilerPage,
-    nav: {
-      icon: Activity,
-      labelKey: 'nav.profiler',
-      titleKey: 'profiler.title',
-      descriptionKey: 'profiler.description'
     }
   },
   {

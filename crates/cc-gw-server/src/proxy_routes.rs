@@ -1,5 +1,4 @@
 use super::*;
-use cc_gw_core::profiler::{AppendProfilerTurnInput, append_profiler_turn};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -1298,7 +1297,7 @@ pub(super) async fn proxy_standard_request(
     let endpoint_id = endpoint_name(endpoint, protocol);
     let network_recorder = NetworkByteRecorder::new(&state, &endpoint_id);
     let user_agent = header_value(&headers, header::USER_AGENT.as_str());
-    let client_kind = infer_client_kind(&headers, user_agent.as_deref(), protocol);
+    let _client_kind = infer_client_kind(&headers, user_agent.as_deref(), protocol);
     let session_id = extract_request_session_id(&body, &headers);
 
     // Atomically check per-key concurrency limit and create the activity guard
@@ -1406,12 +1405,6 @@ pub(super) async fn proxy_standard_request(
     };
 
     let stream = body.get("stream").and_then(Value::as_bool).unwrap_or(false);
-    let profiling_active = state.profiling_active.load(Ordering::Relaxed) != 0;
-    let profiler_source_session_id = extract_profiler_session_id(&body, &headers);
-    let profiler_session_id = profiler_source_session_id
-        .as_deref()
-        .filter(|_| profiling_active)
-        .map(profiler_session_id_for);
     let request_log_id = insert_request_log(
         &state.paths.db_path,
         &RequestLogInput {
@@ -1650,14 +1643,6 @@ pub(super) async fn proxy_standard_request(
                 api_key_id: api_key_context.id,
                 started_at,
                 store_response_payload: response_payload_storage_enabled(&config),
-                profiling_active,
-                session_id: session_id.clone(),
-                profiler_session_id: profiler_session_id.clone(),
-                client_request_payload: client_request_payload.clone(),
-                model: target.model_id.clone(),
-                client_kind: client_kind.clone(),
-                client_model: requested_model.map(ToString::to_string),
-                stream,
             });
             if upstream_stream && !stream {
                 let (
@@ -1701,34 +1686,6 @@ pub(super) async fn proxy_standard_request(
                     );
                     let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
                     let store_response_payload = response_payload_storage_enabled(&config);
-                    if profiling_active {
-                        if let (Some(profiler_source_session_id), Some(profiler_session_id)) =
-                            (&profiler_source_session_id, &profiler_session_id)
-                        {
-                            let tpot = compute_tpot_ms(latency_ms, usage.output_tokens, None);
-                            record_profiler_turn(
-                                &state.paths.db_path,
-                                profiler_source_session_id,
-                                profiler_session_id,
-                                log_id,
-                                started_at,
-                                &target.model_id,
-                                &client_kind,
-                                requested_model,
-                                stream,
-                                latency_ms,
-                                None,
-                                tpot,
-                                status_code,
-                                &usage,
-                                None,
-                                client_request_payload.as_deref(),
-                                store_response_payload
-                                    .then_some(client_response_payload.as_deref())
-                                    .flatten(),
-                            );
-                        }
-                    }
                     if store_response_payload {
                         let _ = upsert_request_payload(
                             &state.paths.db_path,
@@ -1803,34 +1760,6 @@ pub(super) async fn proxy_standard_request(
                     );
                     let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
                     let store_response_payload = response_payload_storage_enabled(&config);
-                    if profiling_active {
-                        if let (Some(profiler_source_session_id), Some(profiler_session_id)) =
-                            (&profiler_source_session_id, &profiler_session_id)
-                        {
-                            let tpot = compute_tpot_ms(latency_ms, usage.output_tokens, None);
-                            record_profiler_turn(
-                                &state.paths.db_path,
-                                profiler_source_session_id,
-                                profiler_session_id,
-                                log_id,
-                                started_at,
-                                &target.model_id,
-                                &client_kind,
-                                requested_model,
-                                stream,
-                                latency_ms,
-                                None,
-                                tpot,
-                                status_code,
-                                &usage,
-                                None,
-                                client_request_payload.as_deref(),
-                                store_response_payload
-                                    .then_some(client_response_payload.as_deref())
-                                    .flatten(),
-                            );
-                        }
-                    }
                     if store_response_payload {
                         let _ = upsert_request_payload(
                             &state.paths.db_path,
@@ -1872,34 +1801,6 @@ pub(super) async fn proxy_standard_request(
                     );
                     let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
                     let store_response_payload = response_payload_storage_enabled(&config);
-                    if profiling_active {
-                        if let (Some(profiler_source_session_id), Some(profiler_session_id)) =
-                            (&profiler_source_session_id, &profiler_session_id)
-                        {
-                            let tpot = compute_tpot_ms(latency_ms, usage.output_tokens, None);
-                            record_profiler_turn(
-                                &state.paths.db_path,
-                                profiler_source_session_id,
-                                profiler_session_id,
-                                log_id,
-                                started_at,
-                                &target.model_id,
-                                &client_kind,
-                                requested_model,
-                                stream,
-                                latency_ms,
-                                None,
-                                tpot,
-                                status_code,
-                                &usage,
-                                None,
-                                client_request_payload.as_deref(),
-                                store_response_payload
-                                    .then_some(response_payload.as_deref())
-                                    .flatten(),
-                            );
-                        }
-                    }
                     if store_response_payload {
                         let _ = upsert_request_payload(
                             &state.paths.db_path,
@@ -2894,54 +2795,6 @@ fn should_forward_upstream_observability_header(name: &header::HeaderName) -> bo
         || name.as_str().starts_with("x-ratelimit-")
 }
 
-fn record_profiler_turn(
-    db_path: &std::path::Path,
-    session_id: &str,
-    profiler_session_id: &str,
-    log_id: i64,
-    started_at: i64,
-    model: &str,
-    client_kind: &str,
-    client_model: Option<&str>,
-    stream: bool,
-    latency_ms: i64,
-    ttft_ms: Option<i64>,
-    tpot_ms: Option<f64>,
-    status_code: i64,
-    usage: &UsageStats,
-    error: Option<&str>,
-    client_request_payload: Option<&str>,
-    client_response_payload: Option<&str>,
-) {
-    use cc_gw_core::profiler::compress_profiler_payload;
-    let client_req_bytes = client_request_payload.and_then(|p| compress_profiler_payload(p).ok());
-    let client_resp_bytes = client_response_payload.and_then(|p| compress_profiler_payload(p).ok());
-    let _ = append_profiler_turn(
-        db_path,
-        &AppendProfilerTurnInput {
-            profiler_session_id,
-            log_id,
-            session_id,
-            timestamp: started_at,
-            model,
-            client_kind: Some(client_kind),
-            client_model,
-            stream,
-            latency_ms: Some(latency_ms),
-            ttft_ms,
-            tpot_ms,
-            status_code: Some(status_code),
-            input_tokens: Some(usage.input_tokens),
-            output_tokens: Some(usage.output_tokens),
-            cache_read_tokens: Some(usage.cache_read_tokens),
-            cache_creation_tokens: Some(usage.cache_creation_tokens),
-            error,
-            client_request: client_req_bytes.as_deref(),
-            client_response: client_resp_bytes.as_deref(),
-        },
-    );
-}
-
 fn extract_usage_stats(payload: &Value) -> UsageStats {
     usage_stats_from_payload(payload)
 }
@@ -3129,50 +2982,6 @@ fn finalize_stream_logging(
     let _ = increment_daily_metrics(&context.db_path, &context.endpoint_id, latency_ms, &usage);
     let _ = record_api_key_usage(&context.db_path, context.api_key_id, &usage);
 
-    // Profiler recording
-    if context.profiling_active {
-        if let (Some(session_id), Some(profiler_session_id)) =
-            (&context.session_id, &context.profiler_session_id)
-        {
-            use cc_gw_core::profiler::compress_profiler_payload;
-            let client_req_bytes = context
-                .client_request_payload
-                .as_deref()
-                .and_then(|payload| compress_profiler_payload(payload).ok());
-            let client_resp_bytes = client_response_payload
-                .as_deref()
-                .map(|payload| {
-                    materialize_stream_response(client_response_protocol, payload)
-                        .unwrap_or_else(|| payload.to_string())
-                })
-                .and_then(|payload| compress_profiler_payload(&payload).ok());
-            let _ = append_profiler_turn(
-                &context.db_path,
-                &AppendProfilerTurnInput {
-                    profiler_session_id,
-                    log_id: context.log_id,
-                    session_id,
-                    timestamp: context.started_at,
-                    model: &context.model,
-                    client_kind: Some(&context.client_kind),
-                    client_model: context.client_model.as_deref(),
-                    stream: context.stream,
-                    latency_ms: Some(latency_ms),
-                    ttft_ms,
-                    tpot_ms: update.tpot_ms,
-                    status_code: Some(status_code),
-                    input_tokens: Some(usage.input_tokens),
-                    output_tokens: Some(usage.output_tokens),
-                    cache_read_tokens: Some(usage.cache_read_tokens),
-                    cache_creation_tokens: Some(usage.cache_creation_tokens),
-                    error: update.error.as_deref(),
-                    client_request: client_req_bytes.as_deref(),
-                    client_response: client_resp_bytes.as_deref(),
-                },
-            );
-        }
-    }
-
     if context.store_response_payload {
         let client_response_payload = client_response_payload.map(|payload| {
             materialize_stream_response(client_response_protocol, &payload).unwrap_or(payload)
@@ -3228,7 +3037,6 @@ mod tests {
             version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
             version_check_package_name: "@chenpu17/cc-gw".to_string(),
             sessions: auth::SessionStore::default(),
-            profiling_active: Arc::new(AtomicU64::new(0)),
         }
     }
 

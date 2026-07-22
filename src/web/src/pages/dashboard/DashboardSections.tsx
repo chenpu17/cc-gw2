@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Activity,
@@ -9,9 +8,11 @@ import {
   Database,
   Gauge,
   MemoryStick,
+  Server,
   Sparkles,
   Timer,
   TrendingUp,
+  X,
   Zap
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -22,7 +23,8 @@ import { StatCardSkeleton, ChartSkeleton, TableRowSkeleton } from '@/components/
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { Disclosure } from '@/components/ui/disclosure'
+import { MetricCard } from '@/components/ui/metric-card'
 import {
   Table,
   TableBody,
@@ -65,13 +67,9 @@ export function DashboardLoading() {
 }
 
 export function GatewayStatusBar({
-  selectedEndpointLabel,
-  status,
-  todayRequests
+  status
 }: {
-  selectedEndpointLabel: string
   status?: ServiceStatus
-  todayRequests: number
 }) {
   const { t } = useTranslation()
 
@@ -85,42 +83,41 @@ export function GatewayStatusBar({
           <Sparkles className="h-5 w-5 text-primary" aria-hidden="true" />
         </div>
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-foreground">{selectedEndpointLabel}</h2>
-            <Badge variant="success">{t('dashboard.status.listeningLabel')}</Badge>
-          </div>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            <span data-testid="dashboard-runtime-address">
-              {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
-            </span>
-            <span className="mx-2 text-border">·</span>
-            {t('dashboard.labels.todayRequests')}: {todayRequests.toLocaleString()}
-            <span className="mx-2 text-border">·</span>
-            {t('dashboard.labels.providers')}: {(status?.providers ?? 0).toLocaleString()}
-          </p>
+          <Badge variant="success">{t('dashboard.status.listeningLabel')}</Badge>
+          <h2
+            data-testid="dashboard-runtime-address"
+            className="metric-number mt-1.5 text-lg font-semibold tracking-tight text-foreground"
+          >
+            {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
+          </h2>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-        <span>{t('dashboard.labels.activeClientAddresses')}: <strong className="text-foreground">{(status?.activeClientAddresses ?? 0).toLocaleString()}</strong></span>
+        <span>{t('dashboard.labels.activeClientAddresses')}: <strong className="metric-number text-foreground">{(status?.activeClientAddresses ?? 0).toLocaleString()}</strong></span>
         <span className="text-border">·</span>
-        <span>{t('dashboard.labels.activeClientSessions')}: <strong className="text-foreground">{(status?.activeClientSessions ?? 0).toLocaleString()}</strong></span>
+        <span>{t('dashboard.labels.activeClientSessions')}: <strong className="metric-number text-foreground">{(status?.activeClientSessions ?? 0).toLocaleString()}</strong></span>
       </div>
     </div>
   )
 }
 
 export function MonitoringGrid({
+  daily,
   dbSizeDisplay,
   memoryDisplay,
   overview,
   status
 }: {
+  daily: DailyMetric[]
   dbSizeDisplay: string
   memoryDisplay: string
   overview?: OverviewStats
   status?: ServiceStatus
 }) {
   const { t } = useTranslation()
+  const requestTrend = daily.map((item) => item.requestCount)
+  const inputTrend = daily.map((item) => item.inputTokens)
+  const outputTrend = daily.map((item) => item.outputTokens)
   const spotlightMetrics = [
     {
       icon: <Gauge className="h-4 w-4" />,
@@ -152,25 +149,33 @@ export function MonitoringGrid({
       icon: <Activity className="h-4 w-4" />,
       label: t('dashboard.cards.todayRequests'),
       value: (overview?.today.requests ?? 0).toLocaleString(),
-      suffix: t('common.units.request')
+      rawValue: overview?.today.requests ?? 0,
+      suffix: t('common.units.request'),
+      sparkline: requestTrend
     },
     {
       icon: <TrendingUp className="h-4 w-4" />,
       label: t('dashboard.cards.todayInput'),
       value: (overview?.today.inputTokens ?? 0).toLocaleString(),
-      suffix: t('common.units.token')
+      rawValue: overview?.today.inputTokens ?? 0,
+      suffix: t('common.units.token'),
+      sparkline: inputTrend
     },
     {
       icon: <BarChart3 className="h-4 w-4" />,
       label: t('dashboard.cards.todayOutput'),
       value: (overview?.today.outputTokens ?? 0).toLocaleString(),
-      suffix: t('common.units.token')
+      rawValue: overview?.today.outputTokens ?? 0,
+      suffix: t('common.units.token'),
+      sparkline: outputTrend
     },
     {
       icon: <Timer className="h-4 w-4" />,
       label: t('dashboard.cards.avgLatency'),
       value: formatLatencyValue(overview?.today.avgLatencyMs ?? 0, t('common.units.ms'))
-    },
+    }
+  ]
+  const infraMetrics = [
     {
       icon: <ArrowDownToLine className="h-4 w-4" />,
       label: t('dashboard.labels.networkIngress'),
@@ -201,9 +206,10 @@ export function MonitoringGrid({
     <div className="space-y-3" data-testid="dashboard-spotlight-grid">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {spotlightMetrics.map((item, index) => (
-          <MonitoringCard
+          <MetricCard
             key={item.label}
             className={index === 0 ? 'md:col-span-2 xl:col-span-2' : undefined}
+            size={index === 0 ? 'lg' : 'md'}
             featured={index === 0}
             icon={item.icon}
             label={item.label}
@@ -214,17 +220,42 @@ export function MonitoringGrid({
       </div>
       <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
         {secondaryMetrics.map((item) => (
-          <MonitoringCard
+          <MetricCard
             key={item.label}
-            compact
+            size="sm"
             icon={item.icon}
             label={item.label}
-            suffix={item.suffix}
             value={item.value}
-            valueTestId={item.testId}
+            rawValue={item.rawValue}
+            suffix={item.suffix}
+            sparkline={item.sparkline ? { data: item.sparkline } : undefined}
           />
         ))}
       </div>
+      <Disclosure
+        variant="card"
+        summaryClassName="px-4 py-3"
+        contentClassName="border-t border-border px-4 py-4"
+        summary={(
+          <span className="inline-flex items-center gap-2 text-muted-foreground">
+            <Server className="h-4 w-4" aria-hidden="true" />
+            {t('dashboard.cards.systemResources')}
+          </span>
+        )}
+      >
+        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+          {infraMetrics.map((item) => (
+            <MetricCard
+              key={item.label}
+              size="sm"
+              icon={item.icon}
+              label={item.label}
+              value={item.value}
+              valueTestId={item.testId}
+            />
+          ))}
+        </div>
+      </Disclosure>
     </div>
   )
 }
@@ -232,30 +263,32 @@ export function MonitoringGrid({
 export function DashboardInsightsGrid({
   busiestDay,
   fastestTtftModel,
-  topModel,
   totalRequestsInRange
 }: {
   busiestDay: DailyMetric | null
   fastestTtftModel?: ModelUsageMetric
-  topModel?: ModelUsageMetric
   totalRequestsInRange: number
 }) {
   const { t } = useTranslation()
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))]">
-      <InsightCard featured label={t('dashboard.insights.totalRequests')} value={totalRequestsInRange.toLocaleString()} hint={t('dashboard.insights.totalRequestsHint')} />
-      <InsightCard
+    <div className="grid gap-3 lg:grid-cols-[1.4fr_repeat(2,minmax(0,1fr))]">
+      <MetricCard
+        featured
+        size="md"
+        label={t('dashboard.insights.totalRequests')}
+        value={totalRequestsInRange.toLocaleString()}
+        rawValue={totalRequestsInRange}
+        hint={t('dashboard.insights.totalRequestsHint')}
+      />
+      <MetricCard
+        size="sm"
         label={t('dashboard.insights.busiestDay')}
         value={busiestDay ? busiestDay.date : '-'}
         hint={busiestDay ? t('dashboard.insights.busiestDayHint', { value: busiestDay.requestCount.toLocaleString() }) : t('common.noData')}
       />
-      <InsightCard
-        label={t('dashboard.insights.topModel')}
-        value={topModel ? `${topModel.provider}/${topModel.model}` : '-'}
-        hint={topModel ? t('dashboard.insights.topModelHint', { value: topModel.requests.toLocaleString() }) : t('common.noData')}
-      />
-      <InsightCard
+      <MetricCard
+        size="sm"
         label={t('dashboard.insights.fastestTtft')}
         value={fastestTtftModel ? `${fastestTtftModel.provider}/${fastestTtftModel.model}` : '-'}
         hint={fastestTtftModel ? formatLatencyValue(fastestTtftModel.avgTtftMs, t('common.units.ms')) : t('common.noData')}
@@ -267,98 +300,76 @@ export function DashboardInsightsGrid({
 export function DashboardGettingStarted({
   endpointCount,
   providerCount,
-  selectedEndpointLabel,
+  onDismiss
 }: {
   endpointCount: number
   providerCount: number
-  selectedEndpointLabel: string
+  onDismiss?: () => void
 }) {
+  const { t } = useTranslation()
   const steps = [
     {
       title: '先配置 Provider',
       description: providerCount > 0 ? `当前已检测到 ${providerCount} 个 Provider，可直接继续下一步。` : '先在模型供应商里接入至少 1 个上游模型服务。',
       href: '/models',
       cta: '去模型供应商',
-      tone: 'from-indigo-100 to-cyan-100',
     },
     {
       title: '确认默认路由入口',
       description: endpointCount > 0 ? `当前已有 ${endpointCount} 个自定义端点，可继续检查默认映射是否合理。` : '把一个端点或默认路由配置清楚，后续客户端就能稳定接入。',
       href: '/routing',
       cta: '去路由管理',
-      tone: 'from-violet-100 to-fuchsia-100',
     },
     {
       title: '发起第一条真实请求',
       description: '创建 API Key，然后从常用客户端打进来一条请求，让日志、路由和延迟开始有数据。',
       href: '/api-keys',
       cta: '去 API 密钥',
-      tone: 'from-emerald-100 to-cyan-100',
     },
   ]
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
-      <Card className="overflow-hidden border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),hsl(var(--primary)/0.08),rgba(236,253,245,0.8))] shadow-[0_22px_56px_-40px_rgba(15,23,42,0.24)]">
-        <CardContent className="space-y-5 pt-5">
-          <div className="space-y-2">
-            <div className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-              Cold Start Guide
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">当前还是冷启动状态，这是正常的</h3>
-              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                这个仪表盘会在第一条真实请求进来后明显更有价值。现在最适合做的是把 Provider、路由和 API Key 三件事顺次走通。
-              </p>
-            </div>
+    <Card className="relative overflow-hidden">
+      {onDismiss ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDismiss}
+          aria-label={t('common.actions.close')}
+          className="absolute right-3 top-3 h-8 w-8 text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      ) : null}
+      <CardContent className="space-y-5 pt-5">
+        <div className="space-y-2">
+          <div className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+            Cold Start Guide
           </div>
-
-          <div className="grid gap-3 lg:grid-cols-3">
-            {steps.map((step, index) => (
-              <div key={step.title} className="rounded-[1.1rem] border border-white/70 bg-card/88 p-4 shadow-[0_16px_40px_-34px_rgba(15,23,42,0.18)]">
-                <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br text-sm font-semibold text-primary', step.tone)}>
-                  0{index + 1}
-                </div>
-                <h4 className="mt-3 text-sm font-semibold text-foreground">{step.title}</h4>
-                <p className="mt-1.5 text-xs leading-6 text-muted-foreground">{step.description}</p>
-                <Button asChild variant="ghost" size="sm" className="mt-3 h-8 rounded-full px-0 text-primary hover:bg-transparent hover:text-primary/80">
-                  <Link to={step.href}>{step.cta}</Link>
-                </Button>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-white/80 bg-card/96 shadow-[0_20px_48px_-40px_rgba(15,23,42,0.24)]">
-        <CardContent className="space-y-4 pt-5">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/80">Workspace Snapshot</p>
-            <h3 className="mt-2 text-base font-semibold text-foreground">{selectedEndpointLabel}</h3>
-            <p className="mt-1 text-xs leading-6 text-muted-foreground">等第一批流量进来后，这里会逐步展示趋势、模型表现和最近请求。</p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            {[
-              { label: '已配置 Provider', value: String(providerCount) },
-              { label: '自定义端点', value: String(endpointCount) },
-              { label: '建议下一步', value: '发起请求' },
-            ].map((item) => (
-              <div key={item.label} className="rounded-[1rem] bg-secondary/45 px-4 py-3 ring-1 ring-white/70">
-                <div className="text-[11px] font-medium text-muted-foreground">{item.label}</div>
-                <div className="mt-1 text-lg font-semibold text-foreground">{item.value}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-[1rem] border border-dashed border-border/45 bg-secondary/35 px-4 py-3">
-            <p className="text-xs leading-6 text-muted-foreground">
-              如果你还没确定从哪一步开始，优先去 <span className="font-medium text-foreground">API 密钥</span> 创建一个客户端专用 key，再从常用工具发起一条最小请求。
+            <h3 className="text-lg font-semibold text-foreground">先走通这三步</h3>
+            <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+              把 Provider、路由和 API Key 配好后发起一条请求，仪表盘就会开始有数据。
             </p>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          {steps.map((step, index) => (
+            <Card key={step.title} className="p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-sm font-semibold text-primary">
+                0{index + 1}
+              </div>
+              <h4 className="mt-3 text-sm font-semibold text-foreground">{step.title}</h4>
+              <p className="mt-1.5 text-xs leading-6 text-muted-foreground">{step.description}</p>
+              <Button asChild variant="ghost" size="sm" className="mt-3 h-8 rounded-full px-0 text-primary hover:bg-transparent hover:text-primary/80">
+                <Link to={step.href}>{step.cta}</Link>
+              </Button>
+            </Card>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -556,75 +567,6 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
   )
 }
 
-function MonitoringCard({
-  className,
-  compact,
-  featured,
-  icon,
-  label,
-  value,
-  suffix,
-  valueTestId
-}: {
-  className?: string
-  compact?: boolean
-  featured?: boolean
-  icon: ReactNode
-  label: string
-  value: string
-  suffix?: string
-  valueTestId?: string
-}) {
-  return (
-    <div
-      className={cn(
-        'group flex flex-col justify-between rounded-[1.15rem] border border-white/70 bg-card/95 shadow-[0_18px_42px_-36px_rgba(15,23,42,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_48px_-38px_rgba(59,130,246,0.2)] dark:border-white/10 dark:bg-slate-950/90 dark:shadow-[0_18px_42px_-36px_rgba(0,0,0,0.72)] dark:hover:shadow-[0_24px_48px_-38px_rgba(59,130,246,0.28)]',
-        featured
-          ? 'bg-[linear-gradient(135deg,hsl(var(--primary)/0.1),rgba(255,255,255,0.95)_46%,rgba(236,253,245,0.74))] p-5 dark:!bg-none dark:!bg-slate-950/90'
-          : compact
-            ? 'p-3.5'
-            : 'p-5',
-        className
-      )}
-    >
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className={cn('inline-flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary', compact && 'h-6 w-6 rounded-md')}>
-          {icon}
-        </span>
-        <span>{label}</span>
-      </div>
-      <p
-        className={cn(
-          'metric-number mt-3 font-semibold tracking-tight text-foreground',
-          featured ? 'text-3xl' : compact ? 'text-lg' : 'text-2xl'
-        )}
-        data-testid={valueTestId}
-      >
-        {value}
-        {suffix ? <span className="ml-1 text-sm font-normal text-muted-foreground">{suffix}</span> : null}
-      </p>
-    </div>
-  )
-}
-
-function InsightCard({ featured, label, value, hint }: { featured?: boolean; label: string; value: string; hint: string }) {
-  return (
-    <Card
-      className={
-        featured
-          ? 'overflow-hidden bg-[linear-gradient(135deg,rgba(255,255,255,0.98),hsl(var(--primary)/0.08))] dark:!bg-none dark:!bg-card dark:border-white/10 dark:shadow-[0_18px_42px_-36px_rgba(0,0,0,0.72)]'
-          : undefined
-      }
-    >
-      <CardContent className={cn('pt-4', featured && 'pb-4')}>
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-        <p className={cn('mt-2 line-clamp-1 font-semibold text-foreground', featured ? 'metric-number text-2xl tracking-tight' : 'text-base')}>{value}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-      </CardContent>
-    </Card>
-  )
-}
-
 function ChartCard({
   description,
   empty,
@@ -654,7 +596,7 @@ function ChartCard({
         ) : empty ? (
           <PageState
             compact
-            className="min-h-[188px] rounded-[1rem] border border-dashed border-border/45 bg-secondary/35"
+            className="min-h-[188px] rounded-xl border border-dashed border-border/45 bg-muted"
             icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
             title={emptyText ?? t('dashboard.charts.empty')}
             description={description}

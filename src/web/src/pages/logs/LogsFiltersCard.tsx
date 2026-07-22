@@ -14,7 +14,6 @@ import { ApiKeyFilter } from './ApiKeyFilter'
 import type { DateInput, QuickView, StatusFilter } from './shared'
 
 interface LogsFiltersCardProps {
-  total: number
   activeFilters: Array<{ key: string; label: string; onRemove: () => void }>
   filtersExpanded: boolean
   setFiltersExpanded: (next: boolean | ((prev: boolean) => boolean)) => void
@@ -44,7 +43,6 @@ interface LogsFiltersCardProps {
 export function LogsFiltersCard(props: LogsFiltersCardProps) {
   const { t } = useTranslation()
   const {
-    total,
     activeFilters,
     filtersExpanded,
     setFiltersExpanded,
@@ -74,7 +72,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
   return (
     <Card
       data-testid="logs-filters-card"
-      className="overflow-hidden rounded-[1.25rem] border border-white/70 bg-card/95 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.24)]"
+      className="overflow-hidden"
     >
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-col gap-3">
@@ -82,9 +80,6 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold text-foreground">{t('logs.filtersTitle')}</p>
-                <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
-                  {t('logs.summary.total', { value: total.toLocaleString() })}
-                </Badge>
                 {activeFilters.length > 0 && (
                   <Badge variant="outline" className="rounded-full border-transparent bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
                     {t('common.filters.activeCount', { count: activeFilters.length })}
@@ -121,7 +116,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
           </div>
 
           <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="flex min-h-10 items-center rounded-[0.9rem] bg-secondary/70 px-3 py-2">
+            <div className="flex min-h-10 items-center rounded-lg bg-secondary px-3 py-2">
               {activeFilters.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-2">
                   {activeFilters.map((f) => (
@@ -130,7 +125,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
                       variant="outline"
                       role="button"
                       tabIndex={0}
-                      className="flex cursor-pointer items-center gap-1 rounded-full border border-border bg-card/90 px-2.5 py-1 text-[11px] font-semibold text-foreground/90 transition hover:bg-secondary/80"
+                      className="flex cursor-pointer items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground/90 transition hover:bg-secondary"
                       onClick={f.onRemove}
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f.onRemove() } }}
                     >
@@ -151,7 +146,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 rounded-[0.9rem] bg-secondary/70 px-2 py-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-secondary px-2 py-1.5">
             {(['all', 'errors', 'today', 'anthropic', 'openai'] as QuickView[]).map((view) => (
               <Button
                 key={view}
@@ -159,7 +154,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
                 size="sm"
                 className={cn(
                   'h-7 rounded-full px-3 text-[11px] font-semibold transition-colors',
-                  activeQuickView === view ? 'bg-card text-foreground shadow-[0_12px_28px_-24px_rgba(15,23,42,0.32)]' : 'text-muted-foreground'
+                  activeQuickView === view ? 'bg-card text-foreground shadow-[var(--surface-shadow)]' : 'text-muted-foreground'
                 )}
                 onClick={() => applyQuickView(view)}
               >
@@ -169,7 +164,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
           </div>
         </div>
         {filtersExpanded && (
-          <div className="mt-3 grid gap-3 rounded-[1rem] bg-secondary/45 p-3 md:grid-cols-2 xl:grid-cols-4 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="mt-3 grid gap-3 rounded-xl bg-secondary p-3 md:grid-cols-2 xl:grid-cols-4 animate-in fade-in slide-in-from-top-2 duration-200">
             <div className="space-y-2">
               <Label>{t('logs.filters.provider')}</Label>
               <Select value={providerFilter} onValueChange={setProviderFilter}>
@@ -261,7 +256,7 @@ function FilterSummary({
   value: string
 }) {
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/92 px-2.5 py-1 text-[11px] text-muted-foreground shadow-[0_10px_24px_-22px_rgba(15,23,42,0.28)]">
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground">
       <span>{label}</span>
       <span className="metric-number font-semibold text-foreground">{value}</span>
     </div>

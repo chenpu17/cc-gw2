@@ -2,6 +2,7 @@ import { Download, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_VISIBLE_COLUMNS,
@@ -19,7 +20,6 @@ interface LogsPageActionsProps {
   onToggleColumn: (column: LogColumnId) => void
   refreshing: boolean
   rowDensity: RowDensity
-  total: number
   visibleColumns: LogColumnId[]
   visibleColumnSet: ReadonlySet<LogColumnId>
 }
@@ -34,7 +34,6 @@ export function LogsPageActions({
   onToggleColumn,
   refreshing,
   rowDensity,
-  total,
   visibleColumns,
   visibleColumnSet
 }: LogsPageActionsProps) {
@@ -44,32 +43,16 @@ export function LogsPageActions({
   return (
     <div className="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-center">
       <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:w-auto xl:flex-nowrap">
-        <div className="flex w-full items-center gap-1 overflow-x-auto rounded-full bg-secondary p-1 sm:w-auto">
-          <button
-            type="button"
-            onClick={() => onSetDensity('comfortable')}
-            className={cn(
-              'inline-flex h-8 flex-1 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-xs font-medium transition-all sm:flex-none',
-              rowDensity === 'comfortable'
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-            )}
-          >
-            {t('logs.table.density.comfortable')}
-          </button>
-          <button
-            type="button"
-            onClick={() => onSetDensity('compact')}
-            className={cn(
-              'inline-flex h-8 flex-1 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-xs font-medium transition-all sm:flex-none',
-              rowDensity === 'compact'
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-            )}
-          >
-            {t('logs.table.density.compact')}
-          </button>
-        </div>
+        <SegmentedControl
+          block
+          className="w-full overflow-x-auto sm:w-auto"
+          value={rowDensity}
+          onChange={onSetDensity}
+          options={[
+            { value: 'comfortable', label: t('logs.table.density.comfortable') },
+            { value: 'compact', label: t('logs.table.density.compact') }
+          ]}
+        />
 
         <Popover>
           <PopoverTrigger asChild>
@@ -125,10 +108,7 @@ export function LogsPageActions({
         </Button>
       </div>
 
-      <div className="flex w-full items-center justify-between gap-3 xl:w-auto xl:justify-start">
-        <span className="text-xs text-muted-foreground sm:text-sm">
-          {t('logs.summary.total', { value: total.toLocaleString() })}
-        </span>
+      <div className="flex w-full items-center xl:w-auto">
         <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing} className="shrink-0">
           <RefreshCw className={cn('mr-2 h-4 w-4', refreshing && 'animate-spin')} />
           {refreshing ? t('common.actions.refreshing') : t('logs.actions.manualRefresh')}

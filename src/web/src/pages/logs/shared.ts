@@ -11,13 +11,8 @@ export type LogColumnId =
   | 'requestedModel'
   | 'routedModel'
   | 'apiKey'
-  | 'inputTokens'
-  | 'cacheReadTokens'
-  | 'cacheCreationTokens'
-  | 'outputTokens'
-  | 'latency'
-  | 'ttft'
-  | 'tpot'
+  | 'tokens'
+  | 'duration'
   | 'status'
   | 'error'
 
@@ -29,13 +24,8 @@ export const DEFAULT_VISIBLE_COLUMNS: LogColumnId[] = [
   'requestedModel',
   'routedModel',
   'apiKey',
-  'inputTokens',
-  'cacheReadTokens',
-  'cacheCreationTokens',
-  'outputTokens',
-  'latency',
-  'ttft',
-  'tpot',
+  'tokens',
+  'duration',
   'status',
   'error'
 ]
@@ -46,13 +36,8 @@ export const LOG_COLUMN_ORDER: LogColumnId[] = [
   'requestedModel',
   'routedModel',
   'apiKey',
-  'inputTokens',
-  'cacheReadTokens',
-  'cacheCreationTokens',
-  'outputTokens',
-  'latency',
-  'ttft',
-  'tpot',
+  'tokens',
+  'duration',
   'status',
   'error'
 ]

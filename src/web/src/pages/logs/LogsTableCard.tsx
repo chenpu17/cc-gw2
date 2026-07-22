@@ -21,6 +21,7 @@ interface LogsTableCardProps {
   logsPending: boolean
   items: LogRecord[]
   activeFiltersCount: number
+  total: number
   handleResetFilters: () => void
   handleRetry: () => void
   providerLabelMap: Map<string, string>
@@ -45,6 +46,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
     logsPending,
     items,
     activeFiltersCount,
+    total,
     handleResetFilters,
     handleRetry,
     providerLabelMap,
@@ -66,6 +68,8 @@ export function LogsTableCard(props: LogsTableCardProps) {
           <div className="space-y-1">
             <p className="text-sm font-semibold">{t('logs.title')}</p>
             <p className="text-xs text-muted-foreground">
+              <span className="metric-number">{t('logs.summary.total', { value: total.toLocaleString() })}</span>
+              <span className="mx-1.5 text-muted-foreground/50">·</span>
               {t('logs.actions.visibleCount', { count: visibleColumnCount - 2 })}
             </p>
           </div>
@@ -81,7 +85,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
         </div>
         <div className="relative">
           <div ref={tableScrollRef} className="overflow-x-auto">
-            <table className="w-full min-w-[1480px] text-sm">
+            <table className="w-full min-w-[1180px] text-sm">
               <thead className="border-b border-border/50 bg-secondary/50">
                 <tr>
                   <th className="sticky left-0 z-20 bg-secondary px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -92,13 +96,8 @@ export function LogsTableCard(props: LogsTableCardProps) {
                   {visibleColumnSet.has('requestedModel') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.requestedModel')}</th>}
                   {visibleColumnSet.has('routedModel') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.routedModel')}</th>}
                   {visibleColumnSet.has('apiKey') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.apiKey')}</th>}
-                  {visibleColumnSet.has('inputTokens') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.inputTokens')}</th>}
-                  {visibleColumnSet.has('cacheReadTokens') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.cacheReadTokens')}</th>}
-                  {visibleColumnSet.has('cacheCreationTokens') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.cacheCreationTokens')}</th>}
-                  {visibleColumnSet.has('outputTokens') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.outputTokens')}</th>}
-                  {visibleColumnSet.has('latency') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.latency')}</th>}
-                  {visibleColumnSet.has('ttft') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.ttft')}</th>}
-                  {visibleColumnSet.has('tpot') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.tpot')}</th>}
+                  {visibleColumnSet.has('tokens') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.tokens')}</th>}
+                  {visibleColumnSet.has('duration') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.duration')}</th>}
                   {visibleColumnSet.has('status') && <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.status')}</th>}
                   {visibleColumnSet.has('error') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.error')}</th>}
                   <th className="sticky right-0 z-20 bg-secondary px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">

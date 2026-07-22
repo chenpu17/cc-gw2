@@ -8,19 +8,21 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { MetricCard } from '@/components/ui/metric-card'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { Copy, Eye, EyeOff, Key, LayoutGrid, List, Shield, Trash2 } from 'lucide-react'
+import { Copy, Eye, EyeOff, Key, LayoutGrid, List, Shield, Trash2, X } from 'lucide-react'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import { RANGE_OPTIONS } from './shared'
 
-export function ApiKeysQuickStartSection() {
+export function ApiKeysQuickStartSection({ onDismiss }: { onDismiss?: () => void }) {
   const { t } = useTranslation()
 
   return (
-    <div className="rounded-[1.15rem] border border-border/55 bg-card/92 p-3 shadow-[var(--surface-shadow)] sm:p-3.5">
+    <Card className="relative p-3 sm:p-3.5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="max-w-md space-y-1">
+        <div className="max-w-md space-y-1 pr-8">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-primary/75">Recommended</p>
           <h2 className="text-sm font-semibold text-foreground">{t('apiKeys.quickStart.title')}</h2>
           <p className="text-xs leading-5 text-muted-foreground">{t('apiKeys.quickStart.description')}</p>
@@ -45,7 +47,18 @@ export function ApiKeysQuickStartSection() {
           </div>
         </div>
       </div>
-    </div>
+      {onDismiss ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute right-1.5 top-1.5 h-7 w-7 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          onClick={onDismiss}
+          aria-label={t('common.actions.close')}
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      ) : null}
+    </Card>
   )
 }
 
@@ -74,37 +87,22 @@ export function ApiKeysAnalyticsSection({
 
   return (
     <PageSection
-      eyebrow="Usage"
       title={t('apiKeys.analytics.title')}
       description={t('apiKeys.analytics.description', { days: rangeDays })}
       actions={
-        <div className="flex w-full items-center gap-1 overflow-x-auto rounded-full bg-secondary p-1 sm:w-auto">
-          {RANGE_OPTIONS.map((option) => {
-            const active = rangeDays === option.value
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => onRangeChange(option.value)}
-                className={cn(
-                  'inline-flex h-8 shrink-0 items-center rounded-full px-3.5 text-xs font-medium transition-all',
-                  active
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
-                )}
-              >
-                {t(option.labelKey)}
-              </button>
-            )
-          })}
-        </div>
+        <SegmentedControl
+          className="w-full overflow-x-auto sm:w-auto"
+          value={rangeDays}
+          onChange={onRangeChange}
+          options={RANGE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))}
+        />
       }
     >
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <MetricCard label={t('apiKeys.analytics.cards.total')} value={totalKeysValue} />
-          <MetricCard label={t('apiKeys.analytics.cards.enabled')} value={enabledKeysValue} />
-          <MetricCard label={t('apiKeys.analytics.cards.active', { days: rangeDays })} value={activeKeysValue} />
+          <MetricCard label={t('apiKeys.analytics.cards.total')} value={totalKeysValue} size="sm" />
+          <MetricCard label={t('apiKeys.analytics.cards.enabled')} value={enabledKeysValue} size="sm" />
+          <MetricCard label={t('apiKeys.analytics.cards.active', { days: rangeDays })} value={activeKeysValue} size="sm" />
         </div>
         <div className="grid gap-6 lg:grid-cols-2">
           <AnalyticsChartCard
@@ -142,13 +140,10 @@ export function ApiKeysInventorySection({
   onReveal,
   onStatusFilterChange,
   onToggleEnabled,
-  restrictedCount,
   revealedKeys,
   search,
   statusFilter,
-  unrestrictedCount,
   viewMode,
-  wildcardCount,
   onViewModeChange,
   onCreateKey
 }: {
@@ -166,13 +161,10 @@ export function ApiKeysInventorySection({
   onReveal: (id: number) => void
   onStatusFilterChange: (value: 'all' | 'enabled' | 'disabled') => void
   onToggleEnabled: (id: number, enabled: boolean) => void
-  restrictedCount: number
   revealedKeys: Map<number, string>
   search: string
   statusFilter: 'all' | 'enabled' | 'disabled'
-  unrestrictedCount: number
   viewMode: 'cards' | 'compact'
-  wildcardCount: number
   onViewModeChange: (value: 'cards' | 'compact') => void
   onCreateKey: () => void
 }) {
@@ -180,74 +172,32 @@ export function ApiKeysInventorySection({
 
   return (
     <PageSection
-      eyebrow="Inventory"
       title={t('apiKeys.list.title')}
       description={hasWildcard ? t('apiKeys.wildcardHint') : undefined}
       actions={
         <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end">
-          <div className="flex items-center gap-2 rounded-full bg-secondary p-1">
-            <button
-              type="button"
-              onClick={() => onViewModeChange('cards')}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-all',
-                viewMode === 'cards'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
-              )}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />
-              {t('apiKeys.views.cards')}
-            </button>
-            <button
-              type="button"
-              onClick={() => onViewModeChange('compact')}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-all',
-                viewMode === 'compact'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
-              )}
-            >
-              <List className="h-3.5 w-3.5" aria-hidden="true" />
-              {t('apiKeys.views.compact')}
-            </button>
-          </div>
+          <SegmentedControl
+            value={viewMode}
+            onChange={onViewModeChange}
+            options={[
+              { value: 'cards', label: t('apiKeys.views.cards'), icon: <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" /> },
+              { value: 'compact', label: t('apiKeys.views.compact'), icon: <List className="h-3.5 w-3.5" aria-hidden="true" /> }
+            ]}
+          />
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">{`${filteredKeys.length}/${keys.length}`}</Badge>
-            <Badge variant="outline">{t('apiKeys.summary.wildcard', { count: wildcardCount })}</Badge>
-            <Badge variant="outline">{t('apiKeys.summary.restricted', { count: restrictedCount })}</Badge>
           </div>
         </div>
       }
     >
       <div className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-3">
-          <InventoryStatCard
-            label={t('apiKeys.list.title')}
-            value={`${filteredKeys.length}/${keys.length}`}
-            helper={t('apiKeys.filters.searchPlaceholder')}
-          />
-          <InventoryStatCard
-            label={t('apiKeys.summary.wildcard', { count: wildcardCount })}
-            value={String(wildcardCount)}
-            helper={t('apiKeys.wildcardHint')}
-          />
-          <InventoryStatCard
-            label={t('apiKeys.summary.restricted', { count: restrictedCount })}
-            value={String(restrictedCount)}
-            helper={t('apiKeys.summary.unrestricted', { count: unrestrictedCount })}
-          />
-        </div>
-
-        <div className="grid gap-3 rounded-xl bg-secondary p-4 lg:grid-cols-[minmax(0,0.82fr)_auto] xl:grid-cols-[minmax(0,0.95fr)_auto_auto]">
+        <div className="grid gap-3 rounded-xl bg-secondary p-4 sm:grid-cols-[minmax(0,1fr)_auto]">
           <Input
             value={search}
             onChange={(event) => onFilterChange(event.target.value)}
             placeholder={t('apiKeys.filters.searchPlaceholder')}
-            className="lg:max-w-[680px]"
           />
-          <div className="flex min-w-max items-center gap-1 overflow-x-auto rounded-full bg-background p-1 lg:justify-self-start xl:justify-self-center">
+          <div className="flex min-w-max items-center gap-1 overflow-x-auto rounded-full bg-background p-1 sm:justify-self-end">
             {(['all', 'enabled', 'disabled'] as const).map((value) => (
               <button
                 key={value}
@@ -264,17 +214,13 @@ export function ApiKeysInventorySection({
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap items-center gap-2 lg:col-span-2 xl:col-span-1 xl:justify-self-end">
-            <Badge variant="secondary">{t('apiKeys.summary.wildcard', { count: wildcardCount })}</Badge>
-            <Badge variant="secondary">{t('apiKeys.summary.restricted', { count: restrictedCount })}</Badge>
-          </div>
         </div>
 
         {keys.length === 0 ? (
           <PageState
             compact
             tone="primary"
-            className="rounded-[1.2rem] border-border/30 bg-background/50"
+            className="rounded-xl border border-dashed border-border/40 bg-background"
             icon={<Key className="h-5 w-5" aria-hidden="true" />}
             title={t('apiKeys.list.emptyTitle')}
             description={t('apiKeys.list.empty')}
@@ -288,7 +234,7 @@ export function ApiKeysInventorySection({
           <PageState
             compact
             tone="primary"
-            className="rounded-[1.2rem] border-border/30 bg-background/50"
+            className="rounded-xl border border-dashed border-border/40 bg-background"
             icon={<LayoutGrid className="h-5 w-5" aria-hidden="true" />}
             title={t('apiKeys.list.emptyFilteredTitle')}
             description={t('apiKeys.list.emptyFiltered')}
@@ -368,7 +314,7 @@ function CompactApiKeysTable({
   const { t } = useTranslation()
 
   return (
-    <Card className="overflow-hidden border border-border/65 bg-card/96 shadow-[0_18px_42px_rgba(15,23,42,0.06)] ring-1 ring-white/70">
+    <Card className="overflow-hidden">
       <div className="overflow-x-auto">
         <Table className="min-w-[980px]">
           <TableHeader>
@@ -520,8 +466,8 @@ function CompactApiKeysTable({
 
 function QuickStartCard({ description, icon, title }: { description: string; icon: ReactNode; title: string }) {
   return (
-    <div className="w-[220px] shrink-0 rounded-[1rem] border border-border/45 bg-secondary/72 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:border-white/10 dark:bg-slate-900/[0.52] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:w-auto">
-      <div className="flex h-7 w-7 items-center justify-center rounded-[0.8rem] bg-background/85 text-primary dark:bg-slate-950/[0.62] sm:h-8 sm:w-8 sm:rounded-[0.85rem]">
+    <div className="w-[220px] shrink-0 rounded-xl border border-border bg-secondary p-3 md:w-auto">
+      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-background text-primary sm:h-8 sm:w-8 sm:rounded-lg">
         {icon}
       </div>
       <p className="mt-2 text-[12px] font-semibold leading-5 text-foreground sm:mt-2.5 sm:text-[13px]">{title}</p>
@@ -560,7 +506,7 @@ function ApiKeyCard({
   return (
     <Card
       data-testid="api-key-card"
-      className="overflow-hidden border border-border/65 bg-card/96 shadow-[0_18px_42px_rgba(15,23,42,0.06)] ring-1 ring-white/70"
+      className="overflow-hidden"
     >
       <CardContent className="space-y-4 pt-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -713,27 +659,6 @@ function ApiKeyCard({
   )
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <Card className="border border-border/70 bg-secondary/70 shadow-none ring-1 ring-white/70">
-      <CardContent className="pt-4">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-        <p className="metric-number mt-2 text-3xl font-semibold text-foreground">{value}</p>
-      </CardContent>
-    </Card>
-  )
-}
-
-function InventoryStatCard({ helper, label, value }: { helper: string; label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-card px-4 py-3 shadow-[var(--surface-shadow)]">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="metric-number mt-2 text-xl font-semibold text-foreground">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
-    </div>
-  )
-}
-
 function KeyMetaChip({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg bg-secondary px-3 py-2">
@@ -769,7 +694,7 @@ function AnalyticsChartCard({
         ) : empty ? (
           <PageState
             compact
-            className="min-h-[280px] rounded-[1.1rem] border-border/30 bg-background/50"
+            className="min-h-[280px] rounded-xl border border-dashed border-border/40 bg-background"
             icon={<Shield className="h-5 w-5" aria-hidden="true" />}
             title={emptyText}
             description={t('apiKeys.analytics.emptyHint')}

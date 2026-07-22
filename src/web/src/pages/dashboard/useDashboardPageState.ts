@@ -28,6 +28,10 @@ export function useDashboardPageState() {
     storageKeys.dashboard.endpointFilter,
     'all'
   )
+  const [guideDismissed, setGuideDismissed] = usePersistentState<boolean>(
+    storageKeys.dashboard.guideDismissed,
+    false
+  )
   const [compacting, setCompacting] = useState(false)
   const endpointParam = endpointFilter === 'all' ? undefined : endpointFilter
 
@@ -203,7 +207,6 @@ export function useDashboardPageState() {
     }
     return best
   }, null)
-  const topModel = models[0]
   const fastestTtftModel = models
     .filter((item) => item.avgTtftMs != null && item.avgTtftMs > 0)
     .sort((a, b) => (a.avgTtftMs ?? Number.POSITIVE_INFINITY) - (b.avgTtftMs ?? Number.POSITIVE_INFINITY))[0]
@@ -374,6 +377,7 @@ export function useDashboardPageState() {
     dbSizeDisplay,
     endpointFilter,
     fastestTtftModel,
+    guideDismissed,
     handleCompact,
     handleRefresh,
     bootstrapError,
@@ -388,8 +392,8 @@ export function useDashboardPageState() {
     recentLogs,
     selectedEndpointLabel,
     setEndpointFilter,
+    setGuideDismissed,
     status,
-    topModel,
     totalRequestsInRange,
     busiestDay,
     ttftOption,

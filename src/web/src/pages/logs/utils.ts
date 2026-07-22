@@ -156,22 +156,16 @@ export function getSessionRowTone(sessionId: string | null | undefined) {
 
   const hash = hashSessionId(normalized)
   const hue = SESSION_ROW_HUES[hash % SESSION_ROW_HUES.length]
-  const accent = `hsl(${hue} 74% 46%)`
+  const accent = `hsl(${hue} 74% 46% / 0.55)`
 
+  // Subtle session marker only: a thin colored left bar on the first cell.
+  // No full-row background tint — same-session rows stay visually grouped via
+  // the shared hue without the heavy purple wash.
   return {
     sessionId: normalized,
     colorKey: `${hue}`,
-    rowStyle: {
-      backgroundColor: `hsl(${hue} 74% 46% / 0.05)`
-    },
-    hoverStyle: {
-      backgroundColor: `hsl(${hue} 74% 46% / 0.09)`
-    },
-    stickyStyle: {
-      backgroundColor: `hsl(${hue} 74% 46% / 0.08)`
-    },
     accentStyle: {
-      borderLeft: `3px solid ${accent}`
+      borderLeft: `2px solid ${accent}`
     }
   }
 }

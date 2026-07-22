@@ -5,7 +5,6 @@ import {
   ChevronDown,
   Copy,
   FileText,
-  Gauge,
   Github,
   KeyRound,
   Languages,
@@ -23,12 +22,10 @@ import dashboardShotZh from '../../../../docs/assets/compare-pen/live-dashboard.
 import logsShotZh from '../../../../docs/assets/compare-pen/live-logs.png'
 import modelsShotZh from '../../../../docs/assets/compare-pen/live-model-management.png'
 import apiKeysShotZh from '../../../../docs/assets/compare-pen/live-api-keys.png'
-import profilerShotZh from '../../../../docs/assets/compare-pen/live-events.png'
 import dashboardShotEn from '../../../../docs/assets/compare-pen/live-en-dashboard.png'
 import logsShotEn from '../../../../docs/assets/compare-pen/live-en-logs.png'
 import modelsShotEn from '../../../../docs/assets/compare-pen/live-en-model-management.png'
 import apiKeysShotEn from '../../../../docs/assets/compare-pen/live-en-api-keys.png'
-import profilerShotEn from '../../../../docs/assets/compare-pen/live-en-events.png'
 import packageJson from '../../../../package.json' with { type: 'json' }
 
 const packageVersion = (packageJson as { version?: string }).version ?? '0.0.0'
@@ -155,8 +152,8 @@ const COPY = {
       en: 'When things break, see the whole conversation',
     },
     description: {
-      zh: '不只是一条请求的耗时。Profiler 把多轮对话的每一 turn 串成 session，TTFT、TPOT、token 用量全都记下来。',
-      en: 'Not just a single request. The Profiler stitches every turn of a multi-turn conversation into one session, with TTFT, TPOT, and token counts all recorded.',
+      zh: '不只是看一条请求成功没成功。完整的请求与响应都被保留下来，跨协议转换哪里出了问题，两侧一对照就清楚。',
+      en: 'More than a success or failure flag. Full requests and responses are retained, so when cross-protocol translation goes wrong you can diff both sides and see exactly where.',
     },
     payload: {
       title: { zh: '四段 payload，分开存', en: 'Four payloads, stored separately' },
@@ -180,14 +177,6 @@ const COPY = {
         body: {
           zh: '按 endpoint / Key / 状态码筛选，定位失败请求只要几秒。可选保留完整 payload。',
           en: 'Filter by endpoint, key, or status code. Optional full-payload capture.',
-        },
-      },
-      {
-        icon: Gauge,
-        title: { zh: 'Profiler', en: 'Profiler' },
-        body: {
-          zh: '按 session 聚合多轮 turn。每轮 TTFT / TPOT / tokens 一目了然，慢的那 turn 一眼能挑出。',
-          en: 'Multi-turn sessions, one row per turn. TTFT, TPOT, tokens — spot the slow turn instantly.',
         },
       },
       {
@@ -295,8 +284,8 @@ const COPY = {
     eyebrow: { zh: '控制台', en: 'Console' },
     title: { zh: '不是摆设，是你每天用的地方', en: 'Not for show — you’ll be in here daily' },
     description: {
-      zh: '请求进来之后，趋势、日志、路由、Key、Profiler 都在同一个台子里。',
-      en: 'Once requests start flowing, trends, logs, routing, keys, and profiler all live under one roof.',
+      zh: '请求进来之后，趋势、日志、路由、Key 都在同一个台子里。',
+      en: 'Once requests start flowing, trends, logs, routing, and keys all live under one roof.',
     },
   },
   fit: {
@@ -358,8 +347,8 @@ const COPY = {
       {
         q: { zh: '它和 LiteLLM、One API 这些有啥区别？', en: 'How is it different from LiteLLM or One API?' },
         a: {
-          zh: '主要三点：(1) 默认本地优先、零云依赖；(2) 跨协议三端六方向真正双向转换，包括 SSE 流式；(3) 内置按 session 聚合的 Profiler 和四段 payload 存储，专门给跨协议排查用。',
-          en: 'Three things: (1) local-first by default, zero cloud dependency; (2) true bidirectional translation across Anthropic, OpenAI Chat, and OpenAI Responses — streaming included; (3) a built-in Profiler that groups multi-turn sessions, plus four-segment payload storage purpose-built for cross-protocol debugging.',
+          zh: '主要三点：(1) 默认本地优先、零云依赖；(2) 跨协议三端六方向真正双向转换，包括 SSE 流式；(3) 内置四段 payload 存储，专门给跨协议排查用。',
+          en: 'Three things: (1) local-first by default, zero cloud dependency; (2) true bidirectional translation across Anthropic, OpenAI Chat, and OpenAI Responses — streaming included; (3) built-in four-segment payload storage purpose-built for cross-protocol debugging.',
         },
       },
       {
@@ -432,7 +421,6 @@ const consoleTabs = [
   { id: 'logs', shot: { zh: logsShotZh, en: logsShotEn }, label: { zh: '请求日志', en: 'Logs' }, blurb: { zh: '按 endpoint / Key / 状态码筛，几秒定位。', en: 'Filter by endpoint, key, or status. Find issues in seconds.' } },
   { id: 'routing', shot: { zh: modelsShotZh, en: modelsShotEn }, label: { zh: '模型路由', en: 'Routing' }, blurb: { zh: '别名、通配匹配、fallback 链全在 UI 里维护。', en: 'Aliases, wildcards, and fallback chains — all in the UI.' } },
   { id: 'keys', shot: { zh: apiKeysShotZh, en: apiKeysShotEn }, label: { zh: 'API Keys', en: 'API Keys' }, blurb: { zh: '按客户端发独立 Key，可设并发上限。', en: 'Per-client keys with concurrency caps.' } },
-  { id: 'profiler', shot: { zh: profilerShotZh, en: profilerShotEn }, label: { zh: 'Profiler & Events', en: 'Profiler & Events' }, blurb: { zh: '多轮对话按 session 聚合，事件流可追溯。', en: 'Sessions group multi-turn calls. Events keep an audit trail.' } },
 ]
 
 // ---------- atoms ----------

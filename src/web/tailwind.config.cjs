@@ -68,6 +68,13 @@ module.exports = {
         'fade-in': 'fade-in 0.2s ease-out',
         'scale-in': 'scale-in 0.2s ease-out'
       },
+      transitionDuration: {
+        '160': '160ms',
+        '240': '240ms'
+      },
+      transitionTimingFunction: {
+        surface: 'cubic-bezier(0.22, 1, 0.36, 1)'
+      },
       keyframes: {
         'accordion-down': {
           from: { height: '0' },

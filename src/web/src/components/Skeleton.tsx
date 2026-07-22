@@ -6,7 +6,7 @@ export function Skeleton({ className }: { className?: string }) {
 
 export function StatCardSkeleton() {
   return (
-    <div className="space-y-3 rounded-xl bg-card/86 p-6 shadow-[var(--surface-shadow)]">
+    <div className="space-y-3 rounded-xl bg-card p-6 shadow-[var(--surface-shadow)]">
       <div className="flex items-center justify-between">
         <Skeleton className="h-3 w-24" />
         <Skeleton className="h-10 w-10 rounded-xl" />
@@ -18,7 +18,7 @@ export function StatCardSkeleton() {
 
 export function ChartSkeleton() {
   return (
-    <div className="space-y-4 rounded-xl bg-card/86 p-6 shadow-[var(--surface-shadow)]">
+    <div className="space-y-4 rounded-xl bg-card p-6 shadow-[var(--surface-shadow)]">
       <div className="space-y-2">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-3 w-48" />

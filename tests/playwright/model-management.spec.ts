@@ -46,10 +46,13 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
 
   const providerDrawer = page.locator('aside').filter({ hasText: '新增 Provider' })
   await expect(providerDrawer).toBeVisible()
-  await providerDrawer.getByPlaceholder('如 openai').fill(providerId)
   await providerDrawer.getByRole('button', { name: /OpenAI/ }).click()
+  await providerDrawer.getByRole('button', { name: '下一步' }).click()
+  await providerDrawer.getByPlaceholder('如 openai').fill(providerId)
   await providerDrawer.getByPlaceholder('https://api.example.com/v1').fill(providerBaseUrl)
+  await providerDrawer.getByRole('button', { name: '下一步' }).click()
   await providerDrawer.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
+  await providerDrawer.getByRole('button', { name: '下一步' }).click()
   await providerDrawer.getByRole('button', { name: '新增模型' }).click()
   await providerDrawer.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-playwright')
   await providerDrawer.getByLabel('设为默认模型').check()
@@ -74,6 +77,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   await providerCard.getByRole('button', { name: '编辑' }).click()
   const editProviderDrawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
   await expect(editProviderDrawer).toBeVisible()
+  await editProviderDrawer.getByRole('button', { name: '下一步' }).click()
   await editProviderDrawer.getByPlaceholder('如 官方主账号').fill('Playwright Provider Updated')
   await editProviderDrawer.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText('已更新 Provider：Playwright Provider Updated')).toBeVisible()
@@ -195,10 +199,13 @@ test('model management supports provider edit, delete, route reset, and preset d
   const providerBaseUrl = `http://127.0.0.1:${harness.stubPort}`
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const drawer = page.locator('aside').filter({ hasText: '新增 Provider' })
-  await drawer.getByPlaceholder('如 openai').fill(providerId)
   await drawer.getByRole('button', { name: /OpenAI/ }).click()
+  await drawer.getByRole('button', { name: '下一步' }).click()
+  await drawer.getByPlaceholder('如 openai').fill(providerId)
   await drawer.getByPlaceholder('https://api.example.com/v1').fill(providerBaseUrl)
+  await drawer.getByRole('button', { name: '下一步' }).click()
   await drawer.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
+  await drawer.getByRole('button', { name: '下一步' }).click()
   await drawer.getByRole('button', { name: '新增模型' }).click()
   await drawer.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-edit')
   await drawer.getByRole('button', { name: '保存' }).click()
@@ -208,6 +215,7 @@ test('model management supports provider edit, delete, route reset, and preset d
   )
   await providerCard.getByRole('button', { name: '编辑' }).click()
   const editDrawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
+  await editDrawer.getByRole('button', { name: '下一步' }).click()
   await editDrawer.getByPlaceholder('如 官方主账号').fill(`${providerId}-edited`)
   await editDrawer.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText(`已更新 Provider：${providerId}-edited`)).toBeVisible()
@@ -272,6 +280,9 @@ test('routing management can switch anthropic validation modes', async ({ page, 
 
   await page.goto(`${baseUrl}/ui/routing`)
   await expect(page.getByRole('heading', { name: '路由管理', level: 1 })).toBeVisible()
+
+  // Endpoint validation/compatibility policy is collapsed by default; expand it.
+  await page.locator('summary').filter({ hasText: 'Anthropic 请求校验' }).click()
 
   const validationMode = page.getByRole('combobox').first()
 

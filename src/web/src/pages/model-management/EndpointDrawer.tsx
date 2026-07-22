@@ -180,9 +180,9 @@ export function EndpointDrawer({
         onClick={onClose}
       />
 
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-border/45 bg-background/96 shadow-[var(--surface-shadow-lg)] backdrop-blur">
+      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-border bg-background shadow-[var(--surface-shadow-lg)] backdrop-blur">
         <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between border-b border-border/45 bg-secondary/45 p-6 backdrop-blur-sm">
+          <div className="flex items-center justify-between border-b border-border bg-secondary p-6">
             <div className="space-y-1">
               <h2 className="text-lg font-semibold tracking-[-0.02em]">
                 {endpoint ? t('modelManagement.editEndpoint') : t('modelManagement.createEndpoint')}
@@ -191,7 +191,7 @@ export function EndpointDrawer({
                 {endpoint ? endpoint.id : t('modelManagement.endpointRoutingHint')}
               </p>
             </div>
-            <Button variant="ghost" size="sm" onClick={onClose} className="rounded-2xl bg-white/70">
+            <Button variant="ghost" size="sm" onClick={onClose} className="rounded-2xl bg-secondary hover:bg-accent">
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -330,7 +330,7 @@ export function EndpointDrawer({
             ) : null}
           </form>
 
-          <div className="flex gap-3 border-t border-border/45 bg-secondary/45 p-6 backdrop-blur-sm">
+          <div className="flex gap-3 border-t border-border bg-secondary p-6">
             <Button variant="outline" className="flex-1" onClick={onClose} disabled={isSubmitting}>
               {t('common.cancel')}
             </Button>

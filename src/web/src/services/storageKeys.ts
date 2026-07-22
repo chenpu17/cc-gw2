@@ -2,7 +2,8 @@ export const storageKeys = {
   themeMode: 'cc-gw-theme',
   language: 'cc-gw-language',
   dashboard: {
-    endpointFilter: 'cc-gw.dashboard.endpoint-filter'
+    endpointFilter: 'cc-gw.dashboard.endpoint-filter',
+    guideDismissed: 'cc-gw.dashboard.guide-dismissed'
   },
   logs: {
     visibleColumns: 'cc-gw.logs.visible-columns',
@@ -21,7 +22,9 @@ export const storageKeys = {
     rangeDays: 'cc-gw.api-keys.range-days',
     search: 'cc-gw.api-keys.search',
     statusFilter: 'cc-gw.api-keys.status-filter',
-    viewMode: 'cc-gw.api-keys.inventory-view-mode'
+    viewMode: 'cc-gw.api-keys.inventory-view-mode',
+    activeTab: 'cc-gw.api-keys.active-tab',
+    quickStartDismissed: 'cc-gw.api-keys.quick-start-dismissed'
   },
   modelManagement: {
     recentRouteTargets: 'cc-gw.model-management.recent-route-targets'

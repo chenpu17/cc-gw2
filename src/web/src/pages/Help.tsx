@@ -70,14 +70,14 @@ export default function HelpPage(): JSX.Element {
         }
       />
 
-      <div className="rounded-lg border border-border/60 bg-card/80 px-4 py-3 text-sm text-muted-foreground">
+      <div className="rounded-lg border border-border/60 bg-card px-4 py-3 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">{t('help.note')}</p>
         <p className="mt-1 text-xs leading-5">{t('help.helper')}</p>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[208px_minmax(0,1fr)] xl:items-start">
         <aside className="hidden xl:sticky xl:top-4 xl:block">
-          <nav aria-label={t('help.meta.tocTitle')} className="rounded-lg border border-border/60 bg-card/70 p-3">
+          <nav aria-label={t('help.meta.tocTitle')} className="rounded-lg border border-border/60 bg-card p-3">
             <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               {t('help.meta.tocTitle')}
             </p>
@@ -158,7 +158,7 @@ function StepList({ items, compact = false }: { items: string[]; compact?: boole
         <li
           key={`${index}-${item}`}
           className={cn(
-            'flex gap-3 rounded-lg border border-border/50 bg-card/80',
+            'flex gap-3 rounded-lg border border-border/50 bg-card',
             compact ? 'p-3' : 'p-3.5'
           )}
         >
@@ -190,8 +190,8 @@ function StepContent({ content }: { content: string }) {
           const [language, ...codeLines] = part.split('\n')
           const code = codeLines.join('\n').trim()
           return (
-            <div key={index} className="overflow-hidden rounded-md border border-border/55 bg-secondary/60 dark:border-white/10 dark:bg-slate-900/[0.52]">
-              <div className="flex items-center justify-between border-b border-border/55 px-3 py-1.5 dark:border-white/10">
+            <div key={index} className="overflow-hidden rounded-md border border-border/55 bg-secondary">
+              <div className="flex items-center justify-between border-b border-border/55 px-3 py-1.5">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {language || 'bash'}
                 </span>
@@ -249,7 +249,7 @@ function TextBlock({ content }: { content: string }) {
         </div>
       ) : null}
       {bullets.length > 0 ? (
-        <ul className="space-y-1.5 rounded-md bg-secondary/40 px-3 py-2 dark:bg-slate-900/[0.34]">
+        <ul className="space-y-1.5 rounded-md bg-secondary px-3 py-2">
           {bullets.map((line, index) => (
             <li key={`${line}-${index}`} className="flex gap-2 text-sm leading-6">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
@@ -259,7 +259,7 @@ function TextBlock({ content }: { content: string }) {
         </ul>
       ) : null}
       {ordered.length > 0 ? (
-        <ol className="space-y-1.5 rounded-md bg-secondary/40 px-3 py-2 dark:bg-slate-900/[0.34]">
+        <ol className="space-y-1.5 rounded-md bg-secondary px-3 py-2">
           {ordered.map((item) => (
             <li key={`${item.index}-${item.text}`} className="flex gap-2.5 text-sm leading-6">
               <span className="mt-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/15 px-1.5 text-[11px] font-semibold text-primary">
@@ -282,7 +282,7 @@ function renderInlineRichText(text: string) {
       return (
         <code
           key={index}
-          className="rounded bg-secondary/72 px-1.5 py-0.5 text-[0.95em] text-foreground dark:bg-slate-900/[0.58]"
+          className="rounded bg-secondary px-1.5 py-0.5 text-[0.95em] text-foreground"
         >
           {part.slice(1, -1)}
         </code>
@@ -304,7 +304,7 @@ function FaqList({ items }: { items: Array<{ q: string; a: string }> }) {
       {items.map((item, index) => (
         <details
           key={item.q}
-          className="group overflow-hidden rounded-lg border border-border/50 bg-card/80"
+          className="group overflow-hidden rounded-lg border border-border/50 bg-card"
         >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-medium text-foreground">
             <span>{item.q}</span>

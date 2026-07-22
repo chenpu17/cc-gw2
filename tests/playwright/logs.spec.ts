@@ -63,11 +63,11 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
   await expect(page.getByRole('button', { name: '列设置' })).toBeVisible()
 
   await page.getByRole('button', { name: '列设置' }).click()
-  await expect(page.locator('label').filter({ hasText: '缓存读取' })).toBeVisible()
-  await expect(page.locator('label').filter({ hasText: 'TTFT(ms)' })).toBeVisible()
-  await page.locator('label').filter({ hasText: '缓存读取' }).click()
+  await expect(page.locator('label').filter({ hasText: 'Tokens' })).toBeVisible()
+  await expect(page.locator('label').filter({ hasText: '耗时' })).toBeVisible()
+  await page.locator('label').filter({ hasText: 'Tokens' }).click()
   await page.keyboard.press('Escape')
-  await expect(page.locator('thead').getByText('缓存读取')).not.toBeVisible()
+  await expect(page.locator('thead').getByText('Tokens')).not.toBeVisible()
 
   await page.getByRole('button', { name: '展开筛选' }).click()
   await page.getByRole('button', { name: '仅看失败' }).click()
@@ -80,7 +80,7 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
   await page.getByRole('option', { name: '50' }).click()
   await page.reload()
   await expect(page.getByRole('combobox').last()).toContainText('50')
-  await expect(page.locator('thead').getByText('缓存读取')).not.toBeVisible()
+  await expect(page.locator('thead').getByText('Tokens')).not.toBeVisible()
 
   const detailButton = page.getByRole('button', { name: '详情' }).first()
   await expect(detailButton).toBeVisible()
@@ -161,14 +161,14 @@ test('logs table controls respect column toggles, pagination, and export payload
 
   await page.getByRole('button', { name: '列设置' }).click()
   const columnPanel = page.getByRole('dialog').filter({ hasText: '列设置' }).first()
-  await columnPanel.getByRole('checkbox', { name: '缓存读取' }).click()
+  await columnPanel.getByRole('checkbox', { name: 'Tokens' }).click()
   await page.keyboard.press('Escape')
-  await expect(page.locator('th').filter({ hasText: '缓存读取' }).first()).toHaveCount(0)
+  await expect(page.locator('th').filter({ hasText: 'Tokens' }).first()).toHaveCount(0)
 
   await page.getByRole('button', { name: '列设置' }).click()
   await columnPanel.getByRole('button', { name: '重置' }).click()
   await page.keyboard.press('Escape')
-  await expect(page.locator('th').filter({ hasText: '缓存读取' }).first()).toBeVisible()
+  await expect(page.locator('th').filter({ hasText: 'Tokens' }).first()).toBeVisible()
 
   const paginationResponse = page.waitForResponse((response) => {
     const url = new URL(response.url())

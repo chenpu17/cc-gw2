@@ -1,16 +1,14 @@
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { Loader } from '@/components/Loader'
+import { PageLoadingState } from '@/components/PageState'
 import { PageToolbar } from '@/components/PageToolbar'
 import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import {
   BasicsSection,
   CleanupSection,
   ConfigFileSection,
   ProtocolSection,
   SecuritySection,
-  SettingsOverviewPanel,
   SettingsSectionNav,
   StickySettingsSaveBar
 } from './settings/SettingsSections'
@@ -34,26 +32,13 @@ export default function SettingsPage() {
             {state.protocolChangesPending ? t('settings.protocol.restartWarning') : t('common.status.success')}
           </span>
         ) : null}
-        actions={state.config ? (
-          <>
-            <Button variant="outline" size="sm" onClick={state.handleReset} disabled={state.saving || !state.isConfigDirty}>
-              {t('common.actions.reset')}
-            </Button>
-            <Button size="sm" onClick={() => void state.handleSave()} disabled={state.saving || !state.isConfigDirty}>
-              {state.saving ? t('common.actions.saving') : t('common.actions.save')}
-            </Button>
-          </>
-        ) : null}
+        actions={null}
       />
 
       {state.isLoading ? (
-        <Card className="bg-card/82">
-          <CardContent className="flex min-h-[220px] items-center justify-center">
-            <Loader />
-          </CardContent>
-        </Card>
+        <PageLoadingState label={t('common.loading')} />
       ) : !state.config ? (
-        <Card className="bg-card/82">
+        <Card>
           <CardContent className="pt-6">
             <p className="text-sm font-medium text-destructive">{t('settings.toast.missingConfig')}</p>
           </CardContent>
@@ -67,18 +52,6 @@ export default function SettingsPage() {
             />
 
             <div className="flex flex-col gap-6">
-              <SettingsOverviewPanel
-                configPath={state.configPath}
-                defaultsSummary={state.defaultsSummary}
-                form={state.form}
-                protocolSummaryLabel={state.protocolSummaryLabel}
-                protocolChangesPending={state.protocolChangesPending}
-                isAuthDirty={state.isAuthDirty}
-                isConfigDirty={state.isConfigDirty}
-                authEnabled={state.authSettings?.enabled ?? false}
-                authUsername={state.authSettings?.username}
-              />
-
               <BasicsSection
                 defaultsSummary={state.defaultsSummary}
                 errors={state.errors}
@@ -92,6 +65,7 @@ export default function SettingsPage() {
                 errors={state.errors}
                 form={state.form}
                 onSetForm={state.setForm}
+                protocolChangesPending={state.protocolChangesPending}
                 sectionRef={state.setSectionRef('section-protocol')}
               />
 

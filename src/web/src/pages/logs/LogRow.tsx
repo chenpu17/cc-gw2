@@ -51,35 +51,19 @@ export function LogRow({
   const cellPadding = density === 'compact' ? 'px-3 py-1.5' : 'px-3 py-2'
   const stickyCellBg = isEven ? 'bg-muted/30' : 'bg-background'
   const sessionTone = getSessionRowTone(record.session_id)
-  const rowStyle = sessionTone?.rowStyle as CSSProperties | undefined
-  const stickyStyle = sessionTone?.stickyStyle as CSSProperties | undefined
-  const timeCellStyle = sessionTone
-    ? ({
-        ...sessionTone.stickyStyle,
-        ...sessionTone.accentStyle
-      } as CSSProperties)
-    : undefined
+  const timeCellStyle = sessionTone?.accentStyle as CSSProperties | undefined
 
   return (
     <tr
       data-session-id={sessionTone?.sessionId}
       data-session-color={sessionTone?.colorKey}
       className={cn(
-        'transition-colors',
-        sessionTone ? '' : isEven ? 'bg-muted/30' : '',
-        sessionTone ? '' : 'hover:bg-muted/50'
+        'transition-colors duration-160 ease-surface',
+        isEven ? 'bg-muted/30' : '',
+        'hover:bg-muted/50'
       )}
-      style={rowStyle}
-      onMouseEnter={(event) => {
-        if (!sessionTone) return
-        Object.assign(event.currentTarget.style, sessionTone.hoverStyle)
-      }}
-      onMouseLeave={(event) => {
-        if (!sessionTone) return
-        Object.assign(event.currentTarget.style, sessionTone.rowStyle)
-      }}
     >
-      <td className={cn('sticky left-0 z-10 text-xs', cellPadding, sessionTone ? '' : stickyCellBg)} style={timeCellStyle}>{formatDateTime(record.timestamp)}</td>
+      <td className={cn('sticky left-0 z-10 text-xs', cellPadding, stickyCellBg)} style={timeCellStyle}>{formatDateTime(record.timestamp)}</td>
       {visibleColumnSet.has('endpoint') && (
         <td className={cn(cellPadding, 'text-xs')}>{endpointLabel}</td>
       )}
@@ -103,26 +87,41 @@ export function LogRow({
           <div className="max-w-[90px] truncate" title={apiKeyLabel}>{apiKeyLabel}</div>
         </td>
       )}
-      {visibleColumnSet.has('inputTokens') && (
-        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.input_tokens)}</td>
+      {visibleColumnSet.has('tokens') && (
+        <td className={cn(cellPadding, 'text-right text-xs tabular-nums align-top')}>
+          <span className="inline-flex flex-col items-end gap-0.5">
+            <span className="whitespace-nowrap">
+              {t('logs.table.columns.tokenIn')} {formatNumber(record.input_tokens)}
+              <span className="mx-1 text-muted-foreground/50">·</span>
+              {t('logs.table.columns.tokenOut')} {formatNumber(record.output_tokens)}
+            </span>
+            {(() => {
+              const cacheTotal = (record.cache_read_tokens ?? 0) + (record.cache_creation_tokens ?? 0)
+              return cacheTotal > 0 ? (
+                <span className="whitespace-nowrap text-[11px] text-muted-foreground/70">
+                  {t('logs.table.columns.tokenCache')} {formatNumber(cacheTotal)}
+                </span>
+              ) : null
+            })()}
+          </span>
+        </td>
       )}
-      {visibleColumnSet.has('cacheReadTokens') && (
-        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.cache_read_tokens)}</td>
-      )}
-      {visibleColumnSet.has('cacheCreationTokens') && (
-        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.cache_creation_tokens)}</td>
-      )}
-      {visibleColumnSet.has('outputTokens') && (
-        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatNumber(record.output_tokens)}</td>
-      )}
-      {visibleColumnSet.has('latency') && (
-        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.latency_ms, 'ms')}</td>
-      )}
-      {visibleColumnSet.has('ttft') && (
-        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.ttft_ms, 'ms')}</td>
-      )}
-      {visibleColumnSet.has('tpot') && (
-        <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>{formatLatency(record.tpot_ms, 'ms/tk')}</td>
+      {visibleColumnSet.has('duration') && (
+        <td className={cn(cellPadding, 'text-right text-xs tabular-nums align-top')}>
+          <span className="inline-flex flex-col items-end gap-0.5">
+            <span className="whitespace-nowrap">{formatLatency(record.latency_ms, 'ms')}</span>
+            {(record.ttft_ms != null || record.tpot_ms != null) && (
+              <span
+                className="whitespace-nowrap text-[11px] text-muted-foreground/70"
+                title={`${t('logs.table.columns.latencyTtft')} ${formatLatency(record.ttft_ms, 'ms')} · ${t('logs.table.columns.latencyTpot')} ${formatLatency(record.tpot_ms, 'ms/tk')}`}
+              >
+                {t('logs.table.columns.latencyTtft')} {formatNumber(record.ttft_ms)}
+                <span className="mx-1 text-muted-foreground/50">·</span>
+                {t('logs.table.columns.latencyTpot')} {formatNumber(record.tpot_ms)}
+              </span>
+            )}
+          </span>
+        </td>
       )}
       {visibleColumnSet.has('status') && (
         <td className={cn(cellPadding, 'text-center')}>
@@ -138,7 +137,7 @@ export function LogRow({
           </div>
         </td>
       )}
-      <td className={cn('sticky right-0 z-10 text-center', cellPadding, sessionTone ? '' : stickyCellBg)} style={stickyStyle}>
+      <td className={cn('sticky right-0 z-10 text-center', cellPadding, stickyCellBg)}>
         <Button variant="outline" size="sm" onClick={() => onSelect(record.id)}>
           {t('logs.actions.detail')}
         </Button>

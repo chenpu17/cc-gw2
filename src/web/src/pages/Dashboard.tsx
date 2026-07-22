@@ -26,18 +26,11 @@ import { useDashboardPageState } from './dashboard/useDashboardPageState'
 export default function DashboardPage() {
   const { t } = useTranslation()
   const state = useDashboardPageState()
-  const showGettingStarted = state.recentLogs.length === 0 || state.models.length === 0
+  const showGettingStarted = (state.recentLogs.length === 0 || state.models.length === 0) && !state.guideDismissed
 
   return (
     <div className="flex flex-col gap-6">
       <PageToolbar
-        info={
-          <span className="text-xs text-muted-foreground">
-            {t('dashboard.filters.endpoint')}
-            {' · '}
-            {state.selectedEndpointLabel}
-          </span>
-        }
         actions={
           <>
             <Select value={state.endpointFilter} onValueChange={state.setEndpointFilter}>
@@ -84,20 +77,19 @@ export default function DashboardPage() {
       ) : (
         <>
           <GatewayStatusBar
-            selectedEndpointLabel={state.selectedEndpointLabel}
             status={state.status}
-            todayRequests={state.overview?.today.requests ?? 0}
           />
 
           {showGettingStarted ? (
             <DashboardGettingStarted
               endpointCount={state.customEndpoints.length}
               providerCount={state.status?.providers ?? 0}
-              selectedEndpointLabel={state.selectedEndpointLabel}
+              onDismiss={() => state.setGuideDismissed(true)}
             />
           ) : null}
 
           <MonitoringGrid
+            daily={state.daily}
             dbSizeDisplay={state.dbSizeDisplay}
             memoryDisplay={state.memoryDisplay}
             overview={state.overview}
@@ -107,7 +99,6 @@ export default function DashboardPage() {
           <DashboardInsightsGrid
             busiestDay={state.busiestDay}
             fastestTtftModel={state.fastestTtftModel}
-            topModel={state.topModel}
             totalRequestsInRange={state.totalRequestsInRange}
           />
 

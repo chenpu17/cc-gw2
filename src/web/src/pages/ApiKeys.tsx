@@ -1,8 +1,9 @@
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Loader } from '@/components/Loader'
+import { PageLoadingState } from '@/components/PageState'
 import { PageToolbar } from '@/components/PageToolbar'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   ApiKeyCreatedDialog,
   CreateApiKeyDialog,
@@ -19,18 +20,17 @@ import { useApiKeysPageState } from './api-keys/useApiKeysPageState'
 export default function ApiKeysPage() {
   const { t } = useTranslation()
   const state = useApiKeysPageState()
-  const headerBadge = t('apiKeys.summary.totalCount', { count: state.keys.length })
 
   if (state.keysQuery.isLoading) {
-    return <Loader />
+    return <PageLoadingState label={t('common.loading')} />
   }
+
+  const namedKeyCount = state.keys.filter((key) => !key.isWildcard).length
+  const showQuickStart = namedKeyCount === 0 && !state.quickStartDismissed
 
   return (
     <div className="flex flex-col gap-6">
       <PageToolbar
-        info={headerBadge ? (
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">{headerBadge}</span>
-        ) : null}
         status={
           <span className="text-xs text-muted-foreground">
             {t('apiKeys.summary.wildcard', { count: state.wildcardCount })}
@@ -48,45 +48,56 @@ export default function ApiKeysPage() {
         }
       />
 
-      <ApiKeysQuickStartSection />
+      {showQuickStart ? (
+        <ApiKeysQuickStartSection onDismiss={() => state.setQuickStartDismissed(true)} />
+      ) : null}
 
-      <ApiKeysAnalyticsSection
-        activeKeysValue={state.activeKeysValue}
-        enabledKeysValue={state.enabledKeysValue}
-        loading={state.usageQuery.isLoading}
-        onRangeChange={state.setRangeDays}
-        rangeDays={state.rangeDays}
-        requestsChartOption={state.requestsChartOption}
-        totalKeysValue={state.totalKeysValue}
-        tokensChartOption={state.tokensChartOption}
-        usageLength={state.usage.length}
-      />
-
-      <ApiKeysInventorySection
-        filteredKeys={state.filteredKeys}
-        formatDate={state.formatDate}
-        hasWildcard={state.hasWildcard}
-        isDeleting={state.isDeleting}
-        isRevealing={state.isRevealing}
-        keys={state.keys}
-        onCopy={(key) => void state.handleCopyKey(key)}
-        onDelete={state.setDeleteTarget}
-        onEditEndpoints={state.handleOpenEditEndpoints}
-        onFilterChange={state.setSearch}
-        onHide={state.handleHideKey}
-        onReveal={(id) => void state.handleRevealKey(id)}
-        onStatusFilterChange={state.setStatusFilter}
-        onToggleEnabled={(id, enabled) => void state.handleToggleEnabled(id, enabled)}
-        restrictedCount={state.restrictedCount}
-        revealedKeys={state.revealedKeys}
-        search={state.search}
-        statusFilter={state.statusFilter}
-        unrestrictedCount={state.unrestrictedCount}
-        viewMode={state.viewMode}
-        wildcardCount={state.wildcardCount}
-        onViewModeChange={state.setViewMode}
-        onCreateKey={() => state.handleCreateDialogChange(true)}
-      />
+      <Tabs
+        value={state.activeTab}
+        onValueChange={(value) => state.setActiveTab(value as 'inventory' | 'analytics')}
+      >
+        <TabsList>
+          <TabsTrigger value="inventory">{t('apiKeys.tabs.inventory')}</TabsTrigger>
+          <TabsTrigger value="analytics">{t('apiKeys.tabs.analytics')}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="inventory" className="mt-4">
+          <ApiKeysInventorySection
+            filteredKeys={state.filteredKeys}
+            formatDate={state.formatDate}
+            hasWildcard={state.hasWildcard}
+            isDeleting={state.isDeleting}
+            isRevealing={state.isRevealing}
+            keys={state.keys}
+            onCopy={(key) => void state.handleCopyKey(key)}
+            onDelete={state.setDeleteTarget}
+            onEditEndpoints={state.handleOpenEditEndpoints}
+            onFilterChange={state.setSearch}
+            onHide={state.handleHideKey}
+            onReveal={(id) => void state.handleRevealKey(id)}
+            onStatusFilterChange={state.setStatusFilter}
+            onToggleEnabled={(id, enabled) => void state.handleToggleEnabled(id, enabled)}
+            revealedKeys={state.revealedKeys}
+            search={state.search}
+            statusFilter={state.statusFilter}
+            viewMode={state.viewMode}
+            onViewModeChange={state.setViewMode}
+            onCreateKey={() => state.handleCreateDialogChange(true)}
+          />
+        </TabsContent>
+        <TabsContent value="analytics" className="mt-4">
+          <ApiKeysAnalyticsSection
+            activeKeysValue={state.activeKeysValue}
+            enabledKeysValue={state.enabledKeysValue}
+            loading={state.usageQuery.isLoading}
+            onRangeChange={state.setRangeDays}
+            rangeDays={state.rangeDays}
+            requestsChartOption={state.requestsChartOption}
+            totalKeysValue={state.totalKeysValue}
+            tokensChartOption={state.tokensChartOption}
+            usageLength={state.usage.length}
+          />
+        </TabsContent>
+      </Tabs>
 
       <CreateApiKeyDialog
         availableEndpoints={state.availableEndpoints}
