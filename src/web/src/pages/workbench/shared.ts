@@ -1,4 +1,4 @@
-import type { CustomEndpoint } from '@/types/endpoints'
+import type { CustomEndpoint, EndpointProtocol } from '@/types/endpoints'
 import type {
   DefaultsConfig,
   EndpointRoutingConfig,
@@ -46,6 +46,14 @@ interface ManagedEndpointLike {
   paths?: Array<{ path: string; protocol: string }>
   routing?: EndpointRoutingConfig
   routingPresets?: RoutingPreset[]
+}
+
+/** Protocol badge label shared by the endpoint table and the route editor dialog header. */
+export function getEndpointProtocolLabel(protocol: EndpointProtocol, t: (key: string) => string): string {
+  if (protocol === 'anthropic') return t('modelManagement.protocolAnthropic')
+  if (protocol === 'openai-chat') return t('modelManagement.protocolOpenAIChat')
+  if (protocol === 'openai-responses') return t('modelManagement.protocolOpenAIResponses')
+  return t('modelManagement.protocolOpenAI')
 }
 
 export const CLAUDE_MODEL_SUGGESTIONS = [

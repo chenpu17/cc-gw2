@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { usePersistentState } from '@/hooks/usePersistentState'
@@ -174,7 +174,11 @@ export function TargetCombobox({
         }
       }}
     >
-      <PopoverTrigger asChild>
+      {/* Anchor instead of Trigger: Radix's trigger toggles the popover on
+          click, which fights the combobox's open-on-focus behavior (mousedown
+          focuses the input and opens the popover, the trailing click would
+          toggle it shut). Open state is fully controlled by the input below. */}
+      <PopoverAnchor asChild>
         <Input
           value={value}
           onChange={(event) => {
@@ -193,7 +197,7 @@ export function TargetCombobox({
           disabled={disabled}
           autoComplete="off"
         />
-      </PopoverTrigger>
+      </PopoverAnchor>
       <PopoverContent
         className="flex max-h-[min(28rem,var(--radix-popover-content-available-height))] flex-col overflow-hidden rounded-xl border border-[color:var(--surface-border)] bg-popover/96 p-0 shadow-[var(--surface-shadow-lg)] backdrop-blur"
         style={{ width: 'max(var(--radix-popover-trigger-width), 360px)' }}
@@ -201,6 +205,12 @@ export function TargetCombobox({
         onOpenAutoFocus={(event) => {
           event.preventDefault()
           searchInputRef.current?.focus()
+        }}
+        onCloseAutoFocus={(event) => {
+          // Inside the route editor dialog, returning focus to the trigger
+          // would re-open the popover (the trigger opens on focus) and leave
+          // it covering the save buttons. Selection already blurs explicitly.
+          event.preventDefault()
         }}
       >
         <div className="space-y-2 border-b border-border/70 px-3 py-3">

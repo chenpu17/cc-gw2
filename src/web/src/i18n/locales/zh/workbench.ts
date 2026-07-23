@@ -1,16 +1,12 @@
 export default {
   title: '模型与路由工作台',
   description: '统一管理模型 Provider、端点路由规则与自定义端点。',
-  endpointSwitchLabel: '路由端点',
-  endpointPickerLabel: '接入端点',
   viewSwitch: {
     label: '工作台视图',
     providers: '供应商',
     providersDesc: '管理上游模型服务',
     routing: '路由',
-    routingDesc: '决定请求转发到哪个服务',
-    endpoints: '端点',
-    endpointsDesc: '管理自定义接入端点'
+    routingDesc: '决定请求转发到哪个服务'
   },
   routingGuide: {
     flow: '客户端请求模型（如 claude-sonnet-4） → 匹配路由规则 → 转发到 Provider 的模型',
@@ -55,15 +51,15 @@ export default {
     emptyHint: '先添加一个上游模型服务（如 Anthropic、OpenAI 或兼容端点），再去路由视图把客户端模型映射过去。'
   },
   endpoints: {
-    manage: '管理端点',
     create: '新建端点',
-    emptyTitle: '还没有自定义端点',
-    emptyDescription: '自定义端点在内置 /anthropic、/openai 之外暴露新的接入路径；创建后可到路由视图为它配置转发规则。',
+    editRoute: '路由',
+    defaultUnset: '未设置',
     table: {
       name: '名称',
       protocol: '协议',
       paths: '路径',
       rules: '规则数',
+      defaultTarget: '默认转发',
       status: '状态',
       actions: '操作'
     }

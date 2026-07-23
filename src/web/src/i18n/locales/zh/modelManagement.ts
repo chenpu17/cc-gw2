@@ -100,7 +100,7 @@ export default {
   endpointPathHint: '路径需以 / 开头，修改后立即生效。',
   endpointProtocol: '协议类型',
   endpointEnabled: '启用此端点',
-  endpointRoutingHint: '创建后，您可以在此端点的路由配置 Tab 中设置模型路由规则。',
+  endpointRoutingHint: '创建后，在路由视图的端点表格中点击该端点，即可设置模型路由规则。',
   addPath: '添加路径',
   removePath: '删除路径',
   protocolAnthropic: 'Anthropic 协议',

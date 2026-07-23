@@ -100,7 +100,7 @@ export default {
   endpointPathHint: 'Path must start with /. Changes take effect immediately.',
   endpointProtocol: 'Protocol Type',
   endpointEnabled: 'Enable this endpoint',
-  endpointRoutingHint: 'After creation, you can configure routing rules in this endpoint\'s routing tab.',
+  endpointRoutingHint: 'After creation, click this endpoint in the routing view\'s endpoint table to configure its routing rules.',
   addPath: 'Add Path',
   removePath: 'Remove Path',
   protocolAnthropic: 'Anthropic Protocol',

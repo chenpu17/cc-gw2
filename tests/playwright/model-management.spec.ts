@@ -89,9 +89,8 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   expect(providerTest.ok).toBe(true)
   expect(providerTest.status).toBe(200)
 
-  // 自定义端点在「端点」视图中管理，点击「新建端点」弹出创建对话框
-  await page.getByRole('tab', { name: '端点' }).click()
-  // 空状态 CTA 与工具栏按钮同名，取第一个（工具栏）
+  // 自定义端点在「路由」视图的端点表格中管理，工具栏「新建端点」弹出创建对话框
+  await page.getByRole('tab', { name: '路由' }).click()
   await page.getByRole('button', { name: '新建端点' }).first().click()
   const endpointDialog = page.getByRole('dialog', { name: '创建端点' })
   await endpointDialog.getByPlaceholder('如 custom-api').fill(endpointId)
@@ -100,46 +99,49 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   await endpointDialog.getByRole('button', { name: '创建' }).click()
 
   await expect(page.getByText('端点创建成功')).toBeVisible()
-  // 端点切换 tab 在「路由」视图主体的 RoutingWorkspace 中
-  await page.getByRole('tab', { name: '路由' }).click()
-  await expect(page.getByRole('tab', { name: new RegExp(endpointLabel) })).toBeVisible()
+  // 新端点出现在路由视图的端点表格中
+  const endpointRow = page.locator('[data-testid="endpoint-row"]').filter({ hasText: endpointLabel })
+  await expect(endpointRow).toBeVisible()
 
   const createdEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(createdEndpoint.label).toBe(endpointLabel)
   expect(createdEndpoint.paths[0].path).toBe('/playwright/v1/chat/completions')
 
-  // 端点切换移入路由视图主体的 tab 列表，路由编辑在下方 RoutingWorkspace
-  await page.getByRole('tab', { name: new RegExp(endpointLabel) }).click()
-  await expect(page.getByRole('button', { name: '新增映射' })).toBeVisible()
+  // 点击端点行打开路由编辑弹框，路由规则在弹框内编辑
+  await endpointRow.click()
+  const routeDialog = page.getByTestId('route-editor-dialog')
+  await expect(routeDialog).toBeVisible()
+  await expect(routeDialog.getByRole('button', { name: '新增映射' })).toBeVisible()
 
-  await page.getByRole('button', { name: '新增映射' }).click()
-  await page.getByLabel('route-source-1').fill(sourceModel)
-  await page.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
+  await routeDialog.getByRole('button', { name: '新增映射' }).click()
+  await routeDialog.getByLabel('route-source-1').fill(sourceModel)
+  await routeDialog.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
+  // TargetCombobox 的弹层 portal 到 body，不在 dialog DOM 内
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('stub-model-playwright')
   await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-playwright`) }).last().click()
-  await page.getByRole('button', { name: '保存路由' }).click()
+  await routeDialog.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
   let routedEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(routedEndpoint.routing.modelRoutes[sourceModel]).toBe(targetModel)
 
   // 路由模板收进「高级」Disclosure，需先展开
-  await page.locator('summary').filter({ hasText: '高级' }).click()
-  await page.getByRole('button', { name: /路由模板/ }).click()
-  await page.getByPlaceholder('输入模板名称，例如 fox').fill(presetName)
-  await page.getByRole('button', { name: '保存模板' }).click()
+  await routeDialog.locator('summary').filter({ hasText: '高级' }).click()
+  await routeDialog.getByRole('button', { name: /路由模板/ }).click()
+  await routeDialog.getByPlaceholder('输入模板名称，例如 fox').fill(presetName)
+  await routeDialog.getByRole('button', { name: '保存模板' }).click()
   await expect(page.getByText(`已保存模板 "${presetName}"。`)).toBeVisible()
 
-  await page.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
+  await routeDialog.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('透传')
   await page.getByRole('button', { name: new RegExp(`${providerId}.*透传原始模型`) }).click()
-  await page.getByRole('button', { name: '保存路由' }).click()
+  await routeDialog.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
   routedEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(routedEndpoint.routing.modelRoutes[sourceModel]).toBe(updatedTargetModel)
 
-  const presetRow = page.locator('div').filter({ hasText: presetName }).filter({
+  const presetRow = routeDialog.locator('div').filter({ hasText: presetName }).filter({
     has: page.getByRole('button', { name: '应用' }),
   }).first()
   await presetRow.getByRole('button', { name: '应用' }).click()
@@ -151,24 +153,29 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   routedEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(routedEndpoint.routing.modelRoutes[sourceModel]).toBe(targetModel)
 
-  // 端点编辑在「端点」视图的表格中发起，点击行打开编辑对话框
-  await page.getByRole('tab', { name: '端点' }).click()
-  await page.locator('[data-testid="endpoint-row"]').filter({ hasText: endpointLabel }).click()
+  // 端点编辑在路由视图的端点表格中发起；先关闭路由弹框，再点行内「编辑」
+  await routeDialog.getByRole('button', { name: '关闭' }).click()
+  await expect(routeDialog).not.toBeVisible()
+  await endpointRow.getByRole('button', { name: '编辑' }).click()
   const endpointEditDialog = page.getByRole('dialog', { name: '编辑端点' })
   await endpointEditDialog.getByPlaceholder('如 我的自定义 API').fill(updatedEndpointLabel)
   await endpointEditDialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByText('端点更新成功')).toBeVisible()
-  // 回到路由视图后「高级」Disclosure 处于收起态，需重新展开
-  await page.getByRole('tab', { name: '路由' }).click()
-  await expect(page.getByRole('tab', { name: new RegExp(updatedEndpointLabel) })).toBeVisible()
-  await page.locator('summary').filter({ hasText: '高级' }).click()
+  // 重新打开路由弹框后「高级」Disclosure 处于收起态，需重新展开
+  const updatedEndpointRow = page.locator('[data-testid="endpoint-row"]').filter({ hasText: updatedEndpointLabel })
+  await updatedEndpointRow.click()
+  await expect(routeDialog).toBeVisible()
+  await routeDialog.locator('summary').filter({ hasText: '高级' }).click()
 
   const updatedEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(updatedEndpoint.label).toBe(updatedEndpointLabel)
 
-  await expect(presetRow).toBeVisible()
-  // presetRow 是宽松匹配（可能含详情面板的 Provider「删除」），模板行的「删除」在最后
-  await presetRow.getByRole('button', { name: '删除' }).last().click()
+  const presetDeleteRow = routeDialog.locator('div').filter({ hasText: presetName }).filter({
+    has: page.getByRole('button', { name: '应用' }),
+  }).first()
+  await expect(presetDeleteRow).toBeVisible()
+  // presetDeleteRow 是宽松匹配（可能含详情面板的 Provider「删除」），模板行的「删除」在最后
+  await presetDeleteRow.getByRole('button', { name: '删除' }).last().click()
   const deletePresetDialog = page.getByRole('dialog', { name: '删除' })
   await expect(deletePresetDialog).toBeVisible()
   await deletePresetDialog.getByRole('button', { name: '删除' }).click()
@@ -176,7 +183,11 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   // 等删除确认框完全退出，避免残留动画中的「删除」按钮被误点
   await expect(deletePresetDialog).not.toBeVisible()
 
-  // Provider 删除按钮在「供应商」视图的详情对话框内；点击表格行打开对话框
+  // 关闭路由弹框后再切换视图；Provider 删除按钮在「供应商」视图的详情对话框内。
+  // 用页脚「关闭」按钮而不是 Escape：确认框退出动画期间其 layer 仍挂在
+  // DismissableLayer 栈顶，会吞掉 Escape（按钮点击由 Playwright 等待可点后触发）。
+  await routeDialog.getByRole('button', { name: '关闭' }).click()
+  await expect(routeDialog).not.toBeVisible()
   await page.getByRole('tab', { name: '供应商' }).click()
   await page.locator('[data-testid="provider-row"]').filter({ hasText: 'Playwright Provider Updated' }).click()
   const providerDetailDialog = page.getByRole('dialog', { name: 'Playwright Provider Updated' })
@@ -230,8 +241,8 @@ test('model management supports provider edit, delete, route reset, and preset d
   await page.keyboard.press('Escape')
   await expect(editedDetailDialog).not.toBeVisible()
 
-  // 端点在「端点」视图中创建，路由规则在「路由」视图中管理
-  await page.getByRole('tab', { name: '端点' }).click()
+  // 端点在「路由」视图的端点表格中创建，点击行打开路由编辑弹框管理规则
+  await page.getByRole('tab', { name: '路由' }).click()
   await page.getByRole('button', { name: '新建端点' }).first().click()
   const endpointDialog = page.getByRole('dialog', { name: '创建端点' })
   const endpointId = `pm-edit-endpoint-${Date.now()}`
@@ -241,33 +252,34 @@ test('model management supports provider edit, delete, route reset, and preset d
   await endpointDialog.getByRole('button', { name: '创建' }).click()
   await expect(page.getByText('端点创建成功')).toBeVisible()
 
-  await page.getByRole('tab', { name: '路由' }).click()
-  await page.getByRole('tab', { name: /Edit Endpoint/ }).click()
-  await page.getByRole('button', { name: '新增映射' }).click()
-  await page.getByLabel('route-source-1').fill('reset-source')
-  await page.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
+  await page.locator('[data-testid="endpoint-row"]').filter({ hasText: 'Edit Endpoint' }).click()
+  const routeDialog = page.getByTestId('route-editor-dialog')
+  await expect(routeDialog).toBeVisible()
+  await routeDialog.getByRole('button', { name: '新增映射' }).click()
+  await routeDialog.getByLabel('route-source-1').fill('reset-source')
+  await routeDialog.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
+  // TargetCombobox 的弹层 portal 到 body，不在 dialog DOM 内
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('stub-model-edit')
   await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-edit`) }).last().click()
-  await page.getByRole('button', { name: '保存路由' }).click()
+  await routeDialog.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
-  await page.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
+  await routeDialog.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('透传')
   await page.getByRole('button', { name: new RegExp(`${providerId}.*透传原始模型`) }).click()
-  // 左栏筛选区也有「重置」（禁用态），路由工作区的「重置」在最后
-  await page.getByRole('button', { name: '重置' }).last().click({ force: true })
-  await page.getByRole('button', { name: '保存路由' }).click({ force: true })
+  await routeDialog.getByRole('button', { name: '重置' }).click()
+  await routeDialog.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
   const resetEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(resetEndpoint.routing.modelRoutes['reset-source']).toBe(`${providerId}:stub-model-edit`)
 
-  await page.locator('summary').filter({ hasText: '高级' }).click()
-  await page.getByRole('button', { name: /路由模板/ }).click()
-  await page.getByPlaceholder('输入模板名称，例如 fox').fill('preset-delete-test')
-  await page.getByRole('button', { name: '保存模板' }).click()
+  await routeDialog.locator('summary').filter({ hasText: '高级' }).click()
+  await routeDialog.getByRole('button', { name: /路由模板/ }).click()
+  await routeDialog.getByPlaceholder('输入模板名称，例如 fox').fill('preset-delete-test')
+  await routeDialog.getByRole('button', { name: '保存模板' }).click()
   await expect(page.getByText('已保存模板 "preset-delete-test"。')).toBeVisible()
-  const presetDeleteRow = page.locator('div').filter({ hasText: 'preset-delete-test' }).filter({
+  const presetDeleteRow = routeDialog.locator('div').filter({ hasText: 'preset-delete-test' }).filter({
     has: page.getByRole('button', { name: '应用' }),
   }).first()
   await expect(presetDeleteRow).toBeVisible()
@@ -278,7 +290,11 @@ test('model management supports provider edit, delete, route reset, and preset d
   // 等删除确认框完全退出，避免残留动画中的「删除」按钮被误点
   await expect(deleteDialog).not.toBeVisible()
 
-  // Provider 删除按钮在「供应商」视图的详情对话框内；点击表格行打开对话框
+  // 关闭路由弹框后再切换视图；Provider 删除按钮在「供应商」视图的详情对话框内。
+  // 用页脚「关闭」按钮而不是 Escape：确认框退出动画期间其 layer 仍挂在
+  // DismissableLayer 栈顶，会吞掉 Escape（按钮点击由 Playwright 等待可点后触发）。
+  await routeDialog.getByRole('button', { name: '关闭' }).click()
+  await expect(routeDialog).not.toBeVisible()
   await page.getByRole('tab', { name: '供应商' }).click()
   await page.locator('[data-testid="provider-row"]').filter({ hasText: `${providerId}-edited` }).click()
   const providerDetailDialog = page.getByRole('dialog', { name: `${providerId}-edited` })

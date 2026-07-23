@@ -30,20 +30,25 @@ test('web console pages load and navigation works', async ({ page }) => {
   // 默认进入「供应商」视图
   await expect(page.getByRole('button', { name: '新增提供商' })).toBeVisible()
   await expect(page.getByText('配置导览')).toHaveCount(0)
-  // 端点与路由规则在「路由」视图中
+  // 端点与路由规则在「路由」视图中：主体是端点表格，工具栏提供「新建端点」
   await page.getByRole('tab', { name: '路由' }).click()
   await expect(page).toHaveURL(/\/ui\/providers\?tab=routing$/)
-  await expect(page.getByRole('button', { name: '管理端点' })).toBeVisible()
-  // 「管理端点」跳转「端点」视图，自定义端点表格在此管理
-  await page.getByRole('button', { name: '管理端点' }).click()
-  await expect(page).toHaveURL(/\/ui\/providers\?tab=endpoints$/)
   await expect(page.getByRole('button', { name: '新建端点' }).first()).toBeVisible()
-  await page.getByRole('tab', { name: '路由' }).click()
+  await expect(page.getByRole('button', { name: '管理端点' })).toHaveCount(0)
+  // 端点表格包含内置端点，点击行打开路由编辑弹框（URL 带上 endpoint 参数）
+  await page.locator('[data-testid="endpoint-row"]').filter({ hasText: 'Anthropic' }).first().click()
+  await expect(page).toHaveURL(/\/ui\/providers\?tab=routing&endpoint=anthropic$/)
+  const routeDialog = page.getByTestId('route-editor-dialog')
+  await expect(routeDialog).toBeVisible()
   // 模板与兼容性设置收进「高级」Disclosure，先展开再断言
-  await page.locator('summary').filter({ hasText: '高级' }).click()
-  await expect(page.getByText('路由模板', { exact: true })).toBeVisible()
-  await expect(page.getByText('路由操作', { exact: true })).toBeVisible()
-  await expect(page.getByText('常用 Anthropic 模型', { exact: true })).toBeVisible()
+  await routeDialog.locator('summary').filter({ hasText: '高级' }).click()
+  await expect(routeDialog.getByText('路由模板', { exact: true })).toBeVisible()
+  await expect(routeDialog.getByText('路由操作', { exact: true })).toBeVisible()
+  await expect(routeDialog.getByText('常用 Anthropic 模型', { exact: true })).toBeVisible()
+  // 关闭弹框后回到路由视图，endpoint 参数被清掉
+  await routeDialog.getByRole('button', { name: '关闭' }).click()
+  await expect(routeDialog).not.toBeVisible()
+  await expect(page).toHaveURL(/\/ui\/providers\?tab=routing$/)
 
   await page.getByRole('link', { name: '事件' }).click()
   await expect(page).toHaveURL(/\/ui\/events$/)

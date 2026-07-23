@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
 import { toApiError, customEndpointsApi } from '@/services/api'
 import { gatewayApi } from '@/services/gateway'
 import { modelManagementApi } from '@/services/modelManagement'
@@ -26,38 +25,14 @@ import {
 
 /**
  * Routing state for the providers workbench: per-endpoint route entries,
- * presets, the OpenAI compatibility policy and the active endpoint.
- * All writes keep the read-modify-PUT flow against GET/PUT /api/config.
+ * presets and the OpenAI compatibility policy. All writes keep the
+ * read-modify-PUT flow against GET/PUT /api/config. Which endpoint is being
+ * edited is owned by the workbench page (route editor dialog state).
  */
 export function useRoutingState(base: WorkbenchConfigState) {
   const { t, pushToast, config, setConfig, configQuery, customEndpoints, tabs, ensureConfig } = base
   const queryClient = useQueryClient()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const endpointParam = searchParams.get('endpoint')
 
-  const [activeEndpointKey, setActiveEndpointKey] = useState<string>(() => endpointParam || 'anthropic')
-
-  // Deep links (e.g. from the provider detail panel) drive the active endpoint
-  // through the `endpoint` search param.
-  useEffect(() => {
-    if (endpointParam && endpointParam !== activeEndpointKey) {
-      setActiveEndpointKey(endpointParam)
-    }
-  }, [endpointParam, activeEndpointKey])
-
-  const setActiveEndpoint = (key: string) => {
-    setActiveEndpointKey(key)
-    setSearchParams((previous) => {
-      const next = new URLSearchParams(previous)
-      if (key === 'anthropic') {
-        next.delete('endpoint')
-      } else {
-        next.set('endpoint', key)
-      }
-      return next
-    }, { replace: true })
-  }
-  const activeEndpoint = activeEndpointKey
   const [routesByEndpoint, setRoutesByEndpoint] = useState<Record<string, ModelRouteEntry[]>>({})
   const [routeError, setRouteError] = useState<Record<string, string | null>>({})
   const [savingRouteFor, setSavingRouteFor] = useState<string | null>(null)
@@ -75,8 +50,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
 
   const endpointTabs = useMemo(() => tabs.filter((tab) => tab.key !== 'providers'), [tabs])
 
-  useEffect(() => {
-    if (!configQuery.data) return
+  useEffect(() => {    if (!configQuery.data) return
 
     const incoming = configQuery.data
     setRoutesByEndpoint((previous) => {
@@ -114,11 +88,6 @@ export function useRoutingState(base: WorkbenchConfigState) {
     setRouteError({})
     setPresetsByEndpoint(buildPresetsMap(incoming, customEndpoints))
   }, [configQuery.data, customEndpoints])
-
-  useEffect(() => {
-    if (endpointTabs.some((tab) => tab.key === activeEndpoint)) return
-    setActiveEndpoint('anthropic')
-  }, [activeEndpoint, endpointTabs])
 
   const providers = config?.providers ?? []
 
@@ -539,9 +508,6 @@ export function useRoutingState(base: WorkbenchConfigState) {
         title: t('modelManagement.deleteEndpointSuccess'),
         variant: 'success'
       })
-      if (activeEndpoint === endpointId) {
-        setActiveEndpoint('anthropic')
-      }
     } catch (error) {
       const apiError = toApiError(error)
       pushToast({
@@ -830,8 +796,6 @@ export function useRoutingState(base: WorkbenchConfigState) {
   }
 
   return {
-    activeEndpoint,
-    setActiveEndpoint,
     endpointTabs,
     routesByEndpoint,
     setRoutesByEndpoint,

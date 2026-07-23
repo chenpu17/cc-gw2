@@ -1,16 +1,12 @@
 export default {
   title: 'Providers & Routing Workbench',
   description: 'Manage model providers, endpoint routing rules and custom endpoints in one place.',
-  endpointSwitchLabel: 'Routing endpoint',
-  endpointPickerLabel: 'Endpoint',
   viewSwitch: {
     label: 'Workbench view',
     providers: 'Providers',
     providersDesc: 'Manage upstream model services',
     routing: 'Routing',
-    routingDesc: 'Decide where requests are forwarded',
-    endpoints: 'Endpoints',
-    endpointsDesc: 'Manage custom ingress endpoints'
+    routingDesc: 'Decide where requests are forwarded'
   },
   routingGuide: {
     flow: "Client-requested model (e.g. claude-sonnet-4) → matched route rule → forwarded to a provider's model",
@@ -55,15 +51,15 @@ export default {
     emptyHint: 'Add an upstream model service first (Anthropic, OpenAI, or a compatible endpoint), then map client models to it in the Routing view.'
   },
   endpoints: {
-    manage: 'Manage endpoints',
     create: 'New endpoint',
-    emptyTitle: 'No custom endpoints yet',
-    emptyDescription: 'Custom endpoints expose extra ingress paths beyond the built-in /anthropic and /openai. Create one, then set its routing rules in the Routing view.',
+    editRoute: 'Routes',
+    defaultUnset: 'Not set',
     table: {
       name: 'Name',
       protocol: 'Protocol',
       paths: 'Paths',
       rules: 'Rules',
+      defaultTarget: 'Default',
       status: 'Status',
       actions: 'Actions'
     }

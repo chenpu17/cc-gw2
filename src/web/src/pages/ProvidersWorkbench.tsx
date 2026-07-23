@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
-import { Boxes, GitBranch, Globe } from 'lucide-react'
+import { Boxes, GitBranch } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { PageToolbar } from '@/components/PageToolbar'
 import { Button } from '@/components/ui/button'
@@ -14,16 +14,16 @@ import { useWorkbenchConfig } from './workbench/useWorkbenchConfig'
 import { useRoutingState } from './workbench/useRoutingState'
 import { useProvidersState } from './workbench/useProvidersState'
 import { EndpointDialog } from './workbench/EndpointDialog'
-import { EndpointsTable } from './workbench/EndpointsTable'
 import { ProviderDetailDialog } from './workbench/ProviderDetailDialog'
 import { NoModelConfiguredDialog } from './workbench/NoModelConfiguredDialog'
 import { PresetDiffDialog } from './workbench/PresetDiffDialog'
 import { ProviderDrawer } from './workbench/ProviderDrawer'
 import { ProvidersTable } from './workbench/ProvidersTable'
+import { RouteEditorDialog } from './workbench/RouteEditorDialog'
 import { RoutingWorkspace } from './workbench/RoutingWorkspace'
 import { TestConnectionDialog } from './workbench/TestConnectionDialog'
 
-type WorkbenchView = 'providers' | 'routing' | 'endpoints'
+type WorkbenchView = 'providers' | 'routing'
 
 export default function ProvidersWorkbenchPage() {
   const { t } = useTranslation()
@@ -33,14 +33,49 @@ export default function ProvidersWorkbenchPage() {
 
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
-  const view: WorkbenchView = tabParam === 'routing' || tabParam === 'endpoints' ? tabParam : 'providers'
+  // `tab=endpoints` is kept as a legacy alias of the routing view, which now
+  // hosts the endpoint table itself.
+  const view: WorkbenchView = tabParam === 'routing' || tabParam === 'endpoints' ? 'routing' : 'providers'
+
+  useEffect(() => {
+    if (tabParam !== 'endpoints') return
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.set('tab', 'routing')
+      return next
+    }, { replace: true })
+  }, [tabParam, setSearchParams])
 
   const [endpointDialogOpen, setEndpointDialogOpen] = useState(false)
   const [editingEndpoint, setEditingEndpoint] = useState<CustomEndpoint | undefined>(undefined)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const [confirmingAction, setConfirmingAction] = useState(false)
 
-  const activeEndpoint = routing.activeEndpoint
+  // The route editor dialog is deep-linkable via `?tab=routing&endpoint=<id>`.
+  const endpointParam = searchParams.get('endpoint')
+  const [routeEditorEndpoint, setRouteEditorEndpoint] = useState<string | null>(endpointParam)
+
+  useEffect(() => {
+    setRouteEditorEndpoint(endpointParam)
+  }, [endpointParam])
+
+  const handleCloseRouteEditor = () => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.delete('endpoint')
+      return next
+    }, { replace: true })
+  }
+
+  // Close the dialog when its endpoint no longer exists (deleted, or a stale
+  // deep link) once the endpoint list has loaded.
+  useEffect(() => {
+    if (!routeEditorEndpoint) return
+    if (base.customEndpointsQuery.isPending) return
+    if (routing.endpointTabs.some((tab) => tab.key === routeEditorEndpoint)) return
+    handleCloseRouteEditor()
+  }, [routeEditorEndpoint, routing.endpointTabs, base.customEndpointsQuery.isPending])
+
   const handleOpenCreateEndpoint = () => {
     setEditingEndpoint(undefined)
     setEndpointDialogOpen(true)
@@ -48,6 +83,14 @@ export default function ProvidersWorkbenchPage() {
   const handleOpenEditEndpoint = (endpoint: CustomEndpoint) => {
     setEditingEndpoint(endpoint)
     setEndpointDialogOpen(true)
+  }
+  const handleOpenRouteEditor = (endpointId: string) => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.set('tab', 'routing')
+      next.set('endpoint', endpointId)
+      return next
+    }, { replace: true })
   }
 
   const handleViewChange = (nextView: WorkbenchView) => {
@@ -60,15 +103,6 @@ export default function ProvidersWorkbenchPage() {
       } else {
         next.set('tab', nextView)
       }
-      return next
-    }, { replace: true })
-  }
-
-  const handleViewRouteReference = (endpoint: string) => {
-    routing.setActiveEndpoint(endpoint)
-    setSearchParams((previous) => {
-      const next = new URLSearchParams(previous)
-      next.set('tab', 'routing')
       return next
     }, { replace: true })
   }
@@ -156,13 +190,6 @@ export default function ProvidersWorkbenchPage() {
       label: t('workbench.viewSwitch.routing'),
       description: t('workbench.viewSwitch.routingDesc'),
       count: routeRuleCount
-    },
-    {
-      value: 'endpoints' as const,
-      icon: Globe,
-      label: t('workbench.viewSwitch.endpoints'),
-      description: t('workbench.viewSwitch.endpointsDesc'),
-      count: base.customEndpoints.length
     }
   ]
 
@@ -173,10 +200,6 @@ export default function ProvidersWorkbenchPage() {
           <Button size="sm" onClick={providers.handleOpenCreate}>
             {t('providers.actions.add')}
           </Button>
-        ) : view === 'routing' ? (
-          <Button variant="outline" size="sm" onClick={() => handleViewChange('endpoints')}>
-            {t('workbench.endpoints.manage')}
-          </Button>
         ) : (
           <Button size="sm" onClick={handleOpenCreateEndpoint}>
             {t('workbench.endpoints.create')}
@@ -184,7 +207,7 @@ export default function ProvidersWorkbenchPage() {
         )}
       />
 
-      <div role="tablist" aria-label={t('workbench.viewSwitch.label')} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div role="tablist" aria-label={t('workbench.viewSwitch.label')} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {viewTabs.map((tab) => {
           const Icon = tab.icon
           const isActive = view === tab.value
@@ -245,56 +268,27 @@ export default function ProvidersWorkbenchPage() {
             providers.setProviderTypeFilter('all')
           }}
         />
-      ) : view === 'endpoints' ? (
-        <EndpointsTable
-          customEndpoints={base.customEndpoints}
-          routeCounts={endpointRouteCounts}
-          endpointsPending={base.customEndpointsQuery.isPending}
-          onSelect={handleOpenEditEndpoint}
-          onEdit={handleOpenEditEndpoint}
-          onDelete={(endpoint) => setConfirmAction({ kind: 'endpoint', endpoint })}
-          onCreate={handleOpenCreateEndpoint}
-        />
       ) : (
         <RoutingWorkspace
-              endpoint={activeEndpoint}
-              applyingPreset={routing.applyingPreset?.endpoint === activeEndpoint ? routing.applyingPreset.name : null}
-              config={base.config}
-              customEndpoints={base.customEndpoints}
-              routeCounts={endpointRouteCounts}
-              onEndpointChange={routing.setActiveEndpoint}
-              defaults={routing.defaultsByEndpoint[activeEndpoint] ?? null}
-              defaultsDirty={routing.isDefaultsDirtyByEndpoint[activeEndpoint] ?? false}
-              deletingPreset={routing.deletingPreset?.endpoint === activeEndpoint ? routing.deletingPreset.name : null}
-              isDirty={routing.isDirtyByEndpoint[activeEndpoint] ?? false}
-              onAddRoute={() => routing.handleAddRoute(activeEndpoint)}
-              onAddSuggestion={(model) => routing.handleAddSuggestion(activeEndpoint, model)}
-              onDefaultsChange={(field, value) => routing.handleDefaultsChange(activeEndpoint, field, value)}
-              onSaveDefaults={() => void routing.handleSaveDefaults(activeEndpoint)}
-              onPresetNameChange={(value) => routing.handlePresetNameChange(activeEndpoint, value)}
-              onRequestDeletePreset={(preset) => setConfirmAction({ kind: 'preset', endpoint: activeEndpoint, preset })}
-              onRequestPresetDiff={(preset) => routing.setPresetDiffDialog({ endpoint: activeEndpoint, preset })}
-              onRemoveRoute={(id) => routing.handleRemoveRoute(activeEndpoint, id)}
-              onResetRoutes={() => routing.handleResetRoutes(activeEndpoint)}
-              onRouteChange={(id, field, value) => routing.handleRouteChange(activeEndpoint, id, field, value)}
-              onSavePreset={() => void routing.handleSavePreset(activeEndpoint)}
-              onSaveRoutes={() => void routing.handleSaveRoutes(activeEndpoint)}
-              onCompatibilityEnabledChange={(enabled) => void routing.handleCompatibilityEnabledChange(activeEndpoint, enabled)}
-              onTogglePresetsExpanded={() => routing.setPresetsExpanded((previous) => ({ ...previous, [activeEndpoint]: !previous[activeEndpoint] }))}
-              presetError={routing.presetErrorByEndpoint[activeEndpoint]}
-              presetName={routing.presetNameByEndpoint[activeEndpoint] ?? ''}
-              presets={routing.presetsByEndpoint[activeEndpoint] ?? []}
-              presetsExpanded={routing.presetsExpanded[activeEndpoint] === true}
-              providerModelOptions={routing.providerModelOptions}
-              routeError={routing.routeError[activeEndpoint]}
-              routes={routing.routesByEndpoint[activeEndpoint] || []}
-              savingCompatibilityPolicy={routing.savingCompatibilityPolicy}
-              savingDefaults={routing.savingDefaultsFor === activeEndpoint}
-              savingPreset={routing.savingPresetFor === activeEndpoint}
-              savingRoute={routing.savingRouteFor === activeEndpoint}
-              tabs={routing.endpointTabs}
-            />
+          tabs={routing.endpointTabs}
+          customEndpoints={base.customEndpoints}
+          routeCounts={endpointRouteCounts}
+          defaultsByEndpoint={routing.defaultsByEndpoint}
+          onEditRoute={handleOpenRouteEditor}
+          onEditEndpoint={handleOpenEditEndpoint}
+          onDeleteEndpoint={(endpoint) => setConfirmAction({ kind: 'endpoint', endpoint })}
+        />
       )}
+
+      <RouteEditorDialog
+        endpoint={routeEditorEndpoint}
+        tabs={routing.endpointTabs}
+        config={base.config}
+        customEndpoints={base.customEndpoints}
+        routing={routing}
+        onRequestDeletePreset={(endpoint, preset) => setConfirmAction({ kind: 'preset', endpoint, preset })}
+        onClose={handleCloseRouteEditor}
+      />
 
       <ProviderDetailDialog
         provider={selectedProvider}
@@ -320,7 +314,7 @@ export default function ProvidersWorkbenchPage() {
         }}
         onViewRoute={(endpoint) => {
           providers.setSelectedProviderId(null)
-          handleViewRouteReference(endpoint)
+          handleOpenRouteEditor(endpoint)
         }}
         onAddRule={() => {
           providers.setSelectedProviderId(null)
