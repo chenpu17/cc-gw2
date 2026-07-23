@@ -39,27 +39,28 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   const updatedTargetModel = `${providerId}:*`
   const presetName = 'playwright-preset'
 
-  await page.goto(`${baseUrl}/ui/models`)
-  await expect(page.getByRole('heading', { name: '模型提供商', level: 1 })).toBeVisible()
+  await page.goto(`${baseUrl}/ui/providers`)
+  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
 
+  // Provider 抽屉从 4 步精简为 2 步：基础与认证 -> 模型与验证
   const providerDrawer = page.locator('aside').filter({ hasText: '新增 Provider' })
   await expect(providerDrawer).toBeVisible()
   await providerDrawer.getByRole('button', { name: /OpenAI/ }).click()
-  await providerDrawer.getByRole('button', { name: '下一步' }).click()
   await providerDrawer.getByPlaceholder('如 openai').fill(providerId)
   await providerDrawer.getByPlaceholder('https://api.example.com/v1').fill(providerBaseUrl)
-  await providerDrawer.getByRole('button', { name: '下一步' }).click()
   await providerDrawer.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
   await providerDrawer.getByRole('button', { name: '下一步' }).click()
   await providerDrawer.getByRole('button', { name: '新增模型' }).click()
   await providerDrawer.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-playwright')
   await providerDrawer.getByLabel('设为默认模型').check()
-  await providerDrawer.getByRole('button', { name: '保存' }).click()
+  await providerDrawer.getByRole('button', { name: '保存设置' }).click()
 
   await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
-  await expect(page.getByRole('heading', { name: providerId, level: 3 })).toBeVisible()
+  // 新建后自动选中并弹出详情对话框
+  const detailDialog = page.getByRole('dialog', { name: providerId })
+  await expect(detailDialog).toBeVisible()
 
   const configResponse = await request.get(`${baseUrl}/api/config`)
   expect(configResponse.status()).toBe(200)
@@ -68,20 +69,17 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   expect(createdProvider).toBeTruthy()
   expect(createdProvider.baseUrl).toBe(providerBaseUrl)
 
-  const providerCard = page.locator(
-    `xpath=//h3[normalize-space()="${providerId}"]/ancestor::div[@data-testid="provider-card"][1]`
-  )
-  await expect(providerCard.getByRole('button', { name: '测试连接' })).toBeVisible()
-  await providerCard.getByRole('button', { name: '测试连接' }).click()
+  // 操作按钮在详情对话框内
+  await detailDialog.getByRole('button', { name: '测试连接' }).click()
 
-  await providerCard.getByRole('button', { name: '编辑' }).click()
+  await detailDialog.getByRole('button', { name: '编辑' }).click()
   const editProviderDrawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
   await expect(editProviderDrawer).toBeVisible()
-  await editProviderDrawer.getByRole('button', { name: '下一步' }).click()
   await editProviderDrawer.getByPlaceholder('如 官方主账号').fill('Playwright Provider Updated')
-  await editProviderDrawer.getByRole('button', { name: '保存' }).click()
+  await editProviderDrawer.getByRole('button', { name: '保存设置' }).click()
   await expect(page.getByText('已更新 Provider：Playwright Provider Updated')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Playwright Provider Updated', level: 3 })).toBeVisible()
+  // 编辑时详情对话框关闭，表格行展示新名称
+  await expect(page.locator('[data-testid="provider-row"]').filter({ hasText: 'Playwright Provider Updated' })).toBeVisible()
 
   const providerTestResponse = await request.post(`${baseUrl}/api/providers/${providerId}/test`, {
     data: {},
@@ -91,37 +89,43 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   expect(providerTest.ok).toBe(true)
   expect(providerTest.status).toBe(200)
 
-  await page.getByRole('link', { name: '路由管理' }).first().click()
-  await expect(page.getByRole('heading', { name: '路由管理', level: 1 })).toBeVisible()
-
-  await page.getByRole('button', { name: '添加端点' }).first().click()
-  await page.getByPlaceholder('如 custom-api').fill(endpointId)
-  await page.getByPlaceholder('如 我的自定义 API').fill(endpointLabel)
-  await page.getByPlaceholder('如 /custom/api').fill('/playwright/v1/chat/completions')
-  await page.getByRole('button', { name: '创建' }).click()
+  // 自定义端点在「端点」视图中管理，点击「新建端点」弹出创建对话框
+  await page.getByRole('tab', { name: '端点' }).click()
+  // 空状态 CTA 与工具栏按钮同名，取第一个（工具栏）
+  await page.getByRole('button', { name: '新建端点' }).first().click()
+  const endpointDialog = page.getByRole('dialog', { name: '创建端点' })
+  await endpointDialog.getByPlaceholder('如 custom-api').fill(endpointId)
+  await endpointDialog.getByPlaceholder('如 我的自定义 API').fill(endpointLabel)
+  await endpointDialog.getByPlaceholder('如 /custom/api').fill('/playwright/v1/chat/completions')
+  await endpointDialog.getByRole('button', { name: '创建' }).click()
 
   await expect(page.getByText('端点创建成功')).toBeVisible()
-  await expect(page.getByRole('button', { name: endpointLabel })).toBeVisible()
+  // 端点切换 tab 在「路由」视图主体的 RoutingWorkspace 中
+  await page.getByRole('tab', { name: '路由' }).click()
+  await expect(page.getByRole('tab', { name: new RegExp(endpointLabel) })).toBeVisible()
 
   const createdEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(createdEndpoint.label).toBe(endpointLabel)
   expect(createdEndpoint.paths[0].path).toBe('/playwright/v1/chat/completions')
 
-  await page.getByRole('button', { name: endpointLabel }).click()
+  // 端点切换移入路由视图主体的 tab 列表，路由编辑在下方 RoutingWorkspace
+  await page.getByRole('tab', { name: new RegExp(endpointLabel) }).click()
   await expect(page.getByRole('button', { name: '新增映射' })).toBeVisible()
 
   await page.getByRole('button', { name: '新增映射' }).click()
   await page.getByLabel('route-source-1').fill(sourceModel)
   await page.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('stub-model-playwright')
-  await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-playwright`) }).click()
+  await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-playwright`) }).last().click()
   await page.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
   let routedEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(routedEndpoint.routing.modelRoutes[sourceModel]).toBe(targetModel)
 
-  await page.getByRole('button', { name: '路由模板 0' }).click()
+  // 路由模板收进「高级」Disclosure，需先展开
+  await page.locator('summary').filter({ hasText: '高级' }).click()
+  await page.getByRole('button', { name: /路由模板/ }).click()
   await page.getByPlaceholder('输入模板名称，例如 fox').fill(presetName)
   await page.getByRole('button', { name: '保存模板' }).click()
   await expect(page.getByText(`已保存模板 "${presetName}"。`)).toBeVisible()
@@ -135,8 +139,10 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   routedEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(routedEndpoint.routing.modelRoutes[sourceModel]).toBe(updatedTargetModel)
 
-  const presetsPanel = page.locator('div').filter({ hasText: '路由模板' }).first()
-  await presetsPanel.getByRole('button', { name: '应用' }).click()
+  const presetRow = page.locator('div').filter({ hasText: presetName }).filter({
+    has: page.getByRole('button', { name: '应用' }),
+  }).first()
+  await presetRow.getByRole('button', { name: '应用' }).click()
   const diffDialog = page.getByRole('dialog', { name: '应用模板确认' })
   await expect(diffDialog).toBeVisible()
   await diffDialog.getByRole('button', { name: '确认应用' }).click()
@@ -145,40 +151,37 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   routedEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(routedEndpoint.routing.modelRoutes[sourceModel]).toBe(targetModel)
 
-  const endpointCard = page.locator('div').filter({
-    has: page.getByRole('button', { name: endpointLabel }),
-  }).filter({
-    has: page.getByRole('button', { name: '编辑' }),
-  }).first()
-  await endpointCard.getByRole('button', { name: '编辑' }).click()
-  const endpointDrawer = page.locator('div').filter({
-    hasText: '编辑端点',
-  }).filter({
-    has: page.getByPlaceholder('如 我的自定义 API'),
-  }).last()
-  await endpointDrawer.getByPlaceholder('如 我的自定义 API').fill(updatedEndpointLabel)
-  await endpointDrawer.getByRole('button', { name: '保存', exact: true }).click()
+  // 端点编辑在「端点」视图的表格中发起，点击行打开编辑对话框
+  await page.getByRole('tab', { name: '端点' }).click()
+  await page.locator('[data-testid="endpoint-row"]').filter({ hasText: endpointLabel }).click()
+  const endpointEditDialog = page.getByRole('dialog', { name: '编辑端点' })
+  await endpointEditDialog.getByPlaceholder('如 我的自定义 API').fill(updatedEndpointLabel)
+  await endpointEditDialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByText('端点更新成功')).toBeVisible()
-  await expect(page.getByRole('button', { name: updatedEndpointLabel })).toBeVisible()
+  // 回到路由视图后「高级」Disclosure 处于收起态，需重新展开
+  await page.getByRole('tab', { name: '路由' }).click()
+  await expect(page.getByRole('tab', { name: new RegExp(updatedEndpointLabel) })).toBeVisible()
+  await page.locator('summary').filter({ hasText: '高级' }).click()
 
   const updatedEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(updatedEndpoint.label).toBe(updatedEndpointLabel)
 
-  const presetRow = page.locator('div').filter({ hasText: presetName }).filter({
-    has: page.getByRole('button', { name: '应用' }),
-  }).first()
   await expect(presetRow).toBeVisible()
+  // presetRow 是宽松匹配（可能含详情面板的 Provider「删除」），模板行的「删除」在最后
   await presetRow.getByRole('button', { name: '删除' }).last().click()
   const deletePresetDialog = page.getByRole('dialog', { name: '删除' })
   await expect(deletePresetDialog).toBeVisible()
   await deletePresetDialog.getByRole('button', { name: '删除' }).click()
   await expect(page.getByText(`模板 "${presetName}" 已删除。`)).toBeVisible()
+  // 等删除确认框完全退出，避免残留动画中的「删除」按钮被误点
+  await expect(deletePresetDialog).not.toBeVisible()
 
-  await page.getByRole('link', { name: '模型供应商' }).first().click()
-  const updatedProviderCard = page.locator(
-    'xpath=//h3[normalize-space()="Playwright Provider Updated"]/ancestor::div[@data-testid="provider-card"][1]'
-  )
-  await updatedProviderCard.getByRole('button', { name: '删除' }).click()
+  // Provider 删除按钮在「供应商」视图的详情对话框内；点击表格行打开对话框
+  await page.getByRole('tab', { name: '供应商' }).click()
+  await page.locator('[data-testid="provider-row"]').filter({ hasText: 'Playwright Provider Updated' }).click()
+  const providerDetailDialog = page.getByRole('dialog', { name: 'Playwright Provider Updated' })
+  await expect(providerDetailDialog).toBeVisible()
+  await providerDetailDialog.getByRole('button', { name: '删除' }).click()
   const deleteProviderDialog = page.getByRole('dialog', { name: '删除' })
   await expect(deleteProviderDialog).toBeVisible()
   await deleteProviderDialog.getByRole('button', { name: '删除' }).click()
@@ -192,69 +195,74 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
 
 test('model management supports provider edit, delete, route reset, and preset delete', async ({ page, request }) => {
   const baseUrl = harness.baseUrl()
-  await page.goto(`${baseUrl}/ui/models`)
-  await expect(page.getByRole('heading', { name: '模型提供商', level: 1 })).toBeVisible()
+  await page.goto(`${baseUrl}/ui/providers`)
+  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   const providerId = `pm-edit-${Date.now()}`
   const providerBaseUrl = `http://127.0.0.1:${harness.stubPort}`
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const drawer = page.locator('aside').filter({ hasText: '新增 Provider' })
   await drawer.getByRole('button', { name: /OpenAI/ }).click()
-  await drawer.getByRole('button', { name: '下一步' }).click()
   await drawer.getByPlaceholder('如 openai').fill(providerId)
   await drawer.getByPlaceholder('https://api.example.com/v1').fill(providerBaseUrl)
-  await drawer.getByRole('button', { name: '下一步' }).click()
   await drawer.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
   await drawer.getByRole('button', { name: '下一步' }).click()
   await drawer.getByRole('button', { name: '新增模型' }).click()
   await drawer.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-edit')
-  await drawer.getByRole('button', { name: '保存' }).click()
+  await drawer.getByRole('button', { name: '保存设置' }).click()
+  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
 
-  const providerCard = page.locator(
-    `xpath=//h3[normalize-space()="${providerId}"]/ancestor::div[@data-testid="provider-card"][1]`
-  )
-  await providerCard.getByRole('button', { name: '编辑' }).click()
+  // 新建后自动选中并弹出详情对话框，编辑在对话框内发起
+  const detailDialog = page.getByRole('dialog', { name: providerId })
+  await expect(detailDialog).toBeVisible()
+  await detailDialog.getByRole('button', { name: '编辑' }).click()
   const editDrawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
-  await editDrawer.getByRole('button', { name: '下一步' }).click()
   await editDrawer.getByPlaceholder('如 官方主账号').fill(`${providerId}-edited`)
-  await editDrawer.getByRole('button', { name: '保存' }).click()
+  await editDrawer.getByRole('button', { name: '保存设置' }).click()
   await expect(page.getByText(`已更新 Provider：${providerId}-edited`)).toBeVisible()
 
-  const editedProviderCard = page.locator(
-    `xpath=//h3[normalize-space()="${providerId}-edited"]/ancestor::div[@data-testid="provider-card"][1]`
-  )
-  await editedProviderCard.getByRole('button', { name: '测试连接' }).click()
+  // 编辑时详情对话框关闭，重新点击表格行打开后再测试连接
+  await page.locator('[data-testid="provider-row"]').filter({ hasText: `${providerId}-edited` }).click()
+  const editedDetailDialog = page.getByRole('dialog', { name: `${providerId}-edited` })
+  await expect(editedDetailDialog).toBeVisible()
+  await editedDetailDialog.getByRole('button', { name: '测试连接' }).click()
+  // 详情对话框是模态框，切视图前先关闭
+  await page.keyboard.press('Escape')
+  await expect(editedDetailDialog).not.toBeVisible()
 
-  await page.getByRole('link', { name: '路由管理' }).first().click()
-  await expect(page.getByRole('heading', { name: '路由管理', level: 1 })).toBeVisible()
-
-  await page.getByRole('button', { name: '添加端点' }).first().click()
+  // 端点在「端点」视图中创建，路由规则在「路由」视图中管理
+  await page.getByRole('tab', { name: '端点' }).click()
+  await page.getByRole('button', { name: '新建端点' }).first().click()
+  const endpointDialog = page.getByRole('dialog', { name: '创建端点' })
   const endpointId = `pm-edit-endpoint-${Date.now()}`
-  await page.getByPlaceholder('如 custom-api').fill(endpointId)
-  await page.getByPlaceholder('如 我的自定义 API').fill('Edit Endpoint')
-  await page.getByPlaceholder('如 /custom/api').fill(`/playwright/${endpointId}`)
-  await page.getByRole('button', { name: '创建' }).click()
+  await endpointDialog.getByPlaceholder('如 custom-api').fill(endpointId)
+  await endpointDialog.getByPlaceholder('如 我的自定义 API').fill('Edit Endpoint')
+  await endpointDialog.getByPlaceholder('如 /custom/api').fill(`/playwright/${endpointId}`)
+  await endpointDialog.getByRole('button', { name: '创建' }).click()
   await expect(page.getByText('端点创建成功')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Edit Endpoint' }).click()
+  await page.getByRole('tab', { name: '路由' }).click()
+  await page.getByRole('tab', { name: /Edit Endpoint/ }).click()
   await page.getByRole('button', { name: '新增映射' }).click()
   await page.getByLabel('route-source-1').fill('reset-source')
   await page.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('stub-model-edit')
-  await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-edit`) }).click()
+  await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-edit`) }).last().click()
   await page.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
-  await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-edit`) }).click()
+  await page.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('透传')
   await page.getByRole('button', { name: new RegExp(`${providerId}.*透传原始模型`) }).click()
-  await page.getByRole('button', { name: '重置' }).click({ force: true })
+  // 左栏筛选区也有「重置」（禁用态），路由工作区的「重置」在最后
+  await page.getByRole('button', { name: '重置' }).last().click({ force: true })
   await page.getByRole('button', { name: '保存路由' }).click({ force: true })
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
-  let resetEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
+  const resetEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(resetEndpoint.routing.modelRoutes['reset-source']).toBe(`${providerId}:stub-model-edit`)
 
+  await page.locator('summary').filter({ hasText: '高级' }).click()
   await page.getByRole('button', { name: /路由模板/ }).click()
   await page.getByPlaceholder('输入模板名称，例如 fox').fill('preset-delete-test')
   await page.getByRole('button', { name: '保存模板' }).click()
@@ -267,49 +275,17 @@ test('model management supports provider edit, delete, route reset, and preset d
   const deleteDialog = page.getByRole('dialog', { name: '删除' }).first()
   await deleteDialog.getByRole('button', { name: '删除' }).click()
   await expect(page.getByText('模板 "preset-delete-test" 已删除。')).toBeVisible()
+  // 等删除确认框完全退出，避免残留动画中的「删除」按钮被误点
+  await expect(deleteDialog).not.toBeVisible()
 
-  await page.getByRole('link', { name: '模型供应商' }).first().click()
-  await editedProviderCard.getByRole('button', { name: '删除' }).click()
+  // Provider 删除按钮在「供应商」视图的详情对话框内；点击表格行打开对话框
+  await page.getByRole('tab', { name: '供应商' }).click()
+  await page.locator('[data-testid="provider-row"]').filter({ hasText: `${providerId}-edited` }).click()
+  const providerDetailDialog = page.getByRole('dialog', { name: `${providerId}-edited` })
+  await expect(providerDetailDialog).toBeVisible()
+  await providerDetailDialog.getByRole('button', { name: '删除' }).click()
   const confirmDialog = page.getByRole('dialog', { name: '删除' })
+  await expect(confirmDialog).toBeVisible()
   await confirmDialog.getByRole('button', { name: '删除' }).click()
   await expect(page.getByText(`已删除 Provider：${providerId}-edited`)).toBeVisible()
-})
-
-test('routing management can switch anthropic validation modes', async ({ page, request }) => {
-  const baseUrl = harness.baseUrl()
-
-  await page.goto(`${baseUrl}/ui/routing`)
-  await expect(page.getByRole('heading', { name: '路由管理', level: 1 })).toBeVisible()
-
-  // Endpoint validation/compatibility policy is collapsed by default; expand it.
-  await page.locator('summary').filter({ hasText: 'Anthropic 请求校验' }).click()
-
-  const validationMode = page.getByRole('combobox').first()
-
-  await validationMode.click()
-  await page.getByRole('option', { name: 'Anthropic strict' }).click()
-  await expect(page.getByText('Anthropic 请求校验模式已更新为：Anthropic strict。')).toBeVisible()
-
-  let configResponse = await request.get(`${baseUrl}/api/config`)
-  expect(configResponse.status()).toBe(200)
-  let config = await configResponse.json()
-  expect(config.endpointRouting.anthropic.validation.mode).toBe('anthropic-strict')
-
-  await validationMode.click()
-  await page.getByRole('option', { name: 'Claude Code' }).click()
-  await expect(page.getByText('Anthropic 请求校验模式已更新为：Claude Code。')).toBeVisible()
-
-  configResponse = await request.get(`${baseUrl}/api/config`)
-  expect(configResponse.status()).toBe(200)
-  config = await configResponse.json()
-  expect(config.endpointRouting.anthropic.validation.mode).toBe('claude-code')
-
-  await validationMode.click()
-  await page.getByRole('option', { name: '关闭' }).click()
-  await expect(page.getByText('Anthropic 请求校验模式已更新为：关闭。')).toBeVisible()
-
-  configResponse = await request.get(`${baseUrl}/api/config`)
-  expect(configResponse.status()).toBe(200)
-  config = await configResponse.json()
-  expect(config.endpointRouting.anthropic.validation).toBeNull()
 })

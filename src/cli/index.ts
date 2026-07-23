@@ -245,6 +245,16 @@ async function readConfiguredPort(): Promise<number | null> {
   return null
 }
 
+async function hasNoConfiguredProviders(): Promise<boolean> {
+  try {
+    const raw = await fsp.readFile(CONFIG_FILE, 'utf-8')
+    const parsed = JSON.parse(raw)
+    return !parsed || !Array.isArray(parsed.providers) || parsed.providers.length === 0
+  } catch {
+    return false
+  }
+}
+
 async function readPid(): Promise<number | null> {
   try {
     const raw = await fsp.readFile(PID_FILE, 'utf-8')
@@ -349,7 +359,12 @@ async function handleStart(options: { daemon?: boolean; port?: string; foregroun
     console.log(yellow('首次启动后，请访问 Web UI 继续配置 provider。'))
   }
 
-  console.log(green(`服务地址: http://127.0.0.1:${effectivePort}/ui`))
+  const webUiUrl = `http://127.0.0.1:${effectivePort}/ui`
+  console.log(green(`服务地址: ${webUiUrl}`))
+  console.log(`${green('WebUI 控制台:')} ${webUiUrl}`)
+  if (await hasNoConfiguredProviders()) {
+    console.log(yellow(`首次使用？打开 ${webUiUrl}/setup 按向导完成配置`))
+  }
 
   if (!daemonMode) {
     const forwardSignal = (signal: NodeJS.Signals) => {

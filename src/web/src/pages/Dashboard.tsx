@@ -1,4 +1,4 @@
-import { AlertTriangle, Database, RefreshCw } from 'lucide-react'
+import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { PageToolbar } from '@/components/PageToolbar'
 import { PageState } from '@/components/PageState'
@@ -12,21 +12,26 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import {
-  DashboardChartsGrid,
+  AttentionAllClear,
+  AttentionFeed,
   DashboardGettingStarted,
-  DashboardInsightsGrid,
   DashboardLoading,
-  GatewayStatusBar,
-  ModelMetricsTable,
-  MonitoringGrid,
-  RecentRequestsTable
+  InfraDisclosure,
+  PerformanceDisclosure,
+  RecentRequestsTable,
+  SetupProgressStrip,
+  StatusBand,
+  TrendChart
 } from './dashboard/DashboardSections'
-import { useDashboardPageState } from './dashboard/useDashboardPageState'
+import { useDashboardPageState, SETUP_TOTAL_STEPS } from './dashboard/useDashboardPageState'
+import { formatBytes } from './dashboard/types'
 
 export default function DashboardPage() {
   const { t } = useTranslation()
   const state = useDashboardPageState()
-  const showGettingStarted = (state.recentLogs.length === 0 || state.models.length === 0) && !state.guideDismissed
+
+  const dbSizeDisplay = state.dbInfo ? formatBytes(state.dbInfo.totalBytes ?? state.dbInfo.sizeBytes) : '-'
+  const memoryDisplay = formatBytes(state.dbInfo?.memoryRssBytes)
 
   return (
     <div className="flex flex-col gap-6">
@@ -52,10 +57,6 @@ export default function DashboardPage() {
               <RefreshCw className={cn('mr-2 h-4 w-4', state.isRefreshing && 'animate-spin')} aria-hidden="true" />
               {state.isRefreshing ? t('common.actions.refreshing') : t('common.actions.refresh')}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => void state.handleCompact()} disabled={state.compacting}>
-              <Database className="mr-2 h-4 w-4" aria-hidden="true" />
-              {state.compacting ? t('dashboard.actions.compacting') : t('dashboard.actions.compact')}
-            </Button>
           </>
         }
       />
@@ -76,45 +77,52 @@ export default function DashboardPage() {
         />
       ) : (
         <>
-          <GatewayStatusBar
-            status={state.status}
-          />
-
-          {showGettingStarted ? (
+          {/* Cold-start guide: visible until provider + route + API key + first request are all done */}
+          {!state.setupComplete ? (
             <DashboardGettingStarted
               endpointCount={state.customEndpoints.length}
               providerCount={state.status?.providers ?? 0}
-              onDismiss={() => state.setGuideDismissed(true)}
             />
           ) : null}
 
-          <MonitoringGrid
-            daily={state.daily}
-            dbSizeDisplay={state.dbSizeDisplay}
-            memoryDisplay={state.memoryDisplay}
-            overview={state.overview}
-            status={state.status}
+          {/* Layer 1 — live status */}
+          <StatusBand status={state.status} />
+
+          {!state.setupComplete ? (
+            <SetupProgressStrip doneCount={state.setupDoneCount} total={SETUP_TOTAL_STEPS} />
+          ) : null}
+
+          {/* Layer 2 — attention: full feed while warn/error events exist, slim all-clear strip otherwise */}
+          {state.attentionEvents.length > 0 ? (
+            <AttentionFeed connected={state.liveConnected} events={state.attentionEvents} />
+          ) : (
+            <AttentionAllClear connected={state.liveConnected} />
+          )}
+
+          {/* Layer 3 — trends & details */}
+          <TrendChart
+            empty={!state.daily.length}
+            loading={state.summaryPending}
+            option={state.trendOption}
           />
 
-          <DashboardInsightsGrid
-            busiestDay={state.busiestDay}
-            fastestTtftModel={state.fastestTtftModel}
-            totalRequestsInRange={state.totalRequestsInRange}
-          />
-
-          <DashboardChartsGrid
-            dailyEmpty={!state.daily.length}
-            dailyOption={state.dailyOption}
-            dailyPending={state.dailyPending}
-            models={state.models}
+          <PerformanceDisclosure
             modelRequestsOption={state.modelRequestsOption}
-            modelUsagePending={state.modelUsagePending}
+            models={state.models}
             ttftOption={state.ttftOption}
             tpotOption={state.tpotOption}
           />
 
-          <ModelMetricsTable models={state.models} loading={state.modelUsagePending} />
-          <RecentRequestsTable records={state.recentLogs} loading={state.latestLogsPending} />
+          <InfraDisclosure
+            compacting={state.compacting}
+            dbInfo={state.dbInfo}
+            dbSizeDisplay={dbSizeDisplay}
+            memoryDisplay={memoryDisplay}
+            onCompact={() => void state.handleCompact()}
+            status={state.status}
+          />
+
+          <RecentRequestsTable records={state.recentLogs} loading={state.summaryPending} />
         </>
       )}
     </div>

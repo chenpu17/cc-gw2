@@ -47,6 +47,8 @@
 | `/api/routing-presets/{endpoint}/apply` | `POST` | 已兼容 | 应用路由预设 |
 | `/api/routing-presets/{endpoint}/{name}` | `DELETE` | 已兼容 | 删除路由预设 |
 | `/api/events` | `GET` | 已兼容 | 查询事件列表 |
+| `/api/events/stream` | `GET` | 已兼容 | SSE 实时推送新事件，支持 `?level=error,warn&type=xxx` 服务端过滤，15s 心跳 |
+| `/api/dashboard/summary` | `GET` | 已兼容 | Dashboard 首屏聚合接口，可选 `?endpoint=` 过滤 |
 | `/api/logs` | `GET` | 已兼容 | 查询请求日志 |
 | `/api/logs/{id}` | `GET` | 已兼容 | 查询单条日志详情 |
 | `/api/logs/export` | `POST` | 已兼容 | 导出日志 |
@@ -74,6 +76,18 @@
 - `logs.json` 顶层字段为 `exportedAt`、`count`、`limit`、`records`
 - `records[*].payload` 与日志详情接口使用同一套四字段结构
 - 导出结果中的 `api_key_value` 会被置空，另附带 `api_key_value_available` 和 `api_key_value_masked`
+
+Dashboard 与事件流接口补充说明：
+
+- `GET /api/dashboard/summary?endpoint=<optional>` 一次返回 Dashboard 首屏全部数据，替代原先并行的 7 个请求；`endpoint` 语义与 `/api/stats/*` 一致（缺省表示全部端点）。响应字段：
+  - `status`：与 `GET /api/status` 返回一致（含 `uniqueClientAddressesLastHour` 等）
+  - `overview`：与 `GET /api/stats/overview?endpoint=` 返回一致
+  - `daily`：与 `GET /api/stats/daily?days=14&endpoint=` 返回一致
+  - `modelStats`：与 `GET /api/stats/model?days=7&limit=6&endpoint=` 返回一致
+  - `recentRequests`：与 `GET /api/logs?limit=5` 返回一致（`{ total, items }`）
+  - `recentErrors`：最近 10 条 `level=error|warn` 事件，项形状与 `GET /api/events` 一致
+  - `dbInfo`：与 `GET /api/db/info` 返回一致
+- `GET /api/events/stream` 以 `text/event-stream` 推送连接建立后新记录的事件，每条消息为 `data: {eventJson}\n\n`，事件 JSON 形状与 `GET /api/events` 列表项一致；`?level=error,warn&type=xxx` 支持逗号分隔多值，在服务端过滤；keep-alive 注释心跳间隔 15s；Web 鉴权沿用 cookie session，`EventSource` 可直接使用
 
 ## 4. API Key 管理接口
 

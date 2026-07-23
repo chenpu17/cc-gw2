@@ -413,6 +413,20 @@ export function useSettingsPageState() {
     setAuthErrors({})
   }, [authSettings])
 
+  const handleSaveAll = useCallback(async () => {
+    if (isConfigDirty) {
+      await handleSave()
+    }
+    if (isAuthDirty) {
+      await handleAuthSave()
+    }
+  }, [handleAuthSave, handleSave, isAuthDirty, isConfigDirty])
+
+  const handleResetAll = useCallback(() => {
+    handleReset()
+    handleAuthReset()
+  }, [handleAuthReset, handleReset])
+
   const handleCopyPath = useCallback(async () => {
     if (!configPath) {
       pushToast({ title: t('settings.toast.copyFailure', { message: t('settings.file.unknown') }), variant: 'error' })
@@ -500,7 +514,9 @@ export function useSettingsPageState() {
     handleCopyPath,
     handleInputChange,
     handleReset,
+    handleResetAll,
     handleSave,
+    handleSaveAll,
     handleSectionClick,
     isAuthDirty,
     isConfigDirty,

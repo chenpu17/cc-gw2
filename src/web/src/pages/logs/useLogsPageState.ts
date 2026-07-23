@@ -73,10 +73,8 @@ export function useLogsPageState() {
     storageKeys.logs.selectedApiKeys,
     loadStoredApiKeyFilters
   )
-  const [filtersExpanded, setFiltersExpanded] = usePersistentState<boolean>(
-    storageKeys.logs.filtersExpanded,
-    false
-  )
+  // Advanced filters default to expanded; the toggle is session-only (not persisted).
+  const [filtersExpanded, setFiltersExpanded] = useState(true)
   const {
     resetVisibleColumns,
     rowDensity,

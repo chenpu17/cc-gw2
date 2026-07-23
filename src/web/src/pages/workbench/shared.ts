@@ -1,5 +1,6 @@
 import type { CustomEndpoint } from '@/types/endpoints'
 import type {
+  DefaultsConfig,
   EndpointRoutingConfig,
   GatewayConfig,
   ProviderConfig,
@@ -123,6 +124,38 @@ export function getSavedRoutesFromConfig(
   return {}
 }
 
+/** Effective defaults for an endpoint: its own routing.defaults, falling back to the global defaults */
+export function getSavedDefaultsFromConfig(
+  config: GatewayConfig,
+  customEndpoints: ManagedEndpointLike[],
+  endpoint: string
+): DefaultsConfig {
+  if (endpoint === 'anthropic' || endpoint === 'openai') {
+    return config.endpointRouting?.[endpoint]?.defaults ?? config.defaults
+  }
+
+  const customEndpoint = mapManagedEndpoints(config, customEndpoints).find((item) => item.id === endpoint)
+  return customEndpoint?.routing?.defaults ?? config.defaults
+}
+
+export function deriveDefaultsFromConfig(
+  config: GatewayConfig | null,
+  customEndpoints: ManagedEndpointLike[]
+): Record<string, DefaultsConfig> {
+  if (!config) return {}
+
+  const result: Record<string, DefaultsConfig> = {
+    anthropic: getSavedDefaultsFromConfig(config, customEndpoints, 'anthropic'),
+    openai: getSavedDefaultsFromConfig(config, customEndpoints, 'openai')
+  }
+
+  for (const endpoint of mapManagedEndpoints(config, customEndpoints)) {
+    result[endpoint.id] = getSavedDefaultsFromConfig(config, customEndpoints, endpoint.id)
+  }
+
+  return result
+}
+
 export function mapEntriesToRoutes(entries: ModelRouteEntry[]): Record<string, string> {
   const routes: Record<string, string> = {}
   for (const entry of entries) {
@@ -151,21 +184,6 @@ export function isAnthropicEndpoint(endpoint: string, customEndpoints: ManagedEn
     return customEndpoint.paths.some((path) => path.protocol === 'anthropic')
   }
   return customEndpoint.protocol === 'anthropic'
-}
-
-export function getEndpointValidation(
-  endpoint: string,
-  config: GatewayConfig | null,
-  customEndpoints: ManagedEndpointLike[]
-): { mode: string; allowExperimentalBlocks?: boolean } | undefined {
-  if (!config) return undefined
-
-  if (endpoint === 'anthropic' || endpoint === 'openai') {
-    return config.endpointRouting?.[endpoint]?.validation
-  }
-
-  const customEndpoint = mapManagedEndpoints(config, customEndpoints).find((item) => item.id === endpoint)
-  return customEndpoint?.routing?.validation
 }
 
 export function getEndpointCompatibility(
@@ -262,4 +280,59 @@ export function resolveModelLabel(model: ProviderModelConfig): string {
     return `${model.label} (${model.id})`
   }
   return model.id
+}
+
+export interface ProviderTestResult {
+  ok: boolean
+  status?: number
+  statusText?: string
+  durationMs?: number
+  message?: string
+  testedAt: number
+}
+
+function routeTargetMatchesProvider(target: string, providerId: string): boolean {
+  if (!target) return false
+  const [targetProvider] = target.split(':')
+  return targetProvider === providerId || target === providerId
+}
+
+export interface ProviderRouteReference {
+  endpoint: string
+  source: string
+  target: string
+}
+
+export function findRoutesForProvider(
+  config: GatewayConfig | null,
+  customEndpoints: ManagedEndpointLike[],
+  providerId: string
+): ProviderRouteReference[] {
+  if (!config) return []
+
+  const endpointIds = [
+    'anthropic',
+    'openai',
+    ...mapManagedEndpoints(config, customEndpoints).map((endpoint) => endpoint.id)
+  ]
+  const references: ProviderRouteReference[] = []
+
+  for (const endpoint of endpointIds) {
+    const routes = getSavedRoutesFromConfig(config, customEndpoints, endpoint)
+    for (const [source, target] of Object.entries(routes)) {
+      if (routeTargetMatchesProvider(target, providerId)) {
+        references.push({ endpoint, source, target })
+      }
+    }
+  }
+
+  return references
+}
+
+export function countProviderRouteReferences(
+  config: GatewayConfig | null,
+  customEndpoints: ManagedEndpointLike[],
+  providerId: string
+): number {
+  return findRoutesForProvider(config, customEndpoints, providerId).length
 }

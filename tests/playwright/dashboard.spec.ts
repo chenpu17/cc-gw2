@@ -82,21 +82,26 @@ test('dashboard supports refresh, endpoint filters, compaction, and recent reque
   await page.goto(`${baseUrl}/ui/`)
   await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
   await expect(page.getByText('最新请求')).toBeVisible()
-  await expect(page.getByText('今日请求数')).toBeVisible()
+  await expect(page.getByText('活跃转发连接')).toBeVisible()
   await expect(page.getByText('RPM')).toBeVisible()
-  await expect(page.getByText('TPM')).toBeVisible()
-  await expect(page.getByText('stub').first()).toBeVisible()
+  // 无 warn/error 事件时「需要关注」整区收拢为一条全绿细条
+  await expect(page.getByTestId('dashboard-all-clear')).toBeVisible()
+  await expect(page.getByTestId('dashboard-all-clear')).toContainText('最近无异常事件')
+  // 'stub' 也会出现在折叠的「性能详情」模型表里（隐藏），过滤可见元素
+  await expect(page.getByText('stub').filter({ visible: true }).first()).toBeVisible()
   await expect(page.getByTestId('dashboard-runtime-strip')).toHaveCount(0)
   await expect(page.getByTestId('dashboard-overview-panel')).toBeVisible()
   await expect(page.getByTestId('dashboard-runtime-address')).toContainText('127.0.0.1:')
   await expect(page.getByTestId('dashboard-spotlight-grid')).toBeVisible()
-  await expect(page.locator('[data-testid^="dashboard-spotlight-value-"]')).toHaveCount(8)
+  // 状态带 3 个指标 + 基础设施 Disclosure 内 4 个指标（折叠但仍挂载）
+  await expect(page.locator('[data-testid^="dashboard-spotlight-value-"]')).toHaveCount(7)
 
   const endpointSelect = page.getByRole('combobox').first()
+  // 仪表盘数据改走聚合接口 /api/dashboard/summary
   const filterResponse = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return response.request().method() === 'GET'
-      && url.pathname.endsWith('/api/stats/overview')
+      && url.pathname.endsWith('/api/dashboard/summary')
       && url.searchParams.get('endpoint') === 'openai'
   })
   await endpointSelect.click()
@@ -111,12 +116,14 @@ test('dashboard supports refresh, endpoint filters, compaction, and recent reque
   const refreshResponse = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return response.request().method() === 'GET'
-      && url.pathname.endsWith('/api/stats/overview')
+      && url.pathname.endsWith('/api/dashboard/summary')
       && url.searchParams.get('endpoint') === 'openai'
   })
   await page.getByRole('button', { name: '刷新' }).click()
   await refreshResponse
 
+  // Compact 按钮移入「系统资源」Disclosure，需先展开
+  await page.locator('summary').filter({ hasText: '系统资源' }).click()
   await page.getByRole('button', { name: '释放数据库空间' }).click()
   await expect(page.getByText('数据库整理完成')).toBeVisible()
 })

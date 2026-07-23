@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Menu, X } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import { getActiveNavigationRoute, navigationRoutes } from '@/app/routes'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
@@ -19,8 +19,24 @@ function isNavigationItemActive(pathname: string, item: (typeof navigationRoutes
   })
 }
 
-const overviewPaths = ['/', '/logs', '/models', '/routing', '/events']
-const adminPaths = ['/api-keys', '/settings', '/help', '/about']
+const navGroups: { labelKey: string; paths: readonly string[] }[] = [
+  { labelKey: 'nav.group.overview', paths: ['/', '/logs', '/events'] },
+  { labelKey: 'nav.group.configure', paths: ['/providers', '/api-keys'] },
+  { labelKey: 'nav.group.system', paths: ['/settings', '/about'] }
+]
+
+/** mobile bottom tab bar: the four core destinations + a "more" drawer entry */
+const mobileTabPaths = ['/', '/logs', '/providers', '/api-keys']
+
+function groupLabelKeyForPath(pathname: string): string {
+  for (const group of navGroups) {
+    const hit = navigationRoutes.some(
+      (route) => group.paths.includes(route.path) && isNavigationItemActive(pathname, route)
+    )
+    if (hit) return group.labelKey
+  }
+  return navGroups[0].labelKey
+}
 
 function GatewayBrandMark({ compact }: { compact?: boolean }) {
   return (
@@ -121,9 +137,6 @@ function SidebarContent({ compact, onNavigate }: { compact?: boolean; onNavigate
   const location = useLocation()
   const { authEnabled, username } = useAuth()
 
-  const overviewItems = navigationRoutes.filter((r) => overviewPaths.includes(r.path))
-  const adminItems = navigationRoutes.filter((r) => adminPaths.includes(r.path))
-
   return (
     <div className={cn('flex h-full flex-col', compact ? 'items-center' : '')}>
       {/* Logo */}
@@ -138,7 +151,7 @@ function SidebarContent({ compact, onNavigate }: { compact?: boolean; onNavigate
               <p className="shrink-0 whitespace-nowrap text-sm font-semibold text-foreground" title={t('app.title')}>
                 cc-gw
               </p>
-              <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 before:h-1.5 before:w-1.5 before:rounded-full before:bg-emerald-500 dark:bg-emerald-950/30 dark:text-emerald-400">
+              <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-success-bg px-1.5 py-0.5 text-[10px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success">
                 {t('app.online')}
               </span>
             </div>
@@ -151,15 +164,31 @@ function SidebarContent({ compact, onNavigate }: { compact?: boolean; onNavigate
         {compact ? (
           <TooltipProvider delayDuration={0}>
             <div className="space-y-1">
-              <NavGroup label="" items={overviewItems} pathname={location.pathname} compact onNavigate={onNavigate} />
-              <div className="my-2 border-t border-border" />
-              <NavGroup label="" items={adminItems} pathname={location.pathname} compact onNavigate={onNavigate} />
+              {navGroups.map((group, index) => (
+                <div key={group.labelKey}>
+                  {index > 0 && <div className="my-2 border-t border-border" />}
+                  <NavGroup
+                    label=""
+                    items={navigationRoutes.filter((r) => group.paths.includes(r.path))}
+                    pathname={location.pathname}
+                    compact
+                    onNavigate={onNavigate}
+                  />
+                </div>
+              ))}
             </div>
           </TooltipProvider>
         ) : (
           <>
-            <NavGroup label={t('nav.group.overview')} items={overviewItems} pathname={location.pathname} onNavigate={onNavigate} />
-            <NavGroup label={t('nav.group.admin')} items={adminItems} pathname={location.pathname} onNavigate={onNavigate} />
+            {navGroups.map((group) => (
+              <NavGroup
+                key={group.labelKey}
+                label={t(group.labelKey)}
+                items={navigationRoutes.filter((r) => group.paths.includes(r.path))}
+                pathname={location.pathname}
+                onNavigate={onNavigate}
+              />
+            ))}
           </>
         )}
       </div>
@@ -179,6 +208,47 @@ function SidebarContent({ compact, onNavigate }: { compact?: boolean; onNavigate
   )
 }
 
+function MobileTabBar({ onMore }: { onMore: () => void }) {
+  const { t } = useTranslation()
+  const location = useLocation()
+  const tabs = navigationRoutes.filter((r) => mobileTabPaths.includes(r.path))
+
+  return (
+    <nav
+      className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-border bg-card pb-[env(safe-area-inset-bottom)] md:hidden"
+      aria-label={t('nav.more')}
+    >
+      {tabs.map((item) => {
+        const Icon = item.nav.icon
+        const isActive = isNavigationItemActive(location.pathname, item)
+        return (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            end={item.path === '/'}
+            className={cn(
+              'flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors',
+              isActive ? 'text-primary' : 'text-muted-foreground'
+            )}
+            aria-current={isActive ? 'page' : undefined}
+          >
+            <Icon className="h-5 w-5" aria-hidden="true" />
+            <span className="truncate">{t(item.nav.labelKey)}</span>
+          </NavLink>
+        )
+      })}
+      <button
+        type="button"
+        onClick={onMore}
+        className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted-foreground transition-colors"
+      >
+        <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
+        <span>{t('nav.more')}</span>
+      </button>
+    </nav>
+  )
+}
+
 export function AppLayout() {
   const { t } = useTranslation()
   const location = useLocation()
@@ -192,7 +262,7 @@ export function AppLayout() {
 
   const activeItem = useMemo(() => getActiveNavigationRoute(location.pathname), [location.pathname])
   const activeTitle = t(activeItem.nav.titleKey ?? activeItem.nav.labelKey)
-  const activeDescription = t(activeItem.nav.descriptionKey)
+  const groupLabel = t(groupLabelKeyForPath(location.pathname))
 
   const handleLogout = async () => {
     if (loggingOut) return
@@ -223,23 +293,10 @@ export function AppLayout() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
         <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm lg:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            {/* Mobile menu button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden"
-              onClick={() => setMobileNavOpen((prev) => !prev)}
-              aria-label={mobileNavOpen ? t('common.actions.closeNavigation') : t('common.actions.openNavigation')}
-              aria-expanded={mobileNavOpen}
-              aria-controls="mobile-nav"
-            >
-              {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
-            <div key={location.pathname} className="flex min-w-0 animate-fade-in items-baseline gap-3">
-              <h1 className="truncate text-sm font-semibold text-foreground">{activeTitle}</h1>
-              <p className="hidden truncate text-xs text-muted-foreground/60 lg:block">{activeDescription}</p>
-            </div>
+          <div key={location.pathname} className="flex min-w-0 animate-fade-in items-baseline gap-2">
+            <span className="hidden shrink-0 text-xs text-muted-foreground/60 sm:inline">{groupLabel}</span>
+            <span aria-hidden className="hidden shrink-0 text-xs text-muted-foreground/40 sm:inline">/</span>
+            <h1 className="truncate text-sm font-semibold text-foreground">{activeTitle}</h1>
           </div>
 
           <div className="flex items-center gap-2">
@@ -270,13 +327,16 @@ export function AppLayout() {
           tabIndex={-1}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 lg:px-6">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-20 pt-4 md:pb-4 lg:px-6">
             <Outlet />
           </div>
         </main>
       </div>
 
-      {/* Mobile nav overlay */}
+      {/* Mobile bottom tab bar */}
+      <MobileTabBar onMore={() => setMobileNavOpen(true)} />
+
+      {/* Mobile "more" drawer */}
       {mobileNavOpen && (
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
           <div

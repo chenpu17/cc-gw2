@@ -37,7 +37,7 @@ export function TestConnectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <AppDialogContent className="max-w-2xl">
+      <AppDialogContent className="max-w-2xl" onInteractOutside={(event) => event.preventDefault()}>
         <AppDialogHeader>
           <DialogTitle>{t('providers.testDialog.title')}</DialogTitle>
           <DialogDescription>

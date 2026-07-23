@@ -252,6 +252,7 @@ fn build_test_state(
         version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
         version_check_package_name: "@chenpu17/cc-gw".to_string(),
         sessions: auth::SessionStore::default(),
+        event_bus: tokio::sync::broadcast::channel(256).0,
     }
 }
 
@@ -2787,194 +2788,6 @@ async fn anthropic_count_tokens_accounts_for_schema_keys_and_structure() {
     );
 
     gateway_handle.abort();
-    let _ = stdfs::remove_dir_all(home_dir);
-}
-
-#[tokio::test]
-async fn anthropic_messages_validation_accepts_string_or_block_content_in_claude_code_mode() {
-    let attempts = Arc::new(Mutex::new(0usize));
-    let attempts_for_route = Arc::clone(&attempts);
-    let upstream = Router::new().route(
-        "/v1/messages",
-        post(move || {
-            let attempts = Arc::clone(&attempts_for_route);
-            async move {
-                *attempts.lock().expect("lock attempts") += 1;
-                Json(json!({
-                    "id": "msg_ok",
-                    "type": "message",
-                    "role": "assistant",
-                    "model": "claude-test",
-                    "content": [{
-                        "type": "text",
-                        "text": "ok"
-                    }],
-                    "stop_reason": "end_turn",
-                    "stop_sequence": Value::Null,
-                    "usage": {
-                        "input_tokens": 4,
-                        "output_tokens": 2
-                    }
-                }))
-            }
-        }),
-    );
-    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
-
-    let mut config = GatewayConfig::default();
-    config.providers = vec![cc_gw_core::config::ProviderConfig {
-        id: "mock-anthropic".to_string(),
-        label: "Mock Anthropic".to_string(),
-        base_url: format!("http://{upstream_addr}"),
-        provider_type: Some("anthropic".to_string()),
-        default_model: Some("claude-test".to_string()),
-        models: vec![cc_gw_core::config::ProviderModelConfig {
-            id: "claude-test".to_string(),
-            label: Some("Claude Test".to_string()),
-            ..Default::default()
-        }],
-        ..cc_gw_core::config::ProviderConfig::default()
-    }];
-    config.defaults.completion = Some("claude-test".to_string());
-    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
-        anthropic_routing.defaults.completion = Some("claude-test".to_string());
-        anthropic_routing.validation = Some(cc_gw_core::config::EndpointValidationConfig {
-            mode: "claude-code".to_string(),
-            allow_experimental_blocks: Some(true),
-        });
-    }
-
-    let (home_dir, gateway_addr, gateway_handle) =
-        spawn_test_gateway(config, "anthropic-validation").await;
-    let client = reqwest::Client::new();
-
-    let string_content = client
-        .post(format!("http://{gateway_addr}/v1/messages"))
-        .json(&json!({
-            "model": "claude-test",
-            "max_tokens": 64,
-            "messages": [{
-                "role": "user",
-                "content": "hello"
-            }]
-        }))
-        .send()
-        .await
-        .expect("send string-content claude-code request");
-    assert_eq!(string_content.status(), StatusCode::OK);
-
-    let valid = client
-        .post(format!("http://{gateway_addr}/v1/messages"))
-        .json(&json!({
-            "model": "claude-test",
-            "max_tokens": 64,
-            "messages": [{
-                "role": "user",
-                "content": [{ "type": "text", "text": "hello" }]
-            }]
-        }))
-        .send()
-        .await
-        .expect("send valid claude-code request");
-    assert_eq!(valid.status(), StatusCode::OK);
-
-    assert_eq!(*attempts.lock().expect("lock attempts"), 2);
-
-    gateway_handle.abort();
-    upstream_handle.abort();
-    let _ = stdfs::remove_dir_all(home_dir);
-}
-
-#[tokio::test]
-async fn anthropic_messages_validation_rejects_unknown_block_types_in_claude_code_mode() {
-    let attempts = Arc::new(Mutex::new(0usize));
-    let attempts_for_route = Arc::clone(&attempts);
-    let upstream = Router::new().route(
-        "/v1/messages",
-        post(move || {
-            let attempts = Arc::clone(&attempts_for_route);
-            async move {
-                *attempts.lock().expect("lock attempts") += 1;
-                Json(json!({
-                    "id": "msg_ok",
-                    "type": "message",
-                    "role": "assistant",
-                    "model": "claude-test",
-                    "content": [{
-                        "type": "text",
-                        "text": "ok"
-                    }],
-                    "stop_reason": "end_turn",
-                    "stop_sequence": Value::Null,
-                    "usage": {
-                        "input_tokens": 4,
-                        "output_tokens": 2
-                    }
-                }))
-            }
-        }),
-    );
-    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
-
-    let mut config = GatewayConfig::default();
-    config.providers = vec![cc_gw_core::config::ProviderConfig {
-        id: "mock-anthropic".to_string(),
-        label: "Mock Anthropic".to_string(),
-        base_url: format!("http://{upstream_addr}"),
-        provider_type: Some("anthropic".to_string()),
-        default_model: Some("claude-test".to_string()),
-        models: vec![cc_gw_core::config::ProviderModelConfig {
-            id: "claude-test".to_string(),
-            label: Some("Claude Test".to_string()),
-            ..Default::default()
-        }],
-        ..cc_gw_core::config::ProviderConfig::default()
-    }];
-    config.defaults.completion = Some("claude-test".to_string());
-    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
-        anthropic_routing.defaults.completion = Some("claude-test".to_string());
-        anthropic_routing.validation = Some(cc_gw_core::config::EndpointValidationConfig {
-            mode: "claude-code".to_string(),
-            allow_experimental_blocks: Some(true),
-        });
-    }
-
-    let (home_dir, gateway_addr, gateway_handle) =
-        spawn_test_gateway(config, "anthropic-validation-unknown-block").await;
-    let client = reqwest::Client::new();
-
-    let invalid = client
-        .post(format!("http://{gateway_addr}/v1/messages"))
-        .json(&json!({
-            "model": "claude-test",
-            "max_tokens": 64,
-            "messages": [{
-                "role": "user",
-                "content": [{
-                    "type": "server_tool_use",
-                    "name": "search"
-                }]
-            }]
-        }))
-        .send()
-        .await
-        .expect("send invalid claude-code block request");
-    assert_eq!(
-        invalid.status(),
-        StatusCode::from_u16(430).expect("430 status")
-    );
-    let invalid_body: Value = invalid.json().await.expect("decode invalid response");
-    assert_eq!(
-        invalid_body
-            .get("error")
-            .and_then(|error| error.get("code"))
-            .and_then(Value::as_str),
-        Some("invalid_claude_code_request")
-    );
-    assert_eq!(*attempts.lock().expect("lock attempts"), 0);
-
-    gateway_handle.abort();
-    upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
 }
 
@@ -6609,4 +6422,184 @@ async fn api_key_concurrency_limit_returns_429_and_records_event() {
     gateway_handle.abort();
     upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn dashboard_summary_returns_all_sections() {
+    let paths = test_paths("dashboard-summary");
+    initialize_database(&paths.db_path).expect("init db");
+
+    // Seed one error event and one warn event so recentErrors has content.
+    record_event(
+        &paths.db_path,
+        &RecordEventInput {
+            event_type: "provider_proxy_failure".to_string(),
+            level: Some("error".to_string()),
+            source: Some("proxy".to_string()),
+            title: Some("Provider request failed".to_string()),
+            message: Some("boom".to_string()),
+            ..RecordEventInput::default()
+        },
+    )
+    .expect("record error event");
+    record_event(
+        &paths.db_path,
+        &RecordEventInput {
+            event_type: "web_auth_login_failure".to_string(),
+            level: Some("warn".to_string()),
+            source: Some("web-auth".to_string()),
+            title: Some("Web login failed".to_string()),
+            ..RecordEventInput::default()
+        },
+    )
+    .expect("record warn event");
+
+    let state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    let (addr, gateway_handle) = spawn_router(build_router(state)).await;
+    let client = reqwest::Client::new();
+
+    for url in [
+        format!("http://{addr}/api/dashboard/summary"),
+        format!("http://{addr}/api/dashboard/summary?endpoint=anthropic"),
+    ] {
+        let response = client.get(&url).send().await.expect("request summary");
+        assert_eq!(response.status(), StatusCode::OK, "url: {url}");
+        let body: Value = response.json().await.expect("decode summary");
+
+        for key in [
+            "status",
+            "overview",
+            "daily",
+            "modelStats",
+            "recentRequests",
+            "recentErrors",
+            "dbInfo",
+        ] {
+            assert!(body.get(key).is_some(), "missing `{key}` in {url}");
+        }
+        assert!(
+            body.pointer("/status/uniqueClientAddressesLastHour")
+                .is_some(),
+            "status should reuse the /api/status shape"
+        );
+        assert!(
+            body.pointer("/overview/totals").is_some(),
+            "overview should reuse the /api/stats/overview shape"
+        );
+        assert!(body.get("daily").is_some_and(Value::is_array));
+        assert!(body.get("modelStats").is_some_and(Value::is_array));
+        assert!(
+            body.pointer("/recentRequests/items").is_some(),
+            "recentRequests should reuse the /api/logs shape"
+        );
+        assert!(body.get("recentErrors").is_some_and(Value::is_array));
+        assert!(
+            body.pointer("/dbInfo/path").is_some() || body.pointer("/dbInfo/sizeBytes").is_some(),
+            "dbInfo should reuse the /api/db/info shape"
+        );
+    }
+
+    // The unfiltered summary surfaces both seeded events in recentErrors.
+    let body: Value = client
+        .get(format!("http://{addr}/api/dashboard/summary"))
+        .send()
+        .await
+        .expect("request summary")
+        .json()
+        .await
+        .expect("decode summary");
+    let recent_errors = body
+        .get("recentErrors")
+        .and_then(Value::as_array)
+        .expect("recentErrors array");
+    let levels: Vec<&str> = recent_errors
+        .iter()
+        .filter_map(|event| event.get("level").and_then(Value::as_str))
+        .collect();
+    assert!(levels.contains(&"error"));
+    assert!(levels.contains(&"warn"));
+    assert!(
+        recent_errors
+            .iter()
+            .all(|event| event.get("type").and_then(Value::as_str).is_some()),
+        "recentErrors items should reuse the /api/events item shape"
+    );
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+#[tokio::test]
+async fn events_stream_serves_sse_and_pushes_recorded_events() {
+    let paths = test_paths("events-stream");
+    initialize_database(&paths.db_path).expect("init db");
+    let state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    let event_state = state.clone();
+    let (addr, gateway_handle) = spawn_router(build_router(state)).await;
+    let client = reqwest::Client::new();
+
+    let mut response = client
+        .get(format!("http://{addr}/api/events/stream?level=error"))
+        .send()
+        .await
+        .expect("open event stream");
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .expect("content-type header")
+        .to_string();
+    assert!(
+        content_type.starts_with("text/event-stream"),
+        "unexpected content-type: {content_type}"
+    );
+
+    // Give the server a moment to register the broadcast subscriber.
+    sleep(Duration::from_millis(100)).await;
+
+    // A warn event must be filtered out server-side; an error event must arrive.
+    record_and_broadcast_event(
+        &event_state,
+        RecordEventInput {
+            event_type: "stream_filtered_warn".to_string(),
+            level: Some("warn".to_string()),
+            ..RecordEventInput::default()
+        },
+    );
+    record_and_broadcast_event(
+        &event_state,
+        RecordEventInput {
+            event_type: "stream_expected_error".to_string(),
+            level: Some("error".to_string()),
+            title: Some("Stream test".to_string()),
+            ..RecordEventInput::default()
+        },
+    );
+
+    let mut received = String::new();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !received.contains("stream_expected_error") {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for SSE event, received: {received}"
+        );
+        let chunk = tokio::time::timeout(Duration::from_secs(5), response.chunk())
+            .await
+            .expect("stream chunk timeout")
+            .expect("stream chunk error")
+            .expect("stream closed before event arrived");
+        received.push_str(&String::from_utf8_lossy(&chunk));
+    }
+
+    assert!(received.contains("data: {"));
+    assert!(received.contains("stream_expected_error"));
+    assert!(
+        !received.contains("stream_filtered_warn"),
+        "level=error filter should drop warn events, received: {received}"
+    );
+
+    drop(response);
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
 }

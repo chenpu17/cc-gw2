@@ -328,11 +328,7 @@ export function SecuritySection({
   authLoading,
   authSettings,
   needsPassword,
-  onAuthReset,
-  onAuthSave,
   onSetAuthForm,
-  savingAuth,
-  isAuthDirty,
   sectionRef
 }: {
   authErrors: AuthFormErrors
@@ -340,11 +336,7 @@ export function SecuritySection({
   authLoading: boolean
   authSettings: { enabled: boolean; username?: string } | null
   needsPassword: boolean
-  onAuthReset: () => void
-  onAuthSave: () => void
   onSetAuthForm: Dispatch<SetStateAction<AuthFormState>>
-  savingAuth: boolean
-  isAuthDirty: boolean
   sectionRef?: Ref<HTMLDivElement>
 }) {
   const { t } = useTranslation()
@@ -418,15 +410,6 @@ export function SecuritySection({
                   {t(needsPassword ? 'settings.auth.passwordHintRequired' : 'settings.auth.passwordHintOptional')}
                 </div>
               </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
-              <Button onClick={onAuthSave} disabled={savingAuth || !isAuthDirty} className="w-full lg:w-auto">
-                {savingAuth ? t('common.actions.saving') : t('settings.auth.actions.save')}
-              </Button>
-              <Button variant="outline" onClick={onAuthReset} disabled={savingAuth || !isAuthDirty} className="w-full lg:w-auto">
-                {t('common.actions.reset')}
-              </Button>
             </div>
           </div>
         )}
@@ -531,62 +514,39 @@ export function CleanupSection({
 }
 
 export function StickySettingsSaveBar({
-  isAuthDirty,
-  isConfigDirty,
+  dirtyCount,
   protocolChangesPending,
-  onAuthReset,
-  onAuthSave,
   onReset,
   onSave,
-  saving,
-  savingAuth
+  saving
 }: {
-  isAuthDirty: boolean
-  isConfigDirty: boolean
+  dirtyCount: number
   protocolChangesPending: boolean
-  onAuthReset: () => void
-  onAuthSave: () => void
   onReset: () => void
   onSave: () => void
   saving: boolean
-  savingAuth: boolean
 }) {
   const { t } = useTranslation()
 
-  if (!isAuthDirty && !isConfigDirty) {
+  if (dirtyCount === 0) {
     return null
   }
 
   return (
     <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-xl bg-card border border-border px-6 py-5 shadow-lg md:flex-row md:items-center md:justify-between">
       <div className="space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">{t('modelManagement.actions.unsaved')}</Badge>
-          {isConfigDirty ? <Badge variant="outline">{t('settings.sections.basics')}</Badge> : null}
-          {isAuthDirty ? <Badge variant="outline">{t('settings.sections.security')}</Badge> : null}
-          {protocolChangesPending ? (
-            <Badge variant="outline" className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300">
-              {t('settings.sections.protocol')}
-            </Badge>
-          ) : null}
-        </div>
+        <Badge variant="secondary">{t('settings.overview.unsavedCount', { count: dirtyCount })}</Badge>
         <p className="text-sm text-muted-foreground">
           {protocolChangesPending ? t('settings.toast.protocolRestartRequired') : t('modelManagement.actions.footerDirtyHint')}
         </p>
       </div>
       <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-center">
-        {isAuthDirty ? (
-          <>
-            <Button variant="outline" onClick={onAuthReset} disabled={savingAuth} className="w-full lg:w-auto">{t('common.actions.reset')}</Button>
-            <Button onClick={onAuthSave} disabled={savingAuth} className="w-full lg:w-auto">{savingAuth ? t('common.actions.saving') : t('settings.auth.actions.save')}</Button>
-          </>
-        ) : null}
-        {isConfigDirty ? (
-          <>
-            <Button variant="outline" onClick={onReset} disabled={saving} className="w-full lg:w-auto">{t('common.actions.reset')}</Button>
-            <Button onClick={onSave} disabled={saving} className="w-full lg:w-auto">{saving ? t('common.actions.saving') : t('common.actions.save')}</Button>
-          </>
-        ) : null}
+        <Button variant="outline" onClick={onReset} disabled={saving} className="w-full lg:w-auto">
+          {t('common.actions.reset')}
+        </Button>
+        <Button onClick={onSave} disabled={saving} className="w-full lg:w-auto">
+          {saving ? t('common.actions.saving') : t('common.actions.save')}
+        </Button>
       </div>
     </div>
   )

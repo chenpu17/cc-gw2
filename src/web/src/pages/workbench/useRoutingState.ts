@@ -1,75 +1,63 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useTranslation } from 'react-i18next'
-import { customEndpointsApi, toApiError, type ApiError } from '@/services/api'
+import { useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
+import { toApiError, customEndpointsApi } from '@/services/api'
 import { gatewayApi } from '@/services/gateway'
 import { modelManagementApi } from '@/services/modelManagement'
 import { queryKeys } from '@/services/queryKeys'
 import { useAppMutation } from '@/hooks/useAppMutation'
-import { useApiQuery } from '@/hooks/useApiQuery'
-import { useToast } from '@/providers/ToastProvider'
-import type { CustomEndpoint } from '@/types/endpoints'
 import type {
-  EndpointValidationMode,
+  DefaultsConfig,
   EndpointRoutingConfig,
   GatewayConfig,
-  ProviderConfig,
   RoutingPreset
 } from '@/types/providers'
+import type { WorkbenchConfigState } from './useWorkbenchConfig'
 import {
   areRouteEntriesDirty,
-  buildTabs,
+  buildPresetsMap,
   createEntryId,
+  deriveDefaultsFromConfig,
   deriveRoutesFromConfig,
+  getSavedDefaultsFromConfig,
   getSavedRoutesFromConfig,
-  resolveModelLabel,
-  type AnthropicHeaderOption,
-  type ConfirmAction,
-  type ManagementTab,
   type ModelRouteEntry
 } from './shared'
 
-function buildPresetsMap(config: GatewayConfig, customEndpoints: CustomEndpoint[]): Record<string, RoutingPreset[]> {
-  const presetsMap: Record<string, RoutingPreset[]> = {
-    anthropic: config.routingPresets?.anthropic ?? [],
-    openai: config.routingPresets?.openai ?? []
-  }
-
-  for (const endpoint of customEndpoints) {
-    const updatedEndpoint = config.customEndpoints?.find((item) => item.id === endpoint.id)
-    presetsMap[endpoint.id] = updatedEndpoint?.routingPresets ?? endpoint.routingPresets ?? []
-  }
-
-  return presetsMap
-}
-
-export function useModelManagementState() {
-  const { t } = useTranslation()
-  const { pushToast } = useToast()
+/**
+ * Routing state for the providers workbench: per-endpoint route entries,
+ * presets, the OpenAI compatibility policy and the active endpoint.
+ * All writes keep the read-modify-PUT flow against GET/PUT /api/config.
+ */
+export function useRoutingState(base: WorkbenchConfigState) {
+  const { t, pushToast, config, setConfig, configQuery, customEndpoints, tabs, ensureConfig } = base
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const endpointParam = searchParams.get('endpoint')
 
-  const configQuery = useApiQuery<GatewayConfig, ApiError>(
-    queryKeys.config.full(),
-    gatewayApi.configRequest()
-  )
+  const [activeEndpointKey, setActiveEndpointKey] = useState<string>(() => endpointParam || 'anthropic')
 
-  const customEndpointsQuery = useQuery({
-    queryKey: queryKeys.customEndpoints.all(),
-    queryFn: customEndpointsApi.list,
-    refetchInterval: 10000
-  })
+  // Deep links (e.g. from the provider detail panel) drive the active endpoint
+  // through the `endpoint` search param.
+  useEffect(() => {
+    if (endpointParam && endpointParam !== activeEndpointKey) {
+      setActiveEndpointKey(endpointParam)
+    }
+  }, [endpointParam, activeEndpointKey])
 
-  const customEndpoints = customEndpointsQuery.data?.endpoints ?? []
-  const tabs = useMemo<ManagementTab[]>(() => buildTabs(t, customEndpoints), [customEndpoints, t])
-
-  const [activeTab, setActiveTab] = useState<string>('providers')
-  const [config, setConfig] = useState<GatewayConfig | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
-  const [editingProvider, setEditingProvider] = useState<ProviderConfig | undefined>(undefined)
-  const [editingEndpoint, setEditingEndpoint] = useState<CustomEndpoint | undefined>(undefined)
-  const [testingProviderId, setTestingProviderId] = useState<string | null>(null)
-  const [endpointDrawerOpen, setEndpointDrawerOpen] = useState(false)
+  const setActiveEndpoint = (key: string) => {
+    setActiveEndpointKey(key)
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      if (key === 'anthropic') {
+        next.delete('endpoint')
+      } else {
+        next.set('endpoint', key)
+      }
+      return next
+    }, { replace: true })
+  }
+  const activeEndpoint = activeEndpointKey
   const [routesByEndpoint, setRoutesByEndpoint] = useState<Record<string, ModelRouteEntry[]>>({})
   const [routeError, setRouteError] = useState<Record<string, string | null>>({})
   const [savingRouteFor, setSavingRouteFor] = useState<string | null>(null)
@@ -79,68 +67,18 @@ export function useModelManagementState() {
   const [savingPresetFor, setSavingPresetFor] = useState<string | null>(null)
   const [applyingPreset, setApplyingPreset] = useState<{ endpoint: string; name: string } | null>(null)
   const [deletingPreset, setDeletingPreset] = useState<{ endpoint: string; name: string } | null>(null)
-  const [testDialogOpen, setTestDialogOpen] = useState(false)
-  const [testDialogProvider, setTestDialogProvider] = useState<ProviderConfig | null>(null)
-  const [testDialogUsePreset, setTestDialogUsePreset] = useState(true)
-  const [testDialogPreservedExtras, setTestDialogPreservedExtras] = useState<Record<string, string>>({})
-  const [noModelDialogProvider, setNoModelDialogProvider] = useState<ProviderConfig | null>(null)
-  const [savingClaudeValidation, setSavingClaudeValidation] = useState(false)
   const [savingCompatibilityPolicy, setSavingCompatibilityPolicy] = useState(false)
   const [presetsExpanded, setPresetsExpanded] = useState<Record<string, boolean>>({})
   const [presetDiffDialog, setPresetDiffDialog] = useState<{ endpoint: string; preset: RoutingPreset } | null>(null)
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
-  const [confirmingAction, setConfirmingAction] = useState(false)
-  const [providerSearch, setProviderSearch] = useState('')
-  const [providerTypeFilter, setProviderTypeFilter] = useState<string>('all')
+  const [defaultsByEndpoint, setDefaultsByEndpoint] = useState<Record<string, DefaultsConfig>>({})
+  const [savingDefaultsFor, setSavingDefaultsFor] = useState<string | null>(null)
 
-  const systemTabs = useMemo(() => tabs.filter((tab) => tab.isSystem), [tabs])
-  const customTabs = useMemo(() => tabs.filter((tab) => !tab.isSystem), [tabs])
-  const activeTabInfo = useMemo(
-    () => tabs.find((tab) => tab.key === activeTab) ?? tabs[0] ?? null,
-    [activeTab, tabs]
-  )
-
-  const providers = config?.providers ?? []
-  const providerCount = providers.length
-  const filteredProviders = useMemo(() => {
-    return providers.filter((provider) => {
-      const matchesType = providerTypeFilter === 'all' || (provider.type ?? 'custom') === providerTypeFilter
-      if (!matchesType) return false
-
-      const keyword = providerSearch.trim().toLowerCase()
-      if (!keyword) return true
-
-      const haystack = [
-        provider.id,
-        provider.label ?? '',
-        provider.baseUrl,
-        provider.defaultModel ?? '',
-        ...(provider.models?.map((model) => model.id) ?? [])
-      ]
-        .join(' ')
-        .toLowerCase()
-
-      return haystack.includes(keyword)
-    })
-  }, [providerSearch, providerTypeFilter, providers])
-
-  const anthropicTestHeaderOptions = useMemo<AnthropicHeaderOption[]>(
-    () => [
-      {
-        key: 'anthropic-beta',
-        value: 'claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14',
-        label: t('providers.testDialog.options.beta.label'),
-        description: t('providers.testDialog.options.beta.description')
-      }
-    ],
-    [t]
-  )
+  const endpointTabs = useMemo(() => tabs.filter((tab) => tab.key !== 'providers'), [tabs])
 
   useEffect(() => {
     if (!configQuery.data) return
 
     const incoming = configQuery.data
-    setConfig(incoming)
     setRoutesByEndpoint((previous) => {
       const nextFromServer = deriveRoutesFromConfig(incoming, customEndpoints)
       if (!previous || Object.keys(previous).length === 0) {
@@ -157,35 +95,32 @@ export function useModelManagementState() {
       }
       return merged
     })
+    setDefaultsByEndpoint((previous) => {
+      const nextFromServer = deriveDefaultsFromConfig(incoming, customEndpoints)
+      if (!previous || Object.keys(previous).length === 0) {
+        return nextFromServer
+      }
+
+      const merged: Record<string, DefaultsConfig> = { ...nextFromServer }
+      for (const [endpoint, previousDefaults] of Object.entries(previous)) {
+        if (!(endpoint in nextFromServer)) continue
+        const savedDefaults = getSavedDefaultsFromConfig(incoming, customEndpoints, endpoint)
+        if (JSON.stringify(previousDefaults) !== JSON.stringify(savedDefaults)) {
+          merged[endpoint] = previousDefaults
+        }
+      }
+      return merged
+    })
     setRouteError({})
     setPresetsByEndpoint(buildPresetsMap(incoming, customEndpoints))
   }, [configQuery.data, customEndpoints])
 
   useEffect(() => {
-    if (!configQuery.isError || !configQuery.error) return
+    if (endpointTabs.some((tab) => tab.key === activeEndpoint)) return
+    setActiveEndpoint('anthropic')
+  }, [activeEndpoint, endpointTabs])
 
-    pushToast({
-      title: t('providers.toast.loadFailure', { message: configQuery.error.message }),
-      variant: 'error'
-    })
-  }, [configQuery.error, configQuery.isError, pushToast, t])
-
-  useEffect(() => {
-    if (tabs.some((tab) => tab.key === activeTab)) return
-    setActiveTab('providers')
-  }, [activeTab, tabs])
-
-  const defaultLabels = useMemo(() => {
-    const labels = new Map<string, string>()
-    for (const provider of providers) {
-      if (!provider.defaultModel || !provider.models) continue
-      const matched = provider.models.find((model) => model.id === provider.defaultModel)
-      if (matched) {
-        labels.set(provider.id, resolveModelLabel(matched))
-      }
-    }
-    return labels
-  }, [providers])
+  const providers = config?.providers ?? []
 
   const providerModelOptions = useMemo(() => {
     const options: Array<{
@@ -272,16 +207,6 @@ export function useModelManagementState() {
     return options
   }, [providers, routesByEndpoint, t])
 
-  const handleOpenCreateEndpoint = () => {
-    setEditingEndpoint(undefined)
-    setEndpointDrawerOpen(true)
-  }
-
-  const handleOpenEditEndpoint = (endpoint: CustomEndpoint) => {
-    setEditingEndpoint(endpoint)
-    setEndpointDrawerOpen(true)
-  }
-
   const getSavedRoutes = (endpoint: string): Record<string, string> => {
     if (!config) return {}
     return getSavedRoutesFromConfig(config, customEndpoints, endpoint)
@@ -289,13 +214,118 @@ export function useModelManagementState() {
 
   const isDirtyByEndpoint = useMemo(() => {
     const result: Record<string, boolean> = {}
-    for (const tab of tabs) {
-      if (tab.key === 'providers') continue
+    for (const tab of endpointTabs) {
       const entries = routesByEndpoint[tab.key] || []
       result[tab.key] = areRouteEntriesDirty(entries, getSavedRoutes(tab.key))
     }
     return result
-  }, [config, customEndpoints, routesByEndpoint, tabs])
+  }, [config, customEndpoints, routesByEndpoint, endpointTabs])
+
+  const isDefaultsDirtyByEndpoint = useMemo(() => {
+    const result: Record<string, boolean> = {}
+    if (!config) return result
+    for (const tab of endpointTabs) {
+      const draft = defaultsByEndpoint[tab.key]
+      if (!draft) {
+        result[tab.key] = false
+        continue
+      }
+      const saved = getSavedDefaultsFromConfig(config, customEndpoints, tab.key)
+      result[tab.key] = JSON.stringify(draft) !== JSON.stringify(saved)
+    }
+    return result
+  }, [config, customEndpoints, defaultsByEndpoint, endpointTabs])
+
+  const handleDefaultsChange = (endpoint: string, field: keyof DefaultsConfig, value: string | number | null) => {
+    setDefaultsByEndpoint((previous) => ({
+      ...previous,
+      [endpoint]: {
+        ...(previous[endpoint] ?? { completion: null, reasoning: null, background: null, longContextThreshold: 60000 }),
+        [field]: value
+      }
+    }))
+  }
+
+  const handleSaveDefaults = async (endpoint: string) => {
+    if (!ensureConfig()) return
+
+    const draft = defaultsByEndpoint[endpoint]
+    if (!draft) return
+
+    const sanitized: DefaultsConfig = {
+      completion: draft.completion?.trim() ? draft.completion.trim() : null,
+      reasoning: draft.reasoning?.trim() ? draft.reasoning.trim() : null,
+      background: draft.background?.trim() ? draft.background.trim() : null,
+      longContextThreshold:
+        Number.isFinite(draft.longContextThreshold) && draft.longContextThreshold > 0
+          ? Math.floor(draft.longContextThreshold)
+          : config!.defaults.longContextThreshold
+    }
+
+    setSavingDefaultsFor(endpoint)
+    try {
+      const customEndpoint = customEndpoints.find((item) => item.id === endpoint)
+      if (customEndpoint) {
+        const routing: EndpointRoutingConfig = {
+          ...(customEndpoint.routing ?? {}),
+          defaults: sanitized,
+          modelRoutes: customEndpoint.routing?.modelRoutes ?? {}
+        }
+        await customEndpointsApi.update(endpoint, { routing })
+        setConfig((previous) => {
+          if (!previous) return previous
+          const nextEndpoints = [...(previous.customEndpoints ?? [])]
+          const endpointIndex = nextEndpoints.findIndex((item) => item.id === endpoint)
+          if (endpointIndex === -1) return previous
+          nextEndpoints[endpointIndex] = {
+            ...nextEndpoints[endpointIndex],
+            routing
+          }
+          return {
+            ...previous,
+            customEndpoints: nextEndpoints
+          }
+        })
+        await queryClient.invalidateQueries({ queryKey: queryKeys.customEndpoints.all() })
+      } else {
+        const systemEndpoint = endpoint as 'anthropic' | 'openai'
+        const nextConfig: GatewayConfig = {
+          ...config!,
+          endpointRouting: {
+            ...(config!.endpointRouting ?? {}),
+            [systemEndpoint]: {
+              defaults: sanitized,
+              modelRoutes:
+                config!.endpointRouting?.[systemEndpoint]?.modelRoutes ??
+                (systemEndpoint === 'anthropic' ? config!.modelRoutes ?? {} : {}),
+              compatibility: config!.endpointRouting?.[systemEndpoint]?.compatibility
+            }
+          }
+        }
+        await gatewayApi.saveConfig(nextConfig)
+        setConfig(nextConfig)
+      }
+
+      setDefaultsByEndpoint((previous) => ({
+        ...previous,
+        [endpoint]: sanitized
+      }))
+      pushToast({
+        title: t('workbench.defaults.saveSuccess'),
+        variant: 'success'
+      })
+      void configQuery.refetch()
+    } catch (error) {
+      pushToast({
+        title: t('workbench.defaults.saveFailure', {
+          message: error instanceof Error ? error.message : 'unknown'
+        }),
+        variant: 'error'
+      })
+    } finally {
+      setSavingDefaultsFor(null)
+    }
+  }
 
   const syncPresets = (endpoint: string, presets: RoutingPreset[]) => {
     setPresetsByEndpoint((previous) => ({
@@ -329,17 +359,6 @@ export function useModelManagementState() {
         customEndpoints: nextEndpoints
       }
     })
-  }
-
-  const ensureConfig = () => {
-    if (config) return true
-
-    pushToast({
-      title: t('settings.toast.missingConfig'),
-      variant: 'error'
-    })
-    void configQuery.refetch()
-    return false
   }
 
   const handlePresetNameChange = (endpoint: string, value: string) => {
@@ -509,53 +528,6 @@ export function useModelManagementState() {
     }
   }
 
-  const handleOpenCreate = () => {
-    if (!ensureConfig()) return
-    setDrawerMode('create')
-    setEditingProvider(undefined)
-    setDrawerOpen(true)
-  }
-
-  const handleOpenEdit = (provider: ProviderConfig) => {
-    if (!ensureConfig()) return
-    setDrawerMode('edit')
-    setEditingProvider(provider)
-    setDrawerOpen(true)
-  }
-
-  const handleProviderSubmit = async (payload: ProviderConfig) => {
-    if (!config) {
-      throw new Error(t('settings.toast.missingConfig'))
-    }
-
-    const nextProviders =
-      drawerMode === 'create'
-        ? [...providers, payload]
-        : providers.map((item) =>
-            editingProvider && item.id === editingProvider.id
-              ? { ...payload, id: editingProvider.id }
-              : item
-          )
-
-    const nextConfig: GatewayConfig = {
-      ...config,
-      providers: nextProviders
-    }
-
-    await gatewayApi.saveConfig(nextConfig)
-    setConfig(nextConfig)
-    setRoutesByEndpoint(deriveRoutesFromConfig(nextConfig, customEndpoints))
-    void configQuery.refetch()
-
-    pushToast({
-      title:
-        drawerMode === 'create'
-          ? t('providers.toast.createSuccess', { name: payload.label || payload.id })
-          : t('providers.toast.updateSuccess', { name: payload.label || payload.id }),
-      variant: 'success'
-    })
-  }
-
   const handleDeleteEndpoint = async (endpointId: string) => {
     const endpoint = customEndpoints.find((item) => item.id === endpointId)
     if (!endpoint || endpoint.deletable === false) return
@@ -567,8 +539,8 @@ export function useModelManagementState() {
         title: t('modelManagement.deleteEndpointSuccess'),
         variant: 'success'
       })
-      if (activeTab === endpointId) {
-        setActiveTab('providers')
+      if (activeEndpoint === endpointId) {
+        setActiveEndpoint('anthropic')
       }
     } catch (error) {
       const apiError = toApiError(error)
@@ -579,358 +551,12 @@ export function useModelManagementState() {
     }
   }
 
-  const handleTestConnection = async (
-    provider: ProviderConfig,
-    options?: { headers?: Record<string, string>; query?: string }
-  ) => {
-    setTestingProviderId(provider.id)
-    try {
-      const payload =
-        options && (options.headers || options.query)
-          ? {
-              headers:
-                options.headers && Object.keys(options.headers).length > 0
-                  ? options.headers
-                  : undefined,
-              query: options.query && options.query.trim().length > 0 ? options.query.trim() : undefined
-            }
-          : undefined
-
-      const response = await modelManagementApi.testProvider(provider.id, payload)
-      if (response.ok) {
-        pushToast({
-          title: t('providers.toast.testSuccess'),
-          description: t('providers.toast.testSuccessDesc', {
-            status: response.status,
-            duration: response.durationMs ? `${response.durationMs} ms` : '—'
-          }),
-          variant: 'success'
-        })
-        return
-      }
-
-      pushToast({
-        title: t('providers.toast.testFailure', {
-          message: `${response.status} ${response.statusText}`
-        }),
-        variant: 'error'
-      })
-    } catch (error) {
-      const apiError = toApiError(error)
-      pushToast({
-        title: t('providers.toast.testFailure', {
-          message: apiError.status ? `${apiError.status} ${apiError.message}` : apiError.message
-        }),
-        variant: 'error'
-      })
-    } finally {
-      setTestingProviderId(null)
-    }
-  }
-
-  const initiateTestConnection = (provider: ProviderConfig) => {
-    const hasConfiguredModel =
-      Boolean(provider.defaultModel?.trim()) ||
-      Boolean(provider.models?.some((model) => model.id.trim().length > 0))
-    if (!hasConfiguredModel) {
-      setNoModelDialogProvider(provider)
-      return
-    }
-
-    if (provider.type !== 'anthropic') {
-      void handleTestConnection(provider)
-      return
-    }
-
-    const providerHeaders = provider.extraHeaders ?? {}
-    const recommendedLookup = new Map(
-      anthropicTestHeaderOptions.map((option) => [option.key.toLowerCase(), option])
-    )
-    const preservedExtras: Record<string, string> = {}
-    let presetDefault = true
-
-    for (const option of anthropicTestHeaderOptions) {
-      const match = Object.entries(providerHeaders).find(
-        ([headerKey]) => headerKey.toLowerCase() === option.key.toLowerCase()
-      )
-      if (!match) continue
-
-      const [headerName, headerValue] = match
-      if (String(headerValue ?? '') !== option.value) {
-        presetDefault = false
-        preservedExtras[headerName] = String(headerValue ?? '')
-      }
-    }
-
-    for (const [headerKey, headerValue] of Object.entries(providerHeaders)) {
-      if (recommendedLookup.has(headerKey.toLowerCase())) continue
-      preservedExtras[headerKey] = String(headerValue ?? '')
-    }
-
-    setTestDialogPreservedExtras(preservedExtras)
-    setTestDialogUsePreset(presetDefault)
-    setTestDialogProvider(provider)
-    setTestDialogOpen(true)
-  }
-
-  const closeTestDialog = () => {
-    setTestDialogOpen(false)
-    setTestDialogProvider(null)
-    setTestDialogUsePreset(true)
-    setTestDialogPreservedExtras({})
-  }
-
-  const confirmTestDialog = async () => {
-    if (!testDialogProvider) return
-
-    const selectedHeaders: Record<string, string> = {}
-    if (testDialogUsePreset) {
-      for (const option of anthropicTestHeaderOptions) {
-        selectedHeaders[option.key] = option.value
-      }
-    }
-
-    const recognizedHeaders = new Map(
-      anthropicTestHeaderOptions.map((option) => [option.key.toLowerCase(), option])
-    )
-    for (const [key, value] of Object.entries(testDialogPreservedExtras)) {
-      const matchedOption = recognizedHeaders.get(key.toLowerCase())
-      if (matchedOption && testDialogUsePreset) continue
-      selectedHeaders[key] = value
-    }
-
-    const targetProvider = testDialogProvider
-    closeTestDialog()
-    await handleTestConnection(targetProvider, {
-      headers: Object.keys(selectedHeaders).length > 0 ? selectedHeaders : undefined
-    })
-  }
-
-  const handleDeleteProvider = async (provider: ProviderConfig) => {
-    if (!ensureConfig()) return
-
-    const nextProviders = providers.filter((item) => item.id !== provider.id)
-    const sanitizeRoutes = (routes: Record<string, string> | undefined): Record<string, string> => {
-      const nextRoutes: Record<string, string> = {}
-      if (!routes) return nextRoutes
-
-      for (const [source, target] of Object.entries(routes)) {
-        if (!target) continue
-        const [targetProvider] = target.split(':')
-        if ((targetProvider && targetProvider === provider.id) || target === provider.id) {
-          continue
-        }
-        nextRoutes[source] = target
-      }
-
-      return nextRoutes
-    }
-
-    const currentRouting = config?.endpointRouting ?? {}
-    const sanitizedAnthropic = sanitizeRoutes(currentRouting.anthropic?.modelRoutes ?? config?.modelRoutes ?? {})
-    const sanitizedOpenAI = sanitizeRoutes(currentRouting.openai?.modelRoutes ?? {})
-    const sanitizedCustomEndpoints = (config?.customEndpoints ?? customEndpoints).map((endpoint) => {
-      const currentRoutingConfig = endpoint.routing
-      const currentRoutes = currentRoutingConfig?.modelRoutes
-      if (!currentRoutes) {
-        return endpoint
-      }
-
-      return {
-        ...endpoint,
-        routing: {
-          ...currentRoutingConfig,
-          defaults: currentRoutingConfig.defaults ?? config!.defaults,
-          modelRoutes: sanitizeRoutes(currentRoutes)
-        }
-      }
-    })
-
-    const nextConfig: GatewayConfig = {
-      ...config!,
-      providers: nextProviders,
-      modelRoutes: sanitizedAnthropic,
-      customEndpoints: sanitizedCustomEndpoints,
-      endpointRouting: {
-        anthropic: {
-          defaults: currentRouting.anthropic?.defaults ?? config!.defaults,
-          modelRoutes: sanitizedAnthropic,
-          validation: currentRouting.anthropic?.validation,
-          compatibility: currentRouting.anthropic?.compatibility
-        },
-        openai: {
-          defaults: currentRouting.openai?.defaults ?? config!.defaults,
-          modelRoutes: sanitizedOpenAI,
-          validation: currentRouting.openai?.validation,
-          compatibility: currentRouting.openai?.compatibility
-        }
-      }
-    }
-
-    try {
-      await gatewayApi.saveConfig(nextConfig)
-      setConfig(nextConfig)
-      setRoutesByEndpoint({
-        anthropic: Object.entries(sanitizedAnthropic).map(([source, target]) => ({
-          id: createEntryId(),
-          source,
-          target
-        })),
-        openai: Object.entries(sanitizedOpenAI).map(([source, target]) => ({
-          id: createEntryId(),
-          source,
-          target
-        })),
-        ...Object.fromEntries(
-          sanitizedCustomEndpoints.map((endpoint) => [
-            endpoint.id,
-            Object.entries(endpoint.routing?.modelRoutes ?? {}).map(([source, target]) => ({
-              id: createEntryId(),
-              source,
-              target
-            }))
-          ])
-        )
-      })
-      pushToast({
-        title: t('providers.toast.deleteSuccess', { name: provider.label || provider.id }),
-        variant: 'success'
-      })
-      void configQuery.refetch()
-    } catch (error) {
-      pushToast({
-        title: t('providers.toast.deleteFailure', {
-          message: error instanceof Error ? error.message : 'unknown'
-        }),
-        variant: 'error'
-      })
-    }
-  }
-
-  const handleConfirmDialog = async () => {
-    if (!confirmAction) return
-
-    setConfirmingAction(true)
-    try {
-      if (confirmAction.kind === 'provider') {
-        await handleDeleteProvider(confirmAction.provider)
-      } else if (confirmAction.kind === 'preset') {
-        await handleDeletePreset(confirmAction.endpoint, confirmAction.preset)
-      } else {
-        await handleDeleteEndpoint(confirmAction.endpoint.id)
-      }
-      setConfirmAction(null)
-    } finally {
-      setConfirmingAction(false)
-    }
-  }
-
   const handleAddRoute = (endpoint: string) => {
     setRoutesByEndpoint((previous) => ({
       ...previous,
       [endpoint]: [...(previous[endpoint] || []), { id: createEntryId(), source: '', target: '' }]
     }))
     setRouteError((previous) => ({ ...previous, [endpoint]: null }))
-  }
-
-  const handleValidationModeChange = async (endpoint: string, mode: EndpointValidationMode) => {
-    if (!ensureConfig()) return
-
-    setSavingClaudeValidation(true)
-    try {
-      if (endpoint === 'anthropic' || endpoint === 'openai') {
-        const systemEndpoint = endpoint as 'anthropic' | 'openai'
-        const currentRouting = config!.endpointRouting ? { ...config!.endpointRouting } : {}
-        const currentEndpointRouting = currentRouting[systemEndpoint] ?? {
-          defaults: config!.defaults,
-          modelRoutes: (systemEndpoint === 'anthropic' ? config!.modelRoutes : {}) ?? {}
-        }
-
-        const baseRouting: EndpointRoutingConfig = {
-          defaults: currentEndpointRouting.defaults ?? config!.defaults,
-          modelRoutes: currentEndpointRouting.modelRoutes ?? {},
-          compatibility: currentEndpointRouting.compatibility
-        }
-
-        const nextValidation: EndpointRoutingConfig['validation'] =
-          mode === 'off'
-            ? undefined
-            : {
-                ...(currentEndpointRouting.validation ?? {}),
-                mode,
-                allowExperimentalBlocks:
-                  currentEndpointRouting.validation?.allowExperimentalBlocks ?? true
-              }
-
-        const nextConfig: GatewayConfig = {
-          ...config!,
-          endpointRouting: {
-            ...currentRouting,
-            [systemEndpoint]: nextValidation
-              ? { ...baseRouting, validation: nextValidation }
-              : { ...baseRouting }
-          }
-        }
-
-        await gatewayApi.saveConfig(nextConfig)
-        setConfig(nextConfig)
-      } else {
-        const nextEndpoints = [...(config!.customEndpoints ?? [])]
-        const endpointIndex = nextEndpoints.findIndex((item) => item.id === endpoint)
-        if (endpointIndex === -1) {
-          throw new Error(t('modelManagement.toast.endpointNotFound'))
-        }
-
-        const customEndpoint = nextEndpoints[endpointIndex]
-        const currentRouting = customEndpoint.routing ?? {
-          defaults: config!.defaults,
-          modelRoutes: {}
-        }
-        const nextValidation: EndpointRoutingConfig['validation'] =
-          mode === 'off'
-            ? undefined
-            : {
-                ...(currentRouting.validation ?? {}),
-                mode,
-                allowExperimentalBlocks: currentRouting.validation?.allowExperimentalBlocks ?? true
-              }
-
-        nextEndpoints[endpointIndex] = {
-          ...customEndpoint,
-          routing: nextValidation
-            ? { ...currentRouting, validation: nextValidation }
-            : {
-                defaults: currentRouting.defaults,
-                modelRoutes: currentRouting.modelRoutes,
-                compatibility: currentRouting.compatibility
-              }
-        }
-
-        const nextConfig: GatewayConfig = {
-          ...config!,
-          customEndpoints: nextEndpoints
-        }
-
-        await gatewayApi.saveConfig(nextConfig)
-        setConfig(nextConfig)
-      }
-
-      pushToast({
-        title: t('modelManagement.toast.validationModeSaved', {
-          mode: t(`modelManagement.claudeValidation.options.${mode}.label`)
-        }),
-        variant: 'success'
-      })
-      void configQuery.refetch()
-    } catch (error) {
-      const apiError = toApiError(error)
-      pushToast({
-        title: t('modelManagement.toast.validationModeFailure', { message: apiError.message }),
-        variant: 'error'
-      })
-    } finally {
-      setSavingClaudeValidation(false)
-    }
   }
 
   const handleCompatibilityEnabledChange = async (endpoint: string, enabled: boolean) => {
@@ -948,8 +574,7 @@ export function useModelManagementState() {
 
         const baseRouting: EndpointRoutingConfig = {
           defaults: currentEndpointRouting.defaults ?? config!.defaults,
-          modelRoutes: currentEndpointRouting.modelRoutes ?? {},
-          validation: currentEndpointRouting.validation
+          modelRoutes: currentEndpointRouting.modelRoutes ?? {}
         }
 
         const nextConfig: GatewayConfig = {
@@ -983,8 +608,7 @@ export function useModelManagementState() {
             ? { ...currentRouting, compatibility: { enabled: true } }
             : {
                 defaults: currentRouting.defaults,
-                modelRoutes: currentRouting.modelRoutes,
-                validation: currentRouting.validation
+                modelRoutes: currentRouting.modelRoutes
               }
         }
 
@@ -1168,7 +792,6 @@ export function useModelManagementState() {
             [endpoint]: {
               defaults: config!.endpointRouting?.[endpoint as 'anthropic' | 'openai']?.defaults ?? config!.defaults,
               modelRoutes: sanitizedRoutes,
-              validation: config!.endpointRouting?.[endpoint as 'anthropic' | 'openai']?.validation,
               compatibility: config!.endpointRouting?.[endpoint as 'anthropic' | 'openai']?.compatibility
             }
           },
@@ -1206,114 +829,45 @@ export function useModelManagementState() {
     }
   }
 
-  const confirmDialogTitle =
-    confirmAction?.kind === 'provider'
-      ? t('providers.actions.delete')
-      : confirmAction?.kind === 'preset'
-        ? t('modelManagement.presets.delete')
-        : confirmAction?.kind === 'endpoint'
-          ? t('common.delete')
-          : ''
-
-  const confirmDialogDescription =
-    confirmAction?.kind === 'provider'
-      ? t('providers.confirm.delete', { name: confirmAction.provider.label || confirmAction.provider.id })
-      : confirmAction?.kind === 'preset'
-        ? t('modelManagement.confirm.deletePreset', { name: confirmAction.preset.name })
-        : confirmAction?.kind === 'endpoint'
-          ? t('modelManagement.deleteEndpointConfirm', { label: confirmAction.endpoint.label })
-          : ''
-
-  const confirmDialogName =
-    confirmAction?.kind === 'provider'
-      ? confirmAction.provider.label || confirmAction.provider.id
-      : confirmAction?.kind === 'preset'
-        ? confirmAction.preset.name
-        : confirmAction?.kind === 'endpoint'
-          ? confirmAction.endpoint.label
-          : ''
-
   return {
-    activeTab,
-    activeTabInfo,
-    anthropicTestHeaderOptions,
+    activeEndpoint,
+    setActiveEndpoint,
+    endpointTabs,
+    routesByEndpoint,
+    setRoutesByEndpoint,
+    routeError,
+    savingRouteFor,
+    presetsByEndpoint,
+    presetNameByEndpoint,
+    presetErrorByEndpoint,
+    savingPresetFor,
     applyingPreset,
-    config,
-    configQuery,
-    confirmAction,
-    confirmDialogDescription,
-    confirmDialogName,
-    confirmDialogTitle,
-    confirmingAction,
-    customEndpoints,
-    customTabs,
-    defaultLabels,
     deletingPreset,
-    drawerMode,
-    drawerOpen,
-    editingEndpoint,
-    editingProvider,
-    endpointDrawerOpen,
-    filteredProviders,
-    noModelDialogProvider,
+    savingCompatibilityPolicy,
+    presetsExpanded,
+    setPresetsExpanded,
+    presetDiffDialog,
+    setPresetDiffDialog,
+    providerModelOptions,
+    isDirtyByEndpoint,
+    defaultsByEndpoint,
+    isDefaultsDirtyByEndpoint,
+    savingDefaultsFor,
+    handleDefaultsChange,
+    handleSaveDefaults,
+    handlePresetNameChange,
+    handleSavePreset,
+    handleApplyPreset,
+    handleDeletePreset,
+    handleDeleteEndpoint,
     handleAddRoute,
     handleAddSuggestion,
-    handleApplyPreset,
-    handleCompatibilityEnabledChange,
-    handleConfirmDialog,
-    handleDeleteProvider,
-    handleOpenCreate,
-    handleOpenCreateEndpoint,
-    handleOpenEditEndpoint,
-    handleOpenEdit,
-    handlePresetNameChange,
-    handleProviderSubmit,
+    handleRouteChange,
     handleRemoveRoute,
     handleResetRoutes,
-    handleRouteChange,
-    handleSavePreset,
     handleSaveRoutes,
-    handleValidationModeChange,
-    initiateTestConnection,
-    isDirtyByEndpoint,
-    presetDiffDialog,
-    presetErrorByEndpoint,
-    presetNameByEndpoint,
-    presetsByEndpoint,
-    presetsExpanded,
-    providerCount,
-    providerModelOptions,
-    providerSearch,
-    providerTypeFilter,
-    providers,
-    pushToast,
-    routeError,
-    routesByEndpoint,
-    savingClaudeValidation,
-    savingCompatibilityPolicy,
-    savingPresetFor,
-    savingRouteFor,
-    setActiveTab,
-    setConfirmAction,
-    setDrawerMode,
-    setDrawerOpen,
-    setEditingEndpoint,
-    setEditingProvider,
-    setEndpointDrawerOpen,
-    setNoModelDialogProvider,
-    setPresetDiffDialog,
-    setPresetsExpanded,
-    setProviderSearch,
-    setProviderTypeFilter,
-    setTestDialogUsePreset,
-    systemTabs,
-    tabs,
-    testDialogOpen,
-    testDialogPreservedExtras,
-    testDialogProvider,
-    testDialogUsePreset,
-    testingProviderId,
-    closeTestDialog,
-    confirmTestDialog
+    handleCompatibilityEnabledChange
   }
 }
+
+export type RoutingState = ReturnType<typeof useRoutingState>

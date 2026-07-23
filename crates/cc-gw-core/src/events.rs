@@ -23,7 +23,7 @@ pub struct RecordEventInput {
     pub details: Option<Value>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GatewayEvent {
     pub id: i64,

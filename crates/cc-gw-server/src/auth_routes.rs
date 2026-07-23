@@ -63,9 +63,9 @@ pub(super) async fn auth_login(
             web_auth.password_salt.as_deref(),
         )
     {
-        let _ = record_event(
-            &state.paths.db_path,
-            &RecordEventInput {
+        record_and_broadcast_event(
+            &state,
+            RecordEventInput {
                 event_type: "web_auth_login_failure".to_string(),
                 level: Some("warn".to_string()),
                 source: Some("web-auth".to_string()),
@@ -84,9 +84,9 @@ pub(super) async fn auth_login(
     }
 
     let session = state.sessions.issue_session(&username);
-    let _ = record_event(
-        &state.paths.db_path,
-        &RecordEventInput {
+    record_and_broadcast_event(
+        &state,
+        RecordEventInput {
             event_type: "web_auth_login_success".to_string(),
             level: Some("info".to_string()),
             source: Some("web-auth".to_string()),

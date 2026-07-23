@@ -75,11 +75,7 @@ export default function SettingsPage() {
                 authLoading={state.authQuery.isPending || (!state.authSettings && state.authQuery.isFetching)}
                 authSettings={state.authSettings}
                 needsPassword={state.needsPassword}
-                onAuthReset={state.handleAuthReset}
-                onAuthSave={() => void state.handleAuthSave()}
                 onSetAuthForm={state.setAuthForm}
-                savingAuth={state.savingAuth}
-                isAuthDirty={state.isAuthDirty}
                 sectionRef={state.setSectionRef('section-security')}
               />
 
@@ -100,15 +96,11 @@ export default function SettingsPage() {
           </div>
 
           <StickySettingsSaveBar
-            isAuthDirty={state.isAuthDirty}
-            isConfigDirty={state.isConfigDirty}
+            dirtyCount={dirtyCount}
             protocolChangesPending={state.protocolChangesPending}
-            onAuthReset={state.handleAuthReset}
-            onAuthSave={() => void state.handleAuthSave()}
-            onReset={state.handleReset}
-            onSave={() => void state.handleSave()}
-            saving={state.saving}
-            savingAuth={state.savingAuth}
+            onReset={state.handleResetAll}
+            onSave={() => void state.handleSaveAll()}
+            saving={state.saving || state.savingAuth}
           />
         </>
       )}

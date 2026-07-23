@@ -343,7 +343,6 @@ mod tests {
                     ..DefaultsConfig::default()
                 },
                 model_routes: Default::default(),
-                validation: None,
                 compatibility: None,
             }),
             ..CustomEndpointConfig::default()

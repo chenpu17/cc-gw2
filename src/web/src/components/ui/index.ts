@@ -61,6 +61,11 @@ export {
 } from './dropdown-menu'
 export { Popover, PopoverTrigger, PopoverContent } from './popover'
 export { ScrollArea, ScrollBar } from './scroll-area'
+export { CountUp } from './count-up'
+export { Disclosure } from './disclosure'
+export { MetricCard, type MetricCardProps } from './metric-card'
+export { SegmentedControl, type SegmentedControlOption } from './segmented-control'
+export { StepNav, type StepNavItem, type StepStatus } from './step-nav'
 export {
   type ToastProps,
   type ToastActionElement,

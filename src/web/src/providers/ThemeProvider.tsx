@@ -41,6 +41,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const resolved = useMemo(() => (typeof window !== 'undefined' ? resolvePreferred(mode) : 'light'), [mode])
 
+  // Apply synchronously during render (parent renders before children) so
+  // descendants reading CSS variables — e.g. useChartTheme — always see the
+  // current theme. The effect below repeats it for external/system flips.
+  if (typeof window !== 'undefined') {
+    applyTheme(resolved)
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const media = window.matchMedia('(prefers-color-scheme: dark)')

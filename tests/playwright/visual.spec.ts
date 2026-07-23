@@ -27,7 +27,8 @@ test.afterAll(async () => {
 
 async function waitForVisualReady(page: Page, anchor: Locator) {
   await anchor.waitFor({ state: 'visible' })
-  await page.waitForLoadState('networkidle')
+  // Dashboard/Events 挂了 SSE 长连接，networkidle 永远等不到，改用 load + 固定沉降时间
+  await page.waitForLoadState('load')
   await page.evaluate(async () => {
     if ('fonts' in document) {
       await (document as Document & { fonts?: FontFaceSet }).fonts?.ready
@@ -69,15 +70,20 @@ test('logs visual shell stays aligned with redesign baseline', async ({ page }) 
   await expectPageSnapshot(page, 'logs-page.png')
 })
 
-test('model management visual shell stays aligned with redesign baseline', async ({ page }) => {
-  await page.goto(`${harness.baseUrl()}/ui/models`)
-  await waitForVisualReady(page, page.getByRole('heading', { name: '模型提供商', level: 1 }))
+test('providers workbench visual shell stays aligned with redesign baseline', async ({ page }) => {
+  await page.goto(`${harness.baseUrl()}/ui/providers`)
+  await waitForVisualReady(page, page.getByRole('heading', { name: '模型与路由工作台', level: 1 }))
   await expectPageSnapshot(page, 'model-management-page.png')
 })
 
-test('routing management visual shell stays aligned with redesign baseline', async ({ page }) => {
-  await page.goto(`${harness.baseUrl()}/ui/routing`)
-  await waitForVisualReady(page, page.getByRole('heading', { name: '路由管理', level: 1 }))
+test('providers workbench detail dialog visual shell stays aligned with redesign baseline', async ({ page }) => {
+  await page.goto(`${harness.baseUrl()}/ui/providers`)
+  await waitForVisualReady(page, page.getByRole('heading', { name: '模型与路由工作台', level: 1 }))
+  // 点击内置 stub provider 的表格行，弹出详情对话框（供应商视图）
+  await page.locator('[data-testid="provider-row"]').first().click()
+  const detailDialog = page.getByRole('dialog')
+  await expect(detailDialog).toBeVisible()
+  await expect(detailDialog.getByRole('button', { name: '测试连接' })).toBeVisible()
   await expectPageSnapshot(page, 'routing-management-page.png')
 })
 

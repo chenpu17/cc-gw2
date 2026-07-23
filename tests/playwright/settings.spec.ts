@@ -40,7 +40,7 @@ test('settings web ui preserves manual save flow and supports config, maintenanc
   const retentionInput = basicsSection.locator('input[type="number"]').nth(1)
   await retentionInput.fill(String(nextRetention))
 
-  await expect(page.getByText('待保存 1 项')).toBeVisible()
+  await expect(page.getByText('待保存 1 项').first()).toBeVisible()
   await page.getByRole('button', { name: '保存设置' }).first().click()
   await expect(page.getByText(/系统配置已更新|配置已保存/)).toBeVisible()
 
@@ -82,7 +82,9 @@ test('settings web ui preserves manual save flow and supports config, maintenanc
   await securitySection.getByPlaceholder('设置用于登录的用户名').fill('settings-admin')
   await securitySection.getByPlaceholder('至少 6 位字符').fill('secret123')
   await securitySection.getByPlaceholder('再次输入登录密码').fill('secret123')
-  await securitySection.getByRole('button', { name: '保存安全设置' }).click()
+  // 安全设置不再单独保存，统一走底部 sticky 保存条
+  await expect(page.getByText('待保存 1 项').first()).toBeVisible()
+  await page.getByRole('button', { name: '保存设置' }).click()
   await expect(page.getByText('安全设置已更新。')).toBeVisible()
 
   await page.context().clearCookies()

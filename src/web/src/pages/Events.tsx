@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { AlertTriangle, ChevronLeft, ChevronRight, Filter, RefreshCw, ShieldAlert, Siren, ShieldCheck } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, ChevronLeft, ChevronRight, ShieldAlert } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { AnimatePresence, motion } from 'framer-motion'
 import { PageToolbar } from '@/components/PageToolbar'
 import { PageSection } from '@/components/PageSection'
 import { PageLoadingState, PageState } from '@/components/PageState'
 import { useApiQuery } from '@/hooks/useApiQuery'
+import { useEventStream } from '@/hooks/useEventStream'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/providers/ToastProvider'
 import type { ApiError } from '@/services/api'
@@ -16,7 +18,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Disclosure } from '@/components/ui/disclosure'
-import { Input } from '@/components/ui/input'
+import { MetricCard } from '@/components/ui/metric-card'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
   Select,
   SelectContent,
@@ -25,10 +28,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 
-interface FilterState {
-  level: string
-  type: string
-}
+type LevelFilter = '' | 'info' | 'warn' | 'error'
 
 const LEVEL_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   info: 'secondary',
@@ -40,16 +40,17 @@ export default function EventsPage() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
   const [cursor, setCursor] = useState<number | null>(null)
-  const [filters, setFilters] = useState<FilterState>({ level: '', type: '' })
+  const [level, setLevel] = useState<LevelFilter>('')
+  const [type, setType] = useState('')
 
   const queryParams = useMemo(
     () => ({
       limit: 50,
       cursor: cursor ?? undefined,
-      level: filters.level || undefined,
-      type: filters.type.trim() || undefined
+      level: level || undefined,
+      type: type || undefined
     }),
-    [cursor, filters.level, filters.type]
+    [cursor, level, type]
   )
 
   const eventsQuery = useApiQuery<EventsResponse, ApiError>(
@@ -60,6 +61,15 @@ export default function EventsPage() {
       params: queryParams
     }
   )
+
+  // Live stream: only meaningful on the newest page (no cursor); events
+  // arriving via SSE are prepended onto the REST snapshot, deduped by id.
+  const live = useEventStream({
+    level: level || undefined,
+    type: type || undefined,
+    maxEvents: 50,
+    enabled: cursor === null
+  })
 
   useEffect(() => {
     if (eventsQuery.isError && eventsQuery.error) {
@@ -72,24 +82,40 @@ export default function EventsPage() {
 
   const handleResetFilters = () => {
     setCursor(null)
-    setFilters({ level: '', type: '' })
+    setLevel('')
+    setType('')
   }
 
-  const events = eventsQuery.data?.events ?? []
+  const snapshot = eventsQuery.data?.events ?? []
   const nextCursor = eventsQuery.data?.nextCursor ?? null
   const isLoading = eventsQuery.isLoading
-  const isRefreshing = eventsQuery.isFetching && !eventsQuery.isLoading
+
+  const events = useMemo(() => {
+    if (cursor !== null) return snapshot
+    const seen = new Set<number>()
+    return [...live.events, ...snapshot]
+      .filter((event) => {
+        if (seen.has(event.id)) return false
+        seen.add(event.id)
+        return true
+      })
+      .slice(0, 50)
+  }, [cursor, live.events, snapshot])
+
+  // enum options for the type filter, aggregated from everything we've seen
+  const typeOptions = useMemo(() => {
+    const types = new Set<string>()
+    snapshot.forEach((event) => types.add(event.type))
+    live.events.forEach((event) => types.add(event.type))
+    return Array.from(types).sort()
+  }, [snapshot, live.events])
 
   const activeFilters = useMemo(() => {
     const items: string[] = []
-    if (filters.level) {
-      items.push(t(`events.levels.${filters.level}` as const))
-    }
-    if (filters.type.trim()) {
-      items.push(filters.type.trim())
-    }
+    if (level) items.push(t(`events.levels.${level}` as const))
+    if (type) items.push(type)
     return items
-  }, [filters.level, filters.type, t])
+  }, [level, type, t])
 
   const infoCount = events.filter((event) => event.level === 'info').length
   const warnCount = events.filter((event) => event.level === 'warn').length
@@ -102,98 +128,90 @@ export default function EventsPage() {
           <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">{events.length} events</span>
         ) : null}
         status={
-          <span className="text-xs text-muted-foreground">
-            {cursor ? t('events.actions.older') : t('events.actions.newest')}
-          </span>
+          cursor === null ? (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 text-xs font-medium',
+                live.connected ? 'text-success' : 'text-warning'
+              )}
+            >
+              <span className={cn('h-1.5 w-1.5 rounded-full', live.connected ? 'bg-success' : 'bg-warning')} />
+              {live.connected ? t('events.live') : t('events.reconnecting')}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">{t('events.actions.older')}</span>
+          )
         }
         actions={
-          <Button variant="outline" size="sm" onClick={() => void eventsQuery.refetch()} disabled={isRefreshing}>
-            <RefreshCw className={cn('mr-2 h-4 w-4', isRefreshing && 'animate-spin')} aria-hidden="true" />
-            {isRefreshing ? t('common.actions.refreshing') : t('common.actions.refresh')}
-          </Button>
+          <div className="flex items-center gap-2">
+            {!live.connected && cursor === null ? (
+              <Button variant="outline" size="sm" onClick={() => void eventsQuery.refetch()}>
+                {t('common.actions.refresh')}
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" disabled={!cursor} onClick={() => setCursor(null)}>
+              <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" />
+              {t('events.actions.newest')}
+            </Button>
+            <Button variant="outline" size="sm" disabled={!nextCursor} onClick={() => setCursor(nextCursor)}>
+              {t('events.actions.older')}
+              <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
         }
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <SummaryCard icon={<ShieldCheck className="h-4 w-4" aria-hidden="true" />} title={t('events.levels.info')} value={infoCount.toLocaleString()} tone="emerald" />
-        <SummaryCard icon={<AlertTriangle className="h-4 w-4" aria-hidden="true" />} title={t('events.levels.warn')} value={warnCount.toLocaleString()} tone="amber" />
-        <SummaryCard icon={<Siren className="h-4 w-4" aria-hidden="true" />} title={t('events.levels.error')} value={errorCount.toLocaleString()} tone="rose" />
+        <MetricCard size="sm" label={t('events.levels.info')} value={infoCount.toLocaleString()} rawValue={infoCount} />
+        <MetricCard size="sm" label={t('events.levels.warn')} value={warnCount.toLocaleString()} rawValue={warnCount} />
+        <MetricCard size="sm" label={t('events.levels.error')} value={errorCount.toLocaleString()} rawValue={errorCount} />
       </div>
 
-      <Card
-        data-testid="events-filters-card"
-        className="overflow-hidden"
-      >
-        <CardContent className="space-y-3 p-4">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <Filter className="h-4 w-4 text-primary" aria-hidden="true" />
-                  {t('events.filters.title')}
-                  <Badge variant="outline">{events.length}</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">{t('events.description')}</p>
-              </div>
-              <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
-                {activeFilters.length > 0 ? (
-                  <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-8 rounded-full px-3 text-xs sm:w-auto">
-                    {t('common.actions.reset')}
-                  </Button>
-                ) : null}
-                <Button variant="outline" size="sm" disabled={!cursor} onClick={() => setCursor(null)} className="h-8 rounded-full px-3 text-xs sm:w-auto">
-                  <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" />
-                  {t('events.actions.newest')}
-                </Button>
-                <Button variant="outline" size="sm" disabled={!nextCursor} onClick={() => setCursor(nextCursor)} className="h-8 rounded-full px-3 text-xs sm:w-auto">
-                  {t('events.actions.older')}
-                  <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
-                </Button>
-              </div>
+      <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center" data-testid="events-filters-card">
+        <SegmentedControl<LevelFilter>
+          value={level}
+          onChange={(value) => {
+            setCursor(null)
+            setLevel(value)
+          }}
+          options={[
+            { value: '', label: t('events.filters.allLevels') },
+            { value: 'info', label: t('events.levels.info') },
+            { value: 'warn', label: t('events.levels.warn') },
+            { value: 'error', label: t('events.levels.error') }
+          ]}
+          aria-label={t('events.filters.title')}
+        />
+        <Select
+          value={type || 'all'}
+          onValueChange={(value) => {
+            setCursor(null)
+            setType(value === 'all' ? '' : value)
+          }}
+        >
+          <SelectTrigger className="h-8 w-full md:w-[200px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('events.filters.allTypes')}</SelectItem>
+            {typeOptions.map((option) => (
+              <SelectItem key={option} value={option}>{option}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {activeFilters.length > 0 ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {activeFilters.map((item) => (
+                <Badge key={item} variant="secondary">{item}</Badge>
+              ))}
             </div>
-
-            <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
-              <Select
-                value={filters.level}
-                onValueChange={(value) => {
-                  setCursor(null)
-                  setFilters((prev) => ({ ...prev, level: value === 'all' ? '' : value }))
-                }}
-              >
-                <SelectTrigger className="w-full md:w-[160px]">
-                  <SelectValue placeholder={t('events.filters.allLevels')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('events.filters.allLevels')}</SelectItem>
-                  <SelectItem value="info">{t('events.levels.info')}</SelectItem>
-                  <SelectItem value="warn">{t('events.levels.warn')}</SelectItem>
-                  <SelectItem value="error">{t('events.levels.error')}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                className="w-full md:w-[220px]"
-                placeholder={t('events.filters.typePlaceholder')}
-                value={filters.type}
-                onChange={(event) => {
-                  setCursor(null)
-                  setFilters((prev) => ({ ...prev, type: event.target.value }))
-                }}
-              />
-              <Button variant="ghost" size="sm" onClick={handleResetFilters} disabled={activeFilters.length === 0} className="h-8 rounded-full px-3 text-xs md:w-auto">
-                {t('common.actions.reset')}
-              </Button>
-            </div>
-
-            {activeFilters.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {activeFilters.map((item) => (
-                  <Badge key={item} variant="secondary">{item}</Badge>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
+            <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-8 px-3 text-xs">
+              {t('common.actions.reset')}
+            </Button>
+          </>
+        ) : null}
+      </div>
 
       <PageSection
         title={t('events.title')}
@@ -234,37 +252,24 @@ export default function EventsPage() {
           />
         ) : (
           <div className="grid gap-3">
-            {events.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
+            <AnimatePresence initial={false}>
+              {events.map((event) => (
+                <motion.div
+                  key={event.id}
+                  layout
+                  initial={{ opacity: 0, y: -12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <EventCard event={event} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         )}
       </PageSection>
     </div>
-  )
-}
-
-function SummaryCard({
-  icon,
-  title,
-  tone,
-  value
-}: {
-  icon: ReactNode
-  title: string
-  tone: 'emerald' | 'amber' | 'rose'
-  value: string
-}) {
-  return (
-      <Card>
-      <CardContent className="flex items-center justify-between gap-3 p-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
-          <p className="metric-number mt-1 text-[1.85rem] font-bold tracking-tight text-foreground">{value}</p>
-        </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-muted-foreground">{icon}</div>
-      </CardContent>
-    </Card>
   )
 }
 
@@ -273,10 +278,10 @@ function EventCard({ event }: { event: GatewayEvent }) {
 
   const borderClass =
     event.level === 'error'
-      ? 'border-l-destructive'
+      ? 'border-l-error'
       : event.level === 'warn'
-        ? 'border-l-amber-500'
-        : 'border-l-emerald-500'
+        ? 'border-l-warning'
+        : 'border-l-success'
 
   return (
     <Card

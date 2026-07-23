@@ -22,7 +22,7 @@ test.afterAll(async () => {
   await harness.stop()
 })
 
-test('events page supports refresh, level filtering, type filtering, and reset flows', async ({ page }) => {
+test('events page supports live stream, level filtering, type filtering, and reset flows', async ({ page }) => {
   const baseUrl = harness.baseUrl()
 
   await page.goto(`${baseUrl}/ui/login`)
@@ -42,19 +42,20 @@ test('events page supports refresh, level filtering, type filtering, and reset f
   await expect(page.getByTestId('events-filters-card')).toHaveCSS('position', 'static')
   await expect(page.getByText('Web login failed')).toBeVisible()
   await expect(page.getByText('Web login succeeded')).toBeVisible()
+  // SSE 实时流已连接
+  await expect(page.getByText('实时更新中')).toBeVisible()
 
-  const levelSelect = page.getByRole('combobox').first()
+  // 级别筛选改为 SegmentedControl
   const levelFilterResponse = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return response.request().method() === 'GET'
       && url.pathname.endsWith('/api/events')
       && url.searchParams.get('level') === 'warn'
   })
-  await levelSelect.click()
-  await page.getByRole('option', { name: '警告' }).click()
+  await page.getByRole('button', { name: '警告', exact: true }).click()
   await levelFilterResponse
 
-  const typeInput = page.getByPlaceholder('按事件类型过滤（可留空）')
+  // 类型过滤改为枚举下拉
   const typeFilterResponse = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return response.request().method() === 'GET'
@@ -62,7 +63,8 @@ test('events page supports refresh, level filtering, type filtering, and reset f
       && url.searchParams.get('level') === 'warn'
       && url.searchParams.get('type') === 'web_auth_login_failure'
   })
-  await typeInput.fill('web_auth_login_failure')
+  await page.getByRole('combobox').click()
+  await page.getByRole('option', { name: 'web_auth_login_failure' }).click()
   await typeFilterResponse
 
   await expect(page.getByText('web_auth_login_failure', { exact: true }).first()).toBeVisible()
@@ -70,15 +72,17 @@ test('events page supports refresh, level filtering, type filtering, and reset f
   await expect(page.getByText('Web login succeeded')).not.toBeVisible()
 
   await page.getByRole('button', { name: '重置' }).first().click()
-  await expect(typeInput).toHaveValue('')
+  await expect(page.getByRole('combobox')).toContainText('全部类型')
   await expect(page.getByText('Web login failed')).toBeVisible()
   await expect(page.getByText('Web login succeeded')).toBeVisible()
 
-  const refreshResponse = page.waitForResponse((response) => {
+  // 手动刷新按钮仅在断连时出现；通过切换级别验证列表会重新拉取
+  const infoFilterResponse = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return response.request().method() === 'GET'
       && url.pathname.endsWith('/api/events')
+      && url.searchParams.get('level') === 'info'
   })
-  await page.getByRole('button', { name: '刷新' }).click()
-  await refreshResponse
+  await page.getByRole('button', { name: '提示', exact: true }).click()
+  await infoFilterResponse
 })

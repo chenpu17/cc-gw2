@@ -11,6 +11,7 @@ import {
   DialogDescription,
   DialogTitle
 } from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLogDetailState } from './useLogDetailState'
 import { buildPayloadDisplay, formatDateTime, formatLatency, formatNumber, formatStreamLabel } from './utils'
 import type { PayloadDisplay } from './utils'
@@ -257,19 +258,27 @@ export function LogDetailsDrawer({
                         : t('logs.detail.payload.helperClientOnly')}
                     </p>
                   </div>
-                  <div className="grid gap-4 xl:grid-cols-2">
+                  <Tabs defaultValue={payloadSections[0]?.key}>
+                    <TabsList className="w-full justify-start overflow-x-auto">
+                      {payloadSections.map((section) => (
+                        <TabsTrigger key={section.key} value={section.key}>
+                          {section.title}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
                     {payloadSections.map((section) => (
-                      <PayloadPanel
-                        key={section.key}
-                        title={section.title}
-                        display={section.display}
-                        onCopy={() => handleCopy(section.title, section.value, section.copyToast)}
-                        onDownload={() => handleDownloadPayload(section.title, section.value)}
-                        panelKey={section.key}
-                        t={t}
-                      />
+                      <TabsContent key={section.key} value={section.key}>
+                        <PayloadPanel
+                          title={section.title}
+                          display={section.display}
+                          onCopy={() => handleCopy(section.title, section.value, section.copyToast)}
+                          onDownload={() => handleDownloadPayload(section.title, section.value)}
+                          panelKey={section.key}
+                          t={t}
+                        />
+                      </TabsContent>
                     ))}
-                  </div>
+                  </Tabs>
                 </section>
               </div>
             </div>

@@ -5,11 +5,12 @@ import { useTranslation } from 'react-i18next'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import type { LogRecord } from '@/types/logs'
 import { PageState } from '@/components/PageState'
-import { TableRowSkeleton } from '@/components/Skeleton'
+import { Skeleton, TableRowSkeleton } from '@/components/Skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { LogCard } from './LogCard'
 import { LogRow } from './LogRow'
 import { PAGE_SIZE_OPTIONS, type LogColumnId, type RowDensity } from './shared'
 
@@ -61,6 +62,50 @@ export function LogsTableCard(props: LogsTableCardProps) {
     setPage
   } = props
 
+  const errorState = (
+    <PageState
+      compact
+      tone="danger"
+      icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
+      title={t('logs.toast.listError.title')}
+      description={logsError}
+      action={(
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleRetry}>
+            {t('common.actions.refresh')}
+          </Button>
+          {activeFiltersCount > 0 ? (
+            <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+              {t('common.actions.reset')}
+            </Button>
+          ) : null}
+        </div>
+      )}
+    />
+  )
+
+  const emptyState = (
+    <PageState
+      compact
+      tone="primary"
+      icon={<FileText className="h-5 w-5" aria-hidden="true" />}
+      title={activeFiltersCount > 0 ? t('logs.empty.filteredTitle') : t('logs.empty.title')}
+      description={activeFiltersCount > 0 ? t('logs.empty.filteredSubtitle') : t('logs.empty.subtitle')}
+      action={(
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {activeFiltersCount > 0 ? (
+            <Button variant="outline" size="sm" onClick={handleResetFilters}>
+              {t('logs.empty.actions.reset')}
+            </Button>
+          ) : null}
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/api-keys">{t('logs.empty.actions.apiKeys')}</Link>
+          </Button>
+        </div>
+      )}
+    />
+  )
+
   return (
     <Card className="overflow-hidden bg-card shadow-[var(--surface-shadow)]">
       <CardContent className="p-0">
@@ -73,7 +118,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
               {t('logs.actions.visibleCount', { count: visibleColumnCount - 2 })}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden md:flex flex-wrap items-center gap-2">
             <Badge variant="secondary">Wide Table</Badge>
             <Badge variant="outline" className="bg-background">
               {rowDensity === 'compact' ? t('logs.table.density.compact') : t('logs.table.density.comfortable')}
@@ -83,7 +128,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
             ) : null}
           </div>
         </div>
-        <div className="relative">
+        <div className="relative hidden md:block">
           <div ref={tableScrollRef} className="overflow-x-auto">
             <table className="w-full min-w-[1180px] text-sm">
               <thead className="border-b border-border/50 bg-secondary/50">
@@ -113,49 +158,13 @@ export function LogsTableCard(props: LogsTableCardProps) {
                 ) : logsError && items.length === 0 ? (
                   <tr>
                     <td colSpan={visibleColumnCount} className="px-3 py-6">
-                      <PageState
-                        compact
-                        tone="danger"
-                        icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
-                        title={t('logs.toast.listError.title')}
-                        description={logsError}
-                        action={(
-                          <div className="flex flex-wrap items-center justify-center gap-2">
-                            <Button variant="outline" size="sm" onClick={handleRetry}>
-                              {t('common.actions.refresh')}
-                            </Button>
-                            {activeFiltersCount > 0 ? (
-                              <Button variant="ghost" size="sm" onClick={handleResetFilters}>
-                                {t('common.actions.reset')}
-                              </Button>
-                            ) : null}
-                          </div>
-                        )}
-                      />
+                      {errorState}
                     </td>
                   </tr>
                 ) : items.length === 0 ? (
                   <tr>
                     <td colSpan={visibleColumnCount} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                      <PageState
-                        compact
-                        tone="primary"
-                        icon={<FileText className="h-5 w-5" aria-hidden="true" />}
-                        title={activeFiltersCount > 0 ? t('logs.empty.filteredTitle') : t('logs.empty.title')}
-                        description={activeFiltersCount > 0 ? t('logs.empty.filteredSubtitle') : t('logs.empty.subtitle')}
-                        action={(
-                          <div className="flex flex-wrap items-center justify-center gap-2">
-                            {activeFiltersCount > 0 ? (
-                              <Button variant="outline" size="sm" onClick={handleResetFilters}>
-                                {t('logs.empty.actions.reset')}
-                              </Button>
-                            ) : null}
-                            <Button asChild variant="ghost" size="sm">
-                              <Link to="/api-keys">{t('logs.empty.actions.apiKeys')}</Link>
-                            </Button>
-                          </div>
-                        )}
-                      />
+                      {emptyState}
                     </td>
                   </tr>
                 ) : (
@@ -176,6 +185,28 @@ export function LogsTableCard(props: LogsTableCardProps) {
             </table>
           </div>
           {showScrollHint && <div className="table-scroll-hint" />}
+        </div>
+        <div className="md:hidden">
+          {logsPending ? (
+            <div className="space-y-3 p-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 w-full" />
+              ))}
+            </div>
+          ) : logsError && items.length === 0 ? (
+            <div className="px-3 py-6">{errorState}</div>
+          ) : items.length === 0 ? (
+            <div className="px-3 py-8">{emptyState}</div>
+          ) : (
+            items.map((item) => (
+              <LogCard
+                key={item.id}
+                record={item}
+                providerLabelMap={providerLabelMap}
+                onSelect={handleOpenDetail}
+              />
+            ))
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4 bg-secondary/50 p-4 border-t border-border">
           <div className="flex items-center gap-2 rounded-full bg-secondary px-3 py-2">

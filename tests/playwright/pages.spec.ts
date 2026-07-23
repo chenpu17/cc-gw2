@@ -15,38 +15,32 @@ test('web console pages load and navigation works', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/`)
 
   await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
-  await expect(page.getByText('今日请求数')).toBeVisible()
+  // 无数据时首屏为新手引导卡；刷新按钮始终在工具栏
+  await expect(page.getByText('先走通这三步')).toBeVisible()
   await expect(page.getByRole('button', { name: '刷新' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '释放数据库空间' })).toBeVisible()
 
   await page.getByRole('link', { name: '请求日志' }).click()
   await expect(page).toHaveURL(/\/ui\/logs$/)
   await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
 
-  await page.getByRole('link', { name: '模型供应商' }).first().click()
-  await expect(page).toHaveURL(/\/ui\/models$/)
-  await expect(page.getByRole('heading', { name: '模型提供商', level: 1 })).toBeVisible()
+  // /models 与 /routing 已合并为 /providers 工作台
+  await page.getByRole('link', { name: '模型与路由' }).first().click()
+  await expect(page).toHaveURL(/\/ui\/providers$/)
+  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+  // 默认进入「供应商」视图
+  await expect(page.getByRole('button', { name: '新增提供商' })).toBeVisible()
   await expect(page.getByText('配置导览')).toHaveCount(0)
-  await expect(page.getByText('将资源池与流量入口拆开维护，减少信息混排。')).toHaveCount(0)
-  await expect(page.getByText('Model Access')).toHaveCount(0)
-  await expect(page.getByText('Configured')).toHaveCount(0)
-  await expect(page.getByText('Visible')).toHaveCount(0)
-  await expect(page.getByText('Connection Status')).toHaveCount(0)
-  await expect(page.getByText('先维护上游 Provider 供应池，再进入路由管理为内置端点和自定义端点配置映射规则。')).toHaveCount(0)
-
-  await page.getByRole('link', { name: '路由管理' }).first().click()
-  await expect(page).toHaveURL(/\/ui\/routing$/)
-  await expect(page.getByRole('heading', { name: '路由管理', level: 1 })).toBeVisible()
-  await expect(page.getByText('配置导览')).toHaveCount(0)
-  await expect(page.getByText('Current model routes')).toHaveCount(0)
-  await expect(page.getByText('Reusable routing templates')).toHaveCount(0)
-  await expect(page.getByText('Bound to this endpoint')).toHaveCount(0)
-  await expect(page.getByText('Anthropic compatibility mode')).toHaveCount(0)
-  await expect(page.getByText('当前工作区正在编辑')).toHaveCount(0)
-  await expect(page.getByText('优先在此处切换和维护自定义端点')).toHaveCount(0)
-  await expect(page.getByText('Provider 供应池')).toHaveCount(0)
-  await expect(page.getByText('Endpoint 入口层')).toHaveCount(0)
-  await expect(page.getByText('当前工作区', { exact: true })).toHaveCount(0)
+  // 端点与路由规则在「路由」视图中
+  await page.getByRole('tab', { name: '路由' }).click()
+  await expect(page).toHaveURL(/\/ui\/providers\?tab=routing$/)
+  await expect(page.getByRole('button', { name: '管理端点' })).toBeVisible()
+  // 「管理端点」跳转「端点」视图，自定义端点表格在此管理
+  await page.getByRole('button', { name: '管理端点' }).click()
+  await expect(page).toHaveURL(/\/ui\/providers\?tab=endpoints$/)
+  await expect(page.getByRole('button', { name: '新建端点' }).first()).toBeVisible()
+  await page.getByRole('tab', { name: '路由' }).click()
+  // 模板与兼容性设置收进「高级」Disclosure，先展开再断言
+  await page.locator('summary').filter({ hasText: '高级' }).click()
   await expect(page.getByText('路由模板', { exact: true })).toBeVisible()
   await expect(page.getByText('路由操作', { exact: true })).toBeVisible()
   await expect(page.getByText('常用 Anthropic 模型', { exact: true })).toBeVisible()
@@ -55,7 +49,8 @@ test('web console pages load and navigation works', async ({ page }) => {
   await expect(page).toHaveURL(/\/ui\/events$/)
   await expect(page.getByRole('heading', { level: 1 }).filter({ hasText: /事件/ })).toBeVisible()
   await expect(page.getByRole('button', { name: '最新' })).toBeVisible()
-  await expect(page.getByPlaceholder('按事件类型过滤（可留空）')).toBeVisible()
+  // 事件类型过滤改为枚举下拉
+  await expect(page.getByRole('combobox')).toBeVisible()
 
   await page.getByRole('link', { name: 'API 密钥' }).click()
   await expect(page).toHaveURL(/\/ui\/api-keys$/)
@@ -65,7 +60,8 @@ test('web console pages load and navigation works', async ({ page }) => {
   await expect(page).toHaveURL(/\/ui\/settings$/)
   await expect(page.getByRole('heading', { level: 1 }).filter({ hasText: /设置/ })).toBeVisible()
 
-  await page.getByRole('link', { name: '使用指南' }).click()
+  // 使用指南已从侧边导航移除，仅保留直达路由
+  await page.goto(`${harness.baseUrl()}/ui/help`)
   await expect(page).toHaveURL(/\/ui\/help$/)
   await expect(page.getByRole('heading', { level: 1 }).filter({ hasText: /使用指南/ })).toBeVisible()
 
@@ -89,20 +85,21 @@ test('theme and language switchers open menus', async ({ page }) => {
 })
 
 test('deep links and language preference survive reloads under /ui basename', async ({ page }) => {
+  // 旧路径 /ui/models 会重定向到 /ui/providers
   await page.goto(`${harness.baseUrl()}/ui/models`)
-  await expect(page).toHaveURL(/\/ui\/models$/)
-  await expect(page.getByRole('heading', { name: '模型提供商', level: 1 })).toBeVisible()
+  await expect(page).toHaveURL(/\/ui\/providers$/)
+  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.reload()
-  await expect(page).toHaveURL(/\/ui\/models$/)
-  await expect(page.getByRole('heading', { name: '模型提供商', level: 1 })).toBeVisible()
+  await expect(page).toHaveURL(/\/ui\/providers$/)
+  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByTestId('language-switcher-trigger').click({ force: true })
   await page.getByRole('menuitem', { name: 'English' }).click()
-  await expect(page.getByRole('heading', { name: 'Model Providers', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Providers & Routing Workbench', level: 1 })).toBeVisible()
 
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Model Providers', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Providers & Routing Workbench', level: 1 })).toBeVisible()
 
   await page.goto(`${harness.baseUrl()}/ui/not-found`)
   await expect(page).toHaveURL(/\/ui\/?$/)

@@ -1,18 +1,23 @@
 import { lazy } from 'react'
 import type { LazyExoticComponent, ComponentType } from 'react'
+import { Navigate } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
-import { AlertTriangle, BarChart3, Cog, FileText, GitBranch, Key, Layers, LifeBuoy, Settings } from 'lucide-react'
+import { AlertTriangle, BarChart3, Cog, FileText, Key, Layers, LifeBuoy, Settings } from 'lucide-react'
 
 const DashboardPage = lazy(() => import('@/pages/Dashboard'))
 const LogsPage = lazy(() => import('@/pages/Logs'))
 const EventsPage = lazy(() => import('@/pages/Events'))
-const ModelManagementPage = lazy(() => import('@/pages/ModelManagement'))
-const RoutingManagementPage = lazy(() => import('@/pages/RoutingManagement'))
+const ProvidersWorkbenchPage = lazy(() => import('@/pages/ProvidersWorkbench'))
 const ApiKeysPage = lazy(() => import('@/pages/ApiKeys'))
 const SettingsPage = lazy(() => import('@/pages/Settings'))
+const SetupPage = lazy(() => import('@/pages/Setup'))
 const AboutPage = lazy(() => import('@/pages/About'))
 const HelpPage = lazy(() => import('@/pages/Help'))
 const LoginPage = lazy(() => import('@/pages/Login'))
+
+function RedirectToProviders() {
+  return <Navigate to="/providers" replace />
+}
 
 interface AppRouteNavMeta {
   icon: LucideIcon
@@ -24,7 +29,7 @@ interface AppRouteNavMeta {
 
 export interface AppRouteDefinition {
   path: string
-  element: LazyExoticComponent<ComponentType>
+  element: LazyExoticComponent<ComponentType> | ComponentType
   index?: boolean
   nav?: AppRouteNavMeta
 }
@@ -53,29 +58,23 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
     }
   },
   {
-    path: '/models',
-    element: ModelManagementPage,
+    path: '/providers',
+    element: ProvidersWorkbenchPage,
     nav: {
       icon: Layers,
-      labelKey: 'nav.models',
-      titleKey: 'providers.title',
-      descriptionKey: 'providers.description',
-      matchPaths: ['/models', '/providers']
+      labelKey: 'nav.providers',
+      titleKey: 'workbench.title',
+      descriptionKey: 'workbench.description',
+      matchPaths: ['/providers', '/models', '/routing']
     }
   },
   {
-    path: '/providers',
-    element: ModelManagementPage
+    path: '/models',
+    element: RedirectToProviders
   },
   {
     path: '/routing',
-    element: RoutingManagementPage,
-    nav: {
-      icon: GitBranch,
-      labelKey: 'nav.routing',
-      titleKey: 'routingManagement.title',
-      descriptionKey: 'routingManagement.description'
-    }
+    element: RedirectToProviders
   },
   {
     path: '/events',
@@ -96,6 +95,10 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
       titleKey: 'apiKeys.title',
       descriptionKey: 'apiKeys.description'
     }
+  },
+  {
+    path: '/setup',
+    element: SetupPage
   },
   {
     path: '/settings',

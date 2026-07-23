@@ -116,22 +116,6 @@ impl Default for DefaultsConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
-pub struct EndpointValidationConfig {
-    pub mode: String,
-    pub allow_experimental_blocks: Option<bool>,
-}
-
-impl Default for EndpointValidationConfig {
-    fn default() -> Self {
-        Self {
-            mode: "off".to_string(),
-            allow_experimental_blocks: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
 pub struct EndpointCompatibilityConfig {
     pub enabled: bool,
 }
@@ -147,7 +131,6 @@ impl Default for EndpointCompatibilityConfig {
 pub struct EndpointRoutingConfig {
     pub defaults: DefaultsConfig,
     pub model_routes: ModelRouteMap,
-    pub validation: Option<EndpointValidationConfig>,
     pub compatibility: Option<EndpointCompatibilityConfig>,
 }
 
@@ -156,7 +139,6 @@ impl Default for EndpointRoutingConfig {
         Self {
             defaults: DefaultsConfig::default(),
             model_routes: Default::default(),
-            validation: None,
             compatibility: None,
         }
     }
@@ -261,7 +243,6 @@ impl Default for GatewayConfig {
             EndpointRoutingConfig {
                 defaults: defaults.clone(),
                 model_routes: Default::default(),
-                validation: None,
                 compatibility: None,
             },
         );
@@ -270,7 +251,6 @@ impl Default for GatewayConfig {
             EndpointRoutingConfig {
                 defaults: defaults.clone(),
                 model_routes: Default::default(),
-                validation: None,
                 compatibility: None,
             },
         );

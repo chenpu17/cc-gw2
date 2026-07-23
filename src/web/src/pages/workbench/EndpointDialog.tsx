@@ -3,7 +3,14 @@ import { Plus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { customEndpointsApi } from '@/services/api'
 import { useAppMutation } from '@/hooks/useAppMutation'
+import {
+  AppDialogBody,
+  AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader
+} from '@/components/DialogShell'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -24,7 +31,14 @@ const PROTOCOL_OPTIONS: EndpointProtocol[] = [
   'openai-responses'
 ]
 
-export function EndpointDrawer({
+/**
+ * Create/edit dialog for a custom endpoint. Form content lives in the
+ * scrollable body between a fixed header and footer. Clicking outside the
+ * dialog must not close it — unsaved form state would be lost — so
+ * onInteractOutside is prevented; Escape and the cancel/close buttons still
+ * close it.
+ */
+export function EndpointDialog({
   open,
   endpoint,
   onClose,
@@ -44,6 +58,7 @@ export function EndpointDrawer({
   })
 
   useEffect(() => {
+    if (!open) return
     if (endpoint) {
       const paths = endpoint.paths && endpoint.paths.length > 0
         ? endpoint.paths
@@ -171,51 +186,23 @@ export function EndpointDrawer({
           ? t('modelManagement.pathValidationError')
           : null
 
-  if (!open) return null
-
   return (
-    <>
-      <div
-        className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm"
-        onClick={onClose}
-      />
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <AppDialogContent
+        className="max-w-lg"
+        onInteractOutside={(event) => event.preventDefault()}
+      >
+        <AppDialogHeader>
+          <DialogTitle>
+            {endpoint ? t('modelManagement.editEndpoint') : t('modelManagement.createEndpoint')}
+          </DialogTitle>
+          <DialogDescription className="truncate font-mono text-xs">
+            {endpoint ? endpoint.id : t('modelManagement.endpointRoutingHint')}
+          </DialogDescription>
+        </AppDialogHeader>
 
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-border bg-background shadow-[var(--surface-shadow-lg)] backdrop-blur">
-        <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between border-b border-border bg-secondary p-6">
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold tracking-[-0.02em]">
-                {endpoint ? t('modelManagement.editEndpoint') : t('modelManagement.createEndpoint')}
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                {endpoint ? endpoint.id : t('modelManagement.endpointRoutingHint')}
-              </p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={onClose} className="rounded-2xl bg-secondary hover:bg-accent">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="flex-1 space-y-6 overflow-y-auto p-6">
-            <div className="grid gap-3 rounded-xl bg-secondary/50 p-4 sm:grid-cols-2">
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  {t('modelManagement.endpointId')}
-                </p>
-                <p className="truncate text-sm font-medium text-foreground">
-                  {endpoint?.id || 'new-endpoint'}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  {t('modelManagement.endpointEnabled')}
-                </p>
-                <p className="text-sm font-medium text-foreground">
-                  {formData.enabled ? t('common.status.enabled') : t('common.status.disabled')}
-                </p>
-              </div>
-            </div>
-
+        <AppDialogBody>
+          <form id="endpoint-form" onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label>
                 {t('modelManagement.endpointId')} <span className="text-destructive">*</span>
@@ -314,11 +301,11 @@ export function EndpointDrawer({
 
             <div className="flex items-center gap-3">
               <Switch
-                id="enabled"
+                id="endpoint-enabled"
                 checked={formData.enabled}
                 onCheckedChange={(checked) => setFormData((previous) => ({ ...previous, enabled: checked }))}
               />
-              <Label htmlFor="enabled">{t('modelManagement.endpointEnabled')}</Label>
+              <Label htmlFor="endpoint-enabled">{t('modelManagement.endpointEnabled')}</Label>
             </div>
 
             {!endpoint ? (
@@ -329,17 +316,17 @@ export function EndpointDrawer({
               </div>
             ) : null}
           </form>
+        </AppDialogBody>
 
-          <div className="flex gap-3 border-t border-border bg-secondary p-6">
-            <Button variant="outline" className="flex-1" onClick={onClose} disabled={isSubmitting}>
-              {t('common.cancel')}
-            </Button>
-            <Button className="flex-1" onClick={() => handleSubmit()} disabled={isSubmitting}>
-              {isSubmitting ? t('common.saving') : endpoint ? t('common.save') : t('common.create')}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </>
+        <AppDialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" form="endpoint-form" disabled={isSubmitting}>
+            {isSubmitting ? t('common.saving') : endpoint ? t('common.save') : t('common.create')}
+          </Button>
+        </AppDialogFooter>
+      </AppDialogContent>
+    </Dialog>
   )
 }

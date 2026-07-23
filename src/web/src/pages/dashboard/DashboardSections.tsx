@@ -1,25 +1,11 @@
 import { useTranslation } from 'react-i18next'
-import {
-  Activity,
-  ArrowDownToLine,
-  ArrowUpToLine,
-  BarChart3,
-  Cpu,
-  Database,
-  Gauge,
-  MemoryStick,
-  Server,
-  Sparkles,
-  Timer,
-  TrendingUp,
-  X,
-  Zap
-} from 'lucide-react'
+import { Activity, BarChart3, CheckCircle2 } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { EChart, echarts, type EChartOption } from '@/components/EChart'
 import { PageSection } from '@/components/PageSection'
 import { PageLoadingState, PageState } from '@/components/PageState'
-import { StatCardSkeleton, ChartSkeleton, TableRowSkeleton } from '@/components/Skeleton'
+import { ChartSkeleton, StatCardSkeleton, TableRowSkeleton } from '@/components/Skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -33,26 +19,27 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table'
+import type { GatewayEvent } from '@/types/events'
 import type { LogRecord } from '@/types/logs'
 import { getLogStatusMeta } from '@/pages/logs/utils'
-import { formatByteRate, formatLatencyValue, formatPercent, type DailyMetric, type ModelUsageMetric, type OverviewStats, type ServiceStatus } from './types'
+import {
+  formatByteRate,
+  formatLatencyValue,
+  formatPercent,
+  type DatabaseInfo,
+  type ModelUsageMetric,
+  type ServiceStatus
+} from './types'
 
 export function DashboardLoading() {
   return (
     <div className="flex flex-col gap-6">
-      {/* Status bar skeleton */}
-      <div className="h-20 animate-pulse rounded-xl bg-card shadow-[var(--surface-shadow)]" />
-      {/* Monitoring grid skeleton */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {Array.from({ length: 12 }).map((_, index) => (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
           <StatCardSkeleton key={index} />
         ))}
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <ChartSkeleton key={index} />
-        ))}
-      </div>
+      <ChartSkeleton />
       <div className="rounded-xl bg-card shadow-[var(--surface-shadow)]">
         <table className="w-full">
           <tbody>
@@ -66,402 +53,443 @@ export function DashboardLoading() {
   )
 }
 
-export function GatewayStatusBar({
-  status
-}: {
-  status?: ServiceStatus
-}) {
+/** Layer 1 — gateway status + live traffic, typography-first, no decorative icons */
+export function StatusBand({ status }: { status?: ServiceStatus }) {
   const { t } = useTranslation()
-
-  return (
-    <div
-      className="flex flex-col gap-4 rounded-xl bg-card p-6 shadow-[var(--surface-shadow)] sm:flex-row sm:items-center sm:justify-between"
-      data-testid="dashboard-overview-panel"
-    >
-      <div className="flex items-center gap-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-          <Sparkles className="h-5 w-5 text-primary" aria-hidden="true" />
-        </div>
-        <div>
-          <Badge variant="success">{t('dashboard.status.listeningLabel')}</Badge>
-          <h2
-            data-testid="dashboard-runtime-address"
-            className="metric-number mt-1.5 text-lg font-semibold tracking-tight text-foreground"
-          >
-            {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
-          </h2>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-        <span>{t('dashboard.labels.activeClientAddresses')}: <strong className="metric-number text-foreground">{(status?.activeClientAddresses ?? 0).toLocaleString()}</strong></span>
-        <span className="text-border">·</span>
-        <span>{t('dashboard.labels.activeClientSessions')}: <strong className="metric-number text-foreground">{(status?.activeClientSessions ?? 0).toLocaleString()}</strong></span>
-      </div>
-    </div>
-  )
-}
-
-export function MonitoringGrid({
-  daily,
-  dbSizeDisplay,
-  memoryDisplay,
-  overview,
-  status
-}: {
-  daily: DailyMetric[]
-  dbSizeDisplay: string
-  memoryDisplay: string
-  overview?: OverviewStats
-  status?: ServiceStatus
-}) {
-  const { t } = useTranslation()
-  const requestTrend = daily.map((item) => item.requestCount)
-  const inputTrend = daily.map((item) => item.inputTokens)
-  const outputTrend = daily.map((item) => item.outputTokens)
-  const spotlightMetrics = [
-    {
-      icon: <Gauge className="h-4 w-4" />,
-      label: t('dashboard.labels.activeRequests'),
-      value: (status?.activeRequests ?? 0).toLocaleString(),
-      testId: 'dashboard-spotlight-value-active'
-    },
-    {
-      icon: <Activity className="h-4 w-4" />,
-      label: t('dashboard.labels.requestsPerMinute'),
-      value: (status?.requestsPerMinute ?? 0).toLocaleString(),
-      testId: 'dashboard-spotlight-value-rpm'
-    },
-    {
-      icon: <Zap className="h-4 w-4" />,
-      label: t('dashboard.labels.outputTokensPerMinute'),
-      value: (status?.outputTokensPerMinute ?? 0).toLocaleString(),
-      testId: 'dashboard-spotlight-value-tpm'
-    },
-    {
-      icon: <Cpu className="h-4 w-4" />,
-      label: t('dashboard.labels.cpu'),
-      value: formatPercent(status?.cpuUsagePercent),
-      testId: 'dashboard-spotlight-value-cpu'
-    }
-  ]
-  const secondaryMetrics = [
-    {
-      icon: <Activity className="h-4 w-4" />,
-      label: t('dashboard.cards.todayRequests'),
-      value: (overview?.today.requests ?? 0).toLocaleString(),
-      rawValue: overview?.today.requests ?? 0,
-      suffix: t('common.units.request'),
-      sparkline: requestTrend
-    },
-    {
-      icon: <TrendingUp className="h-4 w-4" />,
-      label: t('dashboard.cards.todayInput'),
-      value: (overview?.today.inputTokens ?? 0).toLocaleString(),
-      rawValue: overview?.today.inputTokens ?? 0,
-      suffix: t('common.units.token'),
-      sparkline: inputTrend
-    },
-    {
-      icon: <BarChart3 className="h-4 w-4" />,
-      label: t('dashboard.cards.todayOutput'),
-      value: (overview?.today.outputTokens ?? 0).toLocaleString(),
-      rawValue: overview?.today.outputTokens ?? 0,
-      suffix: t('common.units.token'),
-      sparkline: outputTrend
-    },
-    {
-      icon: <Timer className="h-4 w-4" />,
-      label: t('dashboard.cards.avgLatency'),
-      value: formatLatencyValue(overview?.today.avgLatencyMs ?? 0, t('common.units.ms'))
-    }
-  ]
-  const infraMetrics = [
-    {
-      icon: <ArrowDownToLine className="h-4 w-4" />,
-      label: t('dashboard.labels.networkIngress'),
-      value: formatByteRate(status?.networkIngressBytesPerSecond),
-      testId: 'dashboard-spotlight-value-ingress'
-    },
-    {
-      icon: <ArrowUpToLine className="h-4 w-4" />,
-      label: t('dashboard.labels.networkEgress'),
-      value: formatByteRate(status?.networkEgressBytesPerSecond),
-      testId: 'dashboard-spotlight-value-egress'
-    },
-    {
-      icon: <Database className="h-4 w-4" />,
-      label: t('dashboard.labels.database'),
-      value: dbSizeDisplay,
-      testId: 'dashboard-spotlight-value-database'
-    },
-    {
-      icon: <MemoryStick className="h-4 w-4" />,
-      label: t('dashboard.labels.memory'),
-      value: memoryDisplay,
-      testId: 'dashboard-spotlight-value-memory'
-    }
-  ]
 
   return (
     <div className="space-y-3" data-testid="dashboard-spotlight-grid">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        {spotlightMetrics.map((item, index) => (
-          <MetricCard
-            key={item.label}
-            className={index === 0 ? 'md:col-span-2 xl:col-span-2' : undefined}
-            size={index === 0 ? 'lg' : 'md'}
-            featured={index === 0}
-            icon={item.icon}
-            label={item.label}
-            value={item.value}
-            valueTestId={item.testId}
-          />
-        ))}
-      </div>
-      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-        {secondaryMetrics.map((item) => (
-          <MetricCard
-            key={item.label}
-            size="sm"
-            icon={item.icon}
-            label={item.label}
-            value={item.value}
-            rawValue={item.rawValue}
-            suffix={item.suffix}
-            sparkline={item.sparkline ? { data: item.sparkline } : undefined}
-          />
-        ))}
-      </div>
-      <Disclosure
-        variant="card"
-        summaryClassName="px-4 py-3"
-        contentClassName="border-t border-border px-4 py-4"
-        summary={(
-          <span className="inline-flex items-center gap-2 text-muted-foreground">
-            <Server className="h-4 w-4" aria-hidden="true" />
-            {t('dashboard.cards.systemResources')}
-          </span>
-        )}
+      <div
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+        data-testid="dashboard-overview-panel"
       >
-        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-          {infraMetrics.map((item) => (
-            <MetricCard
-              key={item.label}
-              size="sm"
-              icon={item.icon}
-              label={item.label}
-              value={item.value}
-              valueTestId={item.testId}
-            />
-          ))}
-        </div>
-      </Disclosure>
-    </div>
-  )
-}
-
-export function DashboardInsightsGrid({
-  busiestDay,
-  fastestTtftModel,
-  totalRequestsInRange
-}: {
-  busiestDay: DailyMetric | null
-  fastestTtftModel?: ModelUsageMetric
-  totalRequestsInRange: number
-}) {
-  const { t } = useTranslation()
-
-  return (
-    <div className="grid gap-3 lg:grid-cols-[1.4fr_repeat(2,minmax(0,1fr))]">
-      <MetricCard
-        featured
-        size="md"
-        label={t('dashboard.insights.totalRequests')}
-        value={totalRequestsInRange.toLocaleString()}
-        rawValue={totalRequestsInRange}
-        hint={t('dashboard.insights.totalRequestsHint')}
-      />
-      <MetricCard
-        size="sm"
-        label={t('dashboard.insights.busiestDay')}
-        value={busiestDay ? busiestDay.date : '-'}
-        hint={busiestDay ? t('dashboard.insights.busiestDayHint', { value: busiestDay.requestCount.toLocaleString() }) : t('common.noData')}
-      />
-      <MetricCard
-        size="sm"
-        label={t('dashboard.insights.fastestTtft')}
-        value={fastestTtftModel ? `${fastestTtftModel.provider}/${fastestTtftModel.model}` : '-'}
-        hint={fastestTtftModel ? formatLatencyValue(fastestTtftModel.avgTtftMs, t('common.units.ms')) : t('common.noData')}
-      />
-    </div>
-  )
-}
-
-export function DashboardGettingStarted({
-  endpointCount,
-  providerCount,
-  onDismiss
-}: {
-  endpointCount: number
-  providerCount: number
-  onDismiss?: () => void
-}) {
-  const { t } = useTranslation()
-  const steps = [
-    {
-      title: '先配置 Provider',
-      description: providerCount > 0 ? `当前已检测到 ${providerCount} 个 Provider，可直接继续下一步。` : '先在模型供应商里接入至少 1 个上游模型服务。',
-      href: '/models',
-      cta: '去模型供应商',
-    },
-    {
-      title: '确认默认路由入口',
-      description: endpointCount > 0 ? `当前已有 ${endpointCount} 个自定义端点，可继续检查默认映射是否合理。` : '把一个端点或默认路由配置清楚，后续客户端就能稳定接入。',
-      href: '/routing',
-      cta: '去路由管理',
-    },
-    {
-      title: '发起第一条真实请求',
-      description: '创建 API Key，然后从常用客户端打进来一条请求，让日志、路由和延迟开始有数据。',
-      href: '/api-keys',
-      cta: '去 API 密钥',
-    },
-  ]
-
-  return (
-    <Card className="relative overflow-hidden">
-      {onDismiss ? (
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onDismiss}
-          aria-label={t('common.actions.close')}
-          className="absolute right-3 top-3 h-8 w-8 text-muted-foreground hover:text-foreground"
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-success-bg px-1.5 py-0.5 text-[11px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success">
+          {t('dashboard.status.listeningLabel')}
+        </span>
+        <span
+          data-testid="dashboard-runtime-address"
+          className="metric-number text-sm font-semibold tracking-tight text-foreground"
         >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </Button>
-      ) : null}
-      <CardContent className="space-y-5 pt-5">
-        <div className="space-y-2">
-          <div className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-            Cold Start Guide
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">先走通这三步</h3>
-            <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-              把 Provider、路由和 API Key 配好后发起一条请求，仪表盘就会开始有数据。
-            </p>
-          </div>
-        </div>
+          {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {t('dashboard.status.providers', { value: status?.providers ?? 0 })}
+        </span>
+      </div>
 
-        <div className="grid gap-3 lg:grid-cols-3">
-          {steps.map((step, index) => (
-            <Card key={step.title} className="p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-sm font-semibold text-primary">
-                0{index + 1}
-              </div>
-              <h4 className="mt-3 text-sm font-semibold text-foreground">{step.title}</h4>
-              <p className="mt-1.5 text-xs leading-6 text-muted-foreground">{step.description}</p>
-              <Button asChild variant="ghost" size="sm" className="mt-3 h-8 rounded-full px-0 text-primary hover:bg-transparent hover:text-primary/80">
-                <Link to={step.href}>{step.cta}</Link>
-              </Button>
-            </Card>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          size="md"
+          label={t('dashboard.labels.activeRequests')}
+          value={(status?.activeRequests ?? 0).toLocaleString()}
+          rawValue={status?.activeRequests ?? 0}
+          valueTestId="dashboard-spotlight-value-active"
+        />
+        <MetricCard
+          size="md"
+          label={t('dashboard.labels.requestsPerMinute')}
+          value={(status?.requestsPerMinute ?? 0).toLocaleString()}
+          rawValue={status?.requestsPerMinute ?? 0}
+          valueTestId="dashboard-spotlight-value-rpm"
+        />
+        <MetricCard
+          size="md"
+          label={t('dashboard.labels.uniqueClientAddressesLastHour')}
+          value={(status?.uniqueClientAddressesLastHour ?? 0).toLocaleString()}
+          rawValue={status?.uniqueClientAddressesLastHour ?? 0}
+        />
+        <MetricCard
+          size="md"
+          label={t('dashboard.labels.cpu')}
+          value={formatPercent(status?.cpuUsagePercent)}
+          valueTestId="dashboard-spotlight-value-cpu"
+        />
+      </div>
+    </div>
   )
 }
 
-export function DashboardChartsGrid({
-  dailyEmpty,
-  dailyOption,
-  dailyPending,
-  models,
+function eventLevelBadge(level: GatewayEvent['level']) {
+  switch (level) {
+    case 'error':
+      return <Badge variant="destructive">error</Badge>
+    case 'warn':
+      return <Badge variant="warning">warn</Badge>
+    default:
+      return <Badge variant="secondary">info</Badge>
+  }
+}
+
+/** Layer 2 — live warn/error feed; only rendered while there is something to show */
+export function AttentionFeed({
+  connected,
+  events
+}: {
+  connected: boolean
+  events: GatewayEvent[]
+}) {
+  const { t } = useTranslation()
+
+  if (events.length === 0) return null
+
+  return (
+    <PageSection
+      title={t('dashboard.attention.title')}
+      description={t('dashboard.attention.subtitle')}
+      actions={
+        <div className="flex items-center gap-2">
+          <span
+            className={
+              connected
+                ? 'inline-flex items-center gap-1 text-[11px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success'
+                : 'inline-flex items-center gap-1 text-[11px] font-medium text-warning before:h-1.5 before:w-1.5 before:rounded-full before:bg-warning'
+            }
+          >
+            {connected ? t('dashboard.attention.live') : t('dashboard.attention.reconnecting')}
+          </span>
+          <Button asChild variant="ghost" size="sm" className="h-7">
+            <Link to="/events">{t('dashboard.attention.viewAll')}</Link>
+          </Button>
+        </div>
+      }
+    >
+      <ul className="divide-y divide-border">
+        <AnimatePresence initial={false}>
+          {events.map((event) => (
+            <motion.li
+              key={event.id}
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0"
+            >
+              <div className="pt-0.5">{eventLevelBadge(event.level)}</div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {event.title ?? event.type}
+                </p>
+                {event.message ? (
+                  <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{event.message}</p>
+                ) : null}
+              </div>
+              <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted-foreground/70">
+                {new Date(event.createdAt).toLocaleTimeString()}
+              </span>
+            </motion.li>
+          ))}
+        </AnimatePresence>
+      </ul>
+    </PageSection>
+  )
+}
+
+/** Layer 2 fallback — slim all-clear strip shown at the end of the StatusBand area */
+export function AttentionAllClear({ connected }: { connected: boolean }) {
+  const { t } = useTranslation()
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      data-testid="dashboard-all-clear"
+      className="flex h-8 flex-wrap items-center gap-x-2 gap-y-1 rounded-full bg-success-bg px-3 text-xs text-success"
+    >
+      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span className="font-medium">{t('dashboard.attention.allClear')}</span>
+      <span
+        className={
+          connected
+            ? 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium before:h-1.5 before:w-1.5 before:rounded-full before:bg-success'
+            : 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-warning before:h-1.5 before:w-1.5 before:rounded-full before:bg-warning'
+        }
+      >
+        {connected ? t('dashboard.attention.live') : t('dashboard.attention.reconnecting')}
+      </span>
+      <Link to="/events" className="shrink-0 underline-offset-2 hover:underline">
+        {t('dashboard.attention.viewAll')}
+      </Link>
+    </motion.div>
+  )
+}
+
+/** Layer 3a — single aggregated 14-day trend chart (requests + avg latency) */
+export function TrendChart({
+  empty,
+  loading,
+  option
+}: {
+  empty: boolean
+  loading?: boolean
+  option: EChartOption
+}) {
+  const { t } = useTranslation()
+  return (
+    <ChartCard
+      title={t('dashboard.charts.trendTitle')}
+      description={t('dashboard.charts.trendDesc')}
+      loading={loading}
+      option={option}
+      empty={empty}
+      emptyText={t('dashboard.charts.empty')}
+    />
+  )
+}
+
+/** Layer 3b — performance details, collapsed by default */
+export function PerformanceDisclosure({
   modelRequestsOption,
-  modelUsagePending,
+  models,
   ttftOption,
   tpotOption
 }: {
-  dailyEmpty: boolean
-  dailyOption: EChartOption
-  dailyPending: boolean
-  models: ModelUsageMetric[]
   modelRequestsOption: EChartOption
-  modelUsagePending: boolean
+  models: ModelUsageMetric[]
   ttftOption: EChartOption
   tpotOption: EChartOption
 }) {
   const { t } = useTranslation()
 
   return (
-    <>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <ChartCard title={t('dashboard.charts.requestsTitle')} description={t('dashboard.charts.requestsDesc')} loading={dailyPending} option={dailyOption} empty={dailyEmpty} emptyText={t('dashboard.charts.empty')} />
-        <ChartCard title={t('dashboard.charts.modelTitle')} description={t('dashboard.charts.modelDesc')} loading={modelUsagePending} option={modelRequestsOption} empty={!models.length} emptyText={t('dashboard.charts.empty')} />
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <ChartCard
+    <Disclosure
+      variant="card"
+      summaryClassName="px-4 py-3"
+      contentClassName="border-t border-border px-4 py-4"
+      summary={
+        <span className="text-sm font-medium text-foreground">
+          {t('dashboard.sections.performance')}
+        </span>
+      }
+    >
+      <div className="grid gap-4 lg:grid-cols-3">
+        <InlineChart
+          title={t('dashboard.charts.modelTitle')}
+          option={modelRequestsOption}
+          empty={!models.length}
+        />
+        <InlineChart
           title={t('dashboard.charts.ttftTitle')}
-          description={t('dashboard.charts.ttftDesc')}
-          loading={modelUsagePending}
           option={ttftOption}
           empty={!models.some((metric) => metric.avgTtftMs != null && metric.avgTtftMs > 0)}
-          emptyText={t('dashboard.charts.ttftEmpty')}
         />
-        <ChartCard
+        <InlineChart
           title={t('dashboard.charts.tpotTitle')}
-          description={t('dashboard.charts.tpotDesc')}
-          loading={modelUsagePending}
           option={tpotOption}
           empty={!models.some((metric) => metric.avgTpotMs != null && metric.avgTpotMs > 0)}
-          emptyText={t('dashboard.charts.tpotEmpty')}
         />
       </div>
-    </>
+      <div className="mt-4">
+        <ModelMetricsTable models={models} embedded />
+      </div>
+    </Disclosure>
   )
 }
 
-export function ModelMetricsTable({ models, loading }: { models: ModelUsageMetric[]; loading?: boolean }) {
+/** Layer 3c — infrastructure details, collapsed by default; hosts DB compact */
+export function InfraDisclosure({
+  compacting,
+  dbInfo,
+  dbSizeDisplay,
+  memoryDisplay,
+  onCompact,
+  status
+}: {
+  compacting: boolean
+  dbInfo?: DatabaseInfo
+  dbSizeDisplay: string
+  memoryDisplay: string
+  onCompact: () => void
+  status?: ServiceStatus
+}) {
   const { t } = useTranslation()
+  void dbInfo
+
+  return (
+    <Disclosure
+      variant="card"
+      summaryClassName="px-4 py-3"
+      contentClassName="border-t border-border px-4 py-4"
+      summary={
+        <span className="text-sm font-medium text-foreground">
+          {t('dashboard.cards.systemResources')}
+        </span>
+      }
+      badge={
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {dbSizeDisplay} · {memoryDisplay}
+        </span>
+      }
+    >
+      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          size="sm"
+          label={t('dashboard.labels.networkIngress')}
+          value={formatByteRate(status?.networkIngressBytesPerSecond)}
+          valueTestId="dashboard-spotlight-value-ingress"
+        />
+        <MetricCard
+          size="sm"
+          label={t('dashboard.labels.networkEgress')}
+          value={formatByteRate(status?.networkEgressBytesPerSecond)}
+          valueTestId="dashboard-spotlight-value-egress"
+        />
+        <MetricCard
+          size="sm"
+          label={t('dashboard.labels.database')}
+          value={dbSizeDisplay}
+          valueTestId="dashboard-spotlight-value-database"
+        />
+        <MetricCard
+          size="sm"
+          label={t('dashboard.labels.memory')}
+          value={memoryDisplay}
+          valueTestId="dashboard-spotlight-value-memory"
+        />
+      </div>
+      <div className="mt-4 flex justify-end">
+        <Button variant="outline" size="sm" onClick={onCompact} disabled={compacting}>
+          {compacting ? t('dashboard.actions.compacting') : t('dashboard.actions.compact')}
+        </Button>
+      </div>
+    </Disclosure>
+  )
+}
+
+/** Cold-start progress strip: always visible while setup is incomplete, never dismissible */
+export function SetupProgressStrip({ doneCount, total }: { doneCount: number; total: number }) {
+  const { t } = useTranslation()
+  const percent = Math.min(100, Math.round((doneCount / total) * 100))
+
+  return (
+    <div
+      data-testid="dashboard-setup-progress"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-full bg-secondary/60 px-4 py-2"
+    >
+      <span className="text-xs font-medium text-foreground">
+        {t('dashboard.setupProgress.label', { done: doneCount, total })}
+      </span>
+      <div className="h-1.5 min-w-24 flex-1 overflow-hidden rounded-full bg-border/60">
+        <div className="h-1.5 rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
+      </div>
+      <Link to="/setup" className="shrink-0 text-xs font-medium text-primary underline-offset-2 hover:underline">
+        {t('dashboard.setupProgress.cta')}
+      </Link>
+    </div>
+  )
+}
+
+export function DashboardGettingStarted({
+  endpointCount,
+  providerCount
+}: {
+  endpointCount: number
+  providerCount: number
+}) {
+  const { t } = useTranslation()
+  const steps = [
+    {
+      title: t('dashboard.guide.step1Title'),
+      description: providerCount > 0
+        ? t('dashboard.guide.step1DescDone', { count: providerCount })
+        : t('dashboard.guide.step1Desc'),
+      href: '/providers',
+      cta: t('dashboard.guide.step1Cta'),
+    },
+    {
+      title: t('dashboard.guide.step2Title'),
+      description: endpointCount > 0
+        ? t('dashboard.guide.step2DescDone', { count: endpointCount })
+        : t('dashboard.guide.step2Desc'),
+      href: '/providers',
+      cta: t('dashboard.guide.step2Cta'),
+    },
+    {
+      title: t('dashboard.guide.step3Title'),
+      description: t('dashboard.guide.step3Desc'),
+      href: '/api-keys',
+      cta: t('dashboard.guide.step3Cta'),
+    },
+  ]
+
+  return (
+    <Card className="relative overflow-hidden">
+      <CardContent className="space-y-5 pt-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1.5">
+            <h3 className="text-base font-semibold text-foreground">{t('dashboard.guide.title')}</h3>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {t('dashboard.guide.subtitle')}
+            </p>
+          </div>
+          <Button asChild size="sm">
+            <Link to="/setup">{t('dashboard.guide.startWizard')}</Link>
+          </Button>
+        </div>
+
+        <ol className="grid gap-3 lg:grid-cols-3">
+          {steps.map((step, index) => (
+            <li key={step.title} className="rounded-lg border border-border p-4">
+              <span className="metric-number text-xs font-semibold text-muted-foreground">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <h4 className="mt-2 text-sm font-semibold text-foreground">{step.title}</h4>
+              <p className="mt-1.5 text-xs leading-6 text-muted-foreground">{step.description}</p>
+              <Button asChild variant="ghost" size="sm" className="mt-2 h-8 px-0 text-primary hover:bg-transparent hover:text-primary/80">
+                <Link to={step.href}>{step.cta}</Link>
+              </Button>
+            </li>
+          ))}
+        </ol>
+      </CardContent>
+    </Card>
+  )
+}
+
+export function ModelMetricsTable({ models, loading, embedded }: { models: ModelUsageMetric[]; loading?: boolean; embedded?: boolean }) {
+  const { t } = useTranslation()
+
+  const body = loading ? (
+    <PageLoadingState compact label={t('common.loadingShort')} />
+  ) : models.length === 0 ? (
+    <PageState compact icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />} title={t('dashboard.modelTable.empty')} />
+  ) : (
+    <div className="overflow-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('dashboard.modelTable.columns.model')}</TableHead>
+            <TableHead className="text-right">{t('dashboard.modelTable.columns.requests')}</TableHead>
+            <TableHead className="text-right">{t('dashboard.modelTable.columns.latency')}</TableHead>
+            <TableHead className="text-right">{t('dashboard.modelTable.columns.ttft')}</TableHead>
+            <TableHead className="text-right">{t('dashboard.modelTable.columns.tpot')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {models.map((item) => (
+            <TableRow key={`${item.provider}/${item.model}`}>
+              <TableCell>
+                <div className="flex flex-col">
+                  <span className="font-medium">{item.provider}</span>
+                  <span className="text-xs text-muted-foreground">{item.model}</span>
+                </div>
+              </TableCell>
+              <TableCell className="text-right font-medium">{item.requests.toLocaleString()}</TableCell>
+              <TableCell className="text-right">{formatLatencyValue(item.avgLatencyMs, t('common.units.ms'))}</TableCell>
+              <TableCell className="text-right">{formatLatencyValue(item.avgTtftMs, t('common.units.ms'))}</TableCell>
+              <TableCell className="text-right">{formatLatencyValue(item.avgTpotMs, t('common.units.msPerToken'), { maximumFractionDigits: 2 })}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+
+  if (embedded) return body
 
   return (
     <PageSection title={t('dashboard.modelTable.title')} description={t('dashboard.modelTable.description')}>
-      {loading ? (
-        <PageLoadingState compact label={t('common.loadingShort')} />
-      ) : models.length === 0 ? (
-        <PageState compact icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />} title={t('dashboard.modelTable.empty')} />
-      ) : (
-        <div className="overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('dashboard.modelTable.columns.model')}</TableHead>
-                <TableHead className="text-right">{t('dashboard.modelTable.columns.requests')}</TableHead>
-                <TableHead className="text-right">{t('dashboard.modelTable.columns.latency')}</TableHead>
-                <TableHead className="text-right">{t('dashboard.modelTable.columns.ttft')}</TableHead>
-                <TableHead className="text-right">{t('dashboard.modelTable.columns.tpot')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {models.map((item) => (
-                <TableRow key={`${item.provider}/${item.model}`}>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{item.provider}</span>
-                      <span className="text-xs text-muted-foreground">{item.model}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right font-medium">{item.requests.toLocaleString()}</TableCell>
-                  <TableCell className="text-right">{formatLatencyValue(item.avgLatencyMs, t('common.units.ms'))}</TableCell>
-                  <TableCell className="text-right">{formatLatencyValue(item.avgTtftMs, t('common.units.ms'))}</TableCell>
-                  <TableCell className="text-right">{formatLatencyValue(item.avgTpotMs, t('common.units.msPerToken'), { maximumFractionDigits: 2 })}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      {body}
     </PageSection>
   )
 }
@@ -567,6 +595,34 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
   )
 }
 
+function InlineChart({
+  empty,
+  option,
+  title
+}: {
+  empty?: boolean
+  option: EChartOption
+  title: string
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <p className="mb-2 text-xs font-medium text-muted-foreground">{title}</p>
+      {empty ? (
+        <PageState
+          compact
+          className="min-h-[160px]"
+          icon={<BarChart3 className="h-4 w-4" aria-hidden="true" />}
+          title={t('dashboard.charts.empty')}
+        />
+      ) : (
+        <EChart echarts={echarts} option={option} className="h-[220px]" notMerge lazyUpdate />
+      )}
+    </div>
+  )
+}
+
 function ChartCard({
   description,
   empty,
@@ -603,7 +659,7 @@ function ChartCard({
           />
         ) : (
           <div className="pt-2">
-            <EChart echarts={echarts} option={option} className="h-[40vh] min-h-[280px] max-h-[420px]" notMerge lazyUpdate />
+            <EChart echarts={echarts} option={option} className="h-[36vh] min-h-[260px] max-h-[400px]" notMerge lazyUpdate />
           </div>
         )}
       </CardContent>

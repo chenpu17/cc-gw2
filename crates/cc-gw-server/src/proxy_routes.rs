@@ -1008,15 +1008,6 @@ fn routing_config_for_endpoint<'a>(
     }
 }
 
-fn validation_config_for_endpoint<'a>(
-    config: &'a GatewayConfig,
-    endpoint: GatewayEndpoint<'_>,
-    protocol: ProviderProtocol,
-) -> Option<&'a cc_gw_core::config::EndpointValidationConfig> {
-    routing_config_for_endpoint(config, endpoint, protocol)
-        .and_then(|routing| routing.validation.as_ref())
-}
-
 fn openai_compatibility_enabled_for_endpoint(
     config: &GatewayConfig,
     endpoint: GatewayEndpoint<'_>,
@@ -1112,177 +1103,6 @@ fn strip_anthropic_thinking_blocks(response: &mut Value, allow_text_fallback: bo
     }
 }
 
-fn block_type_allowed(block_type: &str, _mode: &str, allow_experimental_blocks: bool) -> bool {
-    match block_type {
-        "text" | "image" | "document" | "tool_use" | "tool_result" => true,
-        "thinking" | "redacted_thinking" => allow_experimental_blocks,
-        _ => false,
-    }
-}
-
-fn validate_content_blocks(
-    blocks: &[Value],
-    mode: &str,
-    allow_experimental_blocks: bool,
-    context: &str,
-) -> Result<(), String> {
-    if blocks.is_empty() {
-        return Err(format!("{context} must not be empty"));
-    }
-
-    for (index, block) in blocks.iter().enumerate() {
-        let Some(object) = block.as_object() else {
-            return Err(format!("{context}[{index}] must be an object"));
-        };
-        let Some(block_type) = object.get("type").and_then(Value::as_str) else {
-            return Err(format!("{context}[{index}].type is required"));
-        };
-        if !block_type_allowed(block_type, mode, allow_experimental_blocks) {
-            return Err(format!(
-                "{context}[{index}] uses unsupported block type {block_type}"
-            ));
-        }
-
-        match block_type {
-            "text" => {
-                if object.get("text").and_then(Value::as_str).is_none() {
-                    return Err(format!("{context}[{index}].text is required"));
-                }
-            }
-            "image" | "document" => {
-                if object.get("source").is_none() {
-                    return Err(format!("{context}[{index}].source is required"));
-                }
-            }
-            "tool_use" => {
-                if object.get("id").and_then(Value::as_str).is_none() {
-                    return Err(format!("{context}[{index}].id is required"));
-                }
-                if object.get("name").and_then(Value::as_str).is_none() {
-                    return Err(format!("{context}[{index}].name is required"));
-                }
-                if !object.contains_key("input") {
-                    return Err(format!("{context}[{index}].input is required"));
-                }
-            }
-            "tool_result" => {
-                if object.get("tool_use_id").and_then(Value::as_str).is_none() {
-                    return Err(format!("{context}[{index}].tool_use_id is required"));
-                }
-                if !object.contains_key("content") {
-                    return Err(format!("{context}[{index}].content is required"));
-                }
-            }
-            "thinking" => {
-                if !allow_experimental_blocks {
-                    return Err(format!(
-                        "{context}[{index}] experimental blocks are disabled"
-                    ));
-                }
-            }
-            "redacted_thinking" => {
-                if !allow_experimental_blocks {
-                    return Err(format!(
-                        "{context}[{index}] experimental blocks are disabled"
-                    ));
-                }
-            }
-            _ => {}
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_message_content(
-    content: &Value,
-    mode: &str,
-    allow_experimental_blocks: bool,
-    context: &str,
-) -> Result<(), String> {
-    match content {
-        Value::Array(blocks) => {
-            validate_content_blocks(blocks, mode, allow_experimental_blocks, context)
-        }
-        Value::String(_) if mode == "anthropic-strict" || mode == "claude-code" => Ok(()),
-        _ => Err(format!("{context} must be a string or array")),
-    }
-}
-
-fn validate_anthropic_request_body(
-    body: &Value,
-    validation: &cc_gw_core::config::EndpointValidationConfig,
-) -> Result<(), String> {
-    let mode = validation.mode.trim();
-    if mode.is_empty() || mode == "off" {
-        return Ok(());
-    }
-
-    let allow_experimental_blocks = validation.allow_experimental_blocks.unwrap_or(true);
-    let Some(object) = body.as_object() else {
-        return Err("request body must be a JSON object".to_string());
-    };
-
-    if object.get("model").and_then(Value::as_str).is_none() {
-        return Err("model is required".to_string());
-    }
-    if object
-        .get("messages")
-        .and_then(Value::as_array)
-        .filter(|messages| !messages.is_empty())
-        .is_none()
-    {
-        return Err("messages must be a non-empty array".to_string());
-    }
-
-    if mode == "claude-code" {
-        match object.get("thinking") {
-            Some(Value::Object(map)) if !allow_experimental_blocks && !map.is_empty() => {
-                return Err("thinking blocks are disabled".to_string());
-            }
-            Some(Value::Bool(true)) if !allow_experimental_blocks => {
-                return Err("thinking blocks are disabled".to_string());
-            }
-            _ => {}
-        }
-    }
-
-    if let Some(system) = object.get("system") {
-        match system {
-            Value::String(_) => {}
-            Value::Array(blocks) => {
-                validate_content_blocks(blocks, mode, allow_experimental_blocks, "system")?
-            }
-            _ => return Err("system must be a string or array".to_string()),
-        }
-    }
-
-    if let Some(messages) = object.get("messages").and_then(Value::as_array) {
-        for (index, message) in messages.iter().enumerate() {
-            let Some(message_object) = message.as_object() else {
-                return Err(format!("messages[{index}] must be an object"));
-            };
-            let Some(role) = message_object.get("role").and_then(Value::as_str) else {
-                return Err(format!("messages[{index}].role is required"));
-            };
-            if !matches!(role, "user" | "assistant") {
-                return Err(format!("messages[{index}].role is invalid"));
-            }
-            let Some(content) = message_object.get("content") else {
-                return Err(format!("messages[{index}].content is required"));
-            };
-            validate_message_content(
-                content,
-                mode,
-                allow_experimental_blocks,
-                &format!("messages[{index}].content"),
-            )?;
-        }
-    }
-
-    Ok(())
-}
-
 pub(super) async fn proxy_standard_request(
     state: AppState,
     api_key_context: cc_gw_core::api_keys::ResolvedApiKey,
@@ -1312,9 +1132,9 @@ pub(super) async fn proxy_standard_request(
         Ok(guard) => guard,
         Err(current) => {
             let max = api_key_context.max_concurrency.unwrap();
-            let _ = record_event(
-                &state.paths.db_path,
-                &RecordEventInput {
+            record_and_broadcast_event(
+                &state,
+                RecordEventInput {
                     event_type: "api_key_concurrency_rejected".to_string(),
                     level: Some("warn".to_string()),
                     source: Some("auth".to_string()),
@@ -1356,23 +1176,6 @@ pub(super) async fn proxy_standard_request(
         encrypt_secret(&state.paths.home_dir, &api_key_context.provided_key).ok()
     };
     let config = config_snapshot(&state);
-    if protocol == ProviderProtocol::AnthropicMessages {
-        if let Some(validation) = validation_config_for_endpoint(&config, endpoint, protocol) {
-            if let Err(error) = validate_anthropic_request_body(&body, validation) {
-                return json_response_with_network(
-                    &state,
-                    &endpoint_id,
-                    StatusCode::from_u16(430).expect("valid 430 status"),
-                    &json!({
-                        "error": {
-                            "code": "invalid_claude_code_request",
-                            "message": error
-                        }
-                    }),
-                );
-            }
-        }
-    }
     let request_payload_storage = request_payload_storage_enabled(&config);
     let client_request_payload = if request_payload_storage {
         serde_json::to_string(&body).ok()
@@ -1578,9 +1381,9 @@ pub(super) async fn proxy_standard_request(
                                 request_uses_reasoning_tokens,
                                 retry_mode,
                             );
-                            let _ = record_event(
-                                &state.paths.db_path,
-                                &RecordEventInput {
+                            record_and_broadcast_event(
+                                &state,
+                                RecordEventInput {
                                     event_type: "openai_compatibility_mode_learned".to_string(),
                                     level: Some("info".to_string()),
                                     source: Some("proxy".to_string()),
@@ -1833,9 +1636,9 @@ pub(super) async fn proxy_standard_request(
                     &UsageStats::default(),
                 );
             }
-            let _ = record_event(
-                &state.paths.db_path,
-                &RecordEventInput {
+            record_and_broadcast_event(
+                &state,
+                RecordEventInput {
                     event_type: "provider_proxy_failure".to_string(),
                     level: Some("error".to_string()),
                     source: Some("proxy".to_string()),
@@ -2596,9 +2399,9 @@ fn record_non_json_upstream_error_fallback(
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .unwrap_or("unknown");
-    let _ = record_event(
-        &network_recorder.state.paths.db_path,
-        &RecordEventInput {
+    record_and_broadcast_event(
+        &network_recorder.state,
+        RecordEventInput {
             event_type: "non_json_upstream_error_fallback".to_string(),
             level: Some("warn".to_string()),
             source: Some("proxy".to_string()),
@@ -3037,6 +2840,7 @@ mod tests {
             version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
             version_check_package_name: "@chenpu17/cc-gw".to_string(),
             sessions: auth::SessionStore::default(),
+            event_bus: tokio::sync::broadcast::channel(256).0,
         }
     }
 

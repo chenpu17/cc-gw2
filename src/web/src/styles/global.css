@@ -71,6 +71,17 @@
     --border: 215 28% 17%;
     --input: 215 28% 17%;
     --ring: 234 89% 74%;
+
+    /* Status — dark variants */
+    --success: 152 60% 50%;
+    --success-bg: 152 45% 14%;
+    --warning: 38 92% 60%;
+    --warning-bg: 38 60% 14%;
+    --error: 0 72% 65%;
+    --error-bg: 0 50% 16%;
+    --info: 234 89% 74%;
+    --info-bg: 234 50% 16%;
+
     --chart-1: 234 89% 74%;
     --chart-2: 152 60% 50%;
     --chart-3: 38 92% 60%;
@@ -119,12 +130,7 @@
 
 /* Animations */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slideInUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
 .animate-fade-in  { animation: fadeIn    0.2s ease-out; }
-.animate-slide-in { animation: slideInUp 0.25s ease-out; }
 
 /* Shared surface motion — for cards, metric tiles, interactive rows.
    The global prefers-reduced-motion block below zeroes these durations. */
@@ -138,13 +144,6 @@
   font-family: "Inter", "SF Mono", "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-}
-
-/* Table scroll */
-.table-container {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 /* Touch targets */

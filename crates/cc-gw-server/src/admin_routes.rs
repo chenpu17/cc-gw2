@@ -166,14 +166,18 @@ pub(super) async fn api_status(
     State(state): State<AppState>,
     Query(query): Query<StatusQuery>,
 ) -> Json<StatusResponse> {
-    let config = config_snapshot(&state);
-    let now = chrono::Utc::now().timestamp_millis();
-    let last_hour = now - 60 * 60 * 1000;
-    let last_minute = now - 60 * 1000;
     let endpoint = query
         .endpoint
         .as_deref()
         .filter(|value| !value.trim().is_empty());
+    Json(build_status_response(&state, endpoint))
+}
+
+pub(super) fn build_status_response(state: &AppState, endpoint: Option<&str>) -> StatusResponse {
+    let config = config_snapshot(state);
+    let now = chrono::Utc::now().timestamp_millis();
+    let last_hour = now - 60 * 60 * 1000;
+    let last_minute = now - 60 * 1000;
     let recent_activity =
         get_recent_client_activity(&state.paths.db_path, last_hour, endpoint).unwrap_or_default();
     let recent_throughput =
@@ -218,7 +222,7 @@ pub(super) async fn api_status(
             cc_gw_core::observability::RuntimeBandwidthMetrics::default(),
         ),
     };
-    Json(StatusResponse {
+    StatusResponse {
         port: config.port,
         host: config.host.clone(),
         providers: config.providers.len(),
@@ -236,7 +240,7 @@ pub(super) async fn api_status(
         network_ingress_bytes_per_second: Some(bandwidth_metrics.ingress_bytes_per_second),
         network_egress_bytes_per_second: Some(bandwidth_metrics.egress_bytes_per_second),
         pid: std::process::id(),
-    })
+    }
 }
 
 pub(super) async fn api_config(State(state): State<AppState>) -> Json<GatewayConfig> {
@@ -915,7 +919,6 @@ pub(super) async fn api_routing_presets_apply(
             .or_insert_with(|| EndpointRoutingConfig {
                 defaults: config.defaults.clone(),
                 model_routes: Default::default(),
-                validation: None,
                 compatibility: None,
             });
         routing.model_routes = preset.model_routes.clone();
@@ -967,7 +970,6 @@ pub(super) async fn api_routing_presets_apply(
             .unwrap_or(EndpointRoutingConfig {
                 defaults,
                 model_routes: Default::default(),
-                validation: None,
                 compatibility: None,
             });
         routing.model_routes = preset.model_routes;

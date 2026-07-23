@@ -8,6 +8,9 @@ This repository combines a Rust backend with a TypeScript CLI and Web UI.
 - `crates/cc-gw-server`: Axum-based gateway server and HTTP routes.
 - `src/cli`: `cc-gw` CLI wrapper built with TypeScript.
 - `src/web`: React + Vite Web console.
+  - `src/web/src/pages/workbench`: provider/routing workbench (`/providers`, merged from the old `/models` + `/routing` pages, which now redirect here).
+  - `src/web/src/pages/setup`: cold-start setup wizard (`/setup`).
+  - `src/web/src/i18n/locales/{zh,en}/`: locale messages split into per-feature files (no single monolithic dictionary).
 - `tests/playwright`: end-to-end and visual regression coverage.
 - `scripts`: packaging, native bundling, smoke checks, and screenshot utilities.
 - `docs`: system design, packaging notes, release checklists, and UI audits.

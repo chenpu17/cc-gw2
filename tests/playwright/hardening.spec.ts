@@ -24,7 +24,7 @@ test('settings supports https protocol save flow with restart-required hint', as
   await protocolSection.getByPlaceholder('~/.cc-gw/certs/cert.pem').fill('/tmp/cc-gw/cert.pem')
   await protocolSection.getByPlaceholder('留空则不使用').fill('/tmp/cc-gw/ca.pem')
 
-  await expect(page.getByText('待保存 1 项')).toBeVisible()
+  await expect(page.getByText('待保存 1 项').first()).toBeVisible()
   await expect(page.getByText('cc-gw restart --daemon', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: '保存设置' }).first().click()

@@ -70,6 +70,7 @@ use zip::write::SimpleFileOptions;
 mod admin_routes;
 mod auth;
 mod auth_routes;
+mod dashboard_routes;
 mod proxy_routes;
 mod ui_routes;
 mod web_middleware;
@@ -96,6 +97,7 @@ struct AppState {
     version_check_registry_base_url: String,
     version_check_package_name: String,
     sessions: auth::SessionStore,
+    event_bus: tokio::sync::broadcast::Sender<cc_gw_core::events::GatewayEvent>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -351,6 +353,7 @@ async fn main() -> Result<()> {
         version_check_package_name: std::env::var("CC_GW_VERSION_CHECK_PACKAGE_NAME")
             .unwrap_or_else(|_| "@chenpu17/cc-gw".to_string()),
         sessions: auth::SessionStore::default(),
+        event_bus: tokio::sync::broadcast::channel(256).0,
     };
 
     let app = build_router(state.clone());
@@ -443,6 +446,14 @@ fn build_router(state: AppState) -> Router {
             axum::routing::delete(admin_routes::api_routing_presets_delete),
         )
         .route("/api/events", get(admin_routes::api_events))
+        .route(
+            "/api/events/stream",
+            get(dashboard_routes::api_events_stream),
+        )
+        .route(
+            "/api/dashboard/summary",
+            get(dashboard_routes::api_dashboard_summary),
+        )
         .route(
             "/api/keys",
             get(admin_routes::api_keys_list).post(admin_routes::api_keys_create),
@@ -874,6 +885,40 @@ fn record_network_egress(state: &AppState, endpoint: &str, bytes: usize) {
         .network_egress_bytes
         .fetch_add(bytes, Ordering::Relaxed);
     increment_network_bytes(&state.network_egress_bytes_by_endpoint, endpoint, bytes);
+}
+
+/// Persist a gateway event and, on success, fan it out to SSE subscribers.
+/// Sending on a broadcast channel with no receivers returns `Err`, which is
+/// expected and intentionally ignored.
+fn record_and_broadcast_event(state: &AppState, input: RecordEventInput) {
+    let created_at = input
+        .timestamp
+        .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+    let input = RecordEventInput {
+        timestamp: Some(created_at),
+        ..input
+    };
+    let Ok(id) = record_event(&state.paths.db_path, &input) else {
+        return;
+    };
+    let event = cc_gw_core::events::GatewayEvent {
+        id,
+        created_at,
+        event_type: input.event_type,
+        level: input.level.unwrap_or_else(|| "info".to_string()),
+        source: input.source,
+        title: input.title,
+        message: input.message,
+        endpoint: input.endpoint,
+        ip_address: input.ip_address,
+        api_key_id: input.api_key_id,
+        api_key_name: input.api_key_name,
+        api_key_value: input.api_key_value,
+        user_agent: input.user_agent,
+        mode: input.mode,
+        details: input.details,
+    };
+    let _ = state.event_bus.send(event);
 }
 
 fn extract_api_key_from_headers(headers: &HeaderMap) -> Option<String> {

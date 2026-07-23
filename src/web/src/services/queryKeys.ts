@@ -26,6 +26,9 @@ export const queryKeys = {
   db: {
     info: () => ['db', 'info'] as const
   },
+  dashboard: {
+    summary: (endpoint = 'all') => ['dashboard', 'summary', endpoint] as const
+  },
   logs: {
     list: (params: Record<string, unknown>) => ['logs', params] as const,
     recent: (endpoint = 'all') => ['logs', 'recent', endpoint] as const,

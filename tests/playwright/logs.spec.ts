@@ -69,7 +69,7 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
   await page.keyboard.press('Escape')
   await expect(page.locator('thead').getByText('Tokens')).not.toBeVisible()
 
-  await page.getByRole('button', { name: '展开筛选' }).click()
+  // 筛选面板默认展开，无需手动展开
   await page.getByRole('button', { name: '仅看失败' }).click()
   await expect(page.getByText('状态: 失败')).toBeVisible()
   await page.getByRole('button', { name: '全部流量' }).click()
@@ -88,11 +88,13 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
 
   const detailDialog = page.getByRole('dialog', { name: '日志详情' })
   await expect(detailDialog).toBeVisible()
-  await expect(detailDialog.getByText('客户端请求体')).toBeVisible()
-  await expect(detailDialog.getByText('客户端响应体')).toBeVisible()
+  await expect(detailDialog.getByRole('tab', { name: '客户端请求体' })).toBeVisible()
+  await expect(detailDialog.getByRole('tab', { name: '客户端响应体' })).toBeVisible()
   await detailDialog.getByTestId('log-payload-client-request').getByRole('button', { name: '复制' }).click()
   await expect(page.getByText('请求体已复制到剪贴板。')).toBeVisible()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Hello from Playwright logs test')
+  // payload 区改为 Tabs，仅挂载激活 tab，需先切换到「客户端响应体」
+  await detailDialog.getByRole('tab', { name: '客户端响应体' }).click()
   await detailDialog.getByTestId('log-payload-client-response').getByRole('button', { name: '复制' }).click()
   await expect(page.getByText('响应体已复制到剪贴板。')).toBeVisible()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Stub response:')
@@ -126,6 +128,8 @@ test('log detail response payload copy and download preserve large full content'
   await page.getByRole('button', { name: '详情' }).first().click()
 
   const detailDialog = page.getByRole('dialog', { name: '日志详情' })
+  // payload 区改为 Tabs，先切到「客户端响应体」
+  await detailDialog.getByRole('tab', { name: '客户端响应体' }).click()
   const responsePanel = detailDialog.getByTestId('log-payload-client-response')
   await expect(responsePanel.getByText(/仅显示前/)).toBeVisible()
 
@@ -174,12 +178,12 @@ test('logs table controls respect column toggles, pagination, and export payload
     const url = new URL(response.url())
     return response.request().method() === 'GET' && url.pathname.endsWith('/logs') && url.searchParams.get('limit') === '50'
   })
-  const perPageCombobox = page.getByRole('combobox').nth(0)
+  // 筛选默认展开后第一个 combobox 是 provider 筛选，每页条数选择器在最后
+  const perPageCombobox = page.getByRole('combobox').last()
   await perPageCombobox.click()
   await page.getByRole('option', { name: '50' }).click()
   await paginationResponse
 
-  await page.getByRole('button', { name: '展开筛选' }).click()
   await page.getByPlaceholder('如 deepseek-chat').fill('stub-model')
   const exportResponse = page.waitForResponse((response) => response.url().endsWith('/logs/export') && response.request().method() === 'POST')
   await page.getByRole('button', { name: /导出(?: ZIP)? 日志/ }).click()

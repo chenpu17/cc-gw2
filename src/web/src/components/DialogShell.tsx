@@ -1,16 +1,14 @@
-import type { HTMLAttributes, ReactNode } from 'react'
+import type { ComponentPropsWithoutRef, HTMLAttributes } from 'react'
 import { DialogContent, DialogFooter, DialogHeader } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
 export function AppDialogContent({
   children,
-  className
-}: {
-  children: ReactNode
-  className?: string
-}) {
+  className,
+  ...props
+}: ComponentPropsWithoutRef<typeof DialogContent>) {
   return (
-    <DialogContent className={cn('gap-0 overflow-hidden p-0', className)}>
+    <DialogContent className={cn('gap-0 overflow-hidden p-0', className)} {...props}>
       {children}
     </DialogContent>
   )
