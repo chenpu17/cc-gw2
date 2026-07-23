@@ -92,14 +92,7 @@ export default function DashboardPage() {
             <SetupProgressStrip doneCount={state.setupDoneCount} total={SETUP_TOTAL_STEPS} />
           ) : null}
 
-          {/* Layer 2 — attention: full feed while warn/error events exist, slim all-clear strip otherwise */}
-          {state.attentionEvents.length > 0 ? (
-            <AttentionFeed connected={state.liveConnected} events={state.attentionEvents} />
-          ) : (
-            <AttentionAllClear connected={state.liveConnected} />
-          )}
-
-          {/* Layer 3 — trends & details */}
+          {/* Layer 2 — trends & details */}
           <TrendChart
             empty={!state.daily.length}
             loading={state.summaryPending}
@@ -123,6 +116,13 @@ export default function DashboardPage() {
           />
 
           <RecentRequestsTable records={state.recentLogs} loading={state.summaryPending} />
+
+          {/* Layer 3 — attention: full feed while warn/error events exist, slim all-clear strip otherwise */}
+          {state.attentionEvents.length > 0 ? (
+            <AttentionFeed connected={state.liveConnected} events={state.attentionEvents} />
+          ) : (
+            <AttentionAllClear connected={state.liveConnected} />
+          )}
         </>
       )}
     </div>
