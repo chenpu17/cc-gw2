@@ -9,6 +9,7 @@ export default {
   },
   live: 'Live',
   reconnecting: 'Disconnected, reconnecting…',
+  failed: 'Connection failed — switch tabs or reload to retry',
   actions: {
     newest: 'Newest',
     older: 'Older'

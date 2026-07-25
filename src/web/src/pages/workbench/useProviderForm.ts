@@ -3,14 +3,19 @@ import { useTranslation } from 'react-i18next'
 import type { ProviderConfig } from '@/types/providers'
 import {
   buildInitialState,
+  createEmptyHeader,
   createEmptyModel,
   defaultAuthModeForType,
   mapPresetModel,
   PROVIDER_TYPE_PRESETS,
   type FormErrors,
+  type FormHeader,
   type FormModel,
   type FormState
 } from './ProviderDrawerSteps'
+
+/** RFC 7230 header field name token: no spaces, colons or control characters. */
+const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
 
 interface UseProviderFormOptions {
   mode: 'create' | 'edit'
@@ -128,6 +133,29 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     }))
   }
 
+  const handleHeaderChange = (index: number, patch: Partial<FormHeader>) => {
+    setForm((prev) => {
+      const nextHeaders = [...prev.extraHeaders]
+      nextHeaders[index] = { ...nextHeaders[index], ...patch }
+      return { ...prev, extraHeaders: nextHeaders }
+    })
+  }
+
+  const handleAddHeader = () => {
+    setForm((prev) => ({
+      ...prev,
+      extraHeaders: [...prev.extraHeaders, createEmptyHeader()]
+    }))
+  }
+
+  const handleRemoveHeader = (index: number) => {
+    setForm((prev) => {
+      if (index < 0 || index >= prev.extraHeaders.length) return prev
+      const nextHeaders = prev.extraHeaders.filter((_, idx) => idx !== index)
+      return { ...prev, extraHeaders: nextHeaders }
+    })
+  }
+
   const handleAuthModeChange = (value: 'apiKey' | 'authToken' | 'xAuthToken') => {
     setForm((prev) => ({
       ...prev,
@@ -142,6 +170,13 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     }))
   }
 
+  const handleUseAbsoluteUrlChange = (checked: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      useAbsoluteUrl: checked
+    }))
+  }
+
   const handleModelNonStreamViaStreamChange = (index: number, value: string) => {
     const nextValue = value === 'inherit' ? undefined : value === 'enabled'
     handleModelChange(index, { nonStreamViaStream: nextValue })
@@ -151,7 +186,7 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     setForm((prev) => ({ ...prev, defaultModel: id }))
   }
 
-  const validate = (): boolean => {
+  const validateErrors = (): FormErrors => {
     const nextErrors: FormErrors = {}
     const trimmedId = form.id.trim()
     const trimmedUrl = form.baseUrl.trim()
@@ -202,9 +237,29 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
       nextErrors.models = t('providers.drawer.errors.defaultInvalid')
     }
 
+    if (form.extraHeaders.length > 0) {
+      const seenHeaderNames = new Set<string>()
+      for (const header of form.extraHeaders) {
+        const name = header.name.trim()
+        if (name.length === 0) continue
+        if (!HEADER_NAME_PATTERN.test(name)) {
+          nextErrors.extraHeaders = t('providers.drawer.errors.headerNameInvalid')
+          break
+        }
+        const lowerName = name.toLowerCase()
+        if (seenHeaderNames.has(lowerName)) {
+          nextErrors.extraHeaders = t('providers.drawer.errors.headerNameDuplicate')
+          break
+        }
+        seenHeaderNames.add(lowerName)
+      }
+    }
+
     setErrors(nextErrors)
-    return Object.keys(nextErrors).length === 0
+    return nextErrors
   }
+
+  const validate = (): boolean => Object.keys(validateErrors()).length === 0
 
   const serialize = (): ProviderConfig => {
     const trimmedModels = form.models
@@ -215,7 +270,14 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
       }))
       .filter((model) => model.id.length > 0)
 
-    const extraHeaders = provider?.extraHeaders && Object.keys(provider.extraHeaders).length > 0 ? provider.extraHeaders : undefined
+    const extraHeaders: Record<string, string> = {}
+    for (const header of form.extraHeaders) {
+      const name = header.name.trim()
+      if (name.length > 0) {
+        extraHeaders[name] = header.value
+      }
+    }
+    const hasExtraHeaders = Object.keys(extraHeaders).length > 0
     const authMode =
       form.authMode === 'apiKey' && form.type !== 'anthropic'
         ? undefined
@@ -229,11 +291,14 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
       type: form.type ?? 'custom',
       defaultModel: form.defaultModel || undefined,
       models: trimmedModels.length > 0 ? trimmedModels : undefined,
-      extraHeaders,
+      extraHeaders: hasExtraHeaders ? extraHeaders : undefined,
       authMode
     }
     if (form.nonStreamViaStream) {
       payload.nonStreamViaStream = true
+    }
+    if (form.useAbsoluteUrl) {
+      payload.useAbsoluteUrl = true
     }
     return payload
   }
@@ -247,6 +312,7 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     isCreate: mode === 'create',
     resetForm,
     validate,
+    validateErrors,
     serialize,
     handleFieldChange,
     handleProviderIdChange,
@@ -255,8 +321,12 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     handleModelIdChange,
     handleRemoveModel,
     handleAddModel,
+    handleHeaderChange,
+    handleAddHeader,
+    handleRemoveHeader,
     handleAuthModeChange,
     handleProviderNonStreamViaStreamChange,
+    handleUseAbsoluteUrlChange,
     handleModelNonStreamViaStreamChange,
     handleSetDefaultModel
   }

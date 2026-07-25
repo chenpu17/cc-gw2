@@ -149,7 +149,7 @@ export function ProvidersTable({
             title={t('providers.emptyState')}
             description={(
               <>
-                <p>{t('providers.emptyStateSub', { default: '点击上方按钮添加您的第一个提供商' })}</p>
+                <p>{t('providers.emptyStateSub')}</p>
                 <p className="mt-1">{t('workbench.list.emptyHint')}</p>
               </>
             )}

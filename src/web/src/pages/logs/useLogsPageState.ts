@@ -18,7 +18,6 @@ import { useLogsTablePreferences } from './useLogsTablePreferences'
 import {
   LOG_COLUMN_ORDER,
   PAGE_SIZE_OPTIONS,
-  loadStoredApiKeyFilters,
   loadStoredPageSize,
   toTimestamp,
   isSameDateFilter,
@@ -71,7 +70,21 @@ export function useLogsPageState() {
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [selectedApiKeys, setSelectedApiKeys] = usePersistentState<number[]>(
     storageKeys.logs.selectedApiKeys,
-    loadStoredApiKeyFilters
+    [],
+    {
+      serialize: JSON.stringify,
+      deserialize: (raw) => {
+        try {
+          const parsed = JSON.parse(raw)
+          if (!Array.isArray(parsed)) return []
+          return parsed
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0)
+        } catch {
+          return []
+        }
+      }
+    }
   )
   // Advanced filters default to expanded; the toggle is session-only (not persisted).
   const [filtersExpanded, setFiltersExpanded] = useState(true)
@@ -281,7 +294,13 @@ export function useLogsPageState() {
     })),
     [t]
   )
-  const todayString = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  // Local-calendar "today" so the quick view matches what a native
+  // <input type="date"> would select in this timezone. toISOString() would
+  // shift non-UTC users onto yesterday around midnight.
+  const todayString = useMemo(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  }, [])
 
   const activeQuickView = useMemo<QuickView | null>(() => {
     if (

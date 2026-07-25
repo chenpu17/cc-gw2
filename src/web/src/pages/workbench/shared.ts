@@ -299,7 +299,7 @@ export interface ProviderTestResult {
   testedAt: number
 }
 
-function routeTargetMatchesProvider(target: string, providerId: string): boolean {
+export function routeTargetMatchesProvider(target: string, providerId: string): boolean {
   if (!target) return false
   const [targetProvider] = target.split(':')
   return targetProvider === providerId || target === providerId

@@ -9,6 +9,7 @@ export default {
   },
   live: '实时更新中',
   reconnecting: '连接中断，重连中…',
+  failed: '连接失败 — 切换标签页或刷新以重试',
   actions: {
     newest: '最新',
     older: '更早'

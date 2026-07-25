@@ -80,6 +80,20 @@ fn resolve_endpoint(base_url: &str, protocol: ProviderProtocol) -> String {
     }
 }
 
+/// Resolves the upstream URL for a provider. When `use_absolute_url` is set,
+/// the configured `base_url` is used verbatim (trailing slashes trimmed) so
+/// gateway operators can target fully-qualified endpoints that don't follow
+/// the protocol's default path layout. The protocol (request body conversion)
+/// is unaffected — only the URL path is decoupled. Otherwise the path suffix
+/// is derived from the protocol via `resolve_endpoint`.
+fn resolve_upstream_url(provider: &ProviderConfig, protocol: ProviderProtocol) -> String {
+    if provider.use_absolute_url.unwrap_or(false) {
+        provider.base_url.trim_end_matches('/').to_string()
+    } else {
+        resolve_endpoint(&provider.base_url, protocol)
+    }
+}
+
 fn apply_query_string(url: String, query: Option<&str>) -> String {
     let Some(query) = query.map(str::trim).filter(|value| !value.is_empty()) else {
         return url;
@@ -185,10 +199,6 @@ fn build_headers(
     let mut headers = HeaderMap::new();
     set_header(&mut headers, "content-type", "application/json");
 
-    for (key, value) in &provider.extra_headers {
-        set_header(&mut headers, key, value);
-    }
-
     for (name, value) in passthrough_headers {
         if should_forward_passthrough_header(name) {
             headers.insert(name.clone(), value.clone());
@@ -199,6 +209,14 @@ fn build_headers(
         if should_forward_client_header(name) {
             headers.insert(name.clone(), value.clone());
         }
+    }
+
+    // Provider-configured headers are applied after the client headers so they
+    // override any same-named header forwarded from the request — gateway
+    // operators can force values like `app-id` regardless of what the caller
+    // sends. Authentication headers are applied last and still win.
+    for (key, value) in &provider.extra_headers {
+        set_header(&mut headers, key, value);
     }
 
     match protocol {
@@ -294,7 +312,7 @@ pub async fn forward_request(
         request.stream,
     );
     let url = apply_query_string(
-        resolve_endpoint(&provider.base_url, protocol),
+        resolve_upstream_url(provider, protocol),
         request.query.as_deref(),
     );
 
@@ -313,7 +331,7 @@ mod tests {
     use super::{
         ProviderConfig, ProviderProtocol, apply_query_string, build_headers,
         provider_prefers_anthropic_protocol, provider_prefers_openai_responses_protocol,
-        resolve_endpoint,
+        resolve_endpoint, resolve_upstream_url,
     };
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
@@ -439,6 +457,50 @@ mod tests {
     }
 
     #[test]
+    fn extra_headers_override_client_headers_but_not_auth() {
+        let mut provider = ProviderConfig {
+            id: "custom".to_string(),
+            provider_type: Some("openai".to_string()),
+            api_key: Some("provider-secret".to_string()),
+            base_url: "https://example.com".to_string(),
+            ..ProviderConfig::default()
+        };
+        provider
+            .extra_headers
+            .insert("app-id".to_string(), "gateway-app".to_string());
+        provider
+            .extra_headers
+            .insert("authorization".to_string(), "Bearer should-be-ignored".to_string());
+
+        let mut incoming = HeaderMap::new();
+        incoming.insert(
+            HeaderName::from_static("app-id"),
+            HeaderValue::from_static("client-app"),
+        );
+
+        let headers = build_headers(
+            &provider,
+            ProviderProtocol::OpenAiChatCompletions,
+            &incoming,
+            &HeaderMap::new(),
+            false,
+        );
+
+        // Provider-configured header overrides the same-named client header.
+        assert_eq!(
+            headers.get("app-id").and_then(|value| value.to_str().ok()),
+            Some("gateway-app")
+        );
+        // Authentication still derives from the provider api_key, never extra_headers.
+        assert_eq!(
+            headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer provider-secret")
+        );
+    }
+
+    #[test]
     fn openai_headers_preserve_client_identity_headers_without_leaking_gateway_auth() {
         let provider = ProviderConfig {
             id: "openai".to_string(),
@@ -529,6 +591,47 @@ mod tests {
         assert_eq!(
             resolve_endpoint("http://localhost/v4", ProviderProtocol::AnthropicMessages),
             "http://localhost/v4/messages"
+        );
+    }
+
+    #[test]
+    fn absolute_url_uses_base_verbatim_without_protocol_suffix() {
+        let provider = ProviderConfig {
+            base_url: "https://internal.example.com/custom/v1/messages".to_string(),
+            use_absolute_url: Some(true),
+            ..ProviderConfig::default()
+        };
+        // OpenAI would normally append /v1/chat/completions; with use_absolute_url
+        // the fully-qualified base is used as-is (path decoupled from protocol).
+        assert_eq!(
+            resolve_upstream_url(&provider, ProviderProtocol::OpenAiChatCompletions),
+            "https://internal.example.com/custom/v1/messages"
+        );
+    }
+
+    #[test]
+    fn absolute_url_trims_trailing_slash_but_keeps_path() {
+        let provider = ProviderConfig {
+            base_url: "https://internal.example.com/proxy/endpoint/".to_string(),
+            use_absolute_url: Some(true),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(
+            resolve_upstream_url(&provider, ProviderProtocol::AnthropicMessages),
+            "https://internal.example.com/proxy/endpoint"
+        );
+    }
+
+    #[test]
+    fn absolute_url_absent_falls_back_to_protocol_suffix() {
+        // Default (None): old configs without the field keep prior behavior.
+        let provider = ProviderConfig {
+            base_url: "https://api.example.com".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(
+            resolve_upstream_url(&provider, ProviderProtocol::OpenAiChatCompletions),
+            "https://api.example.com/v1/chat/completions"
         );
     }
 

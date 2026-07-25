@@ -107,6 +107,7 @@ export function RouteEditorDialog({
                 deletingPreset={routing.deletingPreset?.endpoint === activeEndpoint ? routing.deletingPreset.name : null}
                 presetsExpanded={routing.presetsExpanded[activeEndpoint] === true}
                 savingCompatibilityPolicy={routing.savingCompatibilityPolicy}
+                writing={routing.writingEndpoint === activeEndpoint}
                 providerModelOptions={routing.providerModelOptions}
                 onDefaultsChange={(field, value) => routing.handleDefaultsChange(activeEndpoint, field, value)}
                 onSaveDefaults={() => void routing.handleSaveDefaults(activeEndpoint)}

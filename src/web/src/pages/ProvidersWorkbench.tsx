@@ -29,7 +29,9 @@ export default function ProvidersWorkbenchPage() {
   const { t } = useTranslation()
   const base = useWorkbenchConfig()
   const routing = useRoutingState(base)
-  const providers = useProvidersState(base, { setRoutesByEndpoint: routing.setRoutesByEndpoint })
+  const providers = useProvidersState(base, {
+    sanitizeDraftsForProvider: routing.sanitizeDraftsForProvider
+  })
 
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')

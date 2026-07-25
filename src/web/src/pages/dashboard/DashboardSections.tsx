@@ -123,9 +123,11 @@ function eventLevelBadge(level: GatewayEvent['level']) {
 /** Layer 2 — live warn/error feed; only rendered while there is something to show */
 export function AttentionFeed({
   connected,
+  failed,
   events
 }: {
   connected: boolean
+  failed?: boolean
   events: GatewayEvent[]
 }) {
   const { t } = useTranslation()
@@ -140,12 +142,18 @@ export function AttentionFeed({
         <div className="flex items-center gap-2">
           <span
             className={
-              connected
-                ? 'inline-flex items-center gap-1 text-[11px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success'
-                : 'inline-flex items-center gap-1 text-[11px] font-medium text-warning before:h-1.5 before:w-1.5 before:rounded-full before:bg-warning'
+              failed
+                ? 'inline-flex items-center gap-1 text-[11px] font-medium text-destructive before:h-1.5 before:w-1.5 before:rounded-full before:bg-destructive'
+                : connected
+                  ? 'inline-flex items-center gap-1 text-[11px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success'
+                  : 'inline-flex items-center gap-1 text-[11px] font-medium text-warning before:h-1.5 before:w-1.5 before:rounded-full before:bg-warning'
             }
           >
-            {connected ? t('dashboard.attention.live') : t('dashboard.attention.reconnecting')}
+            {failed
+              ? t('dashboard.attention.failed')
+              : connected
+                ? t('dashboard.attention.live')
+                : t('dashboard.attention.reconnecting')}
           </span>
           <Button asChild variant="ghost" size="sm" className="h-7">
             <Link to="/events">{t('dashboard.attention.viewAll')}</Link>
@@ -185,7 +193,7 @@ export function AttentionFeed({
 }
 
 /** Layer 2 fallback — slim all-clear strip shown at the end of the StatusBand area */
-export function AttentionAllClear({ connected }: { connected: boolean }) {
+export function AttentionAllClear({ connected, failed }: { connected: boolean; failed?: boolean }) {
   const { t } = useTranslation()
 
   return (
@@ -200,12 +208,18 @@ export function AttentionAllClear({ connected }: { connected: boolean }) {
       <span className="font-medium">{t('dashboard.attention.allClear')}</span>
       <span
         className={
-          connected
-            ? 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium before:h-1.5 before:w-1.5 before:rounded-full before:bg-success'
-            : 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-warning before:h-1.5 before:w-1.5 before:rounded-full before:bg-warning'
+          failed
+            ? 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-destructive before:h-1.5 before:w-1.5 before:rounded-full before:bg-destructive'
+            : connected
+              ? 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium before:h-1.5 before:w-1.5 before:rounded-full before:bg-success'
+              : 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-warning before:h-1.5 before:w-1.5 before:rounded-full before:bg-warning'
         }
       >
-        {connected ? t('dashboard.attention.live') : t('dashboard.attention.reconnecting')}
+        {failed
+          ? t('dashboard.attention.failed')
+          : connected
+            ? t('dashboard.attention.live')
+            : t('dashboard.attention.reconnecting')}
       </span>
       <Link to="/events" className="shrink-0 underline-offset-2 hover:underline">
         {t('dashboard.attention.viewAll')}

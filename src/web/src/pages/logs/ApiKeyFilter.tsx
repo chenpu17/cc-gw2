@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { ApiKeySummary } from '@/types/apiKeys'
@@ -21,6 +21,7 @@ export function ApiKeyFilter({
   className
 }: ApiKeyFilterProps) {
   const { t } = useTranslation()
+  const triggerId = useId()
   const [open, setOpen] = useState(false)
   const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -42,7 +43,7 @@ export function ApiKeyFilter({
 
   useEffect(() => {
     if (!open) return
-    const handle = (event: MouseEvent) => {
+    const handleOutside = (event: MouseEvent) => {
       const target = event.target as Node
       if (
         !containerRef.current?.contains(target)
@@ -51,8 +52,18 @@ export function ApiKeyFilter({
         setOpen(false)
       }
     }
-    window.addEventListener('mousedown', handle)
-    return () => window.removeEventListener('mousedown', handle)
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    window.addEventListener('mousedown', handleOutside)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('mousedown', handleOutside)
+      window.removeEventListener('keydown', handleKey)
+    }
   }, [open])
 
   useEffect(() => {
@@ -98,9 +109,10 @@ export function ApiKeyFilter({
 
   return (
     <div className={cn('relative space-y-2', className)} ref={containerRef}>
-      <Label>{t('logs.filters.apiKey')}</Label>
+      <Label htmlFor={triggerId}>{t('logs.filters.apiKey')}</Label>
       <button
         ref={triggerRef}
+        id={triggerId}
         type="button"
         onClick={() => {
           updateMenuPosition()

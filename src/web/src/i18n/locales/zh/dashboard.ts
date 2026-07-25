@@ -119,6 +119,7 @@ export default {
     subtitle: '实时推送的警告与错误事件',
     live: '实时',
     reconnecting: '重连中…',
+    failed: '连接失败 — 刷新以重试',
     allClear: '最近无异常事件',
     viewAll: '查看全部事件'
   },

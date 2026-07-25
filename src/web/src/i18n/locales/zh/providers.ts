@@ -2,6 +2,7 @@ export default {
   title: '模型提供商',
   description: '管理集成的模型服务，查看默认模型及支持能力。',
   emptyState: '暂无 Provider，请点击“新增提供商”以开始配置。',
+  emptyStateSub: '点击上方按钮添加您的第一个提供商。',
   emptyFiltered: '当前筛选条件下没有匹配的 Provider。',
   count: '已配置：{{count}} 个 Provider',
   groupCount: '{{count}} 个提供商',
@@ -222,6 +223,8 @@ export default {
       authModeXAuthToken: 'X-Auth-Token',
       nonStreamViaStream: '非流式请求转上游流式',
       nonStreamViaStreamHint: '仅在客户端请求非流式时生效。网关向上游发送流式请求，读取完整 SSE 后一次性返回 JSON。',
+      useAbsoluteUrl: '使用绝对路径',
+      useAbsoluteUrlHint: '勾选后,Base URL 将原样作为上游请求地址(需填完整端点,如 https://x/internal/v1/messages),网关不再自动追加 /v1/messages、/v1/chat/completions 等后缀。协议(请求体格式)仍由 Provider 类型决定,互不影响。',
       models: '模型配置',
       showAdvanced: '显示高级选项',
       hideAdvanced: '隐藏高级选项',
@@ -236,7 +239,15 @@ export default {
       modelNonStreamViaStreamEnabled: '启用',
       modelNonStreamViaStreamDisabled: '禁用',
       setDefault: '设为默认模型',
-      removeModel: '删除模型'
+      removeModel: '删除模型',
+      extraHeaders: '自定义请求头',
+      extraHeadersHint: '附加到发往该 Provider 的上游请求,并覆盖客户端发送的同名头。认证类请求头(Authorization、x-api-key 等)由网关根据 API Key 统一设置,无法在此覆盖。',
+      addHeader: '新增请求头',
+      headerName: '名称',
+      headerValue: '取值',
+      headerNamePlaceholder: '如 X-App-Id',
+      headerValuePlaceholder: '如 my-app',
+      removeHeader: '删除'
     },
     errors: {
       idRequired: '请填写 Provider ID',
@@ -244,7 +255,9 @@ export default {
       baseUrlInvalid: 'Base URL 格式无效',
       modelsRequired: '请至少配置一个模型',
       modelInvalid: '模型 ID 不可为空或重复',
-      defaultInvalid: '默认模型必须在模型列表中'
+      defaultInvalid: '默认模型必须在模型列表中',
+      headerNameInvalid: '请求头名称只能包含字母、数字及 - _ . * + 等字符(不可含空格或冒号)',
+      headerNameDuplicate: '请求头名称不可重复'
     },
     toast: {
       saveFailure: '保存失败：{{message}}'

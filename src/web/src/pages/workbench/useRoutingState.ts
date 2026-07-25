@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toApiError, customEndpointsApi } from '@/services/api'
 import { gatewayApi } from '@/services/gateway'
@@ -20,6 +20,7 @@ import {
   deriveRoutesFromConfig,
   getSavedDefaultsFromConfig,
   getSavedRoutesFromConfig,
+  routeTargetMatchesProvider,
   type ModelRouteEntry
 } from './shared'
 
@@ -47,6 +48,22 @@ export function useRoutingState(base: WorkbenchConfigState) {
   const [presetDiffDialog, setPresetDiffDialog] = useState<{ endpoint: string; preset: RoutingPreset } | null>(null)
   const [defaultsByEndpoint, setDefaultsByEndpoint] = useState<Record<string, DefaultsConfig>>({})
   const [savingDefaultsFor, setSavingDefaultsFor] = useState<string | null>(null)
+  // Single write gate for the route editor: routes, defaults, compatibility
+  // and apply-preset all read-modify-PUT the same config, so two concurrent
+  // saves would silently lose the earlier one's field. The ref closes
+  // synchronously on rapid double-clicks (state is async and would lose the
+  // race); writingEndpoint mirrors it so the UI can disable every save control
+  // while any write is in flight.
+  const writingRef = useRef<string | null>(null)
+  const [writingEndpoint, setWritingEndpoint] = useState<string | null>(null)
+  const beginWrite = (endpoint: string) => {
+    writingRef.current = endpoint
+    setWritingEndpoint(endpoint)
+  }
+  const endWrite = () => {
+    writingRef.current = null
+    setWritingEndpoint(null)
+  }
 
   const endpointTabs = useMemo(() => tabs.filter((tab) => tab.key !== 'providers'), [tabs])
 
@@ -65,6 +82,14 @@ export function useRoutingState(base: WorkbenchConfigState) {
         const savedRoutes = getSavedRoutesFromConfig(incoming, customEndpoints, endpoint)
         if (areRouteEntriesDirty(previousEntries, savedRoutes)) {
           merged[endpoint] = previousEntries
+        } else {
+          // Not dirty: adopt the server data but reuse existing entry ids so
+          // rows do not remount (and lose input focus) on every refetch/poll.
+          const idBySource = new Map(previousEntries.map((entry) => [entry.source, entry.id]))
+          merged[endpoint] = nextFromServer[endpoint].map((entry) => ({
+            ...entry,
+            id: idBySource.get(entry.source) ?? entry.id
+          }))
         }
       }
       return merged
@@ -217,6 +242,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
 
   const handleSaveDefaults = async (endpoint: string) => {
     if (!ensureConfig()) return
+    if (writingRef.current) return
 
     const draft = defaultsByEndpoint[endpoint]
     if (!draft) return
@@ -232,6 +258,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
     }
 
     setSavingDefaultsFor(endpoint)
+    beginWrite(endpoint)
     try {
       const customEndpoint = customEndpoints.find((item) => item.id === endpoint)
       if (customEndpoint) {
@@ -287,12 +314,13 @@ export function useRoutingState(base: WorkbenchConfigState) {
     } catch (error) {
       pushToast({
         title: t('workbench.defaults.saveFailure', {
-          message: error instanceof Error ? error.message : 'unknown'
+          message: toApiError(error).message
         }),
         variant: 'error'
       })
     } finally {
       setSavingDefaultsFor(null)
+      endWrite()
     }
   }
 
@@ -345,6 +373,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
 
   const handleSavePreset = async (endpoint: string) => {
     if (!ensureConfig()) return
+    if (writingRef.current) return
 
     const trimmed = (presetNameByEndpoint[endpoint] ?? '').trim()
     if (!trimmed) {
@@ -364,6 +393,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
     }
 
     setSavingPresetFor(endpoint)
+    beginWrite(endpoint)
     try {
       const response = await modelManagementApi.savePreset(endpoint, trimmed)
       const presets = response.presets ?? []
@@ -383,76 +413,35 @@ export function useRoutingState(base: WorkbenchConfigState) {
     } catch (error) {
       pushToast({
         title: t('modelManagement.toast.presetSaveFailure', {
-          message: error instanceof Error ? error.message : 'unknown'
+          message: toApiError(error).message
         }),
         variant: 'error'
       })
     } finally {
       setSavingPresetFor(null)
+      endWrite()
       void configQuery.refetch()
     }
   }
 
   const handleApplyPreset = async (endpoint: string, preset: RoutingPreset) => {
     if (!ensureConfig()) return
+    if (writingRef.current) return
 
     setApplyingPreset({ endpoint, name: preset.name })
+    beginWrite(endpoint)
     try {
       const response = await modelManagementApi.applyPreset(endpoint, preset.name)
       const updatedConfig = response.config
-      if (updatedConfig) {
-        setConfig(updatedConfig)
-        setRoutesByEndpoint(deriveRoutesFromConfig(updatedConfig, customEndpoints))
-        setPresetsByEndpoint(buildPresetsMap(updatedConfig, customEndpoints))
-      } else {
-        const presetRoutes = preset.modelRoutes ?? {}
-        setRoutesByEndpoint((previous) => ({
-          ...previous,
-          [endpoint]: Object.entries(presetRoutes).map(([source, target]) => ({
-            id: createEntryId(),
-            source,
-            target
-          }))
-        }))
-        setConfig((previous) => {
-          if (!previous) return previous
-
-          const customEndpointIndex = (previous.customEndpoints ?? []).findIndex((item) => item.id === endpoint)
-          if (customEndpointIndex !== -1) {
-            const nextEndpoints = [...(previous.customEndpoints ?? [])]
-            const currentEndpoint = nextEndpoints[customEndpointIndex]
-            nextEndpoints[customEndpointIndex] = {
-              ...currentEndpoint,
-              routing: {
-                defaults: currentEndpoint.routing?.defaults ?? previous.defaults,
-                ...(currentEndpoint.routing ?? {}),
-                modelRoutes: presetRoutes
-              }
-            }
-            return {
-              ...previous,
-              customEndpoints: nextEndpoints
-            }
-          }
-
-          if (endpoint === 'anthropic' || endpoint === 'openai') {
-            return {
-              ...previous,
-              endpointRouting: {
-                ...(previous.endpointRouting ?? {}),
-                [endpoint]: {
-                  defaults: previous.endpointRouting?.[endpoint]?.defaults ?? previous.defaults,
-                  ...(previous.endpointRouting?.[endpoint] ?? {}),
-                  modelRoutes: presetRoutes
-                }
-              },
-              modelRoutes: endpoint === 'anthropic' ? presetRoutes : previous.modelRoutes ?? {}
-            }
-          }
-
-          return previous
-        })
-      }
+      setConfig(updatedConfig)
+      // Only replace the target endpoint's draft so unsaved route drafts on
+      // other endpoints are preserved (the server returns the full config).
+      const nextRoutes = deriveRoutesFromConfig(updatedConfig, customEndpoints)
+      setRoutesByEndpoint((previous) => ({
+        ...previous,
+        [endpoint]: nextRoutes[endpoint] ?? []
+      }))
+      setPresetsByEndpoint(buildPresetsMap(updatedConfig, customEndpoints))
       if (endpoint !== 'anthropic' && endpoint !== 'openai') {
         await queryClient.invalidateQueries({ queryKey: queryKeys.customEndpoints.all() })
       }
@@ -463,20 +452,23 @@ export function useRoutingState(base: WorkbenchConfigState) {
     } catch (error) {
       pushToast({
         title: t('modelManagement.toast.presetApplyFailure', {
-          message: error instanceof Error ? error.message : 'unknown'
+          message: toApiError(error).message
         }),
         variant: 'error'
       })
     } finally {
       setApplyingPreset(null)
+      endWrite()
       void configQuery.refetch()
     }
   }
 
   const handleDeletePreset = async (endpoint: string, preset: RoutingPreset) => {
     if (!ensureConfig()) return
+    if (writingRef.current) return
 
     setDeletingPreset({ endpoint, name: preset.name })
+    beginWrite(endpoint)
     try {
       const response = await modelManagementApi.deletePreset(endpoint, preset.name)
       syncPresets(endpoint, response.presets ?? [])
@@ -487,12 +479,13 @@ export function useRoutingState(base: WorkbenchConfigState) {
     } catch (error) {
       pushToast({
         title: t('modelManagement.toast.presetDeleteFailure', {
-          message: error instanceof Error ? error.message : 'unknown'
+          message: toApiError(error).message
         }),
         variant: 'error'
       })
     } finally {
       setDeletingPreset(null)
+      endWrite()
       void configQuery.refetch()
     }
   }
@@ -504,6 +497,17 @@ export function useRoutingState(base: WorkbenchConfigState) {
     try {
       await customEndpointsApi.delete(endpointId)
       await queryClient.invalidateQueries({ queryKey: queryKeys.customEndpoints.all() })
+      // Keep the local config in sync so a subsequent full-config PUT does not
+      // resurrect the deleted endpoint from a stale snapshot.
+      setConfig((previous) =>
+        previous
+          ? {
+              ...previous,
+              customEndpoints: (previous.customEndpoints ?? []).filter((item) => item.id !== endpointId)
+            }
+          : previous
+      )
+      void configQuery.refetch()
       pushToast({
         title: t('modelManagement.deleteEndpointSuccess'),
         variant: 'success'
@@ -527,8 +531,10 @@ export function useRoutingState(base: WorkbenchConfigState) {
 
   const handleCompatibilityEnabledChange = async (endpoint: string, enabled: boolean) => {
     if (!ensureConfig()) return
+    if (writingRef.current) return
 
     setSavingCompatibilityPolicy(true)
+    beginWrite(endpoint)
     try {
       if (endpoint === 'anthropic' || endpoint === 'openai') {
         const systemEndpoint = endpoint as 'anthropic' | 'openai'
@@ -590,8 +596,8 @@ export function useRoutingState(base: WorkbenchConfigState) {
       pushToast({
         title: t('modelManagement.toast.compatibilitySaved', {
           state: enabled
-            ? t('common.enabled')
-            : t('common.disabled')
+            ? t('common.status.enabled')
+            : t('common.status.disabled')
         }),
         variant: 'success'
       })
@@ -604,6 +610,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
       })
     } finally {
       setSavingCompatibilityPolicy(false)
+      endWrite()
     }
   }
 
@@ -697,6 +704,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
 
   const handleSaveRoutes = async (endpoint: string) => {
     if (!ensureConfig()) return
+    if (writingRef.current) return
 
     const currentEntries = routesByEndpoint[endpoint] || []
     const sanitizedRoutes: Record<string, string> = {}
@@ -725,6 +733,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
 
     setRouteError((previous) => ({ ...previous, [endpoint]: null }))
     setSavingRouteFor(endpoint)
+    beginWrite(endpoint)
 
     try {
       const customEndpoint = customEndpoints.find((item) => item.id === endpoint)
@@ -770,14 +779,18 @@ export function useRoutingState(base: WorkbenchConfigState) {
         setConfig(nextConfig)
       }
 
-      setRoutesByEndpoint((previous) => ({
-        ...previous,
-        [endpoint]: Object.entries(sanitizedRoutes).map(([source, target]) => ({
-          id: createEntryId(),
-          source,
-          target
-        }))
-      }))
+      setRoutesByEndpoint((previous) => {
+        const existing = previous[endpoint] ?? []
+        const idBySource = new Map(existing.map((entry) => [entry.source.trim(), entry.id]))
+        return {
+          ...previous,
+          [endpoint]: Object.entries(sanitizedRoutes).map(([source, target]) => ({
+            id: idBySource.get(source.trim()) ?? createEntryId(),
+            source,
+            target
+          }))
+        }
+      })
       pushToast({
         title: t('modelManagement.toast.routesSaved'),
         variant: 'success'
@@ -786,13 +799,29 @@ export function useRoutingState(base: WorkbenchConfigState) {
     } catch (error) {
       pushToast({
         title: t('modelManagement.toast.routesSaveFailure', {
-          message: error instanceof Error ? error.message : 'unknown'
+          message: toApiError(error).message
         }),
         variant: 'error'
       })
     } finally {
       setSavingRouteFor(null)
+      endWrite()
     }
+  }
+
+  /** Drop route drafts (across all endpoints) whose target points at a
+   *  provider that was just deleted, so a later save cannot persist a
+   *  dangling route. Saved routes are sanitized server-side by the caller. */
+  const sanitizeDraftsForProvider = (providerId: string) => {
+    setRoutesByEndpoint((previous) => {
+      const next: Record<string, ModelRouteEntry[]> = {}
+      for (const [endpoint, entries] of Object.entries(previous)) {
+        next[endpoint] = entries.filter(
+          (entry) => !routeTargetMatchesProvider(entry.target.trim(), providerId)
+        )
+      }
+      return next
+    })
   }
 
   return {
@@ -808,6 +837,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
     applyingPreset,
     deletingPreset,
     savingCompatibilityPolicy,
+    writingEndpoint,
     presetsExpanded,
     setPresetsExpanded,
     presetDiffDialog,
@@ -830,7 +860,8 @@ export function useRoutingState(base: WorkbenchConfigState) {
     handleRemoveRoute,
     handleResetRoutes,
     handleSaveRoutes,
-    handleCompatibilityEnabledChange
+    handleCompatibilityEnabledChange,
+    sanitizeDraftsForProvider
   }
 }
 

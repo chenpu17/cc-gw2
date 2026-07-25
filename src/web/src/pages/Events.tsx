@@ -132,11 +132,11 @@ export default function EventsPage() {
             <span
               className={cn(
                 'inline-flex items-center gap-1.5 text-xs font-medium',
-                live.connected ? 'text-success' : 'text-warning'
+                live.connected ? 'text-success' : live.failed ? 'text-destructive' : 'text-warning'
               )}
             >
-              <span className={cn('h-1.5 w-1.5 rounded-full', live.connected ? 'bg-success' : 'bg-warning')} />
-              {live.connected ? t('events.live') : t('events.reconnecting')}
+              <span className={cn('h-1.5 w-1.5 rounded-full', live.connected ? 'bg-success' : live.failed ? 'bg-destructive' : 'bg-warning')} />
+              {live.connected ? t('events.live') : live.failed ? t('events.failed') : t('events.reconnecting')}
             </span>
           ) : (
             <span className="text-xs text-muted-foreground">{t('events.actions.older')}</span>

@@ -5,7 +5,6 @@ import { storageKeys } from '@/services/storageKeys'
 import {
   DEFAULT_VISIBLE_COLUMNS,
   LOG_COLUMN_ORDER,
-  loadStoredColumns,
   loadStoredDensity,
   type LogColumnId,
   type RowDensity
@@ -22,7 +21,20 @@ export function useLogsTablePreferences() {
   )
   const [visibleColumns, setVisibleColumns] = usePersistentState<LogColumnId[]>(
     storageKeys.logs.visibleColumns,
-    loadStoredColumns
+    DEFAULT_VISIBLE_COLUMNS,
+    {
+      serialize: JSON.stringify,
+      deserialize: (raw) => {
+        try {
+          const parsed = JSON.parse(raw)
+          if (!Array.isArray(parsed)) return DEFAULT_VISIBLE_COLUMNS
+          const next = parsed.filter((value): value is LogColumnId => LOG_COLUMN_ORDER.includes(value))
+          return next.length > 0 ? next : DEFAULT_VISIBLE_COLUMNS
+        } catch {
+          return DEFAULT_VISIBLE_COLUMNS
+        }
+      }
+    }
   )
   const { scrollRef: tableScrollRef, showScrollHint } = useHorizontalScrollHint<HTMLDivElement>()
 

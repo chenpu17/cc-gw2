@@ -107,15 +107,8 @@ export function RoutingEndpointsTable({
                 <TableRow
                   key={row.key}
                   data-testid="endpoint-row"
-                  tabIndex={0}
                   onClick={() => onEditRoute(row.key)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      onEditRoute(row.key)
-                    }
-                  }}
-                  className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  className="cursor-pointer"
                 >
                   <TableCell className="max-w-[220px] px-4">
                     <p className="truncate text-sm font-medium text-foreground" title={row.label}>

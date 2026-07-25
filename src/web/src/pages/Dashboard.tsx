@@ -119,9 +119,9 @@ export default function DashboardPage() {
 
           {/* Layer 3 — attention: full feed while warn/error events exist, slim all-clear strip otherwise */}
           {state.attentionEvents.length > 0 ? (
-            <AttentionFeed connected={state.liveConnected} events={state.attentionEvents} />
+            <AttentionFeed connected={state.liveConnected} failed={state.liveFailed} events={state.attentionEvents} />
           ) : (
-            <AttentionAllClear connected={state.liveConnected} />
+            <AttentionAllClear connected={state.liveConnected} failed={state.liveFailed} />
           )}
         </>
       )}

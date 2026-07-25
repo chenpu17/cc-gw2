@@ -42,6 +42,7 @@ export interface RouteEditorProps {
   deletingPreset: string | null
   presetsExpanded: boolean
   savingCompatibilityPolicy: boolean
+  writing: boolean
   providerModelOptions: Array<{ value: string; label: string }>
   onDefaultsChange: (field: keyof DefaultsConfig, value: string | number | null) => void
   onSaveDefaults: () => void
@@ -85,6 +86,7 @@ export function RouteEditor({
   deletingPreset,
   presetsExpanded,
   savingCompatibilityPolicy,
+  writing,
   providerModelOptions,
   onDefaultsChange,
   onSaveDefaults,
@@ -139,6 +141,7 @@ export function RouteEditor({
       savingPreset={savingPreset}
       applyingPreset={applyingPreset}
       deletingPreset={deletingPreset}
+      writing={writing}
       expanded={presetsExpanded}
       onToggleExpanded={onTogglePresetsExpanded}
       onPresetNameChange={onPresetNameChange}
@@ -179,7 +182,7 @@ export function RouteEditor({
           <Switch
             checked={compatibilityEnabled}
             onCheckedChange={onCompatibilityEnabledChange}
-            disabled={savingCompatibilityPolicy}
+            disabled={savingCompatibilityPolicy || writing}
             aria-label={t('modelManagement.openaiCompatibility.toggleLabel')}
           />
         </div>
@@ -206,6 +209,7 @@ export function RouteEditor({
             onChange={(value) => onDefaultsChange('completion', value)}
             options={providerModelOptions}
             disabled={savingDefaults}
+            ariaLabel={t('workbench.defaults.completionLabel')}
             placeholder={t('workbench.defaults.targetPlaceholder')}
           />
         </div>
@@ -227,6 +231,7 @@ export function RouteEditor({
                 onChange={(value) => onDefaultsChange('reasoning', value)}
                 options={providerModelOptions}
                 disabled={savingDefaults}
+                ariaLabel={t('workbench.defaults.reasoningLabel')}
                 placeholder={t('workbench.defaults.targetPlaceholder')}
               />
             </div>
@@ -239,6 +244,7 @@ export function RouteEditor({
                 onChange={(value) => onDefaultsChange('background', value)}
                 options={providerModelOptions}
                 disabled={savingDefaults}
+                ariaLabel={t('workbench.defaults.backgroundLabel')}
                 placeholder={t('workbench.defaults.targetPlaceholder')}
               />
             </div>
@@ -265,7 +271,7 @@ export function RouteEditor({
           <p className="text-xs text-muted-foreground">
             {defaultsDirty ? t('modelManagement.actions.footerDirtyHint') : t('modelManagement.actions.footerSavedHint')}
           </p>
-          <Button size="sm" onClick={onSaveDefaults} disabled={savingDefaults || !defaultsDirty} className="relative">
+          <Button size="sm" onClick={onSaveDefaults} disabled={savingDefaults || !defaultsDirty || writing} className="relative">
             {savingDefaults ? t('common.actions.saving') : t('workbench.defaults.save')}
             {defaultsDirty ? <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" /> : null}
           </Button>
@@ -324,8 +330,9 @@ export function RouteEditor({
                       className="h-8 w-8 text-muted-foreground hover:text-destructive"
                       onClick={() => onRemoveRoute(entry.id)}
                       disabled={savingRoute}
+                      aria-label={t('common.delete')}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-4 w-4" aria-hidden />
                     </Button>
                   </div>
                   <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] md:items-center">
@@ -359,6 +366,7 @@ export function RouteEditor({
                         onChange={(value) => onRouteChange(entry.id, 'target', value)}
                         options={providerModelOptions}
                         disabled={savingRoute}
+                        ariaLabel={t('workbench.routing.targetLabel')}
                         placeholder={t('settings.routing.targetPlaceholder')}
                       />
                     </div>
@@ -368,8 +376,9 @@ export function RouteEditor({
                       className="hidden h-8 w-8 text-muted-foreground hover:text-destructive md:inline-flex"
                       onClick={() => onRemoveRoute(entry.id)}
                       disabled={savingRoute}
+                      aria-label={t('common.delete')}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-4 w-4" aria-hidden />
                     </Button>
                   </div>
                 </div>
@@ -392,7 +401,7 @@ export function RouteEditor({
             <Button variant="outline" size="sm" onClick={onResetRoutes} disabled={savingRoute || !isDirty} className="w-full md:w-auto">
               {t('common.actions.reset')}
             </Button>
-            <Button size="sm" onClick={onSaveRoutes} disabled={savingRoute} className="relative w-full md:w-auto">
+            <Button size="sm" onClick={onSaveRoutes} disabled={savingRoute || writing} className="relative w-full md:w-auto">
               {savingRoute ? t('common.actions.saving') : t('modelManagement.actions.saveRoutes')}
               {isDirty ? <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" /> : null}
             </Button>
@@ -467,6 +476,7 @@ function RoutingPresetsSection({
   savingPreset,
   applyingPreset,
   deletingPreset,
+  writing,
   expanded,
   onToggleExpanded,
   onPresetNameChange,
@@ -480,6 +490,7 @@ function RoutingPresetsSection({
   savingPreset: boolean
   applyingPreset: string | null
   deletingPreset: string | null
+  writing: boolean
   expanded: boolean
   onToggleExpanded: () => void
   onPresetNameChange: (value: string) => void
@@ -513,7 +524,7 @@ function RoutingPresetsSection({
               disabled={savingPreset}
               className="w-full md:w-48"
             />
-            <Button onClick={onSavePreset} disabled={savingPreset} className="w-full md:w-auto">
+            <Button onClick={onSavePreset} disabled={savingPreset || writing} className="w-full md:w-auto">
               {savingPreset ? t('modelManagement.presets.saving') : t('modelManagement.presets.save')}
             </Button>
           </div>
@@ -562,14 +573,14 @@ function RoutingPresetsSection({
                         ) : null}
                       </Tooltip>
                       <div className="grid flex-shrink-0 gap-2 sm:flex sm:items-center">
-                        <Button size="sm" onClick={() => onRequestPresetDiff(preset)} disabled={isApplying || isDeleting} className="w-full sm:w-auto">
+                        <Button size="sm" onClick={() => onRequestPresetDiff(preset)} disabled={isApplying || isDeleting || writing} className="w-full sm:w-auto">
                           {isApplying ? t('modelManagement.presets.applying') : t('modelManagement.presets.apply')}
                         </Button>
                         <Button
                           variant="destructive"
                           size="sm"
                           onClick={() => onRequestDeletePreset(preset)}
-                          disabled={isDeleting || isApplying}
+                          disabled={isDeleting || isApplying || writing}
                           className="w-full sm:w-auto"
                         >
                           {isDeleting ? t('modelManagement.presets.deleting') : t('modelManagement.presets.delete')}

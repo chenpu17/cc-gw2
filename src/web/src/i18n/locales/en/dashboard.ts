@@ -119,6 +119,7 @@ export default {
     subtitle: 'Warning and error events pushed in real time',
     live: 'Live',
     reconnecting: 'Reconnecting…',
+    failed: 'Connection failed — reload to retry',
     allClear: 'No recent anomalies',
     viewAll: 'View all events'
   },

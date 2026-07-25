@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { StepNav, type StepStatus } from '@/components/ui/step-nav'
+import { toApiError } from '@/services/api'
 import type { ProviderConfig } from '@/types/providers'
 import type { ProviderTestResult } from './shared'
 import {
@@ -109,11 +110,15 @@ export function ProviderDrawer({
 
   const handleSubmit = async () => {
     setSubmitError(null)
-    if (!providerForm.validate()) {
+    const validationErrors = providerForm.validateErrors()
+    if (Object.keys(validationErrors).length > 0) {
       // Jump to the first step that has an error so the user sees it.
-      if (errors.baseUrl || errors.id) {
+      if (validationErrors.baseUrl || validationErrors.id || validationErrors.extraHeaders) {
         setActiveStep('basics')
-      } else if (errors.models) {
+        if (validationErrors.extraHeaders) {
+          providerForm.setAdvancedOpen(true)
+        }
+      } else if (validationErrors.models) {
         setActiveStep('models')
       }
       return
@@ -123,7 +128,7 @@ export function ProviderDrawer({
       const payload = providerForm.serialize()
       await onSubmit(payload)
     } catch (error) {
-      setSubmitError(t('providers.drawer.toast.saveFailure', { message: error instanceof Error ? error.message : 'unknown' }))
+      setSubmitError(t('providers.drawer.toast.saveFailure', { message: toApiError(error).message }))
       setSubmitting(false)
       return
     }
@@ -204,6 +209,10 @@ export function ProviderDrawer({
     onTypeChange: providerForm.handleTypeChange,
     onAuthModeChange: providerForm.handleAuthModeChange,
     onNonStreamViaStreamChange: providerForm.handleProviderNonStreamViaStreamChange,
+    onUseAbsoluteUrlChange: providerForm.handleUseAbsoluteUrlChange,
+    onAddHeader: providerForm.handleAddHeader,
+    onRemoveHeader: providerForm.handleRemoveHeader,
+    onHeaderChange: providerForm.handleHeaderChange,
     onModelIdChange: providerForm.handleModelIdChange,
     onModelChange: providerForm.handleModelChange,
     onAddModel: providerForm.handleAddModel,

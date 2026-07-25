@@ -57,6 +57,7 @@ export function StepNav({ steps, current, onSelect, className }: StepNavProps) {
           </span>
         )
 
+        const labelId = `stepnav-${step.id}-label`
         return (
           <div key={step.id} className="flex flex-1 items-start">
             <div className="flex min-w-0 flex-col items-center gap-1.5">
@@ -64,6 +65,7 @@ export function StepNav({ steps, current, onSelect, className }: StepNavProps) {
                 <button
                   type="button"
                   onClick={() => onSelect?.(step.id)}
+                  aria-labelledby={labelId}
                   className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-surface"
                 >
                   {circle}
@@ -71,7 +73,10 @@ export function StepNav({ steps, current, onSelect, className }: StepNavProps) {
               ) : (
                 circle
               )}
-              <span className={cn('text-center text-[11px] leading-tight', labelByStatus[step.status])}>
+              <span
+                id={labelId}
+                className={cn('text-center text-[11px] leading-tight', labelByStatus[step.status])}
+              >
                 {step.label}
               </span>
             </div>

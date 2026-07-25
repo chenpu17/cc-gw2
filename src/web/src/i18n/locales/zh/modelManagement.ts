@@ -140,7 +140,8 @@ export default {
     presetDeleteSuccess: '模板 "{{name}}" 已删除。',
     presetDeleteFailure: '删除模板失败：{{message}}',
     compatibilitySaved: 'OpenAI 兼容降级已更新为：{{state}}。',
-    compatibilitySaveFailure: '更新 OpenAI 兼容降级失败：{{message}}'
+    compatibilitySaveFailure: '更新 OpenAI 兼容降级失败：{{message}}',
+    endpointNotFound: '所选端点已不存在。'
   },
   presets: {
     title: '路由模板',

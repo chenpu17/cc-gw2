@@ -116,9 +116,9 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   await routeDialog.getByRole('button', { name: '新增映射' }).click()
   await routeDialog.getByLabel('route-source-1').fill(sourceModel)
   await routeDialog.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
-  // TargetCombobox 的弹层 portal 到 body，不在 dialog DOM 内
+  // TargetCombobox 的弹层 portal 到 body，不在 dialog DOM 内；选项为 role="option"
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('stub-model-playwright')
-  await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-playwright`) }).last().click()
+  await page.getByRole('option', { name: new RegExp(`${providerId}.*stub-model-playwright`) }).last().click()
   await routeDialog.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
@@ -134,7 +134,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
 
   await routeDialog.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('透传')
-  await page.getByRole('button', { name: new RegExp(`${providerId}.*透传原始模型`) }).click()
+  await page.getByRole('option', { name: new RegExp(`${providerId}.*透传原始模型`) }).click()
   await routeDialog.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
@@ -258,15 +258,15 @@ test('model management supports provider edit, delete, route reset, and preset d
   await routeDialog.getByRole('button', { name: '新增映射' }).click()
   await routeDialog.getByLabel('route-source-1').fill('reset-source')
   await routeDialog.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
-  // TargetCombobox 的弹层 portal 到 body，不在 dialog DOM 内
+  // TargetCombobox 的弹层 portal 到 body，不在 dialog DOM 内；选项为 role="option"
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('stub-model-edit')
-  await page.getByRole('button', { name: new RegExp(`${providerId}.*stub-model-edit`) }).last().click()
+  await page.getByRole('option', { name: new RegExp(`${providerId}.*stub-model-edit`) }).last().click()
   await routeDialog.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
   await routeDialog.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
   await page.getByPlaceholder('搜索 Provider、模型名或 ID').fill('透传')
-  await page.getByRole('button', { name: new RegExp(`${providerId}.*透传原始模型`) }).click()
+  await page.getByRole('option', { name: new RegExp(`${providerId}.*透传原始模型`) }).click()
   await routeDialog.getByRole('button', { name: '重置' }).click()
   await routeDialog.getByRole('button', { name: '保存路由' }).click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()

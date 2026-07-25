@@ -349,6 +349,7 @@ export function useDashboardPageState() {
     isBootstrapping,
     isRefreshing,
     liveConnected: liveEvents.connected,
+    liveFailed: liveEvents.failed,
     modelRequestsOption,
     models,
     overview,

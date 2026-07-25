@@ -71,6 +71,7 @@ pub struct ProviderConfig {
     pub auth_mode: Option<String>,
     pub default_model: Option<String>,
     pub non_stream_via_stream: Option<bool>,
+    pub use_absolute_url: Option<bool>,
     pub models: Vec<ProviderModelConfig>,
     pub extra_headers: HashMap<String, String>,
     #[serde(rename = "type")]
@@ -87,6 +88,7 @@ impl Default for ProviderConfig {
             auth_mode: None,
             default_model: None,
             non_stream_via_stream: None,
+            use_absolute_url: None,
             models: Vec::new(),
             extra_headers: HashMap::new(),
             provider_type: None,

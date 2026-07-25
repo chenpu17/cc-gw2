@@ -21,6 +21,12 @@ export interface FormModel extends ProviderModelConfig {
   _key: string
 }
 
+export interface FormHeader {
+  name: string
+  value: string
+  _key: string
+}
+
 export interface FormState {
   id: string
   label: string
@@ -31,12 +37,15 @@ export interface FormState {
   models: FormModel[]
   authMode: 'apiKey' | 'authToken' | 'xAuthToken'
   nonStreamViaStream: boolean
+  useAbsoluteUrl: boolean
+  extraHeaders: FormHeader[]
 }
 
 export interface FormErrors {
   id?: string
   baseUrl?: string
   models?: string
+  extraHeaders?: string
 }
 
 export type ProviderStepId = 'basics' | 'models'
@@ -61,6 +70,10 @@ export interface ProviderStepShared {
   onTypeChange: (value: ProviderConfig['type']) => void
   onAuthModeChange: (value: FormState['authMode']) => void
   onNonStreamViaStreamChange: (checked: boolean) => void
+  onUseAbsoluteUrlChange: (checked: boolean) => void
+  onAddHeader: () => void
+  onRemoveHeader: (index: number) => void
+  onHeaderChange: (index: number, patch: Partial<FormHeader>) => void
   onModelIdChange: (index: number, value: string) => void
   onModelChange: (index: number, patch: Partial<FormModel>) => void
   onAddModel: () => void
@@ -82,6 +95,14 @@ export function createEmptyModel(): FormModel {
     _key: createKey(),
     id: '',
     label: ''
+  }
+}
+
+export function createEmptyHeader(): FormHeader {
+  return {
+    _key: createKey(),
+    name: '',
+    value: ''
   }
 }
 
@@ -148,7 +169,9 @@ export function buildInitialState(provider?: ProviderConfig): FormState {
       defaultModel: '',
       models: [],
       authMode: defaultAuthModeForType('custom'),
-      nonStreamViaStream: false
+      nonStreamViaStream: false,
+      useAbsoluteUrl: false,
+      extraHeaders: []
     }
   }
 
@@ -164,7 +187,13 @@ export function buildInitialState(provider?: ProviderConfig): FormState {
       _key: createKey()
     })),
     authMode: provider.authMode ?? defaultAuthModeForType(provider.type ?? 'custom'),
-    nonStreamViaStream: provider.nonStreamViaStream ?? false
+    nonStreamViaStream: provider.nonStreamViaStream ?? false,
+    useAbsoluteUrl: provider.useAbsoluteUrl ?? false,
+    extraHeaders: Object.entries(provider.extraHeaders ?? {}).map(([name, value]) => ({
+      name,
+      value,
+      _key: createKey()
+    }))
   }
 }
 
@@ -188,7 +217,11 @@ export function BasicsStep({
   onFieldChange,
   onTypeChange,
   onAuthModeChange,
-  onNonStreamViaStreamChange
+  onNonStreamViaStreamChange,
+  onUseAbsoluteUrlChange,
+  onAddHeader,
+  onRemoveHeader,
+  onHeaderChange
 }: ProviderStepShared) {
   const { t } = useTranslation()
   return (
@@ -342,6 +375,85 @@ export function BasicsStep({
               onCheckedChange={onNonStreamViaStreamChange}
               aria-label={t('providers.drawer.fields.nonStreamViaStream')}
             />
+          </div>
+
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">{t('providers.drawer.fields.useAbsoluteUrl')}</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {t('providers.drawer.fields.useAbsoluteUrlHint')}
+                </p>
+              </div>
+              <Switch
+                checked={form.useAbsoluteUrl}
+                onCheckedChange={onUseAbsoluteUrlChange}
+                aria-label={t('providers.drawer.fields.useAbsoluteUrl')}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">{t('providers.drawer.fields.extraHeaders')}</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {t('providers.drawer.fields.extraHeadersHint')}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onAddHeader}
+                className="bg-card text-xs"
+              >
+                {t('providers.drawer.fields.addHeader')}
+              </Button>
+            </div>
+
+            {errors.extraHeaders ? <p className="mt-2 text-xs text-destructive">{errors.extraHeaders}</p> : null}
+
+            {form.extraHeaders.length > 0 ? (
+              <div className="mt-3 space-y-3">
+                {form.extraHeaders.map((header, index) => (
+                  <div
+                    key={header._key}
+                    className="rounded-xl border border-transparent bg-secondary/40 p-3"
+                  >
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Label className="flex flex-col gap-1.5 text-sm">
+                        <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.headerName')}</span>
+                        <Input
+                          value={header.name}
+                          onChange={(event) => onHeaderChange(index, { name: event.target.value })}
+                          placeholder={t('providers.drawer.fields.headerNamePlaceholder')}
+                        />
+                      </Label>
+                      <Label className="flex flex-col gap-1.5 text-sm">
+                        <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.headerValue')}</span>
+                        <Input
+                          value={header.value}
+                          onChange={(event) => onHeaderChange(index, { value: event.target.value })}
+                          placeholder={t('providers.drawer.fields.headerValuePlaceholder')}
+                        />
+                      </Label>
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto px-2 text-destructive"
+                        onClick={() => onRemoveHeader(index)}
+                      >
+                        {t('providers.drawer.fields.removeHeader')}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         </Disclosure>
       </section>

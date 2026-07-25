@@ -140,7 +140,8 @@ export default {
     presetDeleteSuccess: 'Preset "{{name}}" deleted.',
     presetDeleteFailure: 'Failed to delete preset: {{message}}',
     compatibilitySaved: 'OpenAI compatibility fallback updated to: {{state}}.',
-    compatibilitySaveFailure: 'Failed to update OpenAI compatibility fallback: {{message}}'
+    compatibilitySaveFailure: 'Failed to update OpenAI compatibility fallback: {{message}}',
+    endpointNotFound: 'The selected endpoint no longer exists.'
   },
   presets: {
     title: 'Routing presets',

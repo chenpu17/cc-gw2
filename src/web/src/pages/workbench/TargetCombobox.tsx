@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
@@ -32,15 +32,18 @@ export function TargetCombobox({
   onChange,
   options,
   disabled,
-  placeholder
+  placeholder,
+  ariaLabel
 }: {
   value: string
   onChange: (value: string) => void
   options: TargetOption[]
   disabled?: boolean
   placeholder?: string
+  ariaLabel?: string
 }) {
   const { t } = useTranslation()
+  const listboxId = useId()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -196,6 +199,11 @@ export function TargetCombobox({
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
+          role="combobox"
+          aria-label={ariaLabel}
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
         />
       </PopoverAnchor>
       <PopoverContent
@@ -231,7 +239,7 @@ export function TargetCombobox({
         {filteredCount === 0 ? (
           <div className="px-3 py-4 text-center text-xs text-muted-foreground">{t('common.noMatches')}</div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+          <div id={listboxId} role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {groups.map((group) => (
               <div key={group.key} className="py-1">
                 <div className={cn(
@@ -246,6 +254,8 @@ export function TargetCombobox({
                     <button
                       key={`${group.key}-${option.value}`}
                       type="button"
+                      role="option"
+                      aria-selected={option.value === value.trim()}
                       className={cn(
                         'flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                         option.value === value.trim() && 'bg-accent/90 text-accent-foreground'

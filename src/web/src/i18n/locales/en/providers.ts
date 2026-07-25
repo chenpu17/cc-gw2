@@ -2,6 +2,7 @@ export default {
   title: 'Model Providers',
   description: 'Manage integrated services and default models.',
   emptyState: 'No providers yet. Click "Add provider" to get started.',
+  emptyStateSub: 'Click the button above to add your first provider.',
   emptyFiltered: 'No providers match the current filters.',
   count: '{{count}} providers configured',
   groupCount: '{{count}} providers',
@@ -222,6 +223,8 @@ export default {
       authModeXAuthToken: 'X-Auth-Token',
       nonStreamViaStream: 'Send non-stream requests upstream as streams',
       nonStreamViaStreamHint: 'Only applies when the client request is non-streaming. The gateway sends a streaming upstream request, reads the full SSE response, then returns JSON once.',
+      useAbsoluteUrl: 'Use absolute URL',
+      useAbsoluteUrlHint: 'When on, the Base URL is used verbatim as the upstream URL; the gateway will not append any suffix (e.g. /v1/messages, /v1/chat/completions). Use this for providers that expose a fully-qualified endpoint. The protocol (request body format) is still determined by the provider type and is unaffected.',
       models: 'Model configuration',
       showAdvanced: 'Show advanced options',
       hideAdvanced: 'Hide advanced options',
@@ -236,7 +239,15 @@ export default {
       modelNonStreamViaStreamEnabled: 'Enabled',
       modelNonStreamViaStreamDisabled: 'Disabled',
       setDefault: 'Set as default',
-      removeModel: 'Remove model'
+      removeModel: 'Remove model',
+      extraHeaders: 'Custom request headers',
+      extraHeadersHint: 'Appended to upstream requests for this provider and override any same-named headers sent by the client. Authentication headers (Authorization, x-api-key, etc.) are set by the gateway from the API key and cannot be overridden here.',
+      addHeader: 'Add header',
+      headerName: 'Name',
+      headerValue: 'Value',
+      headerNamePlaceholder: 'e.g. X-App-Id',
+      headerValuePlaceholder: 'e.g. my-app',
+      removeHeader: 'Remove header'
     },
     errors: {
       idRequired: 'Provider ID is required',
@@ -244,7 +255,9 @@ export default {
       baseUrlInvalid: 'Invalid Base URL',
       modelsRequired: 'Configure at least one model',
       modelInvalid: 'Model IDs must be unique and non-empty',
-      defaultInvalid: 'Default model must exist in the list'
+      defaultInvalid: 'Default model must exist in the list',
+      headerNameInvalid: 'Header names may only contain letters, digits, and - _ . * + characters (no spaces or colons)',
+      headerNameDuplicate: 'Each header name must be unique'
     },
     toast: {
       saveFailure: 'Save failed: {{message}}'

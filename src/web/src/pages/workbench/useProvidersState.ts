@@ -1,31 +1,26 @@
 import { useMemo, useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
 import { toApiError } from '@/services/api'
 import { gatewayApi } from '@/services/gateway'
 import { modelManagementApi } from '@/services/modelManagement'
 import type { GatewayConfig, ProviderConfig } from '@/types/providers'
 import type { WorkbenchConfigState } from './useWorkbenchConfig'
 import {
-  createEntryId,
-  deriveRoutesFromConfig,
   resolveModelLabel,
   type AnthropicHeaderOption,
-  type ModelRouteEntry,
   type ProviderTestResult
 } from './shared'
-
-interface ProvidersStateDeps {
-  setRoutesByEndpoint: Dispatch<SetStateAction<Record<string, ModelRouteEntry[]>>>
-}
 
 /**
  * Provider state for the providers workbench: list filtering, drawer
  * create/edit flow, deletion (including route cleanup) and connection
  * testing with the latest result kept per provider.
  */
-export function useProvidersState(base: WorkbenchConfigState, deps: ProvidersStateDeps) {
+export function useProvidersState(
+  base: WorkbenchConfigState,
+  deps?: { sanitizeDraftsForProvider?: (providerId: string) => void }
+) {
   const { t, pushToast, config, setConfig, configQuery, customEndpoints, ensureConfig } = base
-  const { setRoutesByEndpoint } = deps
+  const { sanitizeDraftsForProvider } = deps ?? {}
 
   const [providerSearch, setProviderSearch] = useState('')
   const [providerTypeFilter, setProviderTypeFilter] = useState<string>('all')
@@ -130,7 +125,6 @@ export function useProvidersState(base: WorkbenchConfigState, deps: ProvidersSta
 
     await gatewayApi.saveConfig(nextConfig)
     setConfig(nextConfig)
-    setRoutesByEndpoint(deriveRoutesFromConfig(nextConfig, customEndpoints))
     void configQuery.refetch()
 
     if (drawerMode === 'create') {
@@ -362,28 +356,10 @@ export function useProvidersState(base: WorkbenchConfigState, deps: ProvidersSta
     try {
       await gatewayApi.saveConfig(nextConfig)
       setConfig(nextConfig)
-      setRoutesByEndpoint({
-        anthropic: Object.entries(sanitizedAnthropic).map(([source, target]) => ({
-          id: createEntryId(),
-          source,
-          target
-        })),
-        openai: Object.entries(sanitizedOpenAI).map(([source, target]) => ({
-          id: createEntryId(),
-          source,
-          target
-        })),
-        ...Object.fromEntries(
-          sanitizedCustomEndpoints.map((endpoint) => [
-            endpoint.id,
-            Object.entries(endpoint.routing?.modelRoutes ?? {}).map(([source, target]) => ({
-              id: createEntryId(),
-              source,
-              target
-            }))
-          ])
-        )
-      })
+      // Drop route drafts pointing at the deleted provider; the merge effect
+      // would otherwise keep them (they are dirty) and a later save could
+      // persist a dangling route. Saved routes were sanitized in nextConfig.
+      sanitizeDraftsForProvider?.(provider.id)
       if (selectedProviderId === provider.id) {
         setSelectedProviderId(null)
       }
@@ -395,7 +371,7 @@ export function useProvidersState(base: WorkbenchConfigState, deps: ProvidersSta
     } catch (error) {
       pushToast({
         title: t('providers.toast.deleteFailure', {
-          message: error instanceof Error ? error.message : 'unknown'
+          message: toApiError(error).message
         }),
         variant: 'error'
       })

@@ -42,20 +42,6 @@ export const LOG_COLUMN_ORDER: LogColumnId[] = [
   'error'
 ]
 
-export function loadStoredColumns(): LogColumnId[] {
-  if (typeof window === 'undefined') return DEFAULT_VISIBLE_COLUMNS
-  try {
-    const raw = window.localStorage.getItem(storageKeys.logs.visibleColumns)
-    if (!raw) return DEFAULT_VISIBLE_COLUMNS
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return DEFAULT_VISIBLE_COLUMNS
-    const next = parsed.filter((value): value is LogColumnId => LOG_COLUMN_ORDER.includes(value))
-    return next.length > 0 ? next : DEFAULT_VISIBLE_COLUMNS
-  } catch {
-    return DEFAULT_VISIBLE_COLUMNS
-  }
-}
-
 export function loadStoredDensity(): RowDensity {
   if (typeof window === 'undefined') return 'comfortable'
   const raw = window.localStorage.getItem(storageKeys.logs.density)
@@ -67,21 +53,6 @@ export function loadStoredPageSize(): number {
   const raw = window.localStorage.getItem(storageKeys.logs.pageSize)
   const next = Number(raw)
   return PAGE_SIZE_OPTIONS.includes(next) ? next : PAGE_SIZE_OPTIONS[0]
-}
-
-export function loadStoredApiKeyFilters(): number[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = window.localStorage.getItem(storageKeys.logs.selectedApiKeys)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .map((value) => Number(value))
-      .filter((value) => Number.isInteger(value) && value > 0)
-  } catch {
-    return []
-  }
 }
 
 export function toTimestamp(value: DateInput, endOfDay = false): number | undefined {
