@@ -60,6 +60,9 @@ export default {
     todayCacheCreation: 'Cache Creation Today',
     todayOutput: 'Output Tokens Today',
     todayCached: 'Cached Tokens Today',
+    todayErrorRate: 'Error Rate Today',
+    cacheHitHint: 'Hit rate {{value}}%',
+    errorCountHint: '{{value}} errors',
     avgLatency: 'Average Latency',
     systemResources: 'System Resources'
   },

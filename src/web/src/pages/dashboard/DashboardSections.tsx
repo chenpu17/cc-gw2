@@ -28,6 +28,7 @@ import {
   formatPercent,
   type DatabaseInfo,
   type ModelUsageMetric,
+  type OverviewStats,
   type ServiceStatus
 } from './types'
 
@@ -118,6 +119,71 @@ function eventLevelBadge(level: GatewayEvent['level']) {
     default:
       return <Badge variant="secondary">info</Badge>
   }
+}
+
+/** Layer 1b — today's consumption + health: requests, tokens, cache hit, error rate */
+export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
+  const { t } = useTranslation()
+  const today = overview?.today
+  const requests = today?.requests ?? 0
+  const inputTokens = today?.inputTokens ?? 0
+  const outputTokens = today?.outputTokens ?? 0
+  const cacheRead = today?.cacheReadTokens ?? 0
+  const errorCount = today?.errorCount ?? 0
+
+  const errorRate = requests > 0 ? (errorCount / requests) * 100 : 0
+  const hitBase = cacheRead + inputTokens
+  const hitRate = hitBase > 0 ? (cacheRead / hitBase) * 100 : 0
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" data-testid="dashboard-today-grid">
+      <MetricCard
+        size="md"
+        label={t('dashboard.cards.todayRequests')}
+        value={requests.toLocaleString()}
+        rawValue={requests}
+        valueTestId="dashboard-today-value-requests"
+      />
+      <MetricCard
+        size="md"
+        label={t('dashboard.cards.todayInput')}
+        value={inputTokens.toLocaleString()}
+        rawValue={inputTokens}
+        suffix={t('common.units.token')}
+        valueTestId="dashboard-today-value-input"
+      />
+      <MetricCard
+        size="md"
+        label={t('dashboard.cards.todayOutput')}
+        value={outputTokens.toLocaleString()}
+        rawValue={outputTokens}
+        suffix={t('common.units.token')}
+        valueTestId="dashboard-today-value-output"
+      />
+      <MetricCard
+        size="md"
+        label={t('dashboard.cards.todayCacheRead')}
+        value={cacheRead.toLocaleString()}
+        rawValue={cacheRead}
+        suffix={t('common.units.token')}
+        hint={hitBase > 0 ? t('dashboard.cards.cacheHitHint', { value: hitRate.toFixed(1) }) : undefined}
+        valueTestId="dashboard-today-value-cache-read"
+      />
+      <MetricCard
+        size="md"
+        label={t('dashboard.cards.todayErrorRate')}
+        value={
+          errorRate > 0 ? (
+            <span className="text-destructive">{errorRate.toFixed(1)}%</span>
+          ) : (
+            `${errorRate.toFixed(1)}%`
+          )
+        }
+        hint={errorCount > 0 ? t('dashboard.cards.errorCountHint', { value: errorCount }) : undefined}
+        valueTestId="dashboard-today-value-error-rate"
+      />
+    </div>
+  )
 }
 
 /** Layer 2 — live warn/error feed; only rendered while there is something to show */

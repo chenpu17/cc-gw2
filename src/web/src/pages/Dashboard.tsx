@@ -21,6 +21,7 @@ import {
   RecentRequestsTable,
   SetupProgressStrip,
   StatusBand,
+  TodaySummaryBand,
   TrendChart
 } from './dashboard/DashboardSections'
 import { useDashboardPageState, SETUP_TOTAL_STEPS } from './dashboard/useDashboardPageState'
@@ -87,6 +88,8 @@ export default function DashboardPage() {
 
           {/* Layer 1 — live status */}
           <StatusBand status={state.status} />
+
+          <TodaySummaryBand overview={state.overview} />
 
           {!state.setupComplete ? (
             <SetupProgressStrip doneCount={state.setupDoneCount} total={SETUP_TOTAL_STEPS} />

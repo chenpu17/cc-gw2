@@ -60,6 +60,9 @@ export default {
     todayCacheCreation: '今日缓存写入',
     todayOutput: '今日输出 Tokens',
     todayCached: '今日缓存 Tokens',
+    todayErrorRate: '今日错误率',
+    cacheHitHint: '命中率 {{value}}%',
+    errorCountHint: '{{value}} 次错误',
     avgLatency: '平均响应耗时',
     systemResources: '系统资源'
   },

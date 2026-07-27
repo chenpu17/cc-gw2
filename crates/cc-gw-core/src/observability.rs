@@ -112,6 +112,7 @@ pub struct MetricsOverviewSection {
     pub cache_read_tokens: i64,
     pub cache_creation_tokens: i64,
     pub avg_latency_ms: i64,
+    pub error_count: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -804,7 +805,8 @@ fn request_log_metrics_section(
        COALESCE(SUM(COALESCE(cache_read_tokens, 0)), 0),
        COALESCE(SUM(COALESCE(cache_creation_tokens, 0)), 0),
        COALESCE(SUM(COALESCE(latency_ms, 0)), 0),
-       COUNT(latency_ms)
+       COUNT(latency_ms),
+       COALESCE(SUM(CASE WHEN (error IS NOT NULL OR status_code >= 400) THEN 1 ELSE 0 END), 0)
      FROM request_logs";
     let map_row = |row: &rusqlite::Row<'_>| {
         Ok((
@@ -816,6 +818,7 @@ fn request_log_metrics_section(
             row.get::<_, i64>(5)?,
             row.get::<_, i64>(6)?,
             row.get::<_, i64>(7)?,
+            row.get::<_, i64>(8)?,
         ))
     };
     let row = match (range, endpoint) {
@@ -844,6 +847,7 @@ fn request_log_metrics_section(
         cache_read_tokens: row.4,
         cache_creation_tokens: row.5,
         avg_latency_ms: if row.7 > 0 { row.6 / row.7 } else { 0 },
+        error_count: row.8,
     })
 }
 
@@ -1311,6 +1315,109 @@ mod tests {
         assert_eq!(openai_daily[0].input_tokens, 6);
         assert_eq!(openai_daily[0].output_tokens, 4);
         assert_eq!(openai_daily[0].avg_latency_ms, 80);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn metrics_overview_error_count_counts_failures_and_skips_pending() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-error-count-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let now = chrono::Utc::now().timestamp_millis();
+
+        // success — status 200, no error → not counted as an error
+        let ok_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now,
+                session_id: None,
+                source_ip: None,
+                endpoint: "anthropic".to_string(),
+                provider: "mock".to_string(),
+                model: "mock-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert success request log");
+        finalize_request_log(
+            &db_path,
+            ok_id,
+            &RequestLogUpdate {
+                latency_ms: Some(50),
+                status_code: Some(200),
+                input_tokens: Some(10),
+                output_tokens: Some(5),
+                ..RequestLogUpdate::default()
+            },
+        )
+        .expect("finalize success request log");
+
+        // failure — status >= 400 and error set → counted as an error
+        let err_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now,
+                session_id: None,
+                source_ip: None,
+                endpoint: "anthropic".to_string(),
+                provider: "mock".to_string(),
+                model: "mock-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert failure request log");
+        finalize_request_log(
+            &db_path,
+            err_id,
+            &RequestLogUpdate {
+                latency_ms: Some(20),
+                status_code: Some(500),
+                error: Some("upstream error".to_string()),
+                ..RequestLogUpdate::default()
+            },
+        )
+        .expect("finalize failure request log");
+
+        // pending — no status, no error → not counted as an error (still in request count)
+        insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now,
+                session_id: None,
+                source_ip: None,
+                endpoint: "anthropic".to_string(),
+                provider: "mock".to_string(),
+                model: "pending-model".to_string(),
+                client_model: None,
+                stream: true,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert pending request log");
+
+        let overview = get_metrics_overview(&db_path, None).expect("query overview");
+        // 3 rows total (success + failure + pending); pending stays in the request count
+        assert_eq!(overview.totals.requests, 3);
+        assert_eq!(overview.today.requests, 3);
+        // only the finalized failure counts; success and pending do not
+        assert_eq!(overview.totals.error_count, 1);
+        assert_eq!(overview.today.error_count, 1);
 
         let _ = std::fs::remove_dir_all(root);
     }

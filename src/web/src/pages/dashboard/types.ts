@@ -7,6 +7,7 @@ export interface OverviewStats {
     cacheReadTokens: number
     cacheCreationTokens: number
     avgLatencyMs: number
+    errorCount: number
   }
   today: {
     requests: number
@@ -16,6 +17,7 @@ export interface OverviewStats {
     cacheReadTokens: number
     cacheCreationTokens: number
     avgLatencyMs: number
+    errorCount: number
   }
 }
 
