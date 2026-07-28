@@ -63,6 +63,7 @@ export default {
     todayErrorRate: '今日错误率',
     cacheHitHint: '命中率 {{value}}%',
     errorCountHint: '{{value}} 次错误',
+    yesterdayHint: '昨日同期 {{value}}',
     avgLatency: '平均响应耗时',
     systemResources: '系统资源'
   },
@@ -100,7 +101,8 @@ export default {
     busiestDayHint: '{{value}} 次请求',
     topModel: '最高频模型',
     topModelHint: '{{value}} 次调用',
-    fastestTtft: '最快 TTFT 模型'
+    fastestTtft: '最快 TTFT 模型',
+    fastestTtftHint: '{{value}} ms 首 Token'
   },
   recent: {
     title: '最新请求',

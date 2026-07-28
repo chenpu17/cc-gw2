@@ -125,12 +125,12 @@ export default function AboutPage() {
     <div className="flex flex-col gap-6">
       <PageToolbar
         info={
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground" data-visual-volatile="true">
+          <span className="rounded-lg bg-secondary px-2.5 py-1 text-xs text-muted-foreground" data-visual-volatile="true">
             v{appVersion}
           </span>
         }
         status={
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+          <span className="rounded-lg bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
             manual refresh only
           </span>
         }
@@ -146,7 +146,7 @@ export default function AboutPage() {
         <Card className="overflow-hidden">
           <CardContent className="p-5">
             <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="inline-flex items-center gap-2 rounded-lg bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <ServerCog className="h-3.5 w-3.5" aria-hidden="true" />
                 Runtime snapshot
               </div>

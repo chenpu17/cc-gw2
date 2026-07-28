@@ -69,6 +69,8 @@ export default function LogsPage() {
         providerLabelMap={state.providerLabelMap}
         apiKeyMap={state.apiKeyMap}
         handleOpenDetail={state.handleOpenDetail}
+        expandedLogId={state.expandedLogId}
+        onToggleExpand={state.handleToggleExpand}
         rowDensity={state.rowDensity}
         showScrollHint={state.showScrollHint}
         pageSize={state.pageSize}

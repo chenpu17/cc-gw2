@@ -35,20 +35,15 @@ test('web console pages load and navigation works', async ({ page }) => {
   await expect(page).toHaveURL(/\/ui\/providers\?tab=routing$/)
   await expect(page.getByRole('button', { name: '新建端点' }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: '管理端点' })).toHaveCount(0)
-  // 端点表格包含内置端点，点击行打开路由编辑弹框（URL 带上 endpoint 参数）
+  // 端点 rail：点击内置端点选中它（URL 带上 endpoint 参数，不再开弹窗）
   await page.locator('[data-testid="endpoint-row"]').filter({ hasText: 'Anthropic' }).first().click()
   await expect(page).toHaveURL(/\/ui\/providers\?tab=routing&endpoint=anthropic$/)
-  const routeDialog = page.getByTestId('route-editor-dialog')
-  await expect(routeDialog).toBeVisible()
-  // 模板与兼容性设置收进「高级」Disclosure，先展开再断言
-  await routeDialog.locator('summary').filter({ hasText: '高级' }).click()
-  await expect(routeDialog.getByText('路由模板', { exact: true })).toBeVisible()
-  await expect(routeDialog.getByText('路由操作', { exact: true })).toBeVisible()
-  await expect(routeDialog.getByText('常用 Anthropic 模型', { exact: true })).toBeVisible()
-  // 关闭弹框后回到路由视图，endpoint 参数被清掉
-  await routeDialog.getByRole('button', { name: '关闭' }).click()
-  await expect(routeDialog).not.toBeVisible()
-  await expect(page).toHaveURL(/\/ui\/providers\?tab=routing$/)
+  const workspace = page.getByTestId('routing-workspace')
+  await expect(workspace).toBeVisible()
+  // 三栏内联：规则、模板、命中模拟 常驻可见（不再折叠进「高级」Disclosure）
+  await expect(workspace.getByTestId('routing-rules-card')).toBeVisible()
+  await expect(workspace.getByTestId('routing-presets-card')).toBeVisible()
+  await expect(workspace.getByTestId('routing-hit-simulator')).toBeVisible()
 
   await page.getByRole('link', { name: '事件' }).click()
   await expect(page).toHaveURL(/\/ui\/events$/)

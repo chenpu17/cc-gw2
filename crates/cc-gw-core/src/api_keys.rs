@@ -98,7 +98,13 @@ pub struct ApiKeyUsageMetric {
 }
 
 fn open_db(db_path: &Path) -> Result<Connection> {
-    Connection::open(db_path).with_context(|| format!("failed to open db {}", db_path.display()))
+    let conn = Connection::open(db_path).with_context(|| format!("failed to open db {}", db_path.display()))?;
+    // Raise rusqlite's default 5s busy_timeout so concurrent proxy writes aren't
+    // SQLITE_BUSY'd (and then silently dropped) while an admin VACUUM / log
+    // cleanup holds the write lock for tens of seconds.
+    conn.busy_timeout(std::time::Duration::from_secs(30))
+        .with_context(|| format!("failed to set busy_timeout for db {}", db_path.display()))?;
+    Ok(conn)
 }
 
 fn to_iso_or_null(value: Option<i64>) -> Option<String> {

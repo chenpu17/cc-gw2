@@ -19,6 +19,16 @@ export interface OverviewStats {
     avgLatencyMs: number
     errorCount: number
   }
+  yesterday?: {
+    requests: number
+    inputTokens: number
+    outputTokens: number
+    cachedTokens: number
+    cacheReadTokens: number
+    cacheCreationTokens: number
+    avgLatencyMs: number
+    errorCount: number
+  }
 }
 
 export interface DailyMetric {
@@ -90,7 +100,7 @@ export function formatLatencyValue(
   options?: Intl.NumberFormatOptions
 ): string {
   if (value === null || value === undefined) {
-    return '-'
+    return '—'
   }
 
   return `${value.toLocaleString(undefined, options)} ${suffix}`

@@ -30,7 +30,8 @@ export default {
   deleteDialogTitle: '删除 API 密钥',
   confirmDelete: '确定要删除此 API 密钥吗？此操作无法撤销。',
   errors: {
-    nameRequired: '密钥名称不能为空'
+    nameRequired: '密钥名称不能为空',
+    maxConcurrencyInvalid: '最大并发数必须为正整数'
   },
   analytics: {
     title: '密钥使用分析',

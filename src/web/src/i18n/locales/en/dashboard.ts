@@ -63,6 +63,7 @@ export default {
     todayErrorRate: 'Error Rate Today',
     cacheHitHint: 'Hit rate {{value}}%',
     errorCountHint: '{{value}} errors',
+    yesterdayHint: 'Same time yesterday: {{value}}',
     avgLatency: 'Average Latency',
     systemResources: 'System Resources'
   },
@@ -100,7 +101,8 @@ export default {
     busiestDayHint: '{{value}} requests',
     topModel: 'Top model',
     topModelHint: '{{value}} calls',
-    fastestTtft: 'Fastest TTFT model'
+    fastestTtft: 'Fastest TTFT model',
+    fastestTtftHint: '{{value}} ms first token'
   },
   recent: {
     title: 'Recent Requests',

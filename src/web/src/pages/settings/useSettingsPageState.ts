@@ -73,7 +73,11 @@ export function useSettingsPageState() {
     }),
     errorToast: (error) => ({
       title: t('settings.toast.cleanupFailure', { message: error.message })
-    })
+    }),
+    // Retention delete affects the log list, the dashboard summary's recent
+    // requests, and db size — bust those caches so the UI doesn't show stale
+    // counts until the next poll.
+    invalidateKeys: [['logs'], ['dashboard'], ['db']]
   })
 
   const clearLogsMutation = useAppMutation({
@@ -86,7 +90,9 @@ export function useSettingsPageState() {
     }),
     errorToast: (error) => ({
       title: t('settings.toast.clearAllFailure', { message: error.message })
-    })
+    }),
+    // Clears request_logs AND daily_metrics, so every dependent view is stale.
+    invalidateKeys: [['logs'], ['stats'], ['dashboard'], ['db']]
   })
 
   const [config, setConfig] = useState<GatewayConfig | null>(null)

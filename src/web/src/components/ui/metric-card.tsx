@@ -35,6 +35,8 @@ export interface MetricCardProps {
   size?: Size
   /** subtle primary wash to mark a featured tile */
   featured?: boolean
+  /** solid color class for a small status dot rendered before the label */
+  dotClassName?: string
   className?: string
   valueTestId?: string
   /** override the hover-elevation behaviour */
@@ -85,10 +87,10 @@ function DeltaChip({ delta }: { delta: Delta }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-medium',
+        'inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-medium',
         isGood
-          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400'
-          : 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
+          ? 'bg-success-bg text-success'
+          : 'bg-error-bg text-error'
       )}
     >
       <Arrow className="h-3 w-3" aria-hidden />
@@ -116,6 +118,7 @@ export function MetricCard({
   hint,
   size = 'md',
   featured = false,
+  dotClassName,
   className,
   valueTestId,
   interactive = true,
@@ -141,6 +144,9 @@ export function MetricCard({
       style={style}
     >
       <div className="flex items-center gap-2">
+        {dotClassName ? (
+          <span className={cn('h-[7px] w-[7px] rounded-full', dotClassName)} aria-hidden />
+        ) : null}
         {icon ? (
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
             {icon}

@@ -141,13 +141,21 @@ export function useSetupState() {
       pushToast({ title: t('apiKeys.errors.nameRequired'), variant: 'error' })
       return
     }
+    const trimmedConcurrency = keyMaxConcurrency.trim()
+    if (
+      trimmedConcurrency &&
+      (!Number.isInteger(Number(trimmedConcurrency)) || Number(trimmedConcurrency) < 1)
+    ) {
+      pushToast({ title: t('apiKeys.errors.maxConcurrencyInvalid'), variant: 'error' })
+      return
+    }
 
     setCreatingKey(true)
     try {
       const response = await apiKeysApi.create({
         name: keyName.trim(),
         allowedEndpoints: keyEndpoints.length > 0 ? keyEndpoints : undefined,
-        maxConcurrency: keyMaxConcurrency ? Number(keyMaxConcurrency) : null
+        maxConcurrency: trimmedConcurrency ? Number(trimmedConcurrency) : null
       })
       setCreatedKey(response)
     } catch (error) {

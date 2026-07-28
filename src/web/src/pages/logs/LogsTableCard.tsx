@@ -28,6 +28,8 @@ interface LogsTableCardProps {
   providerLabelMap: Map<string, string>
   apiKeyMap: Map<number, ApiKeySummary>
   handleOpenDetail: (id: number) => void
+  expandedLogId: number | null
+  onToggleExpand: (id: number) => void
   rowDensity: RowDensity
   showScrollHint: boolean
   pageSize: number
@@ -53,6 +55,8 @@ export function LogsTableCard(props: LogsTableCardProps) {
     providerLabelMap,
     apiKeyMap,
     handleOpenDetail,
+    expandedLogId,
+    onToggleExpand,
     rowDensity,
     showScrollHint,
     pageSize,
@@ -175,6 +179,8 @@ export function LogsTableCard(props: LogsTableCardProps) {
                       providerLabelMap={providerLabelMap}
                       apiKeyMap={apiKeyMap}
                       onSelect={handleOpenDetail}
+                      isExpanded={item.id === expandedLogId}
+                      onToggleExpand={onToggleExpand}
                       isEven={index % 2 === 0}
                       density={rowDensity}
                       visibleColumnSet={visibleColumnSet}

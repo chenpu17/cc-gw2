@@ -48,7 +48,7 @@ export function SettingsSectionNav({
                 )}
               >
                 <span className={cn(
-                  'flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold',
+                  'flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-semibold',
                   activeSection === section.id
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-secondary text-muted-foreground'
@@ -72,7 +72,7 @@ export function SettingsSectionNav({
               type="button"
               onClick={() => onSelectSection(section.id)}
               className={cn(
-                'rounded-full px-4 py-2 text-xs font-semibold transition-all duration-150',
+                'rounded-lg px-4 py-2 text-xs font-semibold transition-all duration-150',
                 activeSection === section.id
                   ? 'bg-secondary text-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
@@ -231,13 +231,13 @@ export function ProtocolSection({
         </div>
 
         {protocolChangesPending ? (
-          <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200/50 p-4 shadow-sm dark:bg-amber-950/24 dark:ring-amber-500/20">
+          <div className="rounded-xl bg-warning-bg ring-1 ring-warning/30 p-4">
             <div className="flex items-start gap-3">
-              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-warning" />
               <div className="space-y-2">
                 <p className="text-sm font-medium text-foreground">{t('settings.protocol.restartWarning')}</p>
                 <p className="text-xs text-muted-foreground">{t('settings.protocol.restartHint')}</p>
-                <code className="block rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-mono text-foreground dark:bg-secondary dark:border-border">cc-gw restart --daemon</code>
+                <code className="block rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-mono text-foreground">cc-gw restart --daemon</code>
                 <p className="text-xs text-muted-foreground">{t('settings.protocol.restartTip')}</p>
               </div>
             </div>
@@ -245,13 +245,13 @@ export function ProtocolSection({
         ) : null}
 
         {errors.protocol ? (
-          <div className="rounded-xl bg-destructive/10 ring-1 ring-destructive/30 p-4 text-sm text-destructive shadow-sm">
+          <div className="rounded-xl bg-destructive/10 ring-1 ring-destructive/30 p-4 text-sm text-destructive">
             <AlertCircle className="mr-2 inline h-4 w-4" />
             {errors.protocol}
           </div>
         ) : null}
 
-        <div className="rounded-xl bg-secondary p-5 dark:bg-secondary">
+        <div className="rounded-xl bg-secondary p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <Label className="text-sm font-medium text-foreground">{t('settings.protocol.http.enable')}</Label>
@@ -275,7 +275,7 @@ export function ProtocolSection({
           ) : null}
         </div>
 
-        <div className="rounded-xl bg-secondary p-5 dark:bg-secondary">
+        <div className="rounded-xl bg-secondary p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -305,12 +305,12 @@ export function ProtocolSection({
               <ProtocolPathField label={t('settings.protocol.https.certPath')} value={form.httpsCertPath} onChange={(value) => onSetForm((previous) => ({ ...previous, httpsCertPath: value }))} placeholder="~/.cc-gw/certs/cert.pem" />
               <ProtocolPathField label={t('settings.protocol.https.caPath')} value={form.httpsCaPath} onChange={(value) => onSetForm((previous) => ({ ...previous, httpsCaPath: value }))} placeholder="留空则不使用" />
 
-              <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200/50 p-4 shadow-sm dark:bg-amber-950/24 dark:ring-amber-500/20">
+              <div className="rounded-xl bg-warning-bg ring-1 ring-warning/30 p-4">
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                  <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-warning" />
                   <div className="flex-1 space-y-1.5">
-                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{t('settings.protocol.https.warning')}</p>
-                    <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-300">{t('settings.protocol.https.tip')}</p>
+                    <p className="text-sm font-medium text-warning">{t('settings.protocol.https.warning')}</p>
+                    <p className="text-xs leading-relaxed text-warning">{t('settings.protocol.https.tip')}</p>
                   </div>
                 </div>
               </div>
@@ -362,9 +362,9 @@ export function SecuritySection({
                 <Label className="text-sm font-medium">{t('settings.auth.enable')}</Label>
                 <p className="text-xs text-muted-foreground">{t('settings.auth.enableHint')}</p>
                 <div className="flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
-                  <span className="rounded-full bg-secondary px-3 py-1 text-[11px] tracking-[0.08em]">/ui</span>
-                  <span className="rounded-full bg-secondary px-3 py-1 text-[11px] tracking-[0.08em]">/api/*</span>
-                  <span className="rounded-full bg-secondary px-3 py-1 text-[11px] tracking-[0.08em]">Cookie Session</span>
+                  <span className="rounded-lg bg-secondary px-3 py-1 text-[11px] tracking-[0.08em]">/ui</span>
+                  <span className="rounded-lg bg-secondary px-3 py-1 text-[11px] tracking-[0.08em]">/api/*</span>
+                  <span className="rounded-lg bg-secondary px-3 py-1 text-[11px] tracking-[0.08em]">Cookie Session</span>
                 </div>
               </div>
               <div className="flex items-center gap-3 self-start sm:self-auto">
@@ -487,7 +487,7 @@ export function CleanupSection({
           {t('settings.cleanup.confirmCleanup')}
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
+          <div className="rounded-xl border border-warning/30 bg-warning-bg p-5">
             <div className="space-y-2">
               <Badge variant="warning">{t('settings.cleanup.softLabel')}</Badge>
               <p className="text-sm font-medium">{t('settings.cleanup.softTitle')}</p>
@@ -533,7 +533,7 @@ export function StickySettingsSaveBar({
   }
 
   return (
-    <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-xl bg-card border border-border px-6 py-5 shadow-lg md:flex-row md:items-center md:justify-between">
+    <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-xl bg-card border border-border px-6 py-5 shadow-[var(--surface-shadow-lg)] md:flex-row md:items-center md:justify-between">
       <div className="space-y-1">
         <Badge variant="secondary">{t('settings.overview.unsavedCount', { count: dirtyCount })}</Badge>
         <p className="text-sm text-muted-foreground">

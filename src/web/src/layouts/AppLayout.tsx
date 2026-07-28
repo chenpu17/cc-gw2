@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { MoreHorizontal } from 'lucide-react'
-import { getActiveNavigationRoute, navigationRoutes } from '@/app/routes'
+import { MoreHorizontal, Search } from 'lucide-react'
+import { getActiveNavigationRoute, navGroups, navigationRoutes } from '@/app/routes'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { cn } from '@/lib/utils'
@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/providers/AuthProvider'
 import { BrandMark } from '@/components/BrandMark'
+import { CommandPalette } from '@/components/CommandPalette'
+import { useHeaderRpm } from '@/hooks/useHeaderRpm'
 
 function isNavigationItemActive(pathname: string, item: (typeof navigationRoutes)[number]) {
   const matchPaths = item.nav.matchPaths ?? [item.path]
@@ -18,12 +20,6 @@ function isNavigationItemActive(pathname: string, item: (typeof navigationRoutes
     return pathname.startsWith(matchPath)
   })
 }
-
-const navGroups: { labelKey: string; paths: readonly string[] }[] = [
-  { labelKey: 'nav.group.overview', paths: ['/', '/logs', '/events'] },
-  { labelKey: 'nav.group.configure', paths: ['/providers', '/api-keys'] },
-  { labelKey: 'nav.group.system', paths: ['/settings', '/about'] }
-]
 
 /** mobile bottom tab bar: the four core destinations + a "more" drawer entry */
 const mobileTabPaths = ['/', '/logs', '/providers', '/api-keys']
@@ -151,7 +147,7 @@ function SidebarContent({ compact, onNavigate }: { compact?: boolean; onNavigate
               <p className="shrink-0 whitespace-nowrap text-sm font-semibold text-foreground" title={t('app.title')}>
                 cc-gw
               </p>
-              <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-success-bg px-1.5 py-0.5 text-[10px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success">
+              <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-success-bg px-1.5 py-0.5 text-[10px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success before:animate-live-pulse">
                 {t('app.online')}
               </span>
             </div>
@@ -253,12 +249,26 @@ export function AppLayout() {
   const { t } = useTranslation()
   const location = useLocation()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const { authEnabled, username, logout } = useAuth()
   const [loggingOut, setLoggingOut] = useState(false)
+  const rpm = useHeaderRpm()
 
   useEffect(() => {
     setMobileNavOpen(false)
   }, [location.pathname])
+
+  // ⌘K / Ctrl+K opens the command palette from anywhere.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setPaletteOpen((open) => !open)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const activeItem = useMemo(() => getActiveNavigationRoute(location.pathname), [location.pathname])
   const activeTitle = t(activeItem.nav.titleKey ?? activeItem.nav.labelKey)
@@ -280,26 +290,44 @@ export function AppLayout() {
       </a>
 
       {/* Compact sidebar (md–lg) */}
-      <aside className="hidden w-14 shrink-0 flex-col bg-card md:flex lg:hidden">
+      <aside className="hidden w-14 shrink-0 flex-col border-r border-border bg-card md:flex lg:hidden">
         <SidebarContent compact />
       </aside>
 
-      {/* Full sidebar (lg+) */}
-      <aside className="hidden w-52 shrink-0 flex-col bg-card lg:flex">
+      {/* Full sidebar (lg+) — mockup width:236px */}
+      <aside className="hidden w-[236px] shrink-0 flex-col border-r border-border bg-card lg:flex">
         <SidebarContent />
       </aside>
 
       {/* Main area */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Header */}
-        <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm lg:px-6">
-          <div key={location.pathname} className="flex min-w-0 animate-fade-in items-baseline gap-2">
+        {/* Header — mockup height:56px, solid panel bg (flat, no frosted) */}
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
+          <div key={location.pathname} className="flex min-w-0 flex-1 animate-fade-in items-baseline gap-2">
             <span className="hidden shrink-0 text-xs text-muted-foreground/60 sm:inline">{groupLabel}</span>
             <span aria-hidden className="hidden shrink-0 text-xs text-muted-foreground/40 sm:inline">/</span>
             <h1 className="truncate text-sm font-semibold text-foreground">{activeTitle}</h1>
           </div>
 
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            data-testid="command-palette-trigger"
+            aria-label={t('app.commandPalette.trigger')}
+            className="hidden h-8 shrink-0 items-center gap-2 rounded-md border border-border bg-secondary px-2.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex"
+          >
+            <Search className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{t('app.commandPalette.trigger')}</span>
+            <kbd className="rounded-[3px] border border-border bg-card px-1.5 py-px text-[10px] leading-none text-muted-foreground">⌘K</kbd>
+          </button>
+
           <div className="flex items-center gap-2">
+            <span
+              data-testid="header-rpm-badge"
+              className="hidden items-center gap-1.5 rounded-md bg-success-bg px-2 py-1.5 text-[11px] font-semibold text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success before:animate-live-pulse sm:inline-flex"
+            >
+              {t('app.liveRpm', { count: rpm })}
+            </span>
             {authEnabled && username && (
               <span className="hidden text-xs text-muted-foreground sm:inline">
                 {t('login.status', { username })}
@@ -328,7 +356,9 @@ export function AppLayout() {
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-20 pt-4 md:pb-4 lg:px-6">
-            <Outlet />
+            <div className="mx-auto flex w-full max-w-[1280px] flex-1 flex-col">
+              <Outlet />
+            </div>
           </div>
         </main>
       </div>
@@ -340,17 +370,19 @@ export function AppLayout() {
       {mobileNavOpen && (
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
           <div
-            className="fixed inset-0 bg-background/80 backdrop-blur-sm"
+            className="fixed inset-0 bg-background/95"
             onClick={() => setMobileNavOpen(false)}
           />
           <div
             id="mobile-nav"
-            className="fixed inset-y-0 left-0 w-52 bg-card shadow-[var(--surface-shadow-lg)] animate-in slide-in-from-left duration-200"
+            className="fixed inset-y-0 left-0 w-[236px] bg-card shadow-[var(--surface-shadow-lg)] animate-in slide-in-from-left duration-200"
           >
             <SidebarContent onNavigate={() => setMobileNavOpen(false)} />
           </div>
         </div>
       )}
+
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
   )
 }

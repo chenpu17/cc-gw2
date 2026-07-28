@@ -182,6 +182,25 @@ export default {
       failure: 'Copy failed',
       failureFallback: 'Unable to copy content. Please try again later.'
     },
+    trace: {
+      title: 'Request trace',
+      arrived: 'Client request arrived',
+      ttft: 'Upstream first token (TTFT)',
+      complete: 'Request complete',
+      pending: 'Request in progress…',
+      streamOn: 'stream',
+      streamOff: 'single',
+      tpot: 'TPOT',
+      degraded: 'No per-step timing recorded; derived from total latency and TTFT.'
+    },
+    inline: {
+      copyRequest: 'Copy request body',
+      copySession: 'Copy session ID',
+      viewRule: 'View routing rule',
+      sessionCopied: 'Session ID copied to clipboard.',
+      expand: 'Expand inline preview',
+      collapse: 'Collapse inline preview'
+    },
     loadError: 'Unable to load log detail.'
   }
 }

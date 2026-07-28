@@ -21,8 +21,8 @@ export function LoadingState({ label, className }: { label?: string; className?:
   const { t } = useTranslation()
 
   return (
-    <div className={cn('inline-flex items-center gap-3 rounded-full border border-border bg-secondary px-3.5 py-2 text-sm text-muted-foreground', className)}>
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary">
+    <div className={cn('inline-flex items-center gap-3 rounded-lg border border-border bg-secondary px-3.5 py-2 text-sm text-muted-foreground', className)}>
+      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary/10 text-primary">
         <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
       </span>
       <span>{label ?? t('common.loading')}</span>

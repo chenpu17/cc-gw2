@@ -247,6 +247,103 @@ pub(super) async fn api_config(State(state): State<AppState>) -> Json<GatewayCon
     Json(config_snapshot(&state).sanitize_for_web())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct RoutingSimulateBody {
+    /// `"anthropic"` | `"openai"` | a custom-endpoint id
+    endpoint: String,
+    model: Option<String>,
+    thinking: Option<bool>,
+    /// optional request body, used only for the long-context token estimate
+    body: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct RoutingSimulateResponse {
+    provider_id: String,
+    provider_label: String,
+    model_id: String,
+    reason: cc_gw_core::routing::RouteMatchReason,
+}
+
+/// Routing "hit simulation": given an endpoint + requested model, resolve the
+/// target the gateway WOULD pick and report which rule fired. Read-only — does
+/// not send any upstream request. Powers the console's 命中模拟 panel.
+pub(super) async fn api_routing_simulate(
+    State(state): State<AppState>,
+    Json(payload): Json<RoutingSimulateBody>,
+) -> Response {
+    let config = config_snapshot(&state);
+    let endpoint_id = payload.endpoint.trim();
+    let endpoint = match endpoint_id {
+        "anthropic" => cc_gw_core::routing::GatewayEndpoint::Anthropic,
+        "openai" => cc_gw_core::routing::GatewayEndpoint::OpenAi,
+        other => cc_gw_core::routing::GatewayEndpoint::Custom(other),
+    };
+    let protocol = match endpoint {
+        cc_gw_core::routing::GatewayEndpoint::Anthropic => {
+            cc_gw_core::provider::ProviderProtocol::AnthropicMessages
+        }
+        cc_gw_core::routing::GatewayEndpoint::OpenAi => {
+            cc_gw_core::provider::ProviderProtocol::OpenAiChatCompletions
+        }
+        cc_gw_core::routing::GatewayEndpoint::Custom(id) => {
+            // Mirror the real proxy path (main.rs `match_custom_route`): a custom
+            // endpoint's protocol is driven by its configured paths[].protocol
+            // (or the legacy path/protocol pair), not a hardcoded OpenAI default.
+            // Falls back to OpenAI chat when the endpoint has no protocol config.
+            cc_gw_core::routing::find_custom_endpoint(&config, id)
+                .and_then(|ep| {
+                    if !ep.paths.is_empty() {
+                        Some(ep.paths[0].protocol.as_str())
+                    } else {
+                        ep.protocol.as_deref()
+                    }
+                })
+                .map_or(
+                    cc_gw_core::provider::ProviderProtocol::OpenAiChatCompletions,
+                    |proto| match proto {
+                        "anthropic" => cc_gw_core::provider::ProviderProtocol::AnthropicMessages,
+                        "openai-responses" => {
+                            cc_gw_core::provider::ProviderProtocol::OpenAiResponses
+                        }
+                        _ => cc_gw_core::provider::ProviderProtocol::OpenAiChatCompletions,
+                    },
+                )
+        }
+    };
+    let request_body = payload.body.unwrap_or_else(|| json!({}));
+    let requested_model = payload
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let thinking = payload.thinking.unwrap_or(false);
+
+    match cc_gw_core::routing::resolve_route_with_reason(
+        &config,
+        endpoint,
+        protocol,
+        &request_body,
+        requested_model,
+        thinking,
+    ) {
+        Ok((target, reason)) => Json(RoutingSimulateResponse {
+            provider_id: target.provider_id,
+            provider_label: target.provider.label.clone(),
+            model_id: target.model_id,
+            reason,
+        })
+        .into_response(),
+        Err(err) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": err.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 pub(super) async fn api_config_info(State(state): State<AppState>) -> Json<ConfigInfoResponse> {
     let config = config_snapshot(&state).sanitize_for_web();
     Json(ConfigInfoResponse {
@@ -255,10 +352,16 @@ pub(super) async fn api_config_info(State(state): State<AppState>) -> Json<Confi
     })
 }
 
-pub(super) async fn api_providers(
-    State(state): State<AppState>,
-) -> Json<Vec<cc_gw_core::config::ProviderConfig>> {
-    Json(config_snapshot(&state).providers)
+pub(super) async fn api_providers(State(state): State<AppState>) -> Response {
+    // Only id/label are needed (logs filter dropdown); never ship the upstream
+    // api_key or other provider secrets to the browser from this endpoint.
+    // (Config editors that need the full provider record use /api/config.)
+    let summaries: Vec<Value> = config_snapshot(&state)
+        .providers
+        .into_iter()
+        .map(|provider| json!({ "id": provider.id, "label": provider.label }))
+        .collect();
+    Json(summaries).into_response()
 }
 
 pub(super) async fn api_provider_test(
@@ -496,9 +599,17 @@ pub(super) async fn api_config_update(
     }
 }
 
-pub(super) async fn api_custom_endpoints(State(state): State<AppState>) -> Json<serde_json::Value> {
+#[derive(serde::Serialize)]
+pub(crate) struct CustomEndpointsResponse {
+    endpoints: Vec<cc_gw_core::config::CustomEndpointConfig>,
+}
+
+pub(super) async fn api_custom_endpoints(State(state): State<AppState>) -> Json<CustomEndpointsResponse> {
     let config = config_snapshot(&state);
-    Json(json!({ "endpoints": config.custom_endpoints }))
+    // Serialize the typed struct directly (not via serde_json::Value / json!): the
+    // latter round-trips IndexMap through serde_json::Map (BTreeMap, sorted), which
+    // would scramble modelRoutes key order. Direct serialization preserves it.
+    Json(CustomEndpointsResponse { endpoints: config.custom_endpoints })
 }
 
 pub(super) async fn api_custom_endpoints_create(
@@ -1080,7 +1191,30 @@ pub(super) async fn api_events(
         .map(String::as_str)
         .filter(|value| !value.is_empty());
 
-    match list_events(&state.paths.db_path, limit, cursor, level, event_type) {
+    match list_events(&state.paths.db_path, limit, cursor, level, event_type, None) {
+        Ok(result) => Json(json!(result)).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+pub(super) async fn api_events_stats(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let since = query
+        .get("days")
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .map(|days| {
+            let now = chrono::Utc::now().timestamp_millis();
+            now - days.saturating_mul(24 * 60 * 60 * 1000)
+        });
+
+    match get_event_stats(&state.paths.db_path, since) {
         Ok(result) => Json(json!(result)).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1353,7 +1487,15 @@ pub(super) async fn api_logs(
     };
 
     match query_logs(&state.paths.db_path, &log_query) {
-        Ok(result) => Json(json!(result)).into_response(),
+        Ok(result) => {
+            let mut value = serde_json::to_value(result).unwrap_or_else(|_| json!({}));
+            if let Some(items) = value.get_mut("items").and_then(Value::as_array_mut) {
+                for item in items {
+                    mask_log_record_api_key(item, &state.paths.home_dir);
+                }
+            }
+            Json(value).into_response()
+        }
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": error.to_string() })),
@@ -1540,25 +1682,7 @@ pub(super) async fn api_log_detail(
     match get_log_detail(&state.paths.db_path, id) {
         Ok(Some(result)) => {
             let mut value = serde_json::to_value(result).unwrap_or_else(|_| json!({}));
-            if let Some(object) = value.as_object_mut() {
-                let decrypted = object
-                    .get("api_key_value")
-                    .and_then(Value::as_str)
-                    .and_then(|value| {
-                        decrypt_log_api_key_value(&state.paths.home_dir, Some(value))
-                    });
-                object.insert(
-                    "api_key_value_available".to_string(),
-                    Value::Bool(decrypted.is_some()),
-                );
-                object.insert(
-                    "api_key_value_masked".to_string(),
-                    decrypted
-                        .map(|value| Value::String(mask_revealed_key(&value)))
-                        .unwrap_or(Value::Null),
-                );
-                object.insert("api_key_value".to_string(), Value::Null);
-            }
+            mask_log_record_api_key(&mut value, &state.paths.home_dir);
             Json(value).into_response()
         }
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({ "error": "Not found" }))).into_response(),

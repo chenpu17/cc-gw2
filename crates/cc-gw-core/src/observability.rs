@@ -72,6 +72,31 @@ pub struct LogListResult {
     pub items: Vec<LogRecord>,
 }
 
+/// Strip the encrypted `api_key_value` from a serialized log record, replacing
+/// it with a decrypted `api_key_value_masked` preview + `api_key_value_available`
+/// flag. Applied everywhere log records leave the server so the AES ciphertext
+/// is never shipped to clients (only a masked preview when it can be decrypted).
+pub fn mask_log_record_api_key(value: &mut serde_json::Value, home_dir: &std::path::Path) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    let decrypted = object
+        .get("api_key_value")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| crate::api_keys::decrypt_log_api_key_value(home_dir, Some(value)));
+    object.insert(
+        "api_key_value_available".to_string(),
+        serde_json::Value::Bool(decrypted.is_some()),
+    );
+    object.insert(
+        "api_key_value_masked".to_string(),
+        decrypted
+            .map(|value| serde_json::Value::String(crate::api_keys::mask_revealed_key(&value)))
+            .unwrap_or(serde_json::Value::Null),
+    );
+    object.insert("api_key_value".to_string(), serde_json::Value::Null);
+}
+
 #[derive(Debug, Serialize)]
 pub struct LogPayload {
     pub client_request: Option<String>,
@@ -119,6 +144,8 @@ pub struct MetricsOverviewSection {
 pub struct MetricsOverview {
     pub totals: MetricsOverviewSection,
     pub today: MetricsOverviewSection,
+    /// Previous local day; drives the today-card delta pills (vs yesterday).
+    pub yesterday: MetricsOverviewSection,
 }
 
 #[derive(Debug, Serialize)]
@@ -309,7 +336,13 @@ fn decompress_payload(value: Option<Vec<u8>>) -> Option<String> {
 }
 
 fn open_db(db_path: &Path) -> Result<Connection> {
-    Connection::open(db_path).with_context(|| format!("failed to open db {}", db_path.display()))
+    let conn = Connection::open(db_path).with_context(|| format!("failed to open db {}", db_path.display()))?;
+    // Raise rusqlite's default 5s busy_timeout so concurrent proxy writes aren't
+    // SQLITE_BUSY'd (and then silently dropped) while an admin VACUUM / log
+    // cleanup holds the write lock for tens of seconds.
+    conn.busy_timeout(std::time::Duration::from_secs(30))
+        .with_context(|| format!("failed to set busy_timeout for db {}", db_path.display()))?;
+    Ok(conn)
 }
 
 fn current_process_memory_rss_bytes() -> Option<i64> {
@@ -857,10 +890,20 @@ pub fn get_metrics_overview(db_path: &Path, endpoint: Option<&str>) -> Result<Me
     let (today_start, tomorrow_start) = local_today_bounds_millis();
     let today_section =
         request_log_metrics_section(&conn, Some((today_start, tomorrow_start)), endpoint)?;
+    // Yesterday = the prior local calendar day, computed DST-aware. A naive
+    // `today_start - 86_400_000` drifts by ~1h around DST transitions (days can
+    // be 23 or 25h); `local_day_bounds_millis` resolves midnight in local time,
+    // so `(yesterday_start, today_start)` is exactly the prior day.
+    let today = chrono::Local::now().date_naive();
+    let yesterday = today.pred_opt().unwrap_or(today);
+    let (yesterday_start, _) = local_day_bounds_millis(yesterday);
+    let yesterday_section =
+        request_log_metrics_section(&conn, Some((yesterday_start, today_start)), endpoint)?;
 
     Ok(MetricsOverview {
         totals,
         today: today_section,
+        yesterday: yesterday_section,
     })
 }
 
@@ -1315,6 +1358,89 @@ mod tests {
         assert_eq!(openai_daily[0].input_tokens, 6);
         assert_eq!(openai_daily[0].output_tokens, 4);
         assert_eq!(openai_daily[0].avg_latency_ms, 80);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn metrics_overview_yesterday_section_respects_local_day_boundary() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-yesterday-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        // Use the DST-aware day bounds (the same helper the production query uses)
+        // instead of a naive 24h subtraction, then plant rows at every boundary.
+        let today = chrono::Local::now().date_naive();
+        let yesterday = today.pred_opt().unwrap_or(today);
+        let (yesterday_start, today_start) = local_day_bounds_millis(yesterday);
+        let (_, tomorrow_start) = local_day_bounds_millis(today);
+
+        // (timestamp, endpoint): each boundary verifies a different inclusion rule.
+        for (timestamp, endpoint) in [
+            (yesterday_start - 1, "anthropic"), // day before yesterday → excluded from yesterday & today
+            (yesterday_start, "anthropic"),     // start of yesterday → counts in yesterday
+            (today_start - 1, "openai"),        // last ms of yesterday → counts in yesterday
+            (today_start, "openai"),            // start of today → counts in today
+            (tomorrow_start - 1, "openai"),     // last ms of today → counts in today
+        ] {
+            let request_id = insert_request_log(
+                &db_path,
+                &RequestLogInput {
+                    timestamp,
+                    session_id: None,
+                    source_ip: None,
+                    endpoint: endpoint.to_string(),
+                    provider: "mock".to_string(),
+                    model: "mock-model".to_string(),
+                    client_model: None,
+                    stream: false,
+                    api_key_id: None,
+                    api_key_name: None,
+                    api_key_value: None,
+                },
+            )
+            .expect("insert request log");
+            finalize_request_log(
+                &db_path,
+                request_id,
+                &RequestLogUpdate {
+                    latency_ms: Some(100),
+                    status_code: Some(200),
+                    input_tokens: Some(10),
+                    output_tokens: Some(5),
+                    ..RequestLogUpdate::default()
+                },
+            )
+            .expect("finalize request log");
+        }
+
+        let overview = get_metrics_overview(&db_path, None).expect("query overview");
+        // yesterday window = [yesterday_start, today_start) → 2 rows.
+        assert_eq!(overview.yesterday.requests, 2);
+        assert_eq!(overview.yesterday.input_tokens, 20);
+        assert_eq!(overview.yesterday.avg_latency_ms, 100);
+        // today window = [today_start, tomorrow_start) → 2 rows.
+        assert_eq!(overview.today.requests, 2);
+        // totals = all 5 rows.
+        assert_eq!(overview.totals.requests, 5);
+
+        // Endpoint filter keeps yesterday scoped to that endpoint.
+        let anthropic = get_metrics_overview(&db_path, Some("anthropic")).expect("query anthropic");
+        // anthropic yesterday rows: only the one at yesterday_start
+        // (the yesterday_start-1 row is anthropic but falls before yesterday).
+        assert_eq!(anthropic.yesterday.requests, 1);
+        assert_eq!(anthropic.today.requests, 0);
+        assert_eq!(anthropic.totals.requests, 2);
+
+        let openai = get_metrics_overview(&db_path, Some("openai")).expect("query openai");
+        // openai yesterday: today_start-1 only; openai today: today_start + tomorrow_start-1.
+        assert_eq!(openai.yesterday.requests, 1);
+        assert_eq!(openai.today.requests, 2);
+        assert_eq!(openai.totals.requests, 3);
 
         let _ = std::fs::remove_dir_all(root);
     }

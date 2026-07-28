@@ -19,6 +19,10 @@ function RedirectToProviders() {
   return <Navigate to="/providers" replace />
 }
 
+function RedirectToRouting() {
+  return <Navigate to="/providers?tab=routing" replace />
+}
+
 interface AppRouteNavMeta {
   icon: LucideIcon
   labelKey: string
@@ -74,7 +78,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
   },
   {
     path: '/routing',
-    element: RedirectToProviders
+    element: RedirectToRouting
   },
   {
     path: '/events',
@@ -142,6 +146,21 @@ export const publicAppRoutes: AppRouteDefinition[] = [
 export const navigationRoutes = protectedAppRoutes.filter(
   (route): route is AppRouteDefinition & { nav: AppRouteNavMeta } => Boolean(route.nav)
 )
+
+export interface NavGroupDef {
+  labelKey: string
+  paths: readonly string[]
+}
+
+/**
+ * Sidebar + command-palette grouping of nav routes. Routes outside any group
+ * (e.g. /help) are reachable by URL only, consistent across both surfaces.
+ */
+export const navGroups: NavGroupDef[] = [
+  { labelKey: 'nav.group.overview', paths: ['/', '/logs', '/events'] },
+  { labelKey: 'nav.group.configure', paths: ['/providers', '/api-keys'] },
+  { labelKey: 'nav.group.system', paths: ['/settings', '/about'] }
+]
 
 export function getActiveNavigationRoute(pathname: string) {
   if (pathname === '/') {

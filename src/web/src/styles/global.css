@@ -4,92 +4,84 @@
 
 @layer base {
   :root {
-    --background: 220 14% 96%;        /* #F4F5F7 — subtle cool gray */
-    --foreground: 224 71% 4%;         /* #09090B — near-black */
-    --card: 0 0% 100%;                /* #FFFFFF */
-    --card-foreground: 224 71% 4%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 224 71% 4%;
-    --primary: 234 89% 54%;           /* #4338CA — deep indigo */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 13% 95%;         /* #F1F3F5 */
-    --secondary-foreground: 224 71% 4%;
-    --muted: 220 13% 91%;
-    --muted-foreground: 220 9% 46%;   /* #6B7280 — properly muted */
-    --accent: 220 13% 95%;
-    --accent-foreground: 234 89% 54%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 234 89% 54%;
-    --radius: 0.5rem;
+    /* Modernist — 纯 hex 变量(配合 tailwind.config 的 var(--x),支持 color-mix) */
+    --background: #f3f2f2;
+    --foreground: #201e1d;
+    --card: #ffffff;
+    --card-foreground: #201e1d;
+    --popover: #ffffff;
+    --popover-foreground: #201e1d;
+    --primary: #ec3013;            /* accent 红 */
+    --primary-foreground: #ffffff;
+    --secondary: #f8f4f4;          /* neutral-100 */
+    --secondary-foreground: #201e1d;
+    --muted: #eae7e7;              /* neutral-200 */
+    --muted-foreground: #605d5d;   /* neutral-700 */
+    --accent: #f8f4f4;             /* shadcn hover 浅底(非红) */
+    --accent-foreground: #201e1d;
+    --destructive: #dd2b0f;        /* accent-600 = err */
+    --destructive-foreground: #ffffff;
+    --border: #d7d3d3;             /* neutral-300 = line */
+    --input: #d7d3d3;
+    --ring: #ec3013;
+    --radius: 0px;
 
-    /* Status — subtle backgrounds with saturated text */
-    --success: 152 69% 31%;
-    --success-bg: 152 68% 96%;
-    --warning: 38 92% 50%;
-    --warning-bg: 48 96% 96%;
-    --error: 0 84% 60%;
-    --error-bg: 0 86% 97%;
-    --info: 234 89% 54%;
-    --info-bg: 234 85% 97%;
+    /* 状态 — Modernist 颠覆语义:ok=深灰、warn/err=红系(无绿) */
+    --success: #444141;   --success-bg: #eae7e7;    /* neutral-800 / 200 */
+    --warning: #ae1800;   --warning-bg: #ffe0d9;    /* accent-700 / 200 */
+    --error: #dd2b0f;     --error-bg: #fff2ef;      /* accent-600 / 100 */
+    --info: #605d5d;      --info-bg: #eae7e7;       /* 并入中性,红留给 err/accent */
 
-    /* Chart — muted professional palette */
-    --chart-1: 234 89% 54%;
-    --chart-2: 152 69% 31%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 0 84% 60%;
-    --chart-5: 280 67% 51%;
+    /* chart — mono 红+灰 */
+    --chart-1: #ec3013;
+    --chart-2: #ae1800;
+    --chart-3: #ff9783;
+    --chart-4: #444141;
+    --chart-5: #9b9797;
 
-    --surface-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 4px 12px rgba(0, 0, 0, 0.04);
-    --surface-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.03), 0 8px 24px rgba(0, 0, 0, 0.06);
-    --surface-border: rgba(0, 0, 0, 0.06);
+    --surface-shadow: none;
+    --surface-shadow-lg: none;
+    --surface-border: #d7d3d3;
 
-    /* Shared motion easing — snappy ease-out-quint; neutralized globally under reduced motion */
     --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .dark,
   [data-theme="dark"] {
-    --background: 224 71% 4%;         /* #09090B */
-    --foreground: 210 20% 98%;
-    --card: 224 48% 8%;               /* #111318 */
-    --card-foreground: 210 20% 98%;
-    --popover: 224 48% 8%;
-    --popover-foreground: 210 20% 98%;
-    --primary: 234 89% 74%;           /* lighter indigo for dark */
-    --primary-foreground: 224 71% 4%;
-    --secondary: 215 28% 14%;
-    --secondary-foreground: 210 20% 98%;
-    --muted: 215 28% 17%;
-    --muted-foreground: 218 11% 58%;
-    --accent: 215 28% 17%;
-    --accent-foreground: 234 89% 74%;
-    --destructive: 0 72% 65%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 215 28% 17%;
-    --input: 215 28% 17%;
-    --ring: 234 89% 74%;
+    --background: #201e1d;
+    --foreground: #f8f4f4;
+    --card: #2d2b2b;
+    --card-foreground: #f8f4f4;
+    --popover: #2d2b2b;
+    --popover-foreground: #f8f4f4;
+    --primary: #ff563c;
+    --primary-foreground: #201e1d;
+    --secondary: #363333;
+    --secondary-foreground: #f8f4f4;
+    --muted: #444141;
+    --muted-foreground: #d7d3d3;
+    --accent: #363333;
+    --accent-foreground: #f8f4f4;
+    --destructive: #ff563c;
+    --destructive-foreground: #201e1d;
+    --border: #605d5d;
+    --input: #605d5d;
+    --ring: #ff563c;
 
-    /* Status — dark variants */
-    --success: 152 60% 50%;
-    --success-bg: 152 45% 14%;
-    --warning: 38 92% 60%;
-    --warning-bg: 38 60% 14%;
-    --error: 0 72% 65%;
-    --error-bg: 0 50% 16%;
-    --info: 234 89% 74%;
-    --info-bg: 234 50% 16%;
+    --success: #d7d3d3;   --success-bg: #444141;
+    --warning: #ff9783;   --warning-bg: #71261b;
+    --error: #ff563c;     --error-bg: #7c1405;
+    --info: #d7d3d3;      --info-bg: #444141;
 
-    --chart-1: 234 89% 74%;
-    --chart-2: 152 60% 50%;
-    --chart-3: 38 92% 60%;
-    --chart-4: 0 72% 65%;
-    --chart-5: 280 67% 65%;
-    --surface-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
-    --surface-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
-    --surface-border: rgba(255, 255, 255, 0.08);
+    --chart-1: #ff563c;
+    --chart-2: #ff9783;
+    --chart-3: #ae1800;
+    --chart-4: #d7d3d3;
+    --chart-5: #9b9797;
+
+    --surface-shadow: none;
+    --surface-shadow-lg: none;
+    --surface-border: #605d5d;
   }
 }
 
@@ -104,36 +96,48 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: "Inter", "SF Pro Display", "PingFang SC", "Noto Sans SC", system-ui, -apple-system, sans-serif;
-    font-feature-settings: "rlig" 1, "calt" 1, "cv11" 1;
+    font-family: "Archivo", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
+
+  /* Modernist 标题:Archivo 800 */
+  h1, h2, h3, h4 {
+    font-weight: 800;
+    letter-spacing: -0.015em;
+  }
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* Scrollbar — 方形 9px(Modernist) */
+::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-track { @apply bg-transparent; }
-::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
-::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground/40; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+  background-clip: content-box;
+}
 
-/* Focus */
+/* Focus — 红 ring(--primary 已是红) */
 *:focus-visible {
   @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
 }
 
-/* Selection — bg-indigo-400/35 works on both light and dark backgrounds; no forced text color so
-   elements keep their own text color (white on dark bg, dark on light bg).
-   Hero/CTA sections override locally with [&_::selection]:text-white for gradient text. */
-::selection { @apply bg-indigo-400/35; }
+/* Selection — 红 tint */
+::selection {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
 
 /* Animations */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.animate-fade-in  { animation: fadeIn    0.2s ease-out; }
+.animate-fade-in  { animation: fadeIn 0.2s ease-out; }
 
-/* Shared surface motion — for cards, metric tiles, interactive rows.
-   The global prefers-reduced-motion block below zeroes these durations. */
 .motion-surface {
   transition-property: transform, box-shadow, border-color, background-color, color;
   transition-duration: 160ms;
@@ -141,7 +145,7 @@
 }
 
 .metric-number {
-  font-family: "Inter", "SF Mono", "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-family: "Archivo", "SF Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }

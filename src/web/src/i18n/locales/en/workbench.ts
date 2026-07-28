@@ -12,9 +12,46 @@ export default {
     flow: "Client-requested model (e.g. claude-sonnet-4) → matched route rule → forwarded to a provider's model",
     hint: 'Clients request by model name: rules below are matched first, and anything unmatched falls through to the default.'
   },
+  flow: {
+    title: 'Request flow',
+    clientStep: 'Client model',
+    endpointStep: 'Endpoint',
+    matchStep: 'Route rule match',
+    targetStep: 'Forward target',
+    fallbackNote: 'Unmatched requests use the default'
+  },
+  endpointRail: {
+    title: 'Endpoints',
+    subtitle: 'Each endpoint has its own rule set',
+    add: 'New endpoint',
+    ruleCount: '{{count}}'
+  },
+  endpointConfig: {
+    title: 'Endpoint config'
+  },
+  hitSim: {
+    title: 'Routing Hit Simulator',
+    subtitle: 'Enter a client model name to preview which rule it hits, in real time',
+    endpointLabel: 'Endpoint',
+    modelPlaceholder: 'e.g. claude-sonnet-4-5-20250929',
+    thinking: 'Thinking',
+    anyModel: '(any model)',
+    empty: 'Enter a model name to see which route it hits',
+    errorPrefix: 'Could not resolve route',
+    reasonModelRoute: 'Hit a model route rule',
+    reasonModelRouteAlias: 'Hit a model route rule (via alias)',
+    reasonDirectMatch: 'Direct provider match',
+    reasonThinkingDefault: 'Hit thinking default',
+    reasonCompletionDefault: 'Hit completion default',
+    reasonLongContext: 'Hit long-context default',
+    longContextDetail: 'Estimated ~{{estimate}} tokens, over threshold {{threshold}}',
+    reasonFallback: 'No rule matched · global fallback',
+    fallbackHint: 'No rule matched this model; it will use the global fallback.'
+  },
   defaults: {
     title: 'Default forwarding',
     description: 'Requests that match no rule below are forwarded here. With a single provider, setting this alone is usually all you need.',
+    cardSubtitle: 'Requests that match no rule go here',
     completionLabel: 'Forward to (provider:model)',
     moreLabel: 'More default settings',
     reasoningLabel: 'Reasoning model',
@@ -35,6 +72,8 @@ export default {
   },
   routing: {
     rulesTitle: 'Route rules',
+    rulesSubtitle: 'Matched top-to-bottom, * wildcards supported; drag the left handle to set priority',
+    dragHandle: 'Drag to reorder',
     sourceLabel: 'Client-requested model',
     targetLabel: 'Forward to (provider:model)',
     emptyTitle: 'No route rules yet',

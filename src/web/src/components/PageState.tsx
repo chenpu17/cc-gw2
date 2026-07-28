@@ -13,9 +13,9 @@ interface PageStateProps {
 }
 
 const toneClasses: Record<NonNullable<PageStateProps['tone']>, string> = {
-  default: 'border-border/30 bg-card shadow-sm',
-  primary: 'border-primary/10 bg-card shadow-sm',
-  danger: 'border-destructive/15 bg-card shadow-sm'
+  default: 'border-border/30 bg-card',
+  primary: 'border-primary/10 bg-card',
+  danger: 'border-destructive/15 bg-card'
 }
 
 const iconToneClasses: Record<NonNullable<PageStateProps['tone']>, string> = {

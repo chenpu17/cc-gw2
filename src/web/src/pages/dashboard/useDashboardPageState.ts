@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type EChartOption } from '@/components/EChart'
 import { useChartTheme } from '@/components/chartTheme'
@@ -68,15 +68,24 @@ export function useDashboardPageState() {
   // Live warn/error event feed via SSE; prepended onto the snapshot from summary
   const liveEvents = useEventStream({ level: 'warn,error', maxEvents: 20 })
 
+  const summaryErrorShownRef = useRef(false)
   useEffect(() => {
-    if (summaryQuery.isError && summaryQuery.error) {
+    // v5 keeps `isError` false while cached data exists and a background
+    // refetch fails (the failure only surfaces on `query.error`). Gate on
+    // `error` directly so a downed backend after first load still toasts once.
+    const hasError = summaryQuery.error != null
+    if (hasError && !summaryErrorShownRef.current) {
+      summaryErrorShownRef.current = true
       pushToast({
         title: t('dashboard.toast.overviewError'),
-        description: summaryQuery.error.message,
+        description: summaryQuery.error?.message ?? '',
         variant: 'error'
       })
     }
-  }, [summaryQuery.error, summaryQuery.isError, pushToast, t])
+    if (!hasError) {
+      summaryErrorShownRef.current = false
+    }
+  }, [summaryQuery.error, pushToast, t])
 
   const handleRefresh = useCallback(async () => {
     await Promise.all([summaryQuery.refetch(), customEndpointsQuery.refetch()])
@@ -149,10 +158,14 @@ export function useDashboardPageState() {
     const merged = [...liveEvents.events, ...snapshot].filter((event) => {
       if (seen.has(event.id)) return false
       seen.add(event.id)
+      // Live SSE events arrive globally; when the dashboard is scoped to one
+      // endpoint, drop events that don't belong to it (incl. system events with
+      // no endpoint) so the feed matches the server-side scoped snapshot.
+      if (endpointParam && event.endpoint !== endpointParam) return false
       return true
     })
     return merged.slice(0, 10)
-  }, [liveEvents.events, summary])
+  }, [liveEvents.events, summary, endpointParam])
 
   const selectedEndpointLabel = endpointFilter === 'all'
     ? t('dashboard.filters.endpointAll')

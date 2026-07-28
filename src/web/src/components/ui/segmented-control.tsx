@@ -17,8 +17,8 @@ interface SegmentedControlProps<T extends string | number> {
 }
 
 /**
- * Pill-style segmented toggle. Encapsulates the hand-rolled
- * `rounded-full bg-secondary p-1` pattern used across range/density/view switches.
+ * Segmented toggle. Encapsulates the hand-rolled `bg-secondary p-1` pattern
+ * used across range/density/view switches. Square under Modernist (zero radius).
  */
 export function SegmentedControl<T extends string | number>({
   value,
@@ -32,7 +32,7 @@ export function SegmentedControl<T extends string | number>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className={cn('flex items-center gap-1 rounded-full bg-secondary p-1', className)}
+      className={cn('flex items-center gap-1 bg-secondary p-1', className)}
     >
       {options.map((option) => {
         const active = option.value === value
@@ -43,7 +43,7 @@ export function SegmentedControl<T extends string | number>({
             onClick={() => onChange(option.value)}
             aria-pressed={active}
             className={cn(
-              'inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-xs font-medium transition-all',
+              'inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap px-3.5 text-xs font-medium transition-all',
               block ? 'flex-1' : 'shrink-0',
               active
                 ? 'bg-primary text-primary-foreground'

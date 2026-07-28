@@ -365,6 +365,8 @@ pub fn initialize_database(path: &Path) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_gateway_events_created_at ON gateway_events(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_gateway_events_type ON gateway_events(type);
         CREATE INDEX IF NOT EXISTS idx_gateway_events_level ON gateway_events(level);
+
+        CREATE INDEX IF NOT EXISTS idx_request_logs_timestamp ON request_logs(timestamp);
         ",
     )?;
 

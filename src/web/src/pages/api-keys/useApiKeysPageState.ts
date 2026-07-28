@@ -183,7 +183,7 @@ export function useApiKeysPageState() {
           name: t('apiKeys.analytics.requestsSeries'),
           type: 'bar',
           data: usage.map((item) => item.requests),
-          itemStyle: { color: 'hsl(var(--primary))' }
+          itemStyle: { color: 'var(--primary)' }
         }
       ]
     }
@@ -237,13 +237,21 @@ export function useApiKeysPageState() {
       pushToast({ title: t('apiKeys.errors.nameRequired'), variant: 'error' })
       return
     }
+    const trimmedConcurrency = newKeyMaxConcurrency.trim()
+    if (
+      trimmedConcurrency &&
+      (!Number.isInteger(Number(trimmedConcurrency)) || Number(trimmedConcurrency) < 1)
+    ) {
+      pushToast({ title: t('apiKeys.errors.maxConcurrencyInvalid'), variant: 'error' })
+      return
+    }
 
     try {
       const response = await createKeyMutation.mutateAsync({
         name: newKeyName.trim(),
         description: newKeyDescription.trim() || undefined,
         allowedEndpoints: newKeyEndpoints.length > 0 ? newKeyEndpoints : undefined,
-        maxConcurrency: newKeyMaxConcurrency ? Number(newKeyMaxConcurrency) : null
+        maxConcurrency: trimmedConcurrency ? Number(trimmedConcurrency) : null
       })
       setNewlyCreatedKey(response)
       handleCreateDialogChange(false)
@@ -316,18 +324,27 @@ export function useApiKeysPageState() {
   const handleSaveEndpoints = useCallback(async () => {
     if (!editEndpointsKey) return
 
+    const trimmedConcurrency = editMaxConcurrency.trim()
+    if (
+      trimmedConcurrency &&
+      (!Number.isInteger(Number(trimmedConcurrency)) || Number(trimmedConcurrency) < 1)
+    ) {
+      pushToast({ title: t('apiKeys.errors.maxConcurrencyInvalid'), variant: 'error' })
+      return
+    }
+
     try {
       await updateKeyMutation.mutateAsync({
         id: editEndpointsKey.id,
         ...(editEndpointsKey.isWildcard
           ? {}
           : { allowedEndpoints: editEndpointsSelection.length > 0 ? editEndpointsSelection : null }),
-        maxConcurrency: editMaxConcurrency ? Number(editMaxConcurrency) : null
+        maxConcurrency: trimmedConcurrency ? Number(trimmedConcurrency) : null
       })
       setEditEndpointsKey(null)
     } catch {
     }
-  }, [editEndpointsKey, editEndpointsSelection, editMaxConcurrency, updateKeyMutation])
+  }, [editEndpointsKey, editEndpointsSelection, editMaxConcurrency, pushToast, t, updateKeyMutation])
 
   const formatDate = useCallback((isoString: string | null) => {
     if (!isoString) return t('common.noData')

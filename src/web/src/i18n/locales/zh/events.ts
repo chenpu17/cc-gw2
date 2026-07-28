@@ -19,6 +19,9 @@ export default {
     warn: '警告',
     error: '错误'
   },
+  stats: {
+    total: '总计'
+  },
   empty: {
     title: '暂无事件记录',
     subtitle: '当前没有异常或告警事件，这通常意味着系统运行平稳。',
@@ -32,6 +35,7 @@ export default {
   defaultTitle: '未命名事件',
   defaultMessage: '未提供详细描述。',
   toast: {
-    loadFailure: '加载事件失败：{{message}}'
+    loadFailure: '加载事件失败：{{message}}',
+    statsLoadFailure: '加载事件统计失败：{{message}}'
   }
 }

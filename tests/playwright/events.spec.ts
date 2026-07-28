@@ -42,6 +42,12 @@ test('events page supports live stream, level filtering, type filtering, and res
   await expect(page.getByTestId('events-filters-card')).toHaveCSS('position', 'static')
   await expect(page.getByText('Web login failed')).toBeVisible()
   await expect(page.getByText('Web login succeeded')).toBeVisible()
+  // 头部统计卡(后端 /api/events/stats 全量聚合)反映了上面的登录事件:
+  // web_auth_login_failure(warn)+ web_auth_login_success(info)
+  const statsGrid = page.getByTestId('events-stats-grid')
+  await expect(statsGrid.getByTestId('events-stat-warn')).toContainText(/[1-9]/)
+  await expect(statsGrid.getByTestId('events-stat-info')).toContainText(/[1-9]/)
+  await expect(statsGrid.getByTestId('events-stat-total')).toContainText(/[1-9]/)
   // SSE 实时流已连接
   await expect(page.getByText('实时更新中')).toBeVisible()
 

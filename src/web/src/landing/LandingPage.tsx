@@ -383,17 +383,14 @@ const protocolExamples = [
   {
     client: 'Anthropic SDK',
     upstream: { zh: 'OpenAI · GPT-4o', en: 'OpenAI · GPT-4o' } as T,
-    accent: 'from-amber-500/20 to-rose-500/20 text-amber-600',
   },
   {
     client: 'OpenAI SDK',
     upstream: { zh: 'Anthropic · Claude Sonnet', en: 'Anthropic · Claude Sonnet' } as T,
-    accent: 'from-cyan-500/20 to-indigo-500/20 text-cyan-600',
   },
   {
     client: 'Claude Code',
     upstream: { zh: '本地 Ollama / 自建模型', en: 'Local Ollama / self-hosted' } as T,
-    accent: 'from-emerald-500/20 to-teal-500/20 text-emerald-600',
   },
 ]
 
@@ -426,12 +423,12 @@ const consoleTabs = [
 // ---------- atoms ----------
 
 function highlightCode(line: string): ReactNode {
-  if (line.trim().startsWith('#')) return <span className="text-slate-500">{line}</span>
+  if (line.trim().startsWith('#')) return <span className="text-muted-foreground">{line}</span>
   if (line.startsWith('$ ')) {
     return (
       <>
-        <span className="select-none text-emerald-400">$ </span>
-        <span className="text-slate-100">{line.slice(2)}</span>
+        <span className="select-none text-primary">$ </span>
+        <span className="text-foreground">{line.slice(2)}</span>
       </>
     )
   }
@@ -442,13 +439,13 @@ function highlightCode(line: string): ReactNode {
     return (
       <>
         <span>{indent}</span>
-        <span className="text-indigo-300">{key}</span>
-        <span className="text-slate-400">{op}</span>
-        <span className={isStr ? 'text-emerald-300' : 'text-slate-100'}>{val}</span>
+        <span className="text-foreground">{key}</span>
+        <span className="text-muted-foreground">{op}</span>
+        <span className={isStr ? 'text-primary' : 'text-foreground'}>{val}</span>
       </>
     )
   }
-  return <span className="text-slate-100">{line}</span>
+  return <span className="text-foreground">{line}</span>
 }
 
 function CodeBlock({
@@ -476,16 +473,16 @@ function CodeBlock({
         type="button"
         aria-label={`Copy ${label}`}
         onClick={onCopy}
-        className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/10 px-2.5 py-1 text-[11px] font-medium text-slate-100 transition hover:bg-white/15"
+        className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium text-foreground transition hover:bg-secondary"
       >
         {copied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
         {copied ? copiedLabel : copyLabel}
       </button>
-      <pre className="max-w-full overflow-x-auto rounded-2xl bg-slate-950 p-5 font-mono text-[13px] leading-7 text-slate-100 ring-1 ring-white/5 [&_::selection]:bg-blue-500/40 [&_::selection]:text-white">
+      <pre className="max-w-full overflow-x-auto rounded-2xl border border-border bg-secondary p-5 font-mono text-[13px] leading-7 text-foreground">
         <code>
           {code.split('\n').map((line, i) => (
             <span key={i} className="block">
-              {highlightCode(line) ?? '\u00a0'}
+              {highlightCode(line) ?? ' '}
             </span>
           ))}
         </code>
@@ -503,16 +500,16 @@ function InstallPill() {
     window.setTimeout(() => setCopied(false), 1800)
   }
   return (
-    <div className="inline-flex w-full max-w-md items-center gap-2 rounded-2xl border border-white/15 bg-white/5 py-2 pl-4 pr-2 backdrop-blur-sm">
-      <span className="select-none font-mono text-emerald-400">$</span>
-      <span className="select-all truncate font-mono text-sm text-slate-100">{cmd}</span>
+    <div className="inline-flex w-full max-w-md items-center gap-2 rounded-2xl border border-border bg-card py-2 pl-4 pr-2">
+      <span className="select-none font-mono text-primary">$</span>
+      <span className="select-all truncate font-mono text-sm text-foreground">{cmd}</span>
       <button
         type="button"
         aria-label="Copy install command"
         onClick={onCopy}
-        className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-slate-200 transition hover:bg-white/20"
+        className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground transition hover:bg-muted"
       >
-        {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
     </div>
   )
@@ -529,13 +526,13 @@ function SectionHead({
 }) {
   return (
     <div className="max-w-3xl">
-      <div className="font-mono text-xs font-semibold uppercase tracking-[0.22em] text-indigo-600">
+      <div className="font-mono text-xs font-semibold uppercase tracking-[0.22em] text-primary">
         {eyebrow}
       </div>
-      <h2 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-slate-950 sm:text-4xl">
+      <h2 className="mt-4 text-3xl font-semibold tracking-[-0.02em] text-foreground sm:text-4xl">
         {title}
       </h2>
-      <p className="mt-4 text-base leading-8 text-slate-600 sm:text-lg">{description}</p>
+      <p className="mt-4 text-base leading-8 text-muted-foreground sm:text-lg">{description}</p>
     </div>
   )
 }
@@ -559,15 +556,15 @@ export default function LandingPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-white text-slate-950 antialiased">
+    <div className="min-h-screen bg-background text-foreground antialiased">
       {/* ============= HEADER ============= */}
-      <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 border-b border-border bg-card">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3.5 sm:px-8 lg:px-10">
           <a href="#top" className="flex items-center gap-2.5">
             <BrandMark className="h-9 w-9" title="cc-gw" />
             <div className="leading-tight">
               <div className="text-[15px] font-semibold tracking-tight">cc-gw</div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+              <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 local-first ai gateway
               </div>
             </div>
@@ -578,7 +575,7 @@ export default function LandingPage() {
               <a
                 key={item.href}
                 href={item.href}
-                className="rounded-lg px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground"
               >
                 {item.label}
               </a>
@@ -590,20 +587,20 @@ export default function LandingPage() {
               type="button"
               onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
               aria-label="Toggle language"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:border-primary"
             >
               <Languages className="h-3.5 w-3.5" />
               {lang === 'zh' ? 'EN' : '中文'}
             </button>
             <a
               href="/ui/"
-              className="hidden rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950 sm:inline-flex"
+              className="hidden rounded-lg border border-border bg-card px-3.5 py-1.5 text-sm font-medium text-foreground transition hover:border-primary hover:text-foreground sm:inline-flex"
             >
               {tt(COPY.ctaConsole)}
             </a>
             <a
               href="https://github.com/chenpu17/cc-gw2"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-slate-800"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition hover:bg-muted"
             >
               <Github className="h-4 w-4" />
               GitHub
@@ -613,13 +610,13 @@ export default function LandingPage() {
 
         <nav
           aria-label="Mobile section navigation"
-          className="flex gap-1.5 overflow-x-auto border-t border-slate-200/70 px-4 py-2 lg:hidden"
+          className="flex gap-1.5 overflow-x-auto border-t border-border px-4 py-2 lg:hidden"
         >
           {[...navItems, { href: '/ui/', label: tt(COPY.ctaConsole) }].map((item) => (
             <a
               key={item.href}
               href={item.href}
-              className="shrink-0 rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
+              className="shrink-0 rounded-lg bg-secondary px-3 py-1 text-xs font-medium text-foreground"
             >
               {item.label}
             </a>
@@ -629,49 +626,29 @@ export default function LandingPage() {
 
       <main id="top">
         {/* ============= HERO ============= */}
-        <section className="relative overflow-hidden bg-slate-950 text-white [&_::selection]:bg-indigo-400/40 [&_::selection]:text-white">
-          <div
-            aria-hidden
-            className="absolute inset-0 opacity-[0.18]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgba(148,163,184,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.18) 1px, transparent 1px)',
-              backgroundSize: '48px 48px',
-              maskImage: 'radial-gradient(ellipse at center top, black 30%, transparent 75%)',
-              WebkitMaskImage: 'radial-gradient(ellipse at center top, black 30%, transparent 75%)',
-            }}
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -top-40 left-1/2 h-[640px] w-[1100px] -translate-x-1/2 rounded-full opacity-60 blur-[120px]"
-            style={{
-              background:
-                'radial-gradient(closest-side, rgba(99,102,241,0.55), transparent 70%), radial-gradient(closest-side at 70% 60%, rgba(34,211,238,0.35), transparent 70%)',
-            }}
-          />
-
+        <section className="relative overflow-hidden bg-foreground text-background">
           <div className="relative mx-auto w-full max-w-6xl px-6 pb-24 pt-20 sm:px-8 lg:px-10 lg:pt-28">
             <div className="mx-auto max-w-3xl text-center">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 py-1 text-xs font-medium text-slate-200 backdrop-blur-sm">
-                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+              <span className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-1 text-xs font-medium text-foreground">
+                <span aria-hidden="true" className="inline-flex h-1.5 w-1.5 rounded-full bg-success" />
                 {tt(COPY.hero.badge)}
               </span>
 
               <h1 className="mt-7 text-[2.4rem] font-bold leading-[1.05] tracking-[-0.035em] sm:text-6xl">
                 {tt(COPY.hero.h1Top)}
-                <span className="mt-2 block bg-gradient-to-r from-indigo-300 via-violet-300 to-cyan-300 bg-clip-text text-transparent">
+                <span className="mt-2 block text-primary">
                   {tt(COPY.hero.h1Bottom)}
                 </span>
               </h1>
 
-              <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
+              <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-background/80 sm:text-lg">
                 {tt(COPY.hero.lead)}
               </p>
 
               <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <a
                   href="#start"
-                  className="group inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-indigo-500/20 transition hover:bg-slate-100"
+                  className="group inline-flex items-center justify-center gap-2 rounded-xl bg-background px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-secondary"
                 >
                   <Terminal className="h-4 w-4" />
                   {tt(COPY.ctaInstall)}
@@ -679,7 +656,7 @@ export default function LandingPage() {
                 </a>
                 <a
                   href="#console"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/10"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-transparent px-5 py-3 text-sm font-semibold text-background transition hover:bg-background hover:text-foreground"
                 >
                   {tt(COPY.ctaPreview)}
                 </a>
@@ -687,16 +664,16 @@ export default function LandingPage() {
 
               <div className="mt-7 flex flex-col items-center gap-2">
                 <InstallPill />
-                <p className="font-mono text-[11px] text-slate-400">{tt(COPY.hero.note)}</p>
+                <p className="font-mono text-[11px] text-background/60">{tt(COPY.hero.note)}</p>
               </div>
 
               <ul className="mt-10 grid gap-3 text-left sm:grid-cols-3">
                 {COPY.hero.proof.map((p, i) => (
                   <li
                     key={i}
-                    className="flex items-start gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[13px] leading-6 text-slate-200 backdrop-blur-sm"
+                    className="flex items-start gap-2 rounded-xl border border-border bg-card px-4 py-3 text-[13px] leading-6 text-foreground"
                   >
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                     <span>{tt(p)}</span>
                   </li>
                 ))}
@@ -705,16 +682,12 @@ export default function LandingPage() {
 
             {/* hero screenshot */}
             <div className="relative mx-auto mt-16 max-w-5xl">
-              <div
-                aria-hidden
-                className="absolute inset-x-10 -top-10 h-40 rounded-full bg-gradient-to-r from-indigo-500/30 via-violet-500/25 to-cyan-500/30 blur-3xl"
-              />
-              <div className="relative overflow-hidden rounded-2xl border border-white/15 bg-slate-900/60 p-1.5 shadow-[0_40px_120px_-20px_rgba(2,6,23,0.8)] ring-1 ring-white/5 backdrop-blur">
-                <div className="flex items-center gap-1.5 border-b border-white/10 px-4 py-2.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400/70" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-300/70" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
-                  <div className="ml-3 flex-1 truncate rounded-md bg-white/5 px-3 py-1 text-center font-mono text-[11px] text-slate-300">
+              <div className="relative overflow-hidden rounded-2xl border border-border bg-secondary p-1.5">
+                <div className="flex items-center gap-1.5 border-b border-border px-4 py-2.5">
+                  <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                  <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                  <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                  <div className="ml-3 flex-1 truncate rounded-md bg-card px-3 py-1 text-center font-mono text-[11px] text-muted-foreground">
                     127.0.0.1:4100/ui/
                   </div>
                 </div>
@@ -728,14 +701,14 @@ export default function LandingPage() {
             </div>
 
             <div className="mt-16">
-              <p className="text-center font-mono text-[11px] uppercase tracking-[0.22em] text-slate-400">
+              <p className="text-center font-mono text-[11px] uppercase tracking-[0.22em] text-background/60">
                 {tt(COPY.hero.works)}
               </p>
               <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
                 {compatibilityBadges.map((b) => (
                   <span
                     key={b}
-                    className="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-sm text-slate-200 backdrop-blur-sm"
+                    className="rounded-lg border border-border bg-card px-3.5 py-1.5 text-sm text-foreground"
                   >
                     {b}
                   </span>
@@ -756,14 +729,14 @@ export default function LandingPage() {
             {COPY.why.cards.map((p) => (
               <div
                 key={p.title.en}
-                className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-slate-300 hover:shadow-[0_20px_50px_-30px_rgba(15,23,42,0.25)]"
+                className="group relative overflow-hidden rounded-2xl border border-border bg-card p-6 transition hover:border-primary"
               >
                 <div className="flex items-center gap-2">
-                  <XCircle className="h-4 w-4 text-rose-500" />
-                  <h3 className="text-base font-semibold text-slate-950">{tt(p.title)}</h3>
+                  <XCircle className="h-4 w-4 text-error" />
+                  <h3 className="text-base font-semibold text-foreground">{tt(p.title)}</h3>
                 </div>
-                <p className="mt-3 text-sm leading-7 text-slate-600">{tt(p.body)}</p>
-                <pre className="mt-5 overflow-hidden rounded-lg bg-slate-50 p-3 font-mono text-[11.5px] leading-6 text-slate-500 ring-1 ring-slate-200">
+                <p className="mt-3 text-sm leading-7 text-muted-foreground">{tt(p.body)}</p>
+                <pre className="mt-5 overflow-hidden rounded-lg bg-secondary p-3 font-mono text-[11.5px] leading-6 text-muted-foreground ring-1 ring-border">
                   {p.sample}
                 </pre>
               </div>
@@ -772,7 +745,7 @@ export default function LandingPage() {
         </section>
 
         {/* ============= HOW ============= */}
-        <section id="how" className="border-y border-slate-200/80 bg-slate-50/60">
+        <section id="how" className="border-y border-border bg-secondary">
           <div className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
             <SectionHead
               eyebrow={tt(COPY.how.eyebrow)}
@@ -782,31 +755,31 @@ export default function LandingPage() {
 
             {/* flow diagram */}
             <div className="mt-12 grid gap-6 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-stretch">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <div className="rounded-2xl border border-border bg-card p-5">
+                <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   {tt(COPY.how.diagramLabels.clients)}
                 </div>
-                <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  <li className="rounded-lg bg-slate-50 px-3 py-2">Claude Code</li>
-                  <li className="rounded-lg bg-slate-50 px-3 py-2">OpenAI SDK</li>
-                  <li className="rounded-lg bg-slate-50 px-3 py-2">Anthropic SDK</li>
-                  <li className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">cURL · LangChain · …</li>
+                <ul className="mt-3 space-y-2 text-sm text-foreground">
+                  <li className="rounded-lg bg-secondary px-3 py-2">Claude Code</li>
+                  <li className="rounded-lg bg-secondary px-3 py-2">OpenAI SDK</li>
+                  <li className="rounded-lg bg-secondary px-3 py-2">Anthropic SDK</li>
+                  <li className="rounded-lg bg-secondary px-3 py-2 text-muted-foreground">cURL · LangChain · …</li>
                 </ul>
               </div>
-              <div className="hidden flex-col items-center justify-center text-slate-300 lg:flex">
+              <div className="hidden flex-col items-center justify-center text-muted-foreground lg:flex">
                 <ArrowRight className="h-6 w-6" />
               </div>
-              <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 p-5 ring-1 ring-indigo-100">
-                <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-600">
+              <div className="rounded-2xl border border-border bg-card p-5">
+                <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
                   {tt(COPY.how.diagramLabels.gateway)}
                 </div>
-                <div className="mt-3 rounded-xl bg-slate-950 px-4 py-3 font-mono text-[12px] text-slate-100">
+                <div className="mt-3 rounded-xl bg-foreground px-4 py-3 font-mono text-[12px] text-background">
                   127.0.0.1:4100
                 </div>
-                <ul className="mt-3 space-y-1.5 text-[13px] text-slate-700">
+                <ul className="mt-3 space-y-1.5 text-[13px] text-foreground">
                   {COPY.how.flowSteps.map((s, i) => (
                     <li key={i} className="flex items-start gap-2">
-                      <span className="mt-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-100 font-mono text-[10px] font-semibold text-indigo-700">
+                      <span className="mt-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-lg bg-primary font-mono text-[10px] font-semibold text-primary-foreground">
                         {i + 1}
                       </span>
                       <span>{tt(s)}</span>
@@ -814,51 +787,51 @@ export default function LandingPage() {
                   ))}
                 </ul>
               </div>
-              <div className="hidden flex-col items-center justify-center text-slate-300 lg:flex">
+              <div className="hidden flex-col items-center justify-center text-muted-foreground lg:flex">
                 <ArrowRight className="h-6 w-6" />
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <div className="rounded-2xl border border-border bg-card p-5">
+                <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   {tt(COPY.how.diagramLabels.providers)}
                 </div>
-                <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  <li className="rounded-lg bg-slate-50 px-3 py-2">OpenAI</li>
-                  <li className="rounded-lg bg-slate-50 px-3 py-2">Anthropic</li>
-                  <li className="rounded-lg bg-slate-50 px-3 py-2">Azure / Bedrock</li>
-                  <li className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">{tt(compatibleProviders)}</li>
+                <ul className="mt-3 space-y-2 text-sm text-foreground">
+                  <li className="rounded-lg bg-secondary px-3 py-2">OpenAI</li>
+                  <li className="rounded-lg bg-secondary px-3 py-2">Anthropic</li>
+                  <li className="rounded-lg bg-secondary px-3 py-2">Azure / Bedrock</li>
+                  <li className="rounded-lg bg-secondary px-3 py-2 text-muted-foreground">{tt(compatibleProviders)}</li>
                 </ul>
               </div>
             </div>
 
             {/* differentiator */}
-            <div className="mt-14 overflow-hidden rounded-3xl border border-slate-200 bg-white">
+            <div className="mt-14 overflow-hidden rounded-3xl border border-border bg-card">
               <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
-                <div className="border-b border-slate-200 p-8 lg:border-b-0 lg:border-r lg:p-10">
-                  <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-600">
+                <div className="border-b border-border p-8 lg:border-b-0 lg:border-r lg:p-10">
+                  <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
                     {tt(COPY.how.differentiator.eyebrow)}
                   </div>
-                  <h3 className="mt-3 text-2xl font-semibold tracking-[-0.01em] text-slate-950">
+                  <h3 className="mt-3 text-2xl font-semibold tracking-[-0.01em] text-foreground">
                     {tt(COPY.how.differentiator.title)}
                   </h3>
-                  <p className="mt-4 text-sm leading-7 text-slate-600">
+                  <p className="mt-4 text-sm leading-7 text-muted-foreground">
                     {tt(COPY.how.differentiator.body)}
                   </p>
                 </div>
-                <div className="bg-slate-50/60 p-8 lg:p-10">
-                  <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <div className="bg-secondary p-8 lg:p-10">
+                  <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     {tt(COPY.how.differentiator.example)}
                   </div>
                   <ul className="mt-4 space-y-3">
                     {protocolExamples.map((ex) => (
                       <li
                         key={ex.client}
-                        className="flex items-center gap-3 rounded-xl bg-white px-4 py-3 ring-1 ring-slate-200"
+                        className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 ring-1 ring-border"
                       >
-                        <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700">
+                        <span className="rounded-md bg-secondary px-2 py-1 font-mono text-xs text-foreground">
                           {ex.client}
                         </span>
-                        <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
-                        <span className="rounded-md bg-gradient-to-r px-2 py-1 font-mono text-xs ring-1 ring-inset ring-slate-200 bg-slate-950 text-slate-100">
+                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="rounded-md bg-foreground px-2 py-1 font-mono text-xs text-background">
                           {tt(ex.upstream)}
                         </span>
                       </li>
@@ -878,22 +851,22 @@ export default function LandingPage() {
             description={tt(COPY.debug.description)}
           />
 
-          <div className="mt-12 grid gap-px overflow-hidden rounded-2xl bg-slate-200 ring-1 ring-slate-200 md:grid-cols-3">
+          <div className="mt-12 grid gap-px overflow-hidden rounded-2xl bg-border ring-1 ring-border md:grid-cols-3">
             {COPY.debug.pillars.map(({ icon: Icon, title, body }) => (
-              <div key={title.en} className="bg-white p-7">
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/10 to-cyan-500/10 text-indigo-600 ring-1 ring-indigo-500/15">
+              <div key={title.en} className="bg-card p-7">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-foreground">
                   <Icon className="h-5 w-5" />
                 </div>
-                <h3 className="mt-5 text-base font-semibold text-slate-950">{tt(title)}</h3>
-                <p className="mt-2 text-sm leading-7 text-slate-600">{tt(body)}</p>
+                <h3 className="mt-5 text-base font-semibold text-foreground">{tt(title)}</h3>
+                <p className="mt-2 text-sm leading-7 text-muted-foreground">{tt(body)}</p>
               </div>
             ))}
           </div>
 
           {/* payload 4 stages */}
-          <div className="mt-10 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-8">
-            <h3 className="text-xl font-semibold text-slate-950">{tt(COPY.debug.payload.title)}</h3>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">{tt(COPY.debug.payload.body)}</p>
+          <div className="mt-10 overflow-hidden rounded-2xl border border-border bg-secondary p-8">
+            <h3 className="text-xl font-semibold text-foreground">{tt(COPY.debug.payload.title)}</h3>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">{tt(COPY.debug.payload.body)}</p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {COPY.debug.payload.stages.map((stage, i) => {
                 const isClient = i === 0 || i === 3
@@ -902,14 +875,14 @@ export default function LandingPage() {
                     key={i}
                     className={cn(
                       'rounded-xl border px-4 py-4',
-                      isClient ? 'border-cyan-200 bg-cyan-50/60' : 'border-indigo-200 bg-indigo-50/60',
+                      isClient ? 'border-border bg-card' : 'border-border bg-muted',
                     )}
                   >
-                    <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                       payload [{i + 1}/4]
                     </div>
-                    <div className="mt-2 text-sm font-semibold text-slate-900">{tt(stage)}</div>
-                    <div className="mt-1 font-mono text-[11px] text-slate-500">
+                    <div className="mt-2 text-sm font-semibold text-foreground">{tt(stage)}</div>
+                    <div className="mt-1 font-mono text-[11px] text-muted-foreground">
                       {isClient ? tt(COPY.debug.payload.clientSide) : tt(COPY.debug.payload.upstreamSide)}
                     </div>
                   </div>
@@ -920,7 +893,7 @@ export default function LandingPage() {
         </section>
 
         {/* ============= LOCAL ============= */}
-        <section id="local" className="border-y border-slate-200/80 bg-slate-50/60">
+        <section id="local" className="border-y border-border bg-secondary">
           <div className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
             <SectionHead
               eyebrow={tt(COPY.local.eyebrow)}
@@ -929,36 +902,36 @@ export default function LandingPage() {
             />
 
             <div className="mt-12 grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-start">
-              <div className="grid gap-px overflow-hidden rounded-2xl bg-slate-200 ring-1 ring-slate-200 sm:grid-cols-2">
+              <div className="grid gap-px overflow-hidden rounded-2xl bg-border ring-1 ring-border sm:grid-cols-2">
                 {COPY.local.pillars.map(({ icon: Icon, title, body }) => (
-                  <div key={title.en} className="bg-white p-6">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/10 to-cyan-500/10 text-indigo-600 ring-1 ring-indigo-500/15">
+                  <div key={title.en} className="bg-card p-6">
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-foreground">
                       <Icon className="h-5 w-5" />
                     </div>
-                    <h3 className="mt-4 text-base font-semibold text-slate-950">{tt(title)}</h3>
-                    <p className="mt-2 text-sm leading-7 text-slate-600">{tt(body)}</p>
+                    <h3 className="mt-4 text-base font-semibold text-foreground">{tt(title)}</h3>
+                    <p className="mt-2 text-sm leading-7 text-muted-foreground">{tt(body)}</p>
                   </div>
                 ))}
               </div>
 
               <div>
-                <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-1.5 shadow-[0_30px_80px_-30px_rgba(15,23,42,0.45)]">
+                <div className="overflow-hidden rounded-2xl border border-border bg-secondary p-1.5">
                   <div className="flex items-center gap-1.5 px-3 py-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-rose-400/70" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-amber-300/70" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
-                    <div className="ml-3 flex-1 truncate rounded-md bg-white/5 px-3 py-1 font-mono text-[11px] text-slate-300">
+                    <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                    <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                    <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                    <div className="ml-3 flex-1 truncate rounded-md bg-card px-3 py-1 font-mono text-[11px] text-muted-foreground">
                       ~/.cc-gw
                     </div>
                   </div>
-                  <pre className="overflow-x-auto px-5 pb-5 pt-2 font-mono text-[12.5px] leading-7 text-slate-100">
+                  <pre className="overflow-x-auto px-5 pb-5 pt-2 font-mono text-[12.5px] leading-7 text-foreground">
                     <code>
                       {directoryTree.split('\n').map((line, i) => (
                         <span key={i} className="block">
                           {line.includes('#') ? (
                             <>
                               <span>{line.slice(0, line.indexOf('#'))}</span>
-                              <span className="text-slate-500">{line.slice(line.indexOf('#'))}</span>
+                              <span className="text-muted-foreground">{line.slice(line.indexOf('#'))}</span>
                             </>
                           ) : (
                             line
@@ -968,7 +941,7 @@ export default function LandingPage() {
                     </code>
                   </pre>
                 </div>
-                <p className="mt-4 px-1 text-sm leading-7 text-slate-600">{tt(COPY.local.treeCaption)}</p>
+                <p className="mt-4 px-1 text-sm leading-7 text-muted-foreground">{tt(COPY.local.treeCaption)}</p>
               </div>
             </div>
           </div>
@@ -986,15 +959,15 @@ export default function LandingPage() {
             {COPY.start.steps.map((step, idx) => (
               <li
                 key={step.title.en}
-                className="flex flex-col rounded-2xl border border-slate-200 bg-white p-6"
+                className="flex flex-col rounded-2xl border border-border bg-card p-6"
               >
                 <div className="flex items-center gap-3">
-                  <span className="inline-flex h-8 min-w-[2rem] items-center justify-center rounded-lg bg-slate-950 px-2 font-mono text-xs font-semibold text-white">
+                  <span className="inline-flex h-8 min-w-[2rem] items-center justify-center rounded-lg bg-foreground px-2 font-mono text-xs font-semibold text-background">
                     {String(idx + 1).padStart(2, '0')}
                   </span>
-                  <h3 className="text-base font-semibold text-slate-950">{tt(step.title)}</h3>
+                  <h3 className="text-base font-semibold text-foreground">{tt(step.title)}</h3>
                 </div>
-                <p className="mt-3 text-sm leading-7 text-slate-600">{tt(step.body)}</p>
+                <p className="mt-3 text-sm leading-7 text-muted-foreground">{tt(step.body)}</p>
                 <div className="mt-5">
                   <CodeBlock
                     label={`step ${idx + 1}: ${step.title.en}`}
@@ -1009,7 +982,7 @@ export default function LandingPage() {
         </section>
 
         {/* ============= CONSOLE ============= */}
-        <section id="console" className="border-y border-slate-200/80 bg-slate-50/60">
+        <section id="console" className="border-y border-border bg-secondary">
           <div className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
             <SectionHead
               eyebrow={tt(COPY.console.eyebrow)}
@@ -1033,14 +1006,14 @@ export default function LandingPage() {
                       className={cn(
                         'rounded-xl border px-4 py-3 text-left transition',
                         active
-                          ? 'border-indigo-500/30 bg-white shadow-[0_10px_30px_-18px_rgba(79,70,229,0.4)] ring-1 ring-indigo-500/10'
-                          : 'border-transparent bg-transparent hover:bg-white/70',
+                          ? 'border-primary bg-card'
+                          : 'border-transparent bg-transparent hover:bg-secondary',
                       )}
                     >
-                      <div className={cn('text-sm font-semibold', active ? 'text-slate-950' : 'text-slate-700')}>
+                      <div className={cn('text-sm font-semibold', active ? 'text-foreground' : 'text-muted-foreground')}>
                         {tt(tab.label)}
                       </div>
-                      <div className={cn('mt-1 text-xs leading-5', active ? 'text-slate-600' : 'text-slate-500')}>
+                      <div className="mt-1 text-xs leading-5 text-muted-foreground">
                         {tt(tab.blurb)}
                       </div>
                     </button>
@@ -1052,13 +1025,13 @@ export default function LandingPage() {
                 role="tabpanel"
                 id={`console-panel-${activeConsole.id}`}
                 aria-labelledby={`console-tab-${activeConsole.id}`}
-                className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 p-1.5 shadow-[0_30px_80px_-30px_rgba(15,23,42,0.45)]"
+                className="overflow-hidden rounded-2xl border border-border bg-secondary p-1.5"
               >
                 <div className="flex items-center gap-1.5 px-3 py-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400/70" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-300/70" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
-                  <div className="ml-3 flex-1 truncate rounded-md bg-white/5 px-3 py-1 font-mono text-[11px] text-slate-300">
+                  <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                  <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                  <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                  <div className="ml-3 flex-1 truncate rounded-md bg-card px-3 py-1 font-mono text-[11px] text-muted-foreground">
                     127.0.0.1:4100/ui/{activeConsole.id}
                   </div>
                 </div>
@@ -1081,33 +1054,33 @@ export default function LandingPage() {
             description={tt(COPY.fit.description)}
           />
           <div className="mt-12 grid gap-5 md:grid-cols-2">
-            <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-white p-7">
+            <div className="rounded-2xl border border-border bg-success-bg p-7">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success-bg text-success">
                   <CheckCircle2 className="h-4 w-4" />
                 </div>
-                <h3 className="text-base font-semibold text-slate-950">{tt(COPY.fit.yesTitle)}</h3>
+                <h3 className="text-base font-semibold text-foreground">{tt(COPY.fit.yesTitle)}</h3>
               </div>
               <ul className="mt-5 space-y-3">
                 {COPY.fit.yes.map((item, i) => (
-                  <li key={i} className="flex items-start gap-3 text-sm leading-7 text-slate-700">
-                    <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-emerald-500" />
+                  <li key={i} className="flex items-start gap-3 text-sm leading-7 text-foreground">
+                    <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-success" />
                     {tt(item)}
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-7">
+            <div className="rounded-2xl border border-border bg-card p-7">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200/70 text-slate-500">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                   <XCircle className="h-4 w-4" />
                 </div>
-                <h3 className="text-base font-semibold text-slate-950">{tt(COPY.fit.noTitle)}</h3>
+                <h3 className="text-base font-semibold text-foreground">{tt(COPY.fit.noTitle)}</h3>
               </div>
               <ul className="mt-5 space-y-3">
                 {COPY.fit.no.map((item, i) => (
-                  <li key={i} className="flex items-start gap-3 text-sm leading-7 text-slate-600">
-                    <XCircle className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
+                  <li key={i} className="flex items-start gap-3 text-sm leading-7 text-muted-foreground">
+                    <XCircle className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
                     {tt(item)}
                   </li>
                 ))}
@@ -1117,14 +1090,14 @@ export default function LandingPage() {
         </section>
 
         {/* ============= FAQ ============= */}
-        <section id="faq" className="border-y border-slate-200/80 bg-slate-50/60">
+        <section id="faq" className="border-y border-border bg-secondary">
           <div className="mx-auto w-full max-w-6xl px-6 py-20 sm:px-8 lg:px-10 lg:py-24">
             <SectionHead
               eyebrow={tt(COPY.faq.eyebrow)}
               title={tt(COPY.faq.title)}
               description={tt(COPY.faq.description)}
             />
-            <div className="mx-auto mt-12 max-w-3xl divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white">
+            <div className="mx-auto mt-12 max-w-3xl divide-y divide-border rounded-2xl border border-border bg-card">
               {COPY.faq.items.map((item, i) => {
                 const open = openFaq === i
                 return (
@@ -1135,15 +1108,15 @@ export default function LandingPage() {
                       aria-expanded={open}
                       className="flex w-full items-center justify-between gap-6 px-6 py-5 text-left"
                     >
-                      <span className="text-base font-semibold text-slate-900">{tt(item.q)}</span>
+                      <span className="text-base font-semibold text-foreground">{tt(item.q)}</span>
                       <ChevronDown
                         className={cn(
-                          'h-5 w-5 shrink-0 text-slate-400 transition-transform',
-                          open && 'rotate-180 text-slate-700',
+                          'h-5 w-5 shrink-0 text-muted-foreground transition-transform',
+                          open && 'rotate-180 text-foreground',
                         )}
                       />
                     </button>
-                    {open && <div className="px-6 pb-6 text-sm leading-7 text-slate-600">{tt(item.a)}</div>}
+                    {open && <div className="px-6 pb-6 text-sm leading-7 text-muted-foreground">{tt(item.a)}</div>}
                   </div>
                 )
               })}
@@ -1153,42 +1126,23 @@ export default function LandingPage() {
 
         {/* ============= CTA ============= */}
         <section className="px-6 py-24 sm:px-8 lg:px-10">
-          <div className="relative mx-auto w-full max-w-6xl overflow-hidden rounded-3xl bg-slate-950 px-8 py-14 text-white shadow-[0_40px_100px_-40px_rgba(15,23,42,0.5)] sm:px-12 [&_::selection]:bg-indigo-400/40 [&_::selection]:text-white">
-            <div
-              aria-hidden
-              className="absolute inset-0 opacity-25"
-              style={{
-                backgroundImage:
-                  'linear-gradient(to right, rgba(148,163,184,0.16) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.16) 1px, transparent 1px)',
-                backgroundSize: '40px 40px',
-                maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 75%)',
-                WebkitMaskImage: 'radial-gradient(ellipse at center, black 30%, transparent 75%)',
-              }}
-            />
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -bottom-40 left-1/2 h-[460px] w-[900px] -translate-x-1/2 rounded-full opacity-50 blur-[100px]"
-              style={{
-                background:
-                  'radial-gradient(closest-side, rgba(99,102,241,0.6), transparent 70%), radial-gradient(closest-side at 70% 60%, rgba(34,211,238,0.4), transparent 70%)',
-              }}
-            />
+          <div className="relative mx-auto w-full max-w-6xl overflow-hidden rounded-3xl bg-foreground px-8 py-14 text-background sm:px-12">
             <div className="relative grid gap-10 lg:grid-cols-[1.2fr_auto] lg:items-end">
               <div>
                 <h2 className="text-3xl font-semibold tracking-[-0.02em] sm:text-4xl">{tt(COPY.cta.title)}</h2>
-                <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">{tt(COPY.cta.body)}</p>
+                <p className="mt-5 max-w-xl text-base leading-8 text-background/80">{tt(COPY.cta.body)}</p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row lg:flex-col lg:items-end">
                 <a
                   href="https://www.npmjs.com/package/@chenpu17/cc-gw"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-background px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-secondary"
                 >
                   <Terminal className="h-4 w-4" />
                   {tt(COPY.ctaInstall)}
                 </a>
                 <a
                   href="/ui/"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-transparent px-5 py-3 text-sm font-semibold text-background transition hover:bg-background hover:text-foreground"
                 >
                   {tt(COPY.ctaConsole)}
                   <ArrowRight className="h-4 w-4" />
@@ -1200,20 +1154,20 @@ export default function LandingPage() {
       </main>
 
       {/* ============= FOOTER ============= */}
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-10 text-sm text-slate-500 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
+      <footer className="border-t border-border bg-card">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-10 text-sm text-muted-foreground sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
           <div className="flex items-center gap-3">
             <BrandMark className="h-7 w-7" title="cc-gw" />
             <div>
-              <div className="text-slate-700">{tt(COPY.footer.tagline)}</div>
-              <div className="font-mono text-[11px] text-slate-400">v{packageVersion}</div>
+              <div className="text-foreground">{tt(COPY.footer.tagline)}</div>
+              <div className="font-mono text-[11px] text-muted-foreground">v{packageVersion}</div>
             </div>
           </div>
           <div className="flex flex-wrap gap-5">
-            <a href="/ui/" className="hover:text-slate-900">{tt(COPY.footer.console)}</a>
-            <a href="https://www.npmjs.com/package/@chenpu17/cc-gw" className="hover:text-slate-900">npm</a>
-            <a href="https://github.com/chenpu17/cc-gw2" className="hover:text-slate-900">GitHub</a>
-            <a href="https://github.com/chenpu17/cc-gw2/releases" className="hover:text-slate-900">{tt(COPY.footer.changelog)}</a>
+            <a href="/ui/" className="hover:text-foreground">{tt(COPY.footer.console)}</a>
+            <a href="https://www.npmjs.com/package/@chenpu17/cc-gw" className="hover:text-foreground">npm</a>
+            <a href="https://github.com/chenpu17/cc-gw2" className="hover:text-foreground">GitHub</a>
+            <a href="https://github.com/chenpu17/cc-gw2/releases" className="hover:text-foreground">{tt(COPY.footer.changelog)}</a>
           </div>
         </div>
       </footer>

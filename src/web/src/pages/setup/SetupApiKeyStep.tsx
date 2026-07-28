@@ -26,12 +26,12 @@ export function SetupApiKeyStep({ state }: { state: SetupState }) {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-bg text-success">
             <Check className="h-5 w-5" aria-hidden="true" />
           </div>
           <p className="text-sm font-semibold">{t('apiKeys.keyCreated')}</p>
         </div>
-        <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+        <p className="text-sm font-medium text-warning">
           {t('apiKeys.saveKeyWarning')}
         </p>
         <div className="break-all rounded-lg border border-border bg-secondary px-4 py-3 font-mono text-sm">

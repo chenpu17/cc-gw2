@@ -76,15 +76,12 @@ test('providers workbench visual shell stays aligned with redesign baseline', as
   await expectPageSnapshot(page, 'model-management-page.png')
 })
 
-test('providers workbench detail dialog visual shell stays aligned with redesign baseline', async ({ page }) => {
-  await page.goto(`${harness.baseUrl()}/ui/providers`)
+test('routing workbench visual shell stays aligned with redesign baseline', async ({ page }) => {
+  await page.goto(`${harness.baseUrl()}/ui/providers?tab=routing`)
   await waitForVisualReady(page, page.getByRole('heading', { name: '模型与路由工作台', level: 1 }))
-  // 点击内置 stub provider 的表格行，弹出详情对话框（供应商视图）
-  await page.locator('[data-testid="provider-row"]').first().click()
-  const detailDialog = page.getByRole('dialog')
-  await expect(detailDialog).toBeVisible()
-  await expect(detailDialog.getByRole('button', { name: '测试连接' })).toBeVisible()
-  await expectPageSnapshot(page, 'routing-management-page.png')
+  // 命中模拟器:等待解析结果落地(目标行始终含 →),避免截到加载骨架
+  await expect(page.getByTestId('routing-hit-simulator')).toContainText('→')
+  await expectPageSnapshot(page, 'routing-workbench-page.png')
 })
 
 test('api keys visual shell stays aligned with redesign baseline', async ({ page }) => {

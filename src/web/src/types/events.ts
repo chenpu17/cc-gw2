@@ -22,3 +22,11 @@ export interface EventsResponse {
   events: GatewayEvent[]
   nextCursor: number | null
 }
+
+/** Aggregate event counts by level, for the events-page header stat cards. */
+export interface EventStats {
+  total: number
+  error: number
+  warn: number
+  info: number
+}

@@ -57,6 +57,7 @@ export default {
   },
   noMatches: 'No matches',
   unknownError: 'Unknown error',
+  requestFailed: 'Request failed, please try again later',
   filters: {
     activeCount: '{{count}} active filters',
     collapse: 'Collapse filters',

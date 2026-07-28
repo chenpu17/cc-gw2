@@ -17,6 +17,7 @@ import {
   DashboardGettingStarted,
   DashboardLoading,
   InfraDisclosure,
+  InsightsGrid,
   PerformanceDisclosure,
   RecentRequestsTable,
   SetupProgressStrip,
@@ -101,6 +102,8 @@ export default function DashboardPage() {
             loading={state.summaryPending}
             option={state.trendOption}
           />
+
+          <InsightsGrid daily={state.daily} models={state.models} />
 
           <PerformanceDisclosure
             modelRequestsOption={state.modelRequestsOption}

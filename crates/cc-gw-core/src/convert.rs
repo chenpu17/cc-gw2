@@ -888,7 +888,16 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
         result.insert("temperature".to_string(), temperature);
     }
     if let Some(stream) = body.get("stream").cloned() {
+        let is_stream = stream.as_bool() == Some(true);
         result.insert("stream".to_string(), stream);
+        // OpenAI only emits a terminal usage chunk in streaming mode when
+        // explicitly requested; without it token accounting records 0.
+        if is_stream {
+            result.insert(
+                "stream_options".to_string(),
+                serde_json::json!({ "include_usage": true }),
+            );
+        }
     }
     if let Some(tool_choice) = anthropic_tool_choice_to_openai(body.get("tool_choice")) {
         result.insert("tool_choice".to_string(), tool_choice);
@@ -914,7 +923,6 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
         "presence_penalty",
         "logit_bias",
         "top_p",
-        "top_k",
         "user",
         "seed",
         "n",
@@ -925,6 +933,51 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
         }
     }
     Value::Object(result)
+}
+
+/// Anthropic Messages requires strictly alternating `user`/`assistant` turns.
+/// Both OpenAI→Anthropic converters emit one message per OpenAI `tool` message
+/// or Responses `function_call` / `function_call_output` item, so parallel tool
+/// results (several `tool` messages back-to-back) or consecutive function calls
+/// produce same-role-adjacent messages that Anthropic rejects with 400 "roles
+/// must alternate". Merge adjacent same-role turns by concatenating content.
+fn merge_adjacent_anthropic_messages(messages: Vec<Value>) -> Vec<Value> {
+    let mut merged: Vec<Value> = Vec::with_capacity(messages.len());
+    for mut msg in messages {
+        let obj = match msg.as_object_mut() {
+            Some(obj) => obj,
+            None => {
+                merged.push(msg);
+                continue;
+            }
+        };
+        let role = obj.get("role").and_then(Value::as_str).map(str::to_owned);
+        let Some(role) = role else {
+            merged.push(msg);
+            continue;
+        };
+        let content = obj.remove("content").unwrap_or_else(|| Value::Array(vec![]));
+        let mut blocks: Vec<Value> = match content {
+            Value::Array(blocks) => blocks,
+            other => vec![other],
+        };
+        let appended = merged.last_mut().is_some_and(|last| {
+            if last.get("role").and_then(Value::as_str) != Some(role.as_str()) {
+                return false;
+            }
+            match last.get_mut("content") {
+                Some(Value::Array(last_blocks)) => {
+                    last_blocks.append(&mut blocks);
+                    true
+                }
+                _ => false,
+            }
+        });
+        if !appended {
+            merged.push(json!({ "role": role, "content": Value::Array(blocks) }));
+        }
+    }
+    merged
 }
 
 pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
@@ -975,9 +1028,12 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
                     }
                 }
                 if let Some(reasoning) = message.get("reasoning_content").and_then(Value::as_str) {
-                    if !reasoning.trim().is_empty() {
-                        blocks.push(json!({ "type": "thinking", "thinking": reasoning }));
-                    }
+                    // OpenAI `reasoning_content` carries thinking text without the
+                    // cryptographic `signature` Anthropic mandates on thinking
+                    // blocks; synthesizing one would be rejected upstream. Drop it
+                    // — thinking is only valid when produced by a real Anthropic
+                    // upstream (signed) on the response side.
+                    let _ = reasoning;
                 }
 
                 for tool_call in message
@@ -1000,10 +1056,12 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
                     }));
                 }
 
-                messages.push(json!({
-                    "role": "assistant",
-                    "content": blocks
-                }));
+                if !blocks.is_empty() {
+                    messages.push(json!({
+                        "role": "assistant",
+                        "content": blocks
+                    }));
+                }
             }
             _ => {
                 let mut blocks = Vec::<Value>::new();
@@ -1033,15 +1091,20 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
             Value::String(system_parts.join("\n\n")),
         );
     }
-    result.insert("messages".to_string(), Value::Array(messages));
-    if let Some(max_tokens) = body
+    result.insert(
+        "messages".to_string(),
+        Value::Array(merge_adjacent_anthropic_messages(messages)),
+    );
+    // Anthropic mandates `max_tokens`; OpenAI clients commonly omit it (the SDK
+    // defaults to not sending). Inject a gateway default when the source carried
+    // no max_* field, else the upstream rejects with 400 "max_tokens: required".
+    let max_tokens = body
         .get("max_output_tokens")
         .cloned()
         .or_else(|| body.get("max_completion_tokens").cloned())
         .or_else(|| body.get("max_tokens").cloned())
-    {
-        result.insert("max_tokens".to_string(), max_tokens);
-    }
+        .unwrap_or_else(|| Value::from(4096));
+    result.insert("max_tokens".to_string(), max_tokens);
     if let Some(temperature) = body.get("temperature").cloned() {
         result.insert("temperature".to_string(), temperature);
     }
@@ -1120,16 +1183,11 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
             continue;
         }
 
+        // OpenAI Responses `reasoning` items carry thinking text without the
+        // cryptographic `signature` Anthropic mandates on thinking blocks, so
+        // they can't be synthesized. Drop them from request history; thinking is
+        // only valid when produced by a real Anthropic upstream (signed).
         if item.get("type").and_then(Value::as_str) == Some("reasoning") {
-            if let Some(reasoning) = openai_reasoning_text(item) {
-                messages.push(json!({
-                    "role": "assistant",
-                    "content": [{
-                        "type": "thinking",
-                        "thinking": reasoning
-                    }]
-                }));
-            }
             continue;
         }
 
@@ -1157,9 +1215,9 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
                 }
             }
             if let Some(reasoning) = item.get("reasoning_content").and_then(Value::as_str) {
-                if !reasoning.trim().is_empty() {
-                    blocks.push(json!({ "type": "thinking", "thinking": reasoning }));
-                }
+                // No `signature` can be synthesized; see the `reasoning` item
+                // handling above. Drop reasoning from history.
+                let _ = reasoning;
             }
             for tool_call in item
                 .get("tool_calls")
@@ -1180,10 +1238,12 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
                     "input": arguments
                 }));
             }
-            messages.push(json!({
-                "role": "assistant",
-                "content": blocks
-            }));
+            if !blocks.is_empty() {
+                messages.push(json!({
+                    "role": "assistant",
+                    "content": blocks
+                }));
+            }
             continue;
         }
 
@@ -1221,15 +1281,20 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
             Value::String(system_parts.join("\n\n")),
         );
     }
-    result.insert("messages".to_string(), Value::Array(messages));
-    if let Some(max_tokens) = body
+    result.insert(
+        "messages".to_string(),
+        Value::Array(merge_adjacent_anthropic_messages(messages)),
+    );
+    // Anthropic mandates `max_tokens`; OpenAI clients commonly omit it (the SDK
+    // defaults to not sending). Inject a gateway default when the source carried
+    // no max_* field, else the upstream rejects with 400 "max_tokens: required".
+    let max_tokens = body
         .get("max_output_tokens")
         .cloned()
         .or_else(|| body.get("max_completion_tokens").cloned())
         .or_else(|| body.get("max_tokens").cloned())
-    {
-        result.insert("max_tokens".to_string(), max_tokens);
-    }
+        .unwrap_or_else(|| Value::from(4096));
+    result.insert("max_tokens".to_string(), max_tokens);
     if let Some(temperature) = body.get("temperature").cloned() {
         result.insert("temperature".to_string(), temperature);
     }
@@ -2175,9 +2240,16 @@ mod tests {
             converted["messages"][0]["content"][2]["type"].as_str(),
             Some("document")
         );
+        // reasoning_content can't be carried into Anthropic history (thinking
+        // blocks need a signature the OpenAI protocol can't synthesize), so the
+        // converter drops it — the assistant turn keeps only its text block.
         assert_eq!(
-            converted["messages"][1]["content"][1]["type"].as_str(),
-            Some("thinking")
+            converted["messages"][1]["content"].as_array().map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(
+            converted["messages"][1]["content"][0]["type"].as_str(),
+            Some("text")
         );
     }
 
@@ -2262,9 +2334,15 @@ mod tests {
             converted["messages"][0]["content"][2]["type"].as_str(),
             Some("document")
         );
+        // reasoning_content is dropped from history (no synthesizable thinking
+        // signature); the assistant turn keeps only text + image + document.
         assert_eq!(
-            converted["messages"][0]["content"][3]["type"].as_str(),
-            Some("thinking")
+            converted["messages"][0]["content"].as_array().map(Vec::len),
+            Some(3)
+        );
+        assert_eq!(
+            converted["messages"][0]["content"][0]["type"].as_str(),
+            Some("text")
         );
         assert_eq!(converted["thinking"]["type"].as_str(), Some("enabled"));
     }
@@ -2363,7 +2441,7 @@ mod tests {
     }
 
     #[test]
-    fn openai_responses_request_to_anthropic_maps_top_level_reasoning_item() {
+    fn openai_responses_request_to_anthropic_drops_top_level_reasoning_item() {
         let converted = openai_responses_request_to_anthropic(&json!({
             "input": [{
                 "type": "reasoning",
@@ -2371,13 +2449,70 @@ mod tests {
             }]
         }));
 
+        // Top-level `reasoning` items carry no cryptographic signature, so they
+        // can't be synthesized into Anthropic thinking blocks; the converter
+        // drops them, leaving no message in history.
         assert_eq!(
-            converted["messages"][0]["content"][0],
-            json!({
-                "type": "thinking",
-                "thinking": "considering options"
-            })
+            converted["messages"].as_array().map(Vec::len),
+            Some(0)
         );
+    }
+
+    #[test]
+    fn openai_chat_request_to_anthropic_merges_consecutive_tool_results() {
+        // Parallel tool results arrive as separate OpenAI `tool` messages;
+        // Anthropic requires alternating roles, so they must collapse into one
+        // user turn holding multiple tool_result blocks.
+        let converted = openai_chat_request_to_anthropic(&json!({
+            "messages": [
+                { "role": "user", "content": "weather in Paris and London?" },
+                {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [
+                        { "id": "call_1", "type": "function", "function": { "name": "weather", "arguments": "{\"city\":\"Paris\"}" } },
+                        { "id": "call_2", "type": "function", "function": { "name": "weather", "arguments": "{\"city\":\"London\"}" } }
+                    ]
+                },
+                { "role": "tool", "tool_call_id": "call_1", "content": "sunny" },
+                { "role": "tool", "tool_call_id": "call_2", "content": "rainy" }
+            ]
+        }));
+
+        let messages = converted["messages"].as_array().expect("messages array");
+        let roles: Vec<&str> = messages
+            .iter()
+            .map(|m| m["role"].as_str().unwrap_or(""))
+            .collect();
+        assert_eq!(roles, vec!["user", "assistant", "user"]);
+        let merged = messages[2]["content"].as_array().expect("merged content");
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0]["type"].as_str(), Some("tool_result"));
+        assert_eq!(merged[1]["type"].as_str(), Some("tool_result"));
+        assert_eq!(merged[0]["tool_use_id"].as_str(), Some("call_1"));
+        assert_eq!(merged[1]["tool_use_id"].as_str(), Some("call_2"));
+    }
+
+    #[test]
+    fn openai_responses_request_to_anthropic_merges_consecutive_function_items() {
+        let converted = openai_responses_request_to_anthropic(&json!({
+            "input": [
+                { "role": "user", "content": "weather in Paris and London?" },
+                { "type": "function_call", "call_id": "call_1", "name": "weather", "arguments": "{\"city\":\"Paris\"}" },
+                { "type": "function_call", "call_id": "call_2", "name": "weather", "arguments": "{\"city\":\"London\"}" },
+                { "type": "function_call_output", "call_id": "call_1", "output": "sunny" },
+                { "type": "function_call_output", "call_id": "call_2", "output": "rainy" }
+            ]
+        }));
+
+        let messages = converted["messages"].as_array().expect("messages array");
+        let roles: Vec<&str> = messages
+            .iter()
+            .map(|m| m["role"].as_str().unwrap_or(""))
+            .collect();
+        assert_eq!(roles, vec!["user", "assistant", "user"]);
+        assert_eq!(messages[1]["content"].as_array().map(Vec::len), Some(2));
+        assert_eq!(messages[2]["content"].as_array().map(Vec::len), Some(2));
     }
 
     #[test]

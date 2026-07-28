@@ -68,6 +68,7 @@ export function useLogsPageState() {
   )
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [expandedLogId, setExpandedLogId] = useState<number | null>(null)
   const [selectedApiKeys, setSelectedApiKeys] = usePersistentState<number[]>(
     storageKeys.logs.selectedApiKeys,
     [],
@@ -104,6 +105,7 @@ export function useLogsPageState() {
 
   useEffect(() => {
     setPage(1)
+    setExpandedLogId(null)
   }, [providerFilter, endpointFilter, appliedModelFilter, statusFilter, fromDate, toDate, pageSize, selectedApiKeys])
 
   const queryParams = useMemo(() => {
@@ -409,6 +411,10 @@ export function useLogsPageState() {
     setIsDetailOpen(false)
   }, [])
 
+  const handleToggleExpand = useCallback((id: number) => {
+    setExpandedLogId((current) => (current === id ? null : id))
+  }, [])
+
   useEffect(() => {
     if (isDetailOpen || selectedLogId === null) {
       return
@@ -429,12 +435,14 @@ export function useLogsPageState() {
     customEndpoints: customEndpointsQuery.data?.endpoints,
     endpointFilter,
     exporting,
+    expandedLogId,
     filtersExpanded,
     fromDate,
     handleCloseDetail,
     handleExport,
     handleOpenDetail,
     handleResetFilters,
+    handleToggleExpand,
     isDetailOpen,
     items,
     logsQuery,

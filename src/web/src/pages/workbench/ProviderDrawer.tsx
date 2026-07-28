@@ -27,6 +27,8 @@ export interface ProviderDrawerProps {
   testResult?: ProviderTestResult | null
   testing?: boolean
   onTest?: () => void
+  /** edit-mode only: opens the delete confirmation flow (hidden in create mode) */
+  onDelete?: () => void
 }
 
 export function ProviderDrawer({
@@ -38,7 +40,8 @@ export function ProviderDrawer({
   onSubmit,
   testResult,
   testing,
-  onTest
+  onTest,
+  onDelete
 }: ProviderDrawerProps) {
   const { t } = useTranslation()
   const providerForm = useProviderForm({ mode, provider, existingProviderIds })
@@ -58,16 +61,30 @@ export function ProviderDrawer({
     }
   }, [open, provider, mode, providerForm.resetForm])
 
+  // Keep the latest onClose in a ref so the keydown listener only re-subscribes
+  // when `open` flips — not on every parent render. The workbench polls config
+  // every 10s, which would otherwise detach/reattach the listener each tick and
+  // could drop an Escape press mid-render.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
   useEffect(() => {
     if (!open) return undefined
     const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose()
-      }
+      if (event.key !== 'Escape') return
+      // Yield to any open Radix overlay stacked on top of the drawer: a Radix
+      // Dialog (delete confirm), or a Select/Combobox/Popover popper (the model
+      // "non-stream via stream" Select, target combobox) which renders as a
+      // [role="listbox"] or inside [data-radix-popper-content-wrapper]. Without
+      // this, Escape on those inner poppers would also dismiss the whole drawer
+      // and lose the in-progress edit.
+      if (document.querySelector(
+        '[role="dialog"][data-state="open"], [role="listbox"][data-state="open"], [data-radix-popper-content-wrapper]'
+      )) return
+      onCloseRef.current()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -231,14 +248,14 @@ export function ProviderDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-background/80 backdrop-blur-sm" aria-hidden="true" />
+      <div className="flex-1 bg-background/95" aria-hidden="true" />
       <aside
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="provider-drawer-title"
         aria-describedby="provider-drawer-desc"
-        className="flex h-full min-h-0 w-full max-w-5xl flex-col border-l border-border bg-background shadow-[var(--surface-shadow-lg)] backdrop-blur"
+        className="flex h-full min-h-0 w-full max-w-5xl flex-col border-l border-border bg-background shadow-[var(--surface-shadow-lg)]"
       >
         <header className="border-b border-border bg-secondary px-6 py-5">
           <div className="flex items-start justify-between gap-4">
@@ -332,8 +349,18 @@ export function ProviderDrawer({
         </div>
 
         <footer className="flex items-center justify-between gap-3 border-t border-border bg-secondary px-6 py-4 text-sm">
-          <div className="flex flex-col text-xs text-destructive" aria-live="polite">
-            {submitError ? <span>{submitError}</span> : null}
+          <div className="flex flex-col gap-1 text-xs">
+            {!isCreate && onDelete ? (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={submitting}
+                className="text-muted-foreground underline-offset-2 hover:text-destructive hover:underline disabled:opacity-50"
+              >
+                {t('providers.actions.delete')}
+              </button>
+            ) : null}
+            {submitError ? <span className="text-destructive" aria-live="polite">{submitError}</span> : null}
           </div>
           <div className="flex gap-2">
             <Button

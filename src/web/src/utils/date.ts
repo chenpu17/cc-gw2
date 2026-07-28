@@ -1,3 +1,5 @@
+import i18n from '@/i18n'
+
 export function formatRelativeTime(timestamp: number): string {
   const now = Date.now()
   const diffMs = now - timestamp
@@ -7,20 +9,24 @@ export function formatRelativeTime(timestamp: number): string {
   const hour = 60 * minute
   const day = 24 * hour
 
+  // Locale-aware relative time via the platform Intl API, driven by the active
+  // i18n language so zh renders "3 分钟前" and en renders "3 minutes ago".
+  const rtf = new Intl.RelativeTimeFormat(i18n.language || 'en', { numeric: 'auto' })
+
   if (absDiff < minute) {
     const seconds = Math.max(Math.round(absDiff / 1000), 1)
-    return diffMs >= 0 ? `${seconds}s ago` : `in ${seconds}s`
+    return rtf.format(diffMs >= 0 ? -seconds : seconds, 'second')
   }
   if (absDiff < hour) {
     const minutes = Math.round(absDiff / minute)
-    return diffMs >= 0 ? `${minutes}m ago` : `in ${minutes}m`
+    return rtf.format(diffMs >= 0 ? -minutes : minutes, 'minute')
   }
   if (absDiff < day) {
     const hours = Math.round(absDiff / hour)
-    return diffMs >= 0 ? `${hours}h ago` : `in ${hours}h`
+    return rtf.format(diffMs >= 0 ? -hours : hours, 'hour')
   }
   const days = Math.round(absDiff / day)
-  return diffMs >= 0 ? `${days}d ago` : `in ${days}d`
+  return rtf.format(diffMs >= 0 ? -days : days, 'day')
 }
 
 export function formatTimestamp(timestamp: number): string {

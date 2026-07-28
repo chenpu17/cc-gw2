@@ -37,14 +37,14 @@ use cc_gw_core::{
         openai_chat_response_to_anthropic, openai_error_to_anthropic,
         openai_responses_request_to_anthropic, openai_responses_response_to_anthropic,
     },
-    events::{RecordEventInput, list_events, record_event},
+    events::{RecordEventInput, get_event_stats, list_events, record_event},
     models::{build_models_response, build_models_response_for_endpoint},
     observability::{
         LogPayloadUpdate, LogQuery, RequestLogInput, RequestLogUpdate, RuntimeMetricsSampler,
         UsageStats, cleanup_logs_before, clear_all_logs, compact_database, export_logs,
         finalize_request_log, get_daily_metrics, get_database_info, get_log_detail,
         get_metrics_overview, get_model_usage_metrics, get_recent_client_activity,
-        get_recent_throughput_metrics, increment_daily_metrics, insert_request_log, query_logs,
+        get_recent_throughput_metrics, increment_daily_metrics, insert_request_log, mask_log_record_api_key, query_logs,
         upsert_request_payload,
     },
     provider::{
@@ -346,6 +346,7 @@ async fn main() -> Result<()> {
         network_egress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
         http_client: reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .context("failed to build reqwest client")?,
         version_check_registry_base_url: std::env::var("CC_GW_VERSION_CHECK_REGISTRY_BASE_URL")
@@ -445,7 +446,12 @@ fn build_router(state: AppState) -> Router {
             "/api/routing-presets/{endpoint}/{name}",
             axum::routing::delete(admin_routes::api_routing_presets_delete),
         )
+        .route(
+            "/api/routing/simulate",
+            post(admin_routes::api_routing_simulate),
+        )
         .route("/api/events", get(admin_routes::api_events))
+        .route("/api/events/stats", get(admin_routes::api_events_stats))
         .route(
             "/api/events/stream",
             get(dashboard_routes::api_events_stream),

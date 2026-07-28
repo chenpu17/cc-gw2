@@ -75,9 +75,9 @@ export function PresetDiffDialog({
               {added.map(([source, target]) => (
                 <div
                   key={`add-${source}`}
-                  className="flex items-center gap-2 rounded-xl bg-emerald-50 px-2 py-1.5 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+                  className="flex items-center gap-2 rounded-xl bg-success-bg px-2 py-1.5 text-success"
                 >
-                  <Badge variant="outline" className="border-emerald-300 text-xs dark:border-emerald-700">
+                  <Badge variant="outline" className="border-success/30 text-xs">
                     {t('modelManagement.presets.diffAdded')}
                   </Badge>
                   <span className="truncate">{source}</span>
@@ -88,9 +88,9 @@ export function PresetDiffDialog({
               {removed.map(([source, target]) => (
                 <div
                   key={`rm-${source}`}
-                  className="flex items-center gap-2 rounded-xl bg-red-50 px-2 py-1.5 text-red-800 dark:bg-red-950 dark:text-red-200"
+                  className="flex items-center gap-2 rounded-xl bg-error-bg px-2 py-1.5 text-error"
                 >
-                  <Badge variant="outline" className="border-red-300 text-xs dark:border-red-700">
+                  <Badge variant="outline" className="border-error/30 text-xs">
                     {t('modelManagement.presets.diffRemoved')}
                   </Badge>
                   <span className="truncate">{source}</span>
@@ -101,9 +101,9 @@ export function PresetDiffDialog({
               {changed.map(([source, oldTarget, newTarget]) => (
                 <div
                   key={`chg-${source}`}
-                  className="flex items-center gap-2 rounded-xl bg-amber-50 px-2 py-1.5 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                  className="flex items-center gap-2 rounded-xl bg-warning-bg px-2 py-1.5 text-warning"
                 >
-                  <Badge variant="outline" className="border-amber-300 text-xs dark:border-amber-700">
+                  <Badge variant="outline" className="border-warning/30 text-xs">
                     {t('modelManagement.presets.diffChanged')}
                   </Badge>
                   <span className="truncate">{source}</span>

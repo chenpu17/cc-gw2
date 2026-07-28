@@ -30,7 +30,8 @@ export default {
   deleteDialogTitle: 'Delete API key',
   confirmDelete: 'Are you sure you want to delete this API key? This action cannot be undone.',
   errors: {
-    nameRequired: 'Key name is required'
+    nameRequired: 'Key name is required',
+    maxConcurrencyInvalid: 'Max concurrency must be a positive integer'
   },
   analytics: {
     title: 'Key Usage Analytics',

@@ -27,7 +27,6 @@ export function useProvidersState(
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [editingProvider, setEditingProvider] = useState<ProviderConfig | undefined>(undefined)
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [testingProviderId, setTestingProviderId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, ProviderTestResult>>({})
   const [testDialogOpen, setTestDialogOpen] = useState(false)
@@ -60,11 +59,6 @@ export function useProvidersState(
       return haystack.includes(keyword)
     })
   }, [providerSearch, providerTypeFilter, providers])
-
-  const selectedProvider = useMemo(
-    () => providers.find((provider) => provider.id === selectedProviderId) ?? null,
-    [providers, selectedProviderId]
-  )
 
   const defaultLabels = useMemo(() => {
     const labels = new Map<string, string>()
@@ -126,10 +120,6 @@ export function useProvidersState(
     await gatewayApi.saveConfig(nextConfig)
     setConfig(nextConfig)
     void configQuery.refetch()
-
-    if (drawerMode === 'create') {
-      setSelectedProviderId(payload.id)
-    }
 
     pushToast({
       title:
@@ -360,8 +350,12 @@ export function useProvidersState(
       // would otherwise keep them (they are dirty) and a later save could
       // persist a dangling route. Saved routes were sanitized in nextConfig.
       sanitizeDraftsForProvider?.(provider.id)
-      if (selectedProviderId === provider.id) {
-        setSelectedProviderId(null)
+      // If the deleted provider was open in the edit drawer, close it so the
+      // drawer doesn't keep showing a now-removed provider (ghost edit).
+      if (editingProvider?.id === provider.id) {
+        setDrawerOpen(false)
+        setEditingProvider(undefined)
+        setDrawerMode('create')
       }
       pushToast({
         title: t('providers.toast.deleteSuccess', { name: provider.label || provider.id }),
@@ -387,8 +381,6 @@ export function useProvidersState(
     providerTypeFilter,
     setProviderTypeFilter,
     defaultLabels,
-    selectedProvider,
-    setSelectedProviderId,
     drawerOpen,
     setDrawerOpen,
     drawerMode,

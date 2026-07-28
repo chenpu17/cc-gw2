@@ -14,12 +14,10 @@ import { useWorkbenchConfig } from './workbench/useWorkbenchConfig'
 import { useRoutingState } from './workbench/useRoutingState'
 import { useProvidersState } from './workbench/useProvidersState'
 import { EndpointDialog } from './workbench/EndpointDialog'
-import { ProviderDetailDialog } from './workbench/ProviderDetailDialog'
 import { NoModelConfiguredDialog } from './workbench/NoModelConfiguredDialog'
 import { PresetDiffDialog } from './workbench/PresetDiffDialog'
 import { ProviderDrawer } from './workbench/ProviderDrawer'
-import { ProvidersTable } from './workbench/ProvidersTable'
-import { RouteEditorDialog } from './workbench/RouteEditorDialog'
+import { ProvidersCardGrid } from './workbench/ProvidersCardGrid'
 import { RoutingWorkspace } from './workbench/RoutingWorkspace'
 import { TestConnectionDialog } from './workbench/TestConnectionDialog'
 
@@ -53,15 +51,25 @@ export default function ProvidersWorkbenchPage() {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const [confirmingAction, setConfirmingAction] = useState(false)
 
-  // The route editor dialog is deep-linkable via `?tab=routing&endpoint=<id>`.
+  // The selected routing endpoint is deep-linkable via `?tab=routing&endpoint=<id>`.
+  // (Was the route editor dialog; now selects the endpoint in the col-1 rail.)
   const endpointParam = searchParams.get('endpoint')
-  const [routeEditorEndpoint, setRouteEditorEndpoint] = useState<string | null>(endpointParam)
+  const [selectedEndpointId, setSelectedEndpointId] = useState<string | null>(endpointParam)
 
   useEffect(() => {
-    setRouteEditorEndpoint(endpointParam)
+    setSelectedEndpointId(endpointParam)
   }, [endpointParam])
 
-  const handleCloseRouteEditor = () => {
+  const handleSelectEndpoint = (endpointId: string) => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.set('tab', 'routing')
+      next.set('endpoint', endpointId)
+      return next
+    }, { replace: true })
+  }
+
+  const handleClearEndpointSelection = () => {
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous)
       next.delete('endpoint')
@@ -69,14 +77,14 @@ export default function ProvidersWorkbenchPage() {
     }, { replace: true })
   }
 
-  // Close the dialog when its endpoint no longer exists (deleted, or a stale
+  // Clear the selection when its endpoint no longer exists (deleted, or a stale
   // deep link) once the endpoint list has loaded.
   useEffect(() => {
-    if (!routeEditorEndpoint) return
+    if (!selectedEndpointId) return
     if (base.customEndpointsQuery.isPending) return
-    if (routing.endpointTabs.some((tab) => tab.key === routeEditorEndpoint)) return
-    handleCloseRouteEditor()
-  }, [routeEditorEndpoint, routing.endpointTabs, base.customEndpointsQuery.isPending])
+    if (routing.endpointTabs.some((tab) => tab.key === selectedEndpointId)) return
+    handleClearEndpointSelection()
+  }, [selectedEndpointId, routing.endpointTabs, base.customEndpointsQuery.isPending])
 
   const handleOpenCreateEndpoint = () => {
     setEditingEndpoint(undefined)
@@ -86,18 +94,7 @@ export default function ProvidersWorkbenchPage() {
     setEditingEndpoint(endpoint)
     setEndpointDialogOpen(true)
   }
-  const handleOpenRouteEditor = (endpointId: string) => {
-    setSearchParams((previous) => {
-      const next = new URLSearchParams(previous)
-      next.set('tab', 'routing')
-      next.set('endpoint', endpointId)
-      return next
-    }, { replace: true })
-  }
-
   const handleViewChange = (nextView: WorkbenchView) => {
-    // The provider detail dialog only belongs to the providers view.
-    providers.setSelectedProviderId(null)
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous)
       if (nextView === 'providers') {
@@ -105,14 +102,6 @@ export default function ProvidersWorkbenchPage() {
       } else {
         next.set('tab', nextView)
       }
-      return next
-    }, { replace: true })
-  }
-
-  const handleGoToRouting = () => {
-    setSearchParams((previous) => {
-      const next = new URLSearchParams(previous)
-      next.set('tab', 'routing')
       return next
     }, { replace: true })
   }
@@ -166,8 +155,6 @@ export default function ProvidersWorkbenchPage() {
         : confirmAction?.kind === 'endpoint'
           ? confirmAction.endpoint.label
           : ''
-
-  const selectedProvider = providers.selectedProvider
 
   const routeRuleCount = Object.values(routing.routesByEndpoint).reduce(
     (sum, routes) => sum + (routes?.length ?? 0),
@@ -254,7 +241,7 @@ export default function ProvidersWorkbenchPage() {
       </div>
 
       {view === 'providers' ? (
-        <ProvidersTable
+        <ProvidersCardGrid
           configPending={base.configQuery.isPending || (!base.config && base.configQuery.isFetching)}
           testResults={providers.testResults}
           filteredProviders={providers.filteredProviders}
@@ -262,7 +249,10 @@ export default function ProvidersWorkbenchPage() {
           providerTypeFilter={providers.providerTypeFilter}
           providersLength={providers.providers.length}
           defaultLabels={providers.defaultLabels}
-          onSelect={(provider) => providers.setSelectedProviderId(provider.id)}
+          config={base.config}
+          customEndpoints={base.customEndpoints}
+          onTest={(provider) => providers.initiateTestConnection(provider)}
+          onEdit={(provider) => providers.handleOpenEdit(provider)}
           onProviderSearchChange={providers.setProviderSearch}
           onProviderTypeChange={providers.setProviderTypeFilter}
           onResetFilters={() => {
@@ -272,57 +262,18 @@ export default function ProvidersWorkbenchPage() {
         />
       ) : (
         <RoutingWorkspace
-          tabs={routing.endpointTabs}
+          routing={routing}
+          config={base.config}
           customEndpoints={base.customEndpoints}
           routeCounts={endpointRouteCounts}
-          defaultsByEndpoint={routing.defaultsByEndpoint}
-          onEditRoute={handleOpenRouteEditor}
+          selectedEndpointId={selectedEndpointId}
+          onSelectEndpoint={handleSelectEndpoint}
+          onCreateEndpoint={handleOpenCreateEndpoint}
           onEditEndpoint={handleOpenEditEndpoint}
           onDeleteEndpoint={(endpoint) => setConfirmAction({ kind: 'endpoint', endpoint })}
+          onRequestDeletePreset={(endpoint, preset) => setConfirmAction({ kind: 'preset', endpoint, preset })}
         />
       )}
-
-      <RouteEditorDialog
-        endpoint={routeEditorEndpoint}
-        tabs={routing.endpointTabs}
-        config={base.config}
-        customEndpoints={base.customEndpoints}
-        routing={routing}
-        onRequestDeletePreset={(endpoint, preset) => setConfirmAction({ kind: 'preset', endpoint, preset })}
-        onClose={handleCloseRouteEditor}
-      />
-
-      <ProviderDetailDialog
-        provider={selectedProvider}
-        defaultModel={selectedProvider ? providers.defaultLabels.get(selectedProvider.id) : undefined}
-        config={base.config}
-        customEndpoints={base.customEndpoints}
-        tabs={base.tabs}
-        testResult={selectedProvider ? providers.testResults[selectedProvider.id] ?? null : null}
-        isTesting={selectedProvider ? providers.testingProviderId === selectedProvider.id : false}
-        onClose={() => providers.setSelectedProviderId(null)}
-        onEdit={() => {
-          if (selectedProvider) {
-            // Close the dialog first so the edit drawer can take focus.
-            providers.setSelectedProviderId(null)
-            providers.handleOpenEdit(selectedProvider)
-          }
-        }}
-        onTest={() => {
-          if (selectedProvider) providers.initiateTestConnection(selectedProvider)
-        }}
-        onDelete={() => {
-          if (selectedProvider) setConfirmAction({ kind: 'provider', provider: selectedProvider })
-        }}
-        onViewRoute={(endpoint) => {
-          providers.setSelectedProviderId(null)
-          handleOpenRouteEditor(endpoint)
-        }}
-        onAddRule={() => {
-          providers.setSelectedProviderId(null)
-          handleGoToRouting()
-        }}
-      />
 
       <ProviderDrawer
         open={providers.drawerOpen}
@@ -336,6 +287,11 @@ export default function ProvidersWorkbenchPage() {
         onTest={() => {
           if (providers.editingProvider) {
             void providers.handleTestConnection(providers.editingProvider)
+          }
+        }}
+        onDelete={() => {
+          if (providers.drawerMode === 'edit' && providers.editingProvider) {
+            setConfirmAction({ kind: 'provider', provider: providers.editingProvider })
           }
         }}
         onClose={() => {

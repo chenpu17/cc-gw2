@@ -64,7 +64,7 @@ export function CreateApiKeyDialog({
               <p className="font-semibold">Restricted</p>
               <p className="mt-1 opacity-80">Select explicit endpoints before saving.</p>
             </div>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            <div className="rounded-lg border border-warning/30 bg-warning-bg px-3 py-3 text-xs text-warning">
               <p className="font-semibold">Unrestricted</p>
               <p className="mt-1 opacity-80">Leave endpoint selection empty for broad access.</p>
             </div>
@@ -147,14 +147,14 @@ export function ApiKeyCreatedDialog({
       <AppDialogContent className="max-w-xl">
         <AppDialogHeader>
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-bg text-success">
               <Check className="h-5 w-5" aria-hidden="true" />
             </div>
             <DialogTitle>{t('apiKeys.keyCreated')}</DialogTitle>
           </div>
         </AppDialogHeader>
         <AppDialogBody className="space-y-4">
-          <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+          <p className="text-sm font-medium text-warning">
             {t('apiKeys.saveKeyWarning')}
           </p>
           <div className="rounded-lg border border-border bg-secondary px-4 py-3 font-mono text-sm">
@@ -209,7 +209,7 @@ export function EditApiKeyEndpointsDialog({
         <AppDialogBody className="space-y-4">
           {!apiKey?.isWildcard && (
             <>
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              <div className="rounded-lg border border-warning/30 bg-warning-bg px-4 py-3 text-xs text-warning">
                 {t('apiKeys.allEndpoints')}
               </div>
               <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">

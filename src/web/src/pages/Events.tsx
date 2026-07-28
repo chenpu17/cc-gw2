@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ChevronLeft, ChevronRight, ShieldAlert } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import { useToast } from '@/providers/ToastProvider'
 import type { ApiError } from '@/services/api'
 import { queryKeys } from '@/services/queryKeys'
-import type { EventsResponse, GatewayEvent } from '@/types/events'
+import type { EventStats, EventsResponse, GatewayEvent } from '@/types/events'
 import { formatRelativeTime, formatTimestamp } from '@/utils/date'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -62,6 +62,18 @@ export default function EventsPage() {
     }
   )
 
+  // Header stat cards use true all-time totals (not the loaded 50-event window).
+  // Polled so the counts drift upward as the live stream delivers new events.
+  const statsQuery = useApiQuery<EventStats, ApiError>(
+    queryKeys.events.stats(),
+    { url: '/api/events/stats', method: 'GET' },
+    { refetchInterval: 15_000 }
+  )
+  const errorTotal = statsQuery.data?.error ?? 0
+  const warnTotal = statsQuery.data?.warn ?? 0
+  const infoTotal = statsQuery.data?.info ?? 0
+  const eventsTotal = statsQuery.data?.total ?? 0
+
   // Live stream: only meaningful on the newest page (no cursor); events
   // arriving via SSE are prepended onto the REST snapshot, deduped by id.
   const live = useEventStream({
@@ -71,14 +83,37 @@ export default function EventsPage() {
     enabled: cursor === null
   })
 
+  const eventsErrorShownRef = useRef(false)
   useEffect(() => {
-    if (eventsQuery.isError && eventsQuery.error) {
+    const isError = eventsQuery.isError
+    if (isError && eventsQuery.error && !eventsErrorShownRef.current) {
+      // Fire once per error streak; both queries poll, so without dedup a down
+      // backend would push a toast on every refetch tick.
+      eventsErrorShownRef.current = true
       pushToast({
         title: t('events.toast.loadFailure', { message: eventsQuery.error.message }),
         variant: 'error'
       })
     }
+    if (!isError) {
+      eventsErrorShownRef.current = false
+    }
   }, [eventsQuery.error, eventsQuery.isError, pushToast, t])
+
+  const statsErrorShownRef = useRef(false)
+  useEffect(() => {
+    const isError = statsQuery.isError
+    if (isError && statsQuery.error && !statsErrorShownRef.current) {
+      statsErrorShownRef.current = true
+      pushToast({
+        title: t('events.toast.statsLoadFailure', { message: statsQuery.error.message }),
+        variant: 'error'
+      })
+    }
+    if (!isError) {
+      statsErrorShownRef.current = false
+    }
+  }, [statsQuery.error, statsQuery.isError, pushToast, t])
 
   const handleResetFilters = () => {
     setCursor(null)
@@ -117,10 +152,6 @@ export default function EventsPage() {
     return items
   }, [level, type, t])
 
-  const infoCount = events.filter((event) => event.level === 'info').length
-  const warnCount = events.filter((event) => event.level === 'warn').length
-  const errorCount = events.filter((event) => event.level === 'error').length
-
   return (
     <div className="flex flex-col gap-5">
       <PageToolbar
@@ -135,7 +166,7 @@ export default function EventsPage() {
                 live.connected ? 'text-success' : live.failed ? 'text-destructive' : 'text-warning'
               )}
             >
-              <span className={cn('h-1.5 w-1.5 rounded-full', live.connected ? 'bg-success' : live.failed ? 'bg-destructive' : 'bg-warning')} />
+              <span aria-hidden="true" className={cn('h-1.5 w-1.5 rounded-full', live.connected ? 'bg-success animate-live-pulse' : live.failed ? 'bg-destructive' : 'bg-warning')} />
               {live.connected ? t('events.live') : live.failed ? t('events.failed') : t('events.reconnecting')}
             </span>
           ) : (
@@ -161,10 +192,11 @@ export default function EventsPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <MetricCard size="sm" label={t('events.levels.info')} value={infoCount.toLocaleString()} rawValue={infoCount} />
-        <MetricCard size="sm" label={t('events.levels.warn')} value={warnCount.toLocaleString()} rawValue={warnCount} />
-        <MetricCard size="sm" label={t('events.levels.error')} value={errorCount.toLocaleString()} rawValue={errorCount} />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="events-stats-grid">
+        <MetricCard size="sm" dotClassName="bg-destructive" label={t('events.levels.error')} value={errorTotal.toLocaleString()} rawValue={errorTotal} valueTestId="events-stat-error" />
+        <MetricCard size="sm" dotClassName="bg-warning" label={t('events.levels.warn')} value={warnTotal.toLocaleString()} rawValue={warnTotal} valueTestId="events-stat-warn" />
+        <MetricCard size="sm" dotClassName="bg-muted-foreground" label={t('events.levels.info')} value={infoTotal.toLocaleString()} rawValue={infoTotal} valueTestId="events-stat-info" />
+        <MetricCard size="sm" dotClassName="bg-foreground" label={t('events.stats.total')} value={eventsTotal.toLocaleString()} rawValue={eventsTotal} valueTestId="events-stat-total" />
       </div>
 
       <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center" data-testid="events-filters-card">

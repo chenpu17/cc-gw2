@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { arrayMove } from '@dnd-kit/sortable'
 import { useQueryClient } from '@tanstack/react-query'
 import { toApiError, customEndpointsApi } from '@/services/api'
 import { gatewayApi } from '@/services/gateway'
@@ -44,7 +45,6 @@ export function useRoutingState(base: WorkbenchConfigState) {
   const [applyingPreset, setApplyingPreset] = useState<{ endpoint: string; name: string } | null>(null)
   const [deletingPreset, setDeletingPreset] = useState<{ endpoint: string; name: string } | null>(null)
   const [savingCompatibilityPolicy, setSavingCompatibilityPolicy] = useState(false)
-  const [presetsExpanded, setPresetsExpanded] = useState<Record<string, boolean>>({})
   const [presetDiffDialog, setPresetDiffDialog] = useState<{ endpoint: string; preset: RoutingPreset } | null>(null)
   const [defaultsByEndpoint, setDefaultsByEndpoint] = useState<Record<string, DefaultsConfig>>({})
   const [savingDefaultsFor, setSavingDefaultsFor] = useState<string | null>(null)
@@ -651,6 +651,21 @@ export function useRoutingState(base: WorkbenchConfigState) {
     setRouteError((previous) => ({ ...previous, [endpoint]: null }))
   }
 
+  /** Reorder rules locally via drag-and-drop. Pure local mutation — does not
+   *  touch the single-write gate; the new order persists on the next 保存路由,
+   *  which serializes the array (insertion order) into the modelRoutes object. */
+  const handleReorderRules = (endpoint: string, activeId: string, overId: string) => {
+    if (activeId === overId) return
+    setRoutesByEndpoint((previous) => {
+      const entries = previous[endpoint] || []
+      const from = entries.findIndex((entry) => entry.id === activeId)
+      const to = entries.findIndex((entry) => entry.id === overId)
+      if (from === -1 || to === -1) return previous
+      return { ...previous, [endpoint]: arrayMove(entries, from, to) }
+    })
+    setRouteError((previous) => ({ ...previous, [endpoint]: null }))
+  }
+
   const handleResetRoutes = (endpoint: string) => {
     if (!config) return
 
@@ -838,8 +853,6 @@ export function useRoutingState(base: WorkbenchConfigState) {
     deletingPreset,
     savingCompatibilityPolicy,
     writingEndpoint,
-    presetsExpanded,
-    setPresetsExpanded,
     presetDiffDialog,
     setPresetDiffDialog,
     providerModelOptions,
@@ -858,6 +871,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
     handleAddSuggestion,
     handleRouteChange,
     handleRemoveRoute,
+    handleReorderRules,
     handleResetRoutes,
     handleSaveRoutes,
     handleCompatibilityEnabledChange,

@@ -168,7 +168,13 @@ export default {
     authMode: 'Auth mode',
     providerDefault: 'Provider default',
     modelCount: '{{count}} models',
-    passthrough: 'Pass-through'
+    passthrough: 'Pass-through',
+    statModels: 'Models',
+    statRequests24h: '24h requests',
+    statAvgLatency: 'Avg latency',
+    routeCount_one: 'Referenced by {{count}} route rule',
+    routeCount_other: 'Referenced by {{count}} route rules',
+    health: { ok: 'Healthy', fail: 'Error', untested: 'Untested' }
   },
   drawer: {
     createTitle: 'Add Provider',

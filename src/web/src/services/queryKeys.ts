@@ -35,7 +35,8 @@ export const queryKeys = {
     detail: (id: number | string | null) => ['logs', 'detail', id] as const
   },
   events: {
-    list: (params: { limit?: number; cursor?: number; level?: string; type?: string }) => ['events', params] as const
+    list: (params: { limit?: number; cursor?: number; level?: string; type?: string }) => ['events', params] as const,
+    stats: () => ['events', 'stats'] as const
   },
   apiKeys: {
     all: () => ['api-keys'] as const,

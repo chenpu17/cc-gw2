@@ -12,9 +12,46 @@ export default {
     flow: '客户端请求模型（如 claude-sonnet-4） → 匹配路由规则 → 转发到 Provider 的模型',
     hint: '客户端按模型名发请求，先匹配下方规则，未命中则走默认转发。'
   },
+  flow: {
+    title: '请求流向',
+    clientStep: '客户端模型',
+    endpointStep: '端点',
+    matchStep: '路由规则匹配',
+    targetStep: '转发目标',
+    fallbackNote: '未命中规则时走默认转发'
+  },
+  endpointRail: {
+    title: '端点',
+    subtitle: '每个端点一套独立规则',
+    add: '新建端点',
+    ruleCount: '{{count}} 条'
+  },
+  endpointConfig: {
+    title: '端点配置'
+  },
+  hitSim: {
+    title: '命中模拟',
+    subtitle: '输入客户端模型名，实时预览会命中哪条规则',
+    endpointLabel: '端点',
+    modelPlaceholder: '如 claude-sonnet-4-5-20250929',
+    thinking: '思考',
+    anyModel: '（任意模型名）',
+    empty: '输入模型名后会在此显示命中的路由',
+    errorPrefix: '无法解析路由',
+    reasonModelRoute: '命中模型路由规则',
+    reasonModelRouteAlias: '命中模型路由规则（经别名展开）',
+    reasonDirectMatch: '直接匹配 Provider',
+    reasonThinkingDefault: '命中思考默认',
+    reasonCompletionDefault: '命中补全默认',
+    reasonLongContext: '命中长上下文默认',
+    longContextDetail: '估算约 {{estimate}} tokens，超过阈值 {{threshold}}',
+    reasonFallback: '未命中规则 · 全局兜底',
+    fallbackHint: '没有规则匹配该模型，将走全局兜底转发。'
+  },
   defaults: {
     title: '默认转发',
     description: '没有命中下方规则的请求都会转发到这里。只有一个 Provider 时，通常只需要设置这一项就能跑通。',
+    cardSubtitle: '没有命中规则的请求都会走这里',
     completionLabel: '转发目标（provider:model）',
     moreLabel: '更多默认设置',
     reasoningLabel: '思考模型（reasoning）',
@@ -35,6 +72,8 @@ export default {
   },
   routing: {
     rulesTitle: '路由规则',
+    rulesSubtitle: '从上往下匹配，支持 * 通配符；拖动左侧手柄调整优先级',
+    dragHandle: '拖动排序',
     sourceLabel: '客户端请求的模型',
     targetLabel: '转发到（Provider:模型）',
     emptyTitle: '还没有路由规则',

@@ -168,7 +168,12 @@ export default {
     authMode: '认证方式',
     providerDefault: 'Provider 默认',
     modelCount: '{{count}} 个模型',
-    passthrough: '透传模式'
+    passthrough: '透传模式',
+    statModels: '模型',
+    statRequests24h: '24h 请求',
+    statAvgLatency: '平均延迟',
+    routeCount: '被 {{count}} 条路由规则引用',
+    health: { ok: '正常', fail: '异常', untested: '未测' }
   },
   drawer: {
     createTitle: '新增 Provider',

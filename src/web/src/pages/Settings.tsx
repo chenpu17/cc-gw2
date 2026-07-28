@@ -23,7 +23,7 @@ export default function SettingsPage() {
     <div className="flex flex-col gap-6">
       <PageToolbar
         info={dirtyCount > 0 ? (
-          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+          <span className="rounded-lg bg-warning-bg px-2.5 py-1 text-xs font-medium text-warning">
             {t('settings.overview.unsavedCount', { count: dirtyCount })}
           </span>
         ) : null}

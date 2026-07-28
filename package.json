@@ -42,7 +42,7 @@
     "pack:dry-run": "pnpm run build:package && node scripts/pack-root-package.mjs",
     "publish:packed": "node scripts/publish-artifacts.mjs",
     "test:e2e:web": "pnpm build && playwright test",
-    "test:e2e:web:core": "pnpm build && playwright test tests/playwright/landing.spec.ts tests/playwright/pages.spec.ts tests/playwright/auth.spec.ts tests/playwright/logs.spec.ts tests/playwright/model-management.spec.ts tests/playwright/settings.spec.ts tests/playwright/api-keys.spec.ts --reporter=line",
+    "test:e2e:web:core": "pnpm build && playwright test tests/playwright/landing.spec.ts tests/playwright/pages.spec.ts tests/playwright/auth.spec.ts tests/playwright/logs.spec.ts tests/playwright/dashboard.spec.ts tests/playwright/events.spec.ts tests/playwright/model-management.spec.ts tests/playwright/settings.spec.ts tests/playwright/api-keys.spec.ts --reporter=line",
     "test:e2e:web:visual": "pnpm build && playwright test tests/playwright/visual.spec.ts --reporter=line",
     "test:e2e:web:hardening": "pnpm build && playwright test tests/playwright/hardening.spec.ts --reporter=line",
     "test:e2e:web:update-snapshots": "pnpm build && playwright test tests/playwright/visual.spec.ts --update-snapshots --reporter=line",

@@ -1509,7 +1509,18 @@ impl CrossProtocolStreamTransformer {
                 self.stop_reason.as_deref(),
                 !self.openai_tool_calls.is_empty(),
             ),
-            _ => resolve_anthropic_stop_reason(self.stop_reason.as_deref()),
+            _ => {
+                // Responses→Anthropic: an absent stop_reason on a stream that
+                // emitted tool calls must still surface "tool_use", else a client
+                // awaiting tool calls observes a premature "end_turn". (Anthropic
+                // passthrough never accumulates openai_tool_calls, so the guard is
+                // inert there.)
+                if self.stop_reason.is_none() && !self.openai_tool_calls.is_empty() {
+                    "tool_use"
+                } else {
+                    resolve_anthropic_stop_reason(self.stop_reason.as_deref())
+                }
+            }
         };
         out.push(anthropic_event(
             "message_delta",

@@ -243,7 +243,7 @@ export function BasicsStep({
                 className={cn(
                   'rounded-2xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                   active
-                    ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                    ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border bg-card text-foreground hover:border-primary/20 hover:bg-accent/50'
                 )}
               >
@@ -327,7 +327,7 @@ export function BasicsStep({
               value="apiKey"
               checked={form.authMode === 'apiKey'}
               onChange={() => onAuthModeChange('apiKey')}
-              className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
+              className="mt-0.5 h-4 w-4 accent-primary"
             />
             <span>{describeAuthMode(form.type, 'apiKey', t)}</span>
           </label>
@@ -338,7 +338,7 @@ export function BasicsStep({
               value="authToken"
               checked={form.authMode === 'authToken'}
               onChange={() => onAuthModeChange('authToken')}
-              className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
+              className="mt-0.5 h-4 w-4 accent-primary"
             />
             <span>{t('providers.drawer.fields.authModeAuthToken')}</span>
           </label>
@@ -349,7 +349,7 @@ export function BasicsStep({
               value="xAuthToken"
               checked={form.authMode === 'xAuthToken'}
               onChange={() => onAuthModeChange('xAuthToken')}
-              className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
+              className="mt-0.5 h-4 w-4 accent-primary"
             />
             <span>{t('providers.drawer.fields.authModeXAuthToken')}</span>
           </label>
@@ -564,7 +564,7 @@ export function ModelsStep({
                     checked={form.defaultModel === model.id}
                     onChange={() => onSetDefaultModel(model.id)}
                     disabled={model.id.trim().length === 0}
-                    className="h-4 w-4 accent-[hsl(var(--primary))]"
+                    className="h-4 w-4 accent-primary"
                   />
                   {t('providers.drawer.fields.setDefault')}
                 </label>
@@ -583,12 +583,12 @@ export function ModelsStep({
           ))}
 
           {form.models.length === 0 ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
+            <div className="rounded-xl border border-warning/30 bg-warning-bg p-5">
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                <p className="text-sm font-semibold text-warning">
                   {t('providers.drawer.noModelsTitle')}
                 </p>
-                <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-300">
+                <p className="text-xs leading-relaxed text-warning">
                   {t('providers.drawer.noModelsHint', { providerId: form.id || 'provider-id' })}
                 </p>
                 <div className="rounded-lg bg-secondary/50 p-2.5">

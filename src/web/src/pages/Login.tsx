@@ -79,7 +79,7 @@ export default function LoginPage() {
       <div className="mx-auto grid w-full max-w-5xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(400px,0.8fr)]">
         <div className="hidden lg:block">
           <div className="max-w-lg space-y-6">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+            <div className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
               Secure Gateway Control
             </div>
             <div className="space-y-3">

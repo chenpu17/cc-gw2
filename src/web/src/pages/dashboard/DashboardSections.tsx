@@ -26,6 +26,7 @@ import {
   formatByteRate,
   formatLatencyValue,
   formatPercent,
+  type DailyMetric,
   type DatabaseInfo,
   type ModelUsageMetric,
   type OverviewStats,
@@ -64,7 +65,7 @@ export function StatusBand({ status }: { status?: ServiceStatus }) {
         className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
         data-testid="dashboard-overview-panel"
       >
-        <span className="inline-flex items-center gap-1.5 rounded-md bg-success-bg px-1.5 py-0.5 text-[11px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success">
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-success-bg px-1.5 py-0.5 text-[11px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success before:animate-live-pulse">
           {t('dashboard.status.listeningLabel')}
         </span>
         <span
@@ -125,6 +126,7 @@ function eventLevelBadge(level: GatewayEvent['level']) {
 export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
   const { t } = useTranslation()
   const today = overview?.today
+  const yesterday = overview?.yesterday
   const requests = today?.requests ?? 0
   const inputTokens = today?.inputTokens ?? 0
   const outputTokens = today?.outputTokens ?? 0
@@ -132,8 +134,28 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
   const errorCount = today?.errorCount ?? 0
 
   const errorRate = requests > 0 ? (errorCount / requests) * 100 : 0
+  const yesterdayErrorRate =
+    yesterday && (yesterday.requests ?? 0) > 0
+      ? (yesterday.errorCount / yesterday.requests) * 100
+      : undefined
   const hitBase = cacheRead + inputTokens
   const hitRate = hitBase > 0 ? (cacheRead / hitBase) * 100 : 0
+
+  // Relative % change vs yesterday. Returns undefined when yesterday is missing
+  // or zero — MetricCard hides the delta chip entirely when delta is undefined,
+  // so cards degrade gracefully on a fresh install with no prior-day data.
+  const relDelta = (cur: number | undefined, prev: number | undefined): number | undefined =>
+    prev !== undefined && prev > 0 ? (((cur ?? 0) - prev) / prev) * 100 : undefined
+  const formatDeltaPct = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
+  // Hide the chip when the change rounds to 0.0% — a "↑0.0%" pill reads as movement
+  // when today merely matches yesterday. Also guards sub-0.05% noise.
+  const deltaChip = (value: number | undefined, invert = false) =>
+    value !== undefined && Math.abs(value) >= 0.05
+      ? { value, invertColor: invert, format: formatDeltaPct }
+      : undefined
+  // Error rate is undefined when there's no traffic today (0/0), so a -100% chip
+  // would imply "errors eliminated" rather than "no requests" — suppress it.
+  const errorRateDelta = requests > 0 ? relDelta(errorRate, yesterdayErrorRate) : undefined
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" data-testid="dashboard-today-grid">
@@ -142,6 +164,12 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
         label={t('dashboard.cards.todayRequests')}
         value={requests.toLocaleString()}
         rawValue={requests}
+        delta={deltaChip(relDelta(requests, yesterday?.requests))}
+        hint={
+          yesterday && yesterday.requests > 0
+            ? t('dashboard.cards.yesterdayHint', { value: yesterday.requests.toLocaleString() })
+            : undefined
+        }
         valueTestId="dashboard-today-value-requests"
       />
       <MetricCard
@@ -150,6 +178,7 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
         value={inputTokens.toLocaleString()}
         rawValue={inputTokens}
         suffix={t('common.units.token')}
+        delta={deltaChip(relDelta(inputTokens, yesterday?.inputTokens))}
         valueTestId="dashboard-today-value-input"
       />
       <MetricCard
@@ -158,6 +187,7 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
         value={outputTokens.toLocaleString()}
         rawValue={outputTokens}
         suffix={t('common.units.token')}
+        delta={deltaChip(relDelta(outputTokens, yesterday?.outputTokens))}
         valueTestId="dashboard-today-value-output"
       />
       <MetricCard
@@ -179,6 +209,7 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
             `${errorRate.toFixed(1)}%`
           )
         }
+        delta={deltaChip(errorRateDelta, true)}
         hint={errorCount > 0 ? t('dashboard.cards.errorCountHint', { value: errorCount }) : undefined}
         valueTestId="dashboard-today-value-error-rate"
       />
@@ -211,7 +242,7 @@ export function AttentionFeed({
               failed
                 ? 'inline-flex items-center gap-1 text-[11px] font-medium text-destructive before:h-1.5 before:w-1.5 before:rounded-full before:bg-destructive'
                 : connected
-                  ? 'inline-flex items-center gap-1 text-[11px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success'
+                  ? 'inline-flex items-center gap-1 text-[11px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success before:animate-live-pulse'
                   : 'inline-flex items-center gap-1 text-[11px] font-medium text-warning before:h-1.5 before:w-1.5 before:rounded-full before:bg-warning'
             }
           >
@@ -277,7 +308,7 @@ export function AttentionAllClear({ connected, failed }: { connected: boolean; f
           failed
             ? 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-destructive before:h-1.5 before:w-1.5 before:rounded-full before:bg-destructive'
             : connected
-              ? 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium before:h-1.5 before:w-1.5 before:rounded-full before:bg-success'
+              ? 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium before:h-1.5 before:w-1.5 before:rounded-full before:bg-success before:animate-live-pulse'
               : 'ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-warning before:h-1.5 before:w-1.5 before:rounded-full before:bg-warning'
         }
       >
@@ -314,6 +345,74 @@ export function TrendChart({
       empty={empty}
       emptyText={t('dashboard.charts.empty')}
     />
+  )
+}
+
+/** Layer 2c — 4-card insights grid: trend total / busiest day / top model / fastest TTFT.
+ *  Pure derivation from existing daily + model stats (no backend gap). Hides during cold start. */
+export function InsightsGrid({
+  daily,
+  models
+}: {
+  daily: DailyMetric[]
+  models: ModelUsageMetric[]
+}) {
+  const { t } = useTranslation()
+
+  if (daily.length === 0 && models.length === 0) return null
+
+  const totalRequests = daily.reduce((sum, item) => sum + item.requestCount, 0)
+  const busiestDay = daily.length > 0
+    ? daily.reduce((max, item) => (item.requestCount > max.requestCount ? item : max), daily[0])
+    : null
+  const topModel = models.length > 0
+    ? models.reduce((max, item) => (item.requests > max.requests ? item : max), models[0])
+    : null
+  const fastestTtft = models
+    .filter((item) => item.avgTtftMs != null && item.avgTtftMs > 0)
+    .sort((a, b) => (a.avgTtftMs ?? Number.POSITIVE_INFINITY) - (b.avgTtftMs ?? Number.POSITIVE_INFINITY))[0]
+
+  const cards = [
+    {
+      label: t('dashboard.insights.totalRequests'),
+      value: totalRequests > 0 ? totalRequests.toLocaleString() : '—',
+      hint: totalRequests > 0 ? t('dashboard.insights.totalRequestsHint') : undefined
+    },
+    {
+      label: t('dashboard.insights.busiestDay'),
+      value: busiestDay ? busiestDay.date.slice(5) : '—',
+      hint: busiestDay
+        ? t('dashboard.insights.busiestDayHint', { value: busiestDay.requestCount.toLocaleString() })
+        : undefined
+    },
+    {
+      label: t('dashboard.insights.topModel'),
+      value: topModel ? topModel.model : '—',
+      hint: topModel ? t('dashboard.insights.topModelHint', { value: topModel.requests.toLocaleString() }) : undefined
+    },
+    {
+      label: t('dashboard.insights.fastestTtft'),
+      value: fastestTtft ? fastestTtft.model : '—',
+      hint: fastestTtft
+        ? t('dashboard.insights.fastestTtftHint', { value: Math.round(fastestTtft.avgTtftMs ?? 0) })
+        : undefined
+    }
+  ]
+
+  return (
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="dashboard-insights-grid">
+      {cards.map((card) => (
+        <div key={card.label} className="rounded-lg border border-border bg-card px-4 py-3">
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            {card.label}
+          </div>
+          <div className="metric-number mt-2 truncate text-base font-bold tracking-tight text-foreground">
+            {card.value}
+          </div>
+          {card.hint ? <div className="mt-0.5 text-[11px] text-muted-foreground">{card.hint}</div> : null}
+        </div>
+      ))}
+    </div>
   )
 }
 

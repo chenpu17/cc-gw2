@@ -10,6 +10,21 @@ fn upstream_error_source_for_status(status_code: i64) -> Option<String> {
     (status_code >= 400).then(|| ERROR_SOURCE_UPSTREAM.to_string())
 }
 
+/// The upstream `Err` arm receives an `anyhow::Error` whose `Display` chain
+/// embeds the full upstream URL. Surface only a generic category so the gateway
+/// doesn't leak routing topology (upstream host / path) to callers that only
+/// hold a gateway key. The full error stays in tracing.
+fn sanitize_upstream_error(error: &anyhow::Error) -> String {
+    let reqwest_error = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<reqwest::Error>());
+    match reqwest_error {
+        Some(e) if e.is_timeout() => "upstream timed out".to_string(),
+        Some(e) if e.is_connect() => "upstream connection failed".to_string(),
+        _ => "upstream request failed".to_string(),
+    }
+}
+
 #[derive(Clone)]
 struct NetworkByteRecorder {
     state: AppState,
@@ -1619,6 +1634,7 @@ pub(super) async fn proxy_standard_request(
             }
         }
         Err(error) => {
+            tracing::warn!(error = %error, provider = %target.provider_id, "upstream request failed");
             let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
             if let Some(log_id) = request_log_id {
                 let update = RequestLogUpdate {
@@ -1659,7 +1675,7 @@ pub(super) async fn proxy_standard_request(
                 StatusCode::BAD_GATEWAY,
                 &json!({
                     "error": {
-                        "message": error.to_string(),
+                        "message": sanitize_upstream_error(&error),
                         "provider": target.provider_id
                     }
                 }),

@@ -57,6 +57,7 @@ export default {
   },
   noMatches: '无匹配项',
   unknownError: '未知错误',
+  requestFailed: '请求失败，请稍后再试',
   filters: {
     activeCount: '{{count}} 个筛选条件',
     collapse: '收起筛选',

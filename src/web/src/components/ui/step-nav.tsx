@@ -48,7 +48,7 @@ export function StepNav({ steps, current, onSelect, className }: StepNavProps) {
         const circle = (
           <span
             className={cn(
-              'motion-surface flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold',
+              'motion-surface flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-xs font-semibold',
               circleByStatus[step.status]
             )}
             aria-current={step.id === current ? 'step' : undefined}
@@ -66,7 +66,7 @@ export function StepNav({ steps, current, onSelect, className }: StepNavProps) {
                   type="button"
                   onClick={() => onSelect?.(step.id)}
                   aria-labelledby={labelId}
-                  className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-surface"
+                  className="rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-surface"
                 >
                   {circle}
                 </button>

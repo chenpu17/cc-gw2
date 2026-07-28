@@ -1,14 +1,11 @@
 import { useMemo } from 'react'
 import { useTheme } from '@/providers/ThemeProvider'
 
-function cssVar(name: string): string {
-  if (typeof window === 'undefined') return ''
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-}
-
-function hsl(name: string, fallback: string): string {
-  const raw = cssVar(name)
-  return raw ? `hsl(${raw.split(' ').join(' ')})` : fallback
+/** Read a CSS custom property as a raw value (hex string under Modernist). */
+function cssVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return raw || fallback
 }
 
 export interface ChartTheme {
@@ -37,7 +34,8 @@ export interface ChartTheme {
 /**
  * Single source of truth for ECharts styling. Colors are read from the CSS
  * variables in global.css so charts follow light/dark automatically; the
- * hook recomputes when the resolved theme flips.
+ * hook recomputes when the resolved theme flips. Modernist stores hex values
+ * directly (no hsl() channel wrapping), so cssVar returns them as-is.
  */
 export function useChartTheme(): ChartTheme {
   const { resolved } = useTheme()
@@ -45,22 +43,22 @@ export function useChartTheme(): ChartTheme {
   return useMemo(() => {
     // resolved is the dependency that triggers a re-read after the theme class flips
     void resolved
-    const foreground = hsl('--foreground', '#09090B')
-    const muted = hsl('--muted-foreground', '#6B7280')
-    const border = hsl('--border', '#E5E7EB')
-    const card = hsl('--card', '#FFFFFF')
+    const foreground = cssVar('--foreground', '#201e1d')
+    const muted = cssVar('--muted-foreground', '#605d5d')
+    const border = cssVar('--border', '#d7d3d3')
+    const card = cssVar('--card', '#ffffff')
 
     return {
       palette: [
-        hsl('--chart-1', '#4338CA'),
-        hsl('--chart-2', '#15803D'),
-        hsl('--chart-3', '#D97706'),
-        hsl('--chart-4', '#DC2626'),
-        hsl('--chart-5', '#7C3AED')
+        cssVar('--chart-1', '#ec3013'),
+        cssVar('--chart-2', '#ae1800'),
+        cssVar('--chart-3', '#ff9783'),
+        cssVar('--chart-4', '#444141'),
+        cssVar('--chart-5', '#9b9797')
       ],
-      success: hsl('--success', '#15803D'),
-      warning: hsl('--warning', '#D97706'),
-      error: hsl('--error', '#DC2626'),
+      success: cssVar('--success', '#444141'),
+      warning: cssVar('--warning', '#ae1800'),
+      error: cssVar('--error', '#dd2b0f'),
       axis: muted,
       splitLine: border,
       base: {

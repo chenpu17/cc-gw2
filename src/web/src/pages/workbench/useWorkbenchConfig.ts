@@ -29,7 +29,14 @@ export function useWorkbenchConfig() {
     refetchInterval: 10000
   })
 
-  const customEndpoints = customEndpointsQuery.data?.endpoints ?? []
+  // Memoize so the array reference is stable while data is loading (undefined)
+  // — otherwise `?? []` allocates a fresh array every render and the downstream
+  // routing merge effect (which depends on this) re-runs in a loop during the
+  // window where config resolves before custom-endpoints do.
+  const customEndpoints = useMemo(
+    () => customEndpointsQuery.data?.endpoints ?? [],
+    [customEndpointsQuery.data?.endpoints]
+  )
   const tabs = useMemo<ManagementTab[]>(() => buildTabs(t, customEndpoints), [customEndpoints, t])
 
   const [config, setConfig] = useState<GatewayConfig | null>(null)

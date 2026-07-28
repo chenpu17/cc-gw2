@@ -207,7 +207,7 @@ export function TargetCombobox({
         />
       </PopoverAnchor>
       <PopoverContent
-        className="flex max-h-[min(28rem,var(--radix-popover-content-available-height))] flex-col overflow-hidden rounded-xl border border-[color:var(--surface-border)] bg-popover/96 p-0 shadow-[var(--surface-shadow-lg)] backdrop-blur"
+        className="flex max-h-[min(28rem,var(--radix-popover-content-available-height))] flex-col overflow-hidden rounded-xl border border-[color:var(--surface-border)] bg-popover/96 p-0 shadow-[var(--surface-shadow-lg)]"
         style={{ width: 'max(var(--radix-popover-trigger-width), 360px)' }}
         align="start"
         onOpenAutoFocus={(event) => {
@@ -243,7 +243,7 @@ export function TargetCombobox({
             {groups.map((group) => (
               <div key={group.key} className="py-1">
                 <div className={cn(
-                  'sticky top-0 z-10 flex items-center justify-between bg-popover/95 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur',
+                  'sticky top-0 z-10 flex items-center justify-between bg-popover/95 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground',
                   group.muted && 'opacity-80'
                 )}>
                   <span className="truncate">{group.label}</span>

@@ -182,6 +182,25 @@ filters: {
       failure: '复制失败',
       failureFallback: '无法复制内容，请稍后再试。'
     },
+    trace: {
+      title: '请求链路',
+      arrived: '客户端请求到达',
+      ttft: '上游首 Token (TTFT)',
+      complete: '请求完成',
+      pending: '请求处理中…',
+      streamOn: 'stream',
+      streamOff: 'single',
+      tpot: 'TPOT',
+      degraded: '未记录逐步耗时，按总耗时与 TTFT 推算。'
+    },
+    inline: {
+      copyRequest: '复制请求体',
+      copySession: '复制 Session ID',
+      viewRule: '查看命中规则',
+      sessionCopied: 'Session ID 已复制到剪贴板。',
+      expand: '展开行内预览',
+      collapse: '收起行内预览'
+    },
     loadError: '无法加载日志详情。'
   }
 }

@@ -4510,6 +4510,74 @@ async fn upstream_stream_failures_are_logged_as_upstream_errors() {
 }
 
 #[tokio::test]
+async fn upstream_failures_do_not_leak_url_to_client() {
+    // Point the provider at a port that is allocated-then-released so the
+    // upstream connect fails fast with a reqwest error whose Display embeds the
+    // URL. The client (holding only a gateway key) must see a generic category,
+    // never the upstream host/port.
+    let closed_addr = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind closed port");
+        listener.local_addr().expect("local addr")
+    };
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "unreachable".to_string(),
+        label: "Unreachable".to_string(),
+        base_url: format!("http://{closed_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("claude-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "upstream-url-leak").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/responses"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "input": "hello"
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send request to unreachable upstream");
+
+    assert_eq!(response.status().as_u16(), 502);
+    let body: Value = response.json().await.expect("decode error body");
+    let message = body
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .and_then(Value::as_str)
+        .expect("error.message present");
+    assert!(
+        !message.contains(&closed_addr.to_string()),
+        "client error leaked upstream address: {message}"
+    );
+    assert!(
+        message.contains("upstream"),
+        "expected a generic upstream category, got: {message}"
+    );
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn trailing_upstream_stream_errors_after_terminal_event_are_logged_as_success() {
     let (upstream_addr, upstream_handle) =
         spawn_bad_chunked_anthropic_upstream_after_terminal().await;
@@ -5015,6 +5083,7 @@ async fn anthropic_to_openai_retry_summarizes_tool_roundtrip_and_normalizes_toke
         None,
         None,
         Some("openai_compatibility_mode_learned"),
+        None,
     )
     .expect("list compatibility mode events");
     assert_eq!(events.events.len(), 2);
@@ -5646,6 +5715,7 @@ async fn anthropic_to_openai_non_json_error_uses_anthropic_error_fallback() {
         None,
         None,
         Some("non_json_upstream_error_fallback"),
+        None,
     )
     .expect("list non-json fallback events");
     assert_eq!(events.events.len(), 1);
@@ -6524,6 +6594,68 @@ async fn dashboard_summary_returns_all_sections() {
             .all(|event| event.get("type").and_then(Value::as_str).is_some()),
         "recentErrors items should reuse the /api/events item shape"
     );
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+#[tokio::test]
+async fn events_stats_aggregates_by_level_and_respects_days_window() {
+    let paths = test_paths("events-stats");
+    initialize_database(&paths.db_path).expect("init db");
+
+    let now = chrono::Utc::now().timestamp_millis();
+    // Seed: 2 recent errors, 1 warn, 1 info, plus 1 error a week old.
+    for (event_type, level, timestamp) in [
+        ("provider_proxy_failure", Some("error"), now),
+        ("provider_proxy_failure", Some("error"), now),
+        ("web_auth_login_failure", Some("warn"), now),
+        ("openai_compatibility_mode_learned", Some("info"), now),
+        ("provider_proxy_failure", Some("error"), now - 7 * 24 * 60 * 60 * 1000),
+    ] {
+        record_event(
+            &paths.db_path,
+            &RecordEventInput {
+                timestamp: Some(timestamp),
+                event_type: event_type.to_string(),
+                level: level.map(|value| value.to_string()),
+                ..RecordEventInput::default()
+            },
+        )
+        .expect("record event");
+    }
+
+    let state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    let (addr, gateway_handle) = spawn_router(build_router(state)).await;
+    let client = reqwest::Client::new();
+
+    // No days param → all-time aggregation.
+    let body: Value = client
+        .get(format!("http://{addr}/api/events/stats"))
+        .send()
+        .await
+        .expect("request stats")
+        .json()
+        .await
+        .expect("decode stats");
+    assert_eq!(body.get("total").and_then(Value::as_i64), Some(5));
+    assert_eq!(body.get("error").and_then(Value::as_i64), Some(3));
+    assert_eq!(body.get("warn").and_then(Value::as_i64), Some(1));
+    assert_eq!(body.get("info").and_then(Value::as_i64), Some(1));
+
+    // ?days=1 → the week-old error falls outside the window.
+    let windowed: Value = client
+        .get(format!("http://{addr}/api/events/stats?days=1"))
+        .send()
+        .await
+        .expect("request windowed stats")
+        .json()
+        .await
+        .expect("decode windowed stats");
+    assert_eq!(windowed.get("total").and_then(Value::as_i64), Some(4));
+    assert_eq!(windowed.get("error").and_then(Value::as_i64), Some(2));
+    assert_eq!(windowed.get("warn").and_then(Value::as_i64), Some(1));
+    assert_eq!(windowed.get("info").and_then(Value::as_i64), Some(1));
 
     gateway_handle.abort();
     let _ = stdfs::remove_dir_all(paths.home_dir);

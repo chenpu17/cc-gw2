@@ -26,7 +26,9 @@ export default defineConfig({
             return 'charts-core'
           }
 
-          if (id.includes('@radix-ui')) {
+          // cmdk builds directly on @radix-ui/react-dialog (+ react-primitive/id),
+          // so it must land in the same chunk to avoid a cross-chunk TDZ cycle.
+          if (id.includes('@radix-ui') || id.includes('/cmdk/')) {
             return 'radix'
           }
 

@@ -21,6 +21,31 @@ pub struct RouteTarget {
     pub model_id: String,
 }
 
+/// Why [`resolve_route`] settled on a target. Surfaced by the routing
+/// "hit simulation" admin endpoint so operators can see which rule fired.
+/// Serialized as `{"kind": "<camelCase variant>", "<camelCase fields>"}` for the
+/// web console.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum RouteMatchReason {
+    /// Matched an explicit `model_routes` entry (exact or wildcard), possibly
+    /// after expanding a model alias (e.g. `claude-sonnet-latest`).
+    ModelRoute { via_alias: bool },
+    /// Requested model resolved directly against a configured provider.
+    DirectMatch,
+    /// Endpoint reasoning (thinking) default.
+    ThinkingDefault,
+    /// Long-context background default — the request exceeded the threshold.
+    LongContextDefault {
+        token_estimate: usize,
+        threshold: u64,
+    },
+    /// Endpoint completion default.
+    CompletionDefault,
+    /// Global routing fallback (`enable_routing_fallback`).
+    Fallback,
+}
+
 fn apply_model_alias(model: &str) -> Option<String> {
     let trimmed = model.trim();
     if trimmed.is_empty() {
@@ -171,7 +196,7 @@ fn default_endpoint_key(protocol: ProviderProtocol) -> &'static str {
     }
 }
 
-fn find_custom_endpoint<'a>(
+pub fn find_custom_endpoint<'a>(
     config: &'a GatewayConfig,
     id: &str,
 ) -> Option<&'a CustomEndpointConfig> {
@@ -204,7 +229,21 @@ fn estimate_token_budget(request_body: &serde_json::Value) -> usize {
             serde_json::Value::Number(_) => 2,
             serde_json::Value::String(text) => text.len() / 4 + 1,
             serde_json::Value::Array(values) => values.iter().map(walk).sum(),
-            serde_json::Value::Object(map) => map.values().map(walk).sum(),
+            serde_json::Value::Object(map) => {
+                // base64 image/document payloads massively inflate the estimate
+                // and can silently reroute model-less requests to the long-context
+                // default. Skip the `source` blob of such blocks (it carries the
+                // base64 data, not prompt text).
+                let block_type = map.get("type").and_then(serde_json::Value::as_str);
+                if matches!(block_type, Some("image") | Some("document")) {
+                    map.iter()
+                        .filter(|(k, _)| *k != "source")
+                        .map(|(_, v)| walk(v))
+                        .sum()
+                } else {
+                    map.values().map(walk).sum()
+                }
+            }
         }
     }
 
@@ -219,6 +258,30 @@ pub fn resolve_route(
     requested_model: Option<&str>,
     thinking: bool,
 ) -> Result<RouteTarget> {
+    Ok(resolve_route_inner(config, endpoint, protocol, request_body, requested_model, thinking)?.0)
+}
+
+/// Same resolution as [`resolve_route`] but also reports which rule fired —
+/// used by the routing "hit simulation" admin endpoint.
+pub fn resolve_route_with_reason(
+    config: &GatewayConfig,
+    endpoint: GatewayEndpoint<'_>,
+    protocol: ProviderProtocol,
+    request_body: &serde_json::Value,
+    requested_model: Option<&str>,
+    thinking: bool,
+) -> Result<(RouteTarget, RouteMatchReason)> {
+    resolve_route_inner(config, endpoint, protocol, request_body, requested_model, thinking)
+}
+
+fn resolve_route_inner(
+    config: &GatewayConfig,
+    endpoint: GatewayEndpoint<'_>,
+    protocol: ProviderProtocol,
+    request_body: &serde_json::Value,
+    requested_model: Option<&str>,
+    thinking: bool,
+) -> Result<(RouteTarget, RouteMatchReason)> {
     let providers = &config.providers;
     if providers.is_empty() {
         bail!("未配置任何模型提供商，请先在 Web UI 中添加 Provider。");
@@ -227,50 +290,68 @@ pub fn resolve_route(
     let endpoint_config = endpoint_routing(config, endpoint, protocol)
         .ok_or_else(|| anyhow::anyhow!("未找到端点路由配置"))?;
 
-    if let Some(mapped_identifier) =
-        find_mapped_identifier(requested_model, &endpoint_config.model_routes).or_else(|| {
-            apply_model_alias(requested_model.unwrap_or_default()).and_then(|alias| {
-                find_mapped_identifier(Some(alias.as_str()), &endpoint_config.model_routes)
-            })
-        })
-    {
+    // 1) explicit model_routes match (exact or wildcard), optionally via alias
+    let (mapped_identifier, via_alias) =
+        match find_mapped_identifier(requested_model, &endpoint_config.model_routes) {
+            Some(id) => (Some(id), false),
+            None => match requested_model.and_then(|model| {
+                apply_model_alias(model)
+                    .and_then(|alias| find_mapped_identifier(Some(alias.as_str()), &endpoint_config.model_routes))
+            }) {
+                Some(id) => (Some(id), true),
+                None => (None, false),
+            },
+        };
+    if let Some(mapped_identifier) = mapped_identifier {
         if let Some(target) = resolve_by_identifier(&mapped_identifier, providers, requested_model)
         {
-            return Ok(target);
+            return Ok((target, RouteMatchReason::ModelRoute { via_alias }));
         }
     }
 
+    // 2) requested model resolves directly against a provider
     if let Some(requested_model) = requested_model {
         if let Some(target) =
             resolve_by_identifier(requested_model, providers, Some(requested_model))
         {
-            return Ok(target);
+            return Ok((target, RouteMatchReason::DirectMatch));
         }
     }
 
+    // 3) reasoning (thinking) default
     if thinking {
         if let Some(reasoning) = endpoint_config.defaults.reasoning.as_deref() {
             if let Some(target) = resolve_by_identifier(reasoning, providers, requested_model) {
-                return Ok(target);
+                return Ok((target, RouteMatchReason::ThinkingDefault));
             }
         }
     }
 
+    // 4) long-context background default
     let token_estimate = estimate_token_budget(request_body);
-    if token_estimate > endpoint_config.defaults.long_context_threshold as usize {
+    let threshold = endpoint_config.defaults.long_context_threshold;
+    if token_estimate > threshold as usize {
         if let Some(background) = endpoint_config.defaults.background.as_deref() {
             if let Some(target) = resolve_by_identifier(background, providers, requested_model) {
-                return Ok(target);
+                return Ok((
+                    target,
+                    RouteMatchReason::LongContextDefault {
+                        token_estimate,
+                        threshold,
+                    },
+                ));
             }
         }
     }
 
+    // 5) completion default
     if let Some(completion) = endpoint_config.defaults.completion.as_deref() {
         if let Some(target) = resolve_by_identifier(completion, providers, requested_model) {
-            return Ok(target);
+            return Ok((target, RouteMatchReason::CompletionDefault));
         }
     }
 
+    // 6) global routing fallback
     if config.enable_routing_fallback.unwrap_or(false) {
         let provider = providers
             .iter()
@@ -285,11 +366,14 @@ pub fn resolve_route(
             .or_else(|| provider.models.first().map(|model| model.id.clone()))
             .ok_or_else(|| anyhow::anyhow!("Provider {} 未配置任何模型", provider.id))?;
 
-        return Ok(RouteTarget {
-            provider: provider.clone(),
-            provider_id: provider.id.clone(),
-            model_id,
-        });
+        return Ok((
+            RouteTarget {
+                provider: provider.clone(),
+                provider_id: provider.id.clone(),
+                model_id,
+            },
+            RouteMatchReason::Fallback,
+        ));
     }
 
     bail!("未找到匹配模型，请在请求中指定模型或在配置中启用回退策略。")
@@ -492,5 +576,208 @@ mod tests {
 
         assert_eq!(route.provider_id, "mock-openai");
         assert_eq!(route.model_id, "client-model-a");
+    }
+
+    #[test]
+    fn route_reason_reports_model_route_match() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "gpt-4o"), provider("beta", "glm-5")];
+        let anthropic = config.endpoint_routing.get_mut("anthropic").unwrap();
+        anthropic
+            .model_routes
+            .insert("gpt-4o".to_string(), "alpha:gpt-4o".to_string());
+
+        let (target, reason) = resolve_route_with_reason(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "messages": [] }),
+            Some("gpt-4o"),
+            false,
+        )
+        .expect("resolve model-route match");
+
+        assert_eq!(target.provider_id, "alpha");
+        assert_eq!(target.model_id, "gpt-4o");
+        assert!(matches!(
+            reason,
+            RouteMatchReason::ModelRoute { via_alias: false }
+        ));
+    }
+
+    #[test]
+    fn route_reason_reports_model_route_via_alias() {
+        // claude-sonnet-latest aliases to a concrete version; mapping that
+        // concrete id should report ModelRoute with via_alias = true and must
+        // win over a direct provider match (step 1 precedes step 2).
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("anthropic", "claude-sonnet-4-5-20250929")];
+        let anthropic = config.endpoint_routing.get_mut("anthropic").unwrap();
+        anthropic.model_routes.insert(
+            "claude-sonnet-4-5-20250929".to_string(),
+            "anthropic:claude-sonnet-4-5-20250929".to_string(),
+        );
+
+        let (target, reason) = resolve_route_with_reason(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "messages": [] }),
+            Some("claude-sonnet-latest"),
+            false,
+        )
+        .expect("resolve aliased model-route");
+
+        assert_eq!(target.provider_id, "anthropic");
+        assert!(matches!(
+            reason,
+            RouteMatchReason::ModelRoute { via_alias: true }
+        ));
+    }
+
+    #[test]
+    fn route_reason_reports_direct_match() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "gpt-4o")];
+
+        let (target, reason) = resolve_route_with_reason(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "messages": [] }),
+            Some("gpt-4o"),
+            false,
+        )
+        .expect("resolve direct match");
+
+        assert_eq!(target.provider_id, "alpha");
+        assert!(matches!(reason, RouteMatchReason::DirectMatch));
+    }
+
+    #[test]
+    fn route_reason_reports_thinking_default() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "gpt-4o")];
+        config
+            .endpoint_routing
+            .get_mut("anthropic")
+            .unwrap()
+            .defaults
+            .reasoning = Some("alpha:gpt-4o".to_string());
+
+        let (target, reason) = resolve_route_with_reason(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "messages": [] }),
+            None,
+            true,
+        )
+        .expect("resolve thinking default");
+
+        assert_eq!(target.provider_id, "alpha");
+        assert!(matches!(reason, RouteMatchReason::ThinkingDefault));
+    }
+
+    #[test]
+    fn route_reason_reports_long_context_default() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "gpt-4o")];
+        let anthropic = config.endpoint_routing.get_mut("anthropic").unwrap();
+        anthropic.defaults.background = Some("alpha:gpt-4o".to_string());
+        anthropic.defaults.long_context_threshold = 10;
+
+        // A body large enough that estimate_token_budget clears the low threshold.
+        let big_body = json!({ "messages": [{ "role": "user", "content": "x".repeat(200) }] });
+
+        let (target, reason) = resolve_route_with_reason(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &big_body,
+            None,
+            false,
+        )
+        .expect("resolve long-context default");
+
+        assert_eq!(target.provider_id, "alpha");
+        match reason {
+            RouteMatchReason::LongContextDefault { token_estimate, threshold } => {
+                assert!(token_estimate > 10, "token estimate should exceed threshold");
+                assert_eq!(threshold, 10);
+            }
+            other => panic!("expected LongContextDefault, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn route_reason_reports_completion_default() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "gpt-4o")];
+        config
+            .endpoint_routing
+            .get_mut("openai")
+            .unwrap()
+            .defaults
+            .completion = Some("alpha:gpt-4o".to_string());
+
+        let (target, reason) = resolve_route_with_reason(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            None,
+            false,
+        )
+        .expect("resolve completion default");
+
+        assert_eq!(target.provider_id, "alpha");
+        assert!(matches!(reason, RouteMatchReason::CompletionDefault));
+    }
+
+    #[test]
+    fn route_reason_reports_global_fallback() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "gpt-4o")];
+        config.enable_routing_fallback = Some(true);
+
+        let (target, reason) = resolve_route_with_reason(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "messages": [] }),
+            Some("does-not-exist"),
+            false,
+        )
+        .expect("resolve fallback");
+
+        assert_eq!(target.provider_id, "alpha");
+        assert!(matches!(reason, RouteMatchReason::Fallback));
+    }
+
+    #[test]
+    fn reason_serializes_camel_case_on_the_wire() {
+        // The web console reads variant names AND struct-variant fields as
+        // camelCase (see POST /api/routing/simulate + types/routing.ts). Both
+        // rename rules must hold, or the UI silently reads `undefined`.
+        let model_route =
+            serde_json::to_string(&RouteMatchReason::ModelRoute { via_alias: true })
+                .expect("serialize model route");
+        assert_eq!(model_route, r#"{"kind":"modelRoute","viaAlias":true}"#);
+
+        let long_context = serde_json::to_string(&RouteMatchReason::LongContextDefault {
+            token_estimate: 12_000,
+            threshold: 10_000,
+        })
+        .expect("serialize long context");
+        assert_eq!(
+            long_context,
+            r#"{"kind":"longContextDefault","tokenEstimate":12000,"threshold":10000}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&RouteMatchReason::Fallback).unwrap(),
+            r#"{"kind":"fallback"}"#
+        );
     }
 }

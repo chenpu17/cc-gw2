@@ -100,7 +100,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={toast.id}
             role="alert"
-            className={`rounded-md border border-border bg-card p-4 text-card-foreground shadow-lg ${
+            className={`rounded-md border border-border bg-card p-4 text-card-foreground shadow-[var(--surface-shadow-lg)] ${
               toast.dismissing
                 ? 'animate-toast-out'
                 : 'animate-toast-in'
@@ -108,7 +108,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               toast.variant === 'error'
                 ? 'border-destructive/20 bg-destructive/10 text-destructive'
                 : toast.variant === 'success'
-                ? 'border-[hsl(var(--success)/0.2)] bg-[hsl(var(--success-bg))] text-[hsl(var(--success)/1)]'
+                ? 'border-success/20 bg-success-bg text-success'
                 : ''
             }`}
           >

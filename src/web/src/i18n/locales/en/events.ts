@@ -19,6 +19,9 @@ export default {
     warn: 'Warning',
     error: 'Error'
   },
+  stats: {
+    total: 'Total'
+  },
   empty: {
     title: 'No events recorded',
     subtitle: 'No alerts or suspicious events have been recorded yet, which usually means things are healthy.',
@@ -32,6 +35,7 @@ export default {
   defaultTitle: 'Untitled event',
   defaultMessage: 'No additional description provided.',
   toast: {
-    loadFailure: 'Failed to load events: {{message}}'
+    loadFailure: 'Failed to load events: {{message}}',
+    statsLoadFailure: 'Failed to load event stats: {{message}}'
   }
 }

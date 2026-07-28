@@ -59,7 +59,8 @@ export default {
   targetPicker: {
     helper: 'Type a provider, model name, or ID to filter quickly.',
     searchPlaceholder: 'Search provider, model, or ID',
-    matchCount: '{{count}} matching targets',
+    matchCount_one: '{{count}} matching target',
+    matchCount_other: '{{count}} matching targets',
     recent: 'Recent',
     custom: 'Custom / Saved',
     model: 'Model',

@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import axios, { AxiosHeaders } from 'axios'
 import type { AxiosRequestConfig, AxiosResponse } from 'axios'
 import type {
@@ -50,7 +51,7 @@ export function toApiError(error: unknown): ApiError {
       data?.error ||
       data?.statusText ||
       error.message ||
-      '请求失败，请稍后再试'
+      i18n.t('common.requestFailed')
     return {
       message,
       status,
@@ -58,7 +59,7 @@ export function toApiError(error: unknown): ApiError {
     }
   }
   return {
-    message: error instanceof Error ? error.message : '请求失败，请稍后再试'
+    message: error instanceof Error ? error.message : i18n.t('common.requestFailed')
   }
 }
 
