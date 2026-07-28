@@ -55,7 +55,7 @@ fn count_network_bytes_for_endpoint(entries: &Mutex<HashMap<String, u64>>, endpo
         .unwrap_or(0)
 }
 
-fn update_channel_for_version(version: &str) -> String {
+pub(super) fn update_channel_for_version(version: &str) -> String {
     let normalized = version.trim().trim_start_matches('v');
     let Ok(version) = Version::parse(normalized) else {
         return "latest".to_string();

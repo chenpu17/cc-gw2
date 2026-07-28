@@ -739,6 +739,7 @@ fn build_request_body_for_target(
     target_protocol: ProviderProtocol,
     provider_type: &str,
     compatibility_enabled: bool,
+    stream_usage: bool,
 ) -> Value {
     let mut converted = match (request_protocol, target_protocol) {
         (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions) => {
@@ -771,6 +772,25 @@ fn build_request_body_for_target(
                 downgrade_openai_responses_body_for_custom_provider(&mut converted);
             }
             ProviderProtocol::AnthropicMessages => {}
+        }
+    }
+
+    // `stream_options.include_usage` makes an OpenAI upstream emit a terminal
+    // usage chunk so streamed tokens can be accounted for. It's an OpenAI-specific
+    // extension though — some OpenAI-compatible upstreams (Aliyun MaaS, internal
+    // proxies) reject or truncate the stream on seeing it, returning an empty
+    // response. Default off (restores pre-0.9.0 behavior); providers whose
+    // upstream supports it opt in via `streamUsage`.
+    if stream_usage
+        && request_protocol == ProviderProtocol::AnthropicMessages
+        && matches!(target_protocol, ProviderProtocol::OpenAiChatCompletions)
+        && converted.get("stream").and_then(Value::as_bool) == Some(true)
+    {
+        if let Some(obj) = converted.as_object_mut() {
+            obj.insert(
+                "stream_options".to_string(),
+                serde_json::json!({ "include_usage": true }),
+            );
         }
     }
 
@@ -1265,6 +1285,7 @@ pub(super) async fn proxy_standard_request(
         target_protocol,
         provider_type,
         endpoint_compatibility_enabled,
+        target.provider.stream_usage.unwrap_or(false),
     );
     let cross_protocol = !matches!(
         (protocol, target_protocol),
@@ -3038,5 +3059,91 @@ mod tests {
         assert_eq!(usage.cache_read_tokens, 6);
         assert_eq!(usage.cache_creation_tokens, 0);
         assert_eq!(usage.cached_tokens, 6);
+    }
+
+    #[test]
+    fn stream_options_include_usage_omitted_by_default() {
+        // Regression guard: a streamed Anthropic→OpenAI request must NOT carry
+        // stream_options.include_usage unless the provider opted in. Some
+        // OpenAI-compatible upstreams (Aliyun MaaS et al.) reject/truncate the
+        // stream on seeing it, yielding an empty response.
+        let body = json!({
+            "model": "claude-sonnet-5",
+            "max_tokens": 16,
+            "stream": true,
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let converted = build_request_body_for_target(
+            &body,
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "openai",
+            false,
+            false,
+        );
+        assert!(
+            converted.get("stream_options").is_none(),
+            "stream_options must be absent when stream_usage is disabled (default)"
+        );
+    }
+
+    #[test]
+    fn stream_options_include_usage_injected_when_opted_in() {
+        let body = json!({
+            "model": "claude-sonnet-5",
+            "max_tokens": 16,
+            "stream": true,
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let converted = build_request_body_for_target(
+            &body,
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "openai",
+            false,
+            true,
+        );
+        assert_eq!(
+            converted.get("stream_options"),
+            Some(&json!({ "include_usage": true })),
+            "stream_options.include_usage must be injected when opted in"
+        );
+    }
+
+    #[test]
+    fn stream_options_not_injected_for_non_streaming_or_same_protocol() {
+        // Non-streaming request: opt-in must not add stream_options.
+        let non_stream = json!({
+            "model": "claude-sonnet-5",
+            "max_tokens": 16,
+            "stream": false,
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let converted = build_request_body_for_target(
+            &non_stream,
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "openai",
+            false,
+            true,
+        );
+        assert!(
+            converted.get("stream_options").is_none(),
+            "stream_options must be absent for non-streaming requests"
+        );
+
+        // Same-protocol passthrough: opt-in must not add stream_options.
+        let converted_same = build_request_body_for_target(
+            &non_stream,
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::AnthropicMessages,
+            "anthropic",
+            false,
+            true,
+        );
+        assert!(
+            converted_same.get("stream_options").is_none(),
+            "stream_options must be absent on same-protocol passthrough"
+        );
     }
 }

@@ -888,16 +888,7 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
         result.insert("temperature".to_string(), temperature);
     }
     if let Some(stream) = body.get("stream").cloned() {
-        let is_stream = stream.as_bool() == Some(true);
         result.insert("stream".to_string(), stream);
-        // OpenAI only emits a terminal usage chunk in streaming mode when
-        // explicitly requested; without it token accounting records 0.
-        if is_stream {
-            result.insert(
-                "stream_options".to_string(),
-                serde_json::json!({ "include_usage": true }),
-            );
-        }
     }
     if let Some(tool_choice) = anthropic_tool_choice_to_openai(body.get("tool_choice")) {
         result.insert("tool_choice".to_string(), tool_choice);

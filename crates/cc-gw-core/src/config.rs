@@ -72,6 +72,11 @@ pub struct ProviderConfig {
     pub default_model: Option<String>,
     pub non_stream_via_stream: Option<bool>,
     pub use_absolute_url: Option<bool>,
+    /// When true, inject `stream_options.include_usage` on Anthropic→OpenAI
+    /// streaming requests so the upstream returns a terminal usage chunk.
+    /// Opt-in: some OpenAI-compatible upstreams reject/truncate the stream
+    /// when they see it, yielding an empty response.
+    pub stream_usage: Option<bool>,
     pub models: Vec<ProviderModelConfig>,
     pub extra_headers: HashMap<String, String>,
     #[serde(rename = "type")]
@@ -89,6 +94,7 @@ impl Default for ProviderConfig {
             default_model: None,
             non_stream_via_stream: None,
             use_absolute_url: None,
+            stream_usage: None,
             models: Vec::new(),
             extra_headers: HashMap::new(),
             provider_type: None,

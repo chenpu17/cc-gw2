@@ -2832,9 +2832,13 @@ async fn api_version_check_reports_update_state_from_registry() {
         response.get("latestVersion").and_then(Value::as_str),
         Some(latest_version)
     );
+    // Channel reflects the running build's prerelease identifier (e.g. a
+    // 0.9.0-beta.0 build reports "beta"); assert the derived value rather than
+    // a hardcoded "latest" so the test holds across release/ prerelease builds.
+    let expected_channel = admin_routes::update_channel_for_version(current_version);
     assert_eq!(
         response.get("channel").and_then(Value::as_str),
-        Some("latest")
+        Some(expected_channel.as_str())
     );
     assert_eq!(
         response.get("updateAvailable").and_then(Value::as_bool),
