@@ -1,0 +1,179 @@
+/*
+ * Modernist Web UI — design-token layer (drop-in).
+ * Source: cc-gw2/src/web/src/styles/global.css
+ *
+ * Drop this at src/styles/global.css and import it once at the app entry.
+ * Requires: Tailwind v3 + tailwindcss-animate, Archivo + Noto Sans SC fonts.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Modernist — pure hex vars (paired with tailwind.config var(--x), supports color-mix) */
+    --background: #f3f2f2;
+    --foreground: #201e1d;
+    --card: #ffffff;
+    --card-foreground: #201e1d;
+    --popover: #ffffff;
+    --popover-foreground: #201e1d;
+    --primary: #ec3013;            /* accent red */
+    --primary-foreground: #ffffff;
+    --secondary: #f8f4f4;          /* neutral-100 */
+    --secondary-foreground: #201e1d;
+    --muted: #eae7e7;              /* neutral-200 */
+    --muted-foreground: #605d5d;   /* neutral-700 */
+    --accent: #f8f4f4;             /* shadcn hover light fill (not red) */
+    --accent-foreground: #201e1d;
+    --destructive: #dd2b0f;        /* accent-600 = err */
+    --destructive-foreground: #ffffff;
+    --border: #d7d3d3;             /* neutral-300 = line */
+    --input: #d7d3d3;
+    --ring: #ec3013;
+    --radius: 0px;
+
+    /* Status — Modernist subverts semantics: ok = dark gray, warn/err = red family (NO green) */
+    --success: #444141;   --success-bg: #eae7e7;    /* neutral-800 / 200 */
+    --warning: #ae1800;   --warning-bg: #ffe0d9;    /* accent-700 / 200 */
+    --error: #dd2b0f;     --error-bg: #fff2ef;      /* accent-600 / 100 */
+    --info: #605d5d;      --info-bg: #eae7e7;       /* folded into neutral; red reserved for err/accent */
+
+    /* chart — mono red + gray */
+    --chart-1: #ec3013;
+    --chart-2: #ae1800;
+    --chart-3: #ff9783;
+    --chart-4: #444141;
+    --chart-5: #9b9797;
+
+    --surface-shadow: none;
+    --surface-shadow-lg: none;
+    --surface-border: #d7d3d3;
+
+    --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .dark,
+  [data-theme="dark"] {
+    --background: #201e1d;
+    --foreground: #f8f4f4;
+    --card: #2d2b2b;
+    --card-foreground: #f8f4f4;
+    --popover: #2d2b2b;
+    --popover-foreground: #f8f4f4;
+    --primary: #ff563c;
+    --primary-foreground: #201e1d;
+    --secondary: #363333;
+    --secondary-foreground: #f8f4f4;
+    --muted: #444141;
+    --muted-foreground: #d7d3d3;
+    --accent: #363333;
+    --accent-foreground: #f8f4f4;
+    --destructive: #ff563c;
+    --destructive-foreground: #201e1d;
+    --border: #605d5d;
+    --input: #605d5d;
+    --ring: #ff563c;
+
+    --success: #d7d3d3;   --success-bg: #444141;
+    --warning: #ff9783;   --warning-bg: #71261b;
+    --error: #ff563c;     --error-bg: #7c1405;
+    --info: #d7d3d3;      --info-bg: #444141;
+
+    --chart-1: #ff563c;
+    --chart-2: #ff9783;
+    --chart-3: #ae1800;
+    --chart-4: #d7d3d3;
+    --chart-5: #9b9797;
+
+    --surface-shadow: none;
+    --surface-shadow-lg: none;
+    --surface-border: #605d5d;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+
+  /* `#root` is this repo's React mount ID — rename to match your app (e.g. #app). */
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Archivo", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Modernist headings: Archivo 800 */
+  h1, h2, h3, h4 {
+    font-weight: 800;
+    letter-spacing: -0.015em;
+  }
+}
+
+/* Scrollbar — square 9px (Modernist) */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { @apply bg-transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+  background-clip: content-box;
+}
+
+/* Focus — red ring (--primary is red) */
+*:focus-visible {
+  @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+}
+
+/* Selection — red tint */
+::selection {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+/* Animations */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.animate-fade-in  { animation: fadeIn 0.2s ease-out; }
+
+.motion-surface {
+  transition-property: transform, box-shadow, border-color, background-color, color;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-surface, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.metric-number {
+  font-family: "Archivo", "SF Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Touch targets */
+@media (hover: none) and (pointer: coarse) {
+  button, a, [role="button"] { min-height: 44px; }
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Toast */
+@keyframes toastIn  { from { opacity: 0; transform: translateX(100%); } to { opacity: 1; transform: translateX(0); } }
+@keyframes toastOut { from { opacity: 1; transform: translateX(0); }    to { opacity: 0; transform: translateX(100%); } }
+.animate-toast-in  { animation: toastIn  0.3s ease-out; }
+.animate-toast-out { animation: toastOut 0.2s ease-in forwards; }
