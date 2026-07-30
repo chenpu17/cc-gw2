@@ -113,11 +113,9 @@ export default function DashboardPage() {
           />
 
           <InfraDisclosure
-            compacting={state.compacting}
             dbInfo={state.dbInfo}
             dbSizeDisplay={dbSizeDisplay}
             memoryDisplay={memoryDisplay}
-            onCompact={() => void state.handleCompact()}
             status={state.status}
           />
 

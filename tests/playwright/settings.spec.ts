@@ -77,6 +77,10 @@ test('settings web ui preserves manual save flow and supports config, maintenanc
   const clearedLogs = await clearedLogsResponse.json()
   expect(clearedLogs.items).toHaveLength(0)
 
+  // Compact (VACUUM) now lives in the cleanup section; non-destructive, no dialog.
+  await page.locator('#section-cleanup').getByRole('button', { name: '释放数据库空间' }).click()
+  await expect(page.getByText('数据库整理完成')).toBeVisible()
+
   const securitySection = page.locator('#section-security')
   await securitySection.getByRole('switch').first().click()
   await securitySection.getByPlaceholder('设置用于登录的用户名').fill('settings-admin')

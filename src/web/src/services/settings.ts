@@ -1,4 +1,5 @@
 import { apiClient, requestJson, unwrapResponse } from '@/services/api'
+import type { DatabaseInfo } from '@/pages/dashboard/types'
 import type { WebAuthStatusResponse } from '@/types/providers'
 
 export interface CleanupResponse {
@@ -40,6 +41,22 @@ export const settingsApi = {
   clearLogs: async (): Promise<ClearResponse> => {
     return requestJson<ClearResponse>({
       url: '/api/logs/clear',
+      method: 'POST'
+    })
+  },
+
+  dbInfo: async (): Promise<DatabaseInfo> => {
+    return requestJson<DatabaseInfo>({
+      url: '/api/db/info',
+      method: 'GET'
+    })
+  },
+
+  compactDb: async (): Promise<DatabaseInfo> => {
+    // /api/db/compact runs VACUUM then returns the refreshed db info (plus a
+    // `success: true` flag we don't need here).
+    return requestJson<DatabaseInfo>({
+      url: '/api/db/compact',
       method: 'POST'
     })
   }

@@ -13,6 +13,11 @@ export default {
     cleanupFailure: '清理失败：{{message}}',
     clearAllSuccess: '日志已清空（请求 {{logs}} 条，统计 {{metrics}} 条）。',
     clearAllFailure: '清空失败：{{message}}',
+    compactSuccess: {
+      title: '数据库整理完成',
+      desc: '空闲页已回收，建议稍后刷新确认容量变化。'
+    },
+    compactFailure: '数据库整理失败：{{message}}',
     missingConfig: '未能加载配置，请刷新或稍后再试。',
     authLoadFailure: '安全配置加载失败：{{message}}'
   },
@@ -176,6 +181,9 @@ export default {
     clearingAll: '清空中...',
     confirmCleanup: '该操作会删除超过保留天数的历史日志，但不会影响当前较新的记录。',
     confirmClearAll: '此操作会删除全部请求日志和日统计数据，且无法恢复。',
-    clearAllWarning: '该操作会删除所有日志记录及日统计数据，请谨慎操作。'
+    clearAllWarning: '该操作会删除所有日志记录及日统计数据，请谨慎操作。',
+    dbSizeLabel: '数据库大小',
+    compactTitle: '释放数据库空间',
+    compactDescription: '回收已删除日志留下的空闲页，缩小数据库文件体积。不删除任何数据。'
   }
 }

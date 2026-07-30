@@ -6,7 +6,7 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { useEventStream } from '@/hooks/useEventStream'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { useToast } from '@/providers/ToastProvider'
-import { apiClient, type ApiError, toApiError } from '@/services/api'
+import { type ApiError } from '@/services/api'
 import { apiKeysApi } from '@/services/apiKeys'
 import type { DashboardSummary } from '@/services/dashboard'
 import { gatewayApi } from '@/services/gateway'
@@ -15,7 +15,6 @@ import { storageKeys } from '@/services/storageKeys'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import type { CustomEndpointsResponse } from '@/types/endpoints'
 import type { GatewayConfig } from '@/types/providers'
-import { useState } from 'react'
 import {
   LIVE_REFRESH_MS,
   TREND_REFRESH_MS,
@@ -46,7 +45,6 @@ export function useDashboardPageState() {
     storageKeys.dashboard.endpointFilter,
     'all'
   )
-  const [compacting, setCompacting] = useState(false)
   const endpointParam = endpointFilter === 'all' ? undefined : endpointFilter
 
   const summaryQuery = useApiQuery<DashboardSummary, ApiError>(
@@ -90,32 +88,6 @@ export function useDashboardPageState() {
   const handleRefresh = useCallback(async () => {
     await Promise.all([summaryQuery.refetch(), customEndpointsQuery.refetch()])
   }, [summaryQuery, customEndpointsQuery])
-
-  const handleCompact = useCallback(async () => {
-    if (compacting) {
-      return
-    }
-
-    setCompacting(true)
-    try {
-      await apiClient.post('/api/db/compact')
-      await summaryQuery.refetch()
-      pushToast({
-        title: t('dashboard.toast.compactSuccess.title'),
-        description: t('dashboard.toast.compactSuccess.desc'),
-        variant: 'success'
-      })
-    } catch (error) {
-      const apiError = toApiError(error)
-      pushToast({
-        title: t('dashboard.toast.compactError.title'),
-        description: apiError.message,
-        variant: 'error'
-      })
-    } finally {
-      setCompacting(false)
-    }
-  }, [compacting, summaryQuery, pushToast, t])
 
   const summary = summaryQuery.data
   const overview = summary?.overview
@@ -350,13 +322,11 @@ export function useDashboardPageState() {
 
   return {
     attentionEvents,
-    compacting,
     customEndpoints: customEndpointsQuery.data?.endpoints ?? [],
     daily,
     dbInfo,
     endpointFilter,
     fastestTtftModel,
-    handleCompact,
     handleRefresh,
     bootstrapError,
     isBootstrapping,

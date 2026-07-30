@@ -88,6 +88,9 @@ export default function SettingsPage() {
               <CleanupSection
                 cleaning={state.cleaning}
                 clearingAll={state.clearingAll}
+                compacting={state.compacting}
+                dbSizeDisplay={state.dbSizeDisplay}
+                onCompact={state.handleCompact}
                 onOpenCleanup={() => state.setConfirmCleanupOpen(true)}
                 onOpenClearAll={() => state.setConfirmClearAllOpen(true)}
                 sectionRef={state.setSectionRef('section-cleanup')}

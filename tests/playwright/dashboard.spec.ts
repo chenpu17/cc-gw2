@@ -139,11 +139,6 @@ test('dashboard supports refresh, endpoint filters, compaction, and recent reque
   })
   await page.getByRole('button', { name: '刷新' }).click()
   await refreshResponse
-
-  // Compact 按钮移入「系统资源」Disclosure，需先展开
-  await page.locator('summary').filter({ hasText: '系统资源' }).click()
-  await page.getByRole('button', { name: '释放数据库空间' }).click()
-  await expect(page.getByText('数据库整理完成')).toBeVisible()
 })
 
 function overviewSection(

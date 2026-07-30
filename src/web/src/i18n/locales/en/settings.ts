@@ -13,6 +13,11 @@ export default {
     cleanupFailure: 'Cleanup failed: {{message}}',
     clearAllSuccess: 'All logs cleared ({{logs}} requests, {{metrics}} daily rows).',
     clearAllFailure: 'Full wipe failed: {{message}}',
+    compactSuccess: {
+      title: 'Database compact completed',
+      desc: 'Free pages were reclaimed. Refresh later to confirm the new size.'
+    },
+    compactFailure: 'Database compact failed: {{message}}',
     missingConfig: 'Configuration not available. Refresh and try again.',
     authLoadFailure: 'Failed to load security settings: {{message}}'
   },
@@ -176,6 +181,9 @@ export default {
     clearingAll: 'Clearing…',
     confirmCleanup: 'This deletes only logs older than the configured retention window and keeps recent records intact.',
     confirmClearAll: 'This removes every request log and daily metric row. The operation cannot be undone.',
-    clearAllWarning: 'Deletes every log entry and daily metric. This cannot be undone.'
+    clearAllWarning: 'Deletes every log entry and daily metric. This cannot be undone.',
+    dbSizeLabel: 'Database size',
+    compactTitle: 'Compact database',
+    compactDescription: 'Reclaims free pages left by deleted logs and shrinks the database file. No data is deleted.'
   }
 }

@@ -30,6 +30,8 @@ export default {
     testingConnection: 'Testing...',
     cleanup: 'Clean up logs',
     cleaning: 'Cleaning...',
+    compact: 'Compact database',
+    compacting: 'Compacting...',
     checkUpdates: 'Check for updates',
     logout: 'Sign out'
   },

@@ -8,6 +8,7 @@ import { settingsApi } from '@/services/settings'
 import { copyToClipboard } from '@/utils/clipboard'
 import { type ApiError } from '@/services/api'
 import { queryKeys } from '@/services/queryKeys'
+import { formatBytes, type DatabaseInfo } from '@/pages/dashboard/types'
 import type { ConfigInfoResponse, GatewayConfig, WebAuthStatusResponse } from '@/types/providers'
 import {
   deriveAuthFormState,
@@ -93,6 +94,24 @@ export function useSettingsPageState() {
     }),
     // Clears request_logs AND daily_metrics, so every dependent view is stale.
     invalidateKeys: [['logs'], ['stats'], ['dashboard'], ['db']]
+  })
+
+  const dbInfoQuery = useApiQuery<DatabaseInfo>(queryKeys.db.info(), {
+    url: '/api/db/info',
+    method: 'GET'
+  })
+
+  const compactDbMutation = useAppMutation({
+    mutationFn: settingsApi.compactDb,
+    successToast: () => ({
+      title: t('settings.toast.compactSuccess.title'),
+      description: t('settings.toast.compactSuccess.desc')
+    }),
+    errorToast: (error) => ({
+      title: t('settings.toast.compactFailure', { message: error.message })
+    }),
+    // VACUUM reclaims file space — refresh this size readout and the dashboard's.
+    invalidateKeys: [queryKeys.db.info(), ['dashboard']]
   })
 
   const [config, setConfig] = useState<GatewayConfig | null>(null)
@@ -470,6 +489,10 @@ export function useSettingsPageState() {
     }
   }, [clearLogsMutation])
 
+  const dbSizeDisplay = dbInfoQuery.data
+    ? formatBytes(dbInfoQuery.data.totalBytes ?? dbInfoQuery.data.sizeBytes)
+    : '-'
+
   const isLoading = configQuery.isPending || (!config && configQuery.isFetching)
 
   useEffect(() => {
@@ -505,11 +528,13 @@ export function useSettingsPageState() {
     authSettings,
     clearingAll,
     cleaning,
+    compacting: compactDbMutation.isPending,
     config,
     configPath,
     configQuery,
     confirmCleanupOpen,
     confirmClearAllOpen,
+    dbSizeDisplay,
     defaultsSummary,
     errors,
     form,
@@ -517,6 +542,7 @@ export function useSettingsPageState() {
     handleAuthSave,
     handleCleanupLogs,
     handleClearAllLogs,
+    handleCompact: compactDbMutation.mutate,
     handleCopyPath,
     handleInputChange,
     handleReset,

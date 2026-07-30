@@ -465,20 +465,16 @@ export function PerformanceDisclosure({
   )
 }
 
-/** Layer 3c — infrastructure details, collapsed by default; hosts DB compact */
+/** Layer 3c — infrastructure details, collapsed by default; hosts DB size + memory readouts */
 export function InfraDisclosure({
-  compacting,
   dbInfo,
   dbSizeDisplay,
   memoryDisplay,
-  onCompact,
   status
 }: {
-  compacting: boolean
   dbInfo?: DatabaseInfo
   dbSizeDisplay: string
   memoryDisplay: string
-  onCompact: () => void
   status?: ServiceStatus
 }) {
   const { t } = useTranslation()
@@ -525,11 +521,6 @@ export function InfraDisclosure({
           value={memoryDisplay}
           valueTestId="dashboard-spotlight-value-memory"
         />
-      </div>
-      <div className="mt-4 flex justify-end">
-        <Button variant="outline" size="sm" onClick={onCompact} disabled={compacting}>
-          {compacting ? t('dashboard.actions.compacting') : t('dashboard.actions.compact')}
-        </Button>
       </div>
     </Disclosure>
   )

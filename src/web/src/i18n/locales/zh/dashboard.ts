@@ -33,25 +33,13 @@ export default {
     dbSize: '数据库：{{value}}',
     memory: '内存占用：{{value}}'
   },
-  actions: {
-    compact: '释放数据库空间',
-    compacting: '整理中...'
-  },
   toast: {
     overviewError: '统计数据获取失败',
     dailyError: '趋势数据获取失败',
     modelError: '模型统计获取失败',
     statusError: '状态信息获取失败',
     dbError: '数据库信息获取失败',
-    recentError: '最近请求获取失败',
-    compactSuccess: {
-      title: '数据库整理完成',
-      desc: '空闲页已整理，建议稍后刷新确认容量。'
-    },
-    compactError: {
-      title: '数据库整理失败',
-      desc: '错误信息：{{message}}'
-    }
+    recentError: '最近请求获取失败'
   },
   cards: {
     todayRequests: '今日请求数',

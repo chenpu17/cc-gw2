@@ -30,6 +30,8 @@ export default {
     testingConnection: '测试中...',
     cleanup: '清理历史日志',
     cleaning: '清理中...',
+    compact: '释放数据库空间',
+    compacting: '整理中...',
     checkUpdates: '检查更新',
     logout: '退出登录'
   },

@@ -33,25 +33,13 @@ export default {
     dbSize: 'Database: {{value}}',
     memory: 'Memory usage: {{value}}'
   },
-  actions: {
-    compact: 'Compact database',
-    compacting: 'Compacting...'
-  },
   toast: {
     overviewError: 'Failed to load overview metrics',
     dailyError: 'Failed to load trend metrics',
     modelError: 'Failed to load model statistics',
     statusError: 'Failed to load gateway status',
     dbError: 'Failed to load database info',
-    recentError: 'Failed to load recent requests',
-    compactSuccess: {
-      title: 'Database compact completed',
-      desc: 'Free pages were compacted. Refresh later to confirm size.'
-    },
-    compactError: {
-      title: 'Database compact failed',
-      desc: 'Error: {{message}}'
-    }
+    recentError: 'Failed to load recent requests'
   },
   cards: {
     todayRequests: 'Requests Today',

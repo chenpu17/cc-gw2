@@ -460,12 +460,18 @@ export function ConfigFileSection({
 export function CleanupSection({
   cleaning,
   clearingAll,
+  compacting,
+  dbSizeDisplay,
+  onCompact,
   onOpenCleanup,
   onOpenClearAll,
   sectionRef
 }: {
   cleaning: boolean
   clearingAll: boolean
+  compacting: boolean
+  dbSizeDisplay: string
+  onCompact: () => void
   onOpenCleanup: () => void
   onOpenClearAll: () => void
   sectionRef?: Ref<HTMLDivElement>
@@ -479,9 +485,15 @@ export function CleanupSection({
       className="bg-card shadow-[var(--surface-shadow)]"
     >
       <CardContent className="space-y-4 pt-6">
-        <div>
-          <h3 className="text-sm font-semibold">{t('settings.sections.cleanup')}</h3>
-          <p className="mt-1 text-xs text-muted-foreground">{t('settings.cleanup.description')}</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">{t('settings.sections.cleanup')}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{t('settings.cleanup.description')}</p>
+          </div>
+          <div className="rounded-lg bg-secondary px-3 py-1.5 text-xs">
+            <span className="text-muted-foreground">{t('settings.cleanup.dbSizeLabel')}: </span>
+            <span className="font-semibold tabular-nums text-foreground">{dbSizeDisplay}</span>
+          </div>
         </div>
         <div className="rounded-lg bg-secondary px-4 py-3 text-xs text-muted-foreground">
           {t('settings.cleanup.confirmCleanup')}
@@ -506,6 +518,18 @@ export function CleanupSection({
                 {clearingAll ? t('settings.cleanup.clearingAll') : t('settings.cleanup.clearAll')}
               </Button>
             </div>
+          </div>
+        </div>
+        {/* Non-destructive: VACUUM reclaims file space left by deleted rows. */}
+        <div className="rounded-xl border border-border bg-secondary/40 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">{t('settings.cleanup.compactTitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('settings.cleanup.compactDescription')}</p>
+            </div>
+            <Button variant="outline" onClick={onCompact} disabled={compacting} className="w-full sm:w-auto">
+              {compacting ? t('common.actions.compacting') : t('common.actions.compact')}
+            </Button>
           </div>
         </div>
       </CardContent>

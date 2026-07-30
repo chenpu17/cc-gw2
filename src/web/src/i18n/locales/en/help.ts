@@ -80,7 +80,7 @@ export default {
         'Use **routing presets** to save common mapping schemes, such as "Claude models through Anthropic" or "GPT models through an OpenAI-compatible provider", then apply them per endpoint when switching providers.',
         'If you edit `~/.cc-gw/config.json` manually, refresh the Settings page or restart cc-gw so the UI reflects the latest configuration.',
         '🗃️ **Data backup**: Regularly back up the `~/.cc-gw/` directory — it holds config.json, the SQLite database, and logs.',
-        '🧹 **Log cleanup**: Adjust the log retention days to your needs, or use the cleanup tools on the "Settings" page to compact the database manually.'
+        '🧹 **Log & database maintenance**: Adjust the log retention days to your needs. Under "Settings → Log cleanup" you can clean up expired logs, clear everything, or run "Compact database" (VACUUM) to reclaim disk space. For best results, clean logs before compacting.'
       ]
     }
   },
