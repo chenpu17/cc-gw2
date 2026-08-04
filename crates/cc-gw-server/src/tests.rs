@@ -3774,7 +3774,13 @@ async fn custom_endpoint_and_api_key_restrictions_work_end_to_end() {
             "label": "Team",
             "path": "/team",
             "protocol": "openai-chat",
-            "enabled": true
+            "enabled": true,
+            // Custom endpoints no longer inherit the global routing table, so
+            // this endpoint needs its own explicit routing config.
+            "routing": {
+                "defaults": { "completion": "gpt-test" },
+                "modelRoutes": {}
+            }
         }))
         .send()
         .await

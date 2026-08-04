@@ -189,13 +189,6 @@ fn resolve_by_identifier(
     None
 }
 
-fn default_endpoint_key(protocol: ProviderProtocol) -> &'static str {
-    match protocol {
-        ProviderProtocol::AnthropicMessages => "anthropic",
-        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => "openai",
-    }
-}
-
 pub fn find_custom_endpoint<'a>(
     config: &'a GatewayConfig,
     id: &str,
@@ -211,13 +204,18 @@ pub fn endpoint_routing<'a>(
     endpoint: GatewayEndpoint<'_>,
     protocol: ProviderProtocol,
 ) -> Option<&'a EndpointRoutingConfig> {
+    let _ = protocol;
     match endpoint {
         GatewayEndpoint::Anthropic => config.endpoint_routing.get("anthropic"),
         GatewayEndpoint::OpenAi => config.endpoint_routing.get("openai"),
+        // Custom endpoints must carry their own routing (on the endpoint itself
+        // or keyed by id in `endpoint_routing`). They deliberately do NOT
+        // inherit the global anthropic/openai routing table — an unconfigured
+        // endpoint must reject requests rather than silently route them
+        // through the default endpoint's rules.
         GatewayEndpoint::Custom(id) => find_custom_endpoint(config, id)
             .and_then(|endpoint| endpoint.routing.as_ref())
-            .or_else(|| config.endpoint_routing.get(id))
-            .or_else(|| config.endpoint_routing.get(default_endpoint_key(protocol))),
+            .or_else(|| config.endpoint_routing.get(id)),
     }
 }
 
@@ -287,8 +285,13 @@ fn resolve_route_inner(
         bail!("未配置任何模型提供商，请先在 Web UI 中添加 Provider。");
     }
 
-    let endpoint_config = endpoint_routing(config, endpoint, protocol)
-        .ok_or_else(|| anyhow::anyhow!("未找到端点路由配置"))?;
+    let endpoint_config =
+        endpoint_routing(config, endpoint, protocol).ok_or_else(|| match endpoint {
+            GatewayEndpoint::Custom(id) => anyhow::anyhow!(
+                "自定义端点 {id} 未配置路由规则，请在 Web UI 中为该端点设置模型路由或默认规则。"
+            ),
+            _ => anyhow::anyhow!("未找到端点路由配置"),
+        })?;
 
     // 1) explicit model_routes match (exact or wildcard), optionally via alias
     let (mapped_identifier, via_alias) =
@@ -447,7 +450,10 @@ mod tests {
     }
 
     #[test]
-    fn custom_openai_endpoint_falls_back_to_openai_defaults() {
+    fn custom_endpoint_without_routing_is_rejected() {
+        // Custom endpoints must NOT fall back to the global protocol defaults:
+        // an unconfigured endpoint rejects the request instead of silently
+        // routing it through the default endpoint's rules.
         let mut config = GatewayConfig::default();
         config.providers = vec![
             provider("anthropic-default", "claude-x"),
@@ -476,7 +482,7 @@ mod tests {
             ..CustomEndpointConfig::default()
         });
 
-        let route = resolve_route(
+        let error = resolve_route(
             &config,
             GatewayEndpoint::Custom("one"),
             ProviderProtocol::OpenAiChatCompletions,
@@ -484,10 +490,12 @@ mod tests {
             None,
             false,
         )
-        .expect("resolve openai fallback route");
+        .expect_err("unconfigured custom endpoint must be rejected");
 
-        assert_eq!(route.provider_id, "openai-default");
-        assert_eq!(route.model_id, "glm-5");
+        assert!(
+            error.to_string().contains("自定义端点 one 未配置路由规则"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

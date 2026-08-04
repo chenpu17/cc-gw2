@@ -1025,21 +1025,18 @@ fn routing_config_for_endpoint<'a>(
     endpoint: GatewayEndpoint<'_>,
     protocol: ProviderProtocol,
 ) -> Option<&'a cc_gw_core::config::EndpointRoutingConfig> {
-    let default_endpoint_key = match protocol {
-        ProviderProtocol::AnthropicMessages => "anthropic",
-        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => "openai",
-    };
-
+    let _ = protocol;
     match endpoint {
         GatewayEndpoint::Anthropic => config.endpoint_routing.get("anthropic"),
         GatewayEndpoint::OpenAi => config.endpoint_routing.get("openai"),
+        // Keep in sync with cc_gw_core::routing::endpoint_routing: custom
+        // endpoints never inherit the global protocol routing table.
         GatewayEndpoint::Custom(id) => config
             .custom_endpoints
             .iter()
             .find(|item| item.id == id)
             .and_then(|item| item.routing.as_ref())
-            .or_else(|| config.endpoint_routing.get(id))
-            .or_else(|| config.endpoint_routing.get(default_endpoint_key)),
+            .or_else(|| config.endpoint_routing.get(id)),
     }
 }
 

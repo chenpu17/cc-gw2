@@ -132,7 +132,10 @@ export function getSavedRoutesFromConfig(
   return {}
 }
 
-/** Effective defaults for an endpoint: its own routing.defaults, falling back to the global defaults */
+/** Effective defaults for an endpoint. System endpoints fall back to the
+ * global defaults; custom endpoints never inherit them — an unconfigured
+ * custom endpoint has no defaults at all (the gateway rejects its requests
+ * until routing is configured). */
 export function getSavedDefaultsFromConfig(
   config: GatewayConfig,
   customEndpoints: ManagedEndpointLike[],
@@ -143,7 +146,14 @@ export function getSavedDefaultsFromConfig(
   }
 
   const customEndpoint = mapManagedEndpoints(config, customEndpoints).find((item) => item.id === endpoint)
-  return customEndpoint?.routing?.defaults ?? config.defaults
+  return (
+    customEndpoint?.routing?.defaults ?? {
+      completion: null,
+      reasoning: null,
+      background: null,
+      longContextThreshold: config.defaults.longContextThreshold
+    }
+  )
 }
 
 export function deriveDefaultsFromConfig(
