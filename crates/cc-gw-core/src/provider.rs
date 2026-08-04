@@ -1,8 +1,9 @@
 use anyhow::Result;
 use reqwest::{
-    Client,
+    Client, StatusCode,
     header::{HeaderMap, HeaderName, HeaderValue},
 };
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::config::ProviderConfig;
@@ -283,6 +284,160 @@ pub fn provider_prefers_openai_responses_protocol(provider: &ProviderConfig) -> 
         .ends_with("/responses")
 }
 
+/// A model discovered by probing the provider's model-list endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProbedModel {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+#[derive(Debug)]
+pub enum ProviderModelsError {
+    /// The provider's base URL cannot be mapped to a model-list endpoint
+    /// (e.g. an absolute URL that doesn't end in a known chat path).
+    UnsupportedEndpoint,
+    Upstream { status: StatusCode, body: String },
+    Transport(reqwest::Error),
+    InvalidResponse,
+}
+
+impl std::fmt::Display for ProviderModelsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedEndpoint => {
+                write!(f, "provider address cannot be mapped to a models endpoint")
+            }
+            Self::Upstream { status, body } => write!(f, "upstream returned {status}: {body}"),
+            Self::Transport(error) => write!(f, "request failed: {error}"),
+            Self::InvalidResponse => write!(f, "unrecognized models response shape"),
+        }
+    }
+}
+
+impl std::error::Error for ProviderModelsError {}
+
+/// Known trailing chat-endpoint segments that can be swapped for `models`.
+const CHAT_PATH_SUFFIXES: [&str; 3] = ["chat/completions", "responses", "messages"];
+
+/// Resolves the provider's model-list URL. For regular providers this derives
+/// from the protocol's chat endpoint (e.g. `.../v1/chat/completions` →
+/// `.../v1/models`). For `use_absolute_url` providers the fully-qualified chat
+/// URL is only convertible when it ends in a known chat path segment;
+/// otherwise the provider cannot be probed and `None` is returned.
+fn resolve_models_url(provider: &ProviderConfig) -> Option<String> {
+    let base = provider.base_url.trim_end_matches('/');
+    if base.is_empty() {
+        return None;
+    }
+    let chat_url = if provider.use_absolute_url.unwrap_or(false) {
+        base.to_string()
+    } else {
+        let protocol = if provider_prefers_anthropic_protocol(provider) {
+            ProviderProtocol::AnthropicMessages
+        } else if provider_prefers_openai_responses_protocol(provider) {
+            ProviderProtocol::OpenAiResponses
+        } else {
+            ProviderProtocol::OpenAiChatCompletions
+        };
+        resolve_endpoint(base, protocol)
+    };
+    for suffix in CHAT_PATH_SUFFIXES {
+        if let Some(stripped) = chat_url.strip_suffix(suffix) {
+            let stripped = stripped.trim_end_matches('/');
+            if !stripped.is_empty() {
+                return Some(format!("{stripped}/models"));
+            }
+        }
+    }
+    None
+}
+
+fn parse_models_payload(payload: &Value) -> Option<Vec<ProbedModel>> {
+    let mut models: Vec<ProbedModel> = Vec::new();
+    // OpenAI / Anthropic shape: { "data": [{ "id", "display_name"? }] }
+    if let Some(data) = payload.get("data").and_then(Value::as_array) {
+        for entry in data {
+            if let Some(id) = entry.get("id").and_then(Value::as_str) {
+                let label = entry
+                    .get("display_name")
+                    .or_else(|| entry.get("displayName"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                models.push(ProbedModel {
+                    id: id.to_string(),
+                    label,
+                });
+            }
+        }
+    // Gemini shape: { "models": [{ "name", "displayName"? }] }
+    } else if let Some(list) = payload.get("models").and_then(Value::as_array) {
+        for entry in list {
+            let id = entry
+                .get("name")
+                .or_else(|| entry.get("id"))
+                .and_then(Value::as_str);
+            if let Some(id) = id {
+                let label = entry
+                    .get("displayName")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                models.push(ProbedModel {
+                    id: id.to_string(),
+                    label,
+                });
+            }
+        }
+    }
+    if models.is_empty() {
+        return None;
+    }
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    models.dedup_by(|a, b| a.id == b.id);
+    Some(models)
+}
+
+/// Probes the provider's model-list endpoint (`GET .../models`) using the same
+/// header/auth machinery as proxied chat requests, so operator-configured
+/// `auth_mode` and `extra_headers` apply identically.
+pub async fn fetch_provider_models(
+    client: &Client,
+    provider: &ProviderConfig,
+) -> std::result::Result<Vec<ProbedModel>, ProviderModelsError> {
+    let url = resolve_models_url(provider).ok_or(ProviderModelsError::UnsupportedEndpoint)?;
+    let protocol = if provider_prefers_anthropic_protocol(provider) {
+        ProviderProtocol::AnthropicMessages
+    } else {
+        ProviderProtocol::OpenAiChatCompletions
+    };
+    let headers = build_headers(
+        provider,
+        protocol,
+        &HeaderMap::new(),
+        &HeaderMap::new(),
+        false,
+    );
+    let response = client
+        .get(url)
+        .headers(headers)
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(ProviderModelsError::Transport)?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        let body: String = body.chars().take(500).collect();
+        return Err(ProviderModelsError::Upstream { status, body });
+    }
+    let payload: Value = response
+        .json()
+        .await
+        .map_err(ProviderModelsError::Transport)?;
+    parse_models_payload(&payload).ok_or(ProviderModelsError::InvalidResponse)
+}
+
 pub fn prepare_proxy_payload(body: Value, model: &str, stream: bool) -> Value {
     let mut payload = body;
     if let Some(object) = payload.as_object_mut() {
@@ -333,11 +488,12 @@ pub async fn forward_request(
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderConfig, ProviderProtocol, apply_query_string, build_headers,
+        ProviderConfig, ProviderProtocol, apply_query_string, build_headers, parse_models_payload,
         provider_prefers_anthropic_protocol, provider_prefers_openai_responses_protocol,
-        resolve_endpoint, resolve_upstream_url,
+        resolve_endpoint, resolve_models_url, resolve_upstream_url,
     };
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    use serde_json::json;
 
     #[test]
     fn apply_query_string_appends_to_plain_url() {
@@ -684,5 +840,144 @@ mod tests {
             ..ProviderConfig::default()
         };
         assert!(provider_prefers_openai_responses_protocol(&provider));
+    }
+
+    #[test]
+    fn models_url_derives_from_openai_chat_endpoint() {
+        let provider = ProviderConfig {
+            base_url: "https://api.example.com".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(
+            resolve_models_url(&provider),
+            Some("https://api.example.com/v1/models".to_string())
+        );
+
+        let provider = ProviderConfig {
+            base_url: "https://api.example.com/v1/".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(
+            resolve_models_url(&provider),
+            Some("https://api.example.com/v1/models".to_string())
+        );
+    }
+
+    #[test]
+    fn models_url_preserves_non_v1_version_segments() {
+        let provider = ProviderConfig {
+            base_url: "https://api.example.com/v4".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(
+            resolve_models_url(&provider),
+            Some("https://api.example.com/v4/models".to_string())
+        );
+    }
+
+    #[test]
+    fn models_url_derives_from_anthropic_and_responses_endpoints() {
+        let provider = ProviderConfig {
+            provider_type: Some("anthropic".to_string()),
+            base_url: "https://api.example.com".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(
+            resolve_models_url(&provider),
+            Some("https://api.example.com/v1/models".to_string())
+        );
+
+        let provider = ProviderConfig {
+            provider_type: Some("openai-responses".to_string()),
+            base_url: "https://api.example.com/v1".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(
+            resolve_models_url(&provider),
+            Some("https://api.example.com/v1/models".to_string())
+        );
+    }
+
+    #[test]
+    fn models_url_rewrites_absolute_chat_urls() {
+        let provider = ProviderConfig {
+            base_url: "https://internal.example.com/custom/v1/chat/completions".to_string(),
+            use_absolute_url: Some(true),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(
+            resolve_models_url(&provider),
+            Some("https://internal.example.com/custom/v1/models".to_string())
+        );
+
+        let provider = ProviderConfig {
+            base_url: "https://internal.example.com/proxy/v1/messages".to_string(),
+            use_absolute_url: Some(true),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(
+            resolve_models_url(&provider),
+            Some("https://internal.example.com/proxy/v1/models".to_string())
+        );
+    }
+
+    #[test]
+    fn models_url_rejects_absolute_urls_without_known_suffix() {
+        let provider = ProviderConfig {
+            base_url: "https://internal.example.com/proxy/endpoint".to_string(),
+            use_absolute_url: Some(true),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(resolve_models_url(&provider), None);
+    }
+
+    #[test]
+    fn parse_models_payload_reads_openai_and_anthropic_shapes() {
+        let payload = json!({
+            "object": "list",
+            "data": [
+                { "id": "gpt-b", "display_name": "GPT B" },
+                { "id": "gpt-a" },
+                { "id": "gpt-a" },
+                { "object": "model" }
+            ]
+        });
+        let models = parse_models_payload(&payload).expect("should parse");
+        assert_eq!(
+            models,
+            vec![
+                super::ProbedModel {
+                    id: "gpt-a".to_string(),
+                    label: None
+                },
+                super::ProbedModel {
+                    id: "gpt-b".to_string(),
+                    label: Some("GPT B".to_string())
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_models_payload_reads_gemini_shape() {
+        let payload = json!({
+            "models": [
+                { "name": "models/gemini-pro", "displayName": "Gemini Pro" }
+            ]
+        });
+        let models = parse_models_payload(&payload).expect("should parse");
+        assert_eq!(
+            models,
+            vec![super::ProbedModel {
+                id: "models/gemini-pro".to_string(),
+                label: Some("Gemini Pro".to_string())
+            }]
+        );
+    }
+
+    #[test]
+    fn parse_models_payload_rejects_empty_or_unknown_shapes() {
+        assert_eq!(parse_models_payload(&json!({ "data": [] })), None);
+        assert_eq!(parse_models_payload(&json!({ "error": "nope" })), None);
     }
 }

@@ -1,9 +1,11 @@
 import { apiClient, unwrapResponse } from '@/services/api'
-import type { GatewayConfig, RoutingPreset } from '@/types/providers'
+import type { GatewayConfig, ProviderConfig, RoutingPreset } from '@/types/providers'
 
 export interface ProviderTestPayload {
   headers?: Record<string, string>
   query?: string
+  /** Unsaved provider draft (create-mode console form); wins over the saved lookup */
+  provider?: ProviderConfig
 }
 
 export interface ProviderTestResponse {
@@ -22,6 +24,18 @@ export interface RoutingPresetsResponse {
 export interface RoutingPresetApplyResponse {
   success: boolean
   config: GatewayConfig
+}
+
+export interface ProbedModel {
+  id: string
+  label?: string
+}
+
+export interface ProbeModelsResponse {
+  ok: boolean
+  status: number
+  statusText?: string
+  models?: ProbedModel[]
 }
 
 export const modelManagementApi = {
@@ -46,6 +60,15 @@ export const modelManagementApi = {
   testProvider(providerId: string, payload?: ProviderTestPayload): Promise<ProviderTestResponse> {
     return unwrapResponse(
       apiClient.post<ProviderTestResponse>(`/api/providers/${providerId}/test`, payload ?? {})
+    )
+  },
+
+  probeModels(providerId: string, draft?: ProviderConfig): Promise<ProbeModelsResponse> {
+    return unwrapResponse(
+      apiClient.post<ProbeModelsResponse>(
+        `/api/providers/${providerId}/models/probe`,
+        draft ? { provider: draft } : {}
+      )
     )
   }
 }

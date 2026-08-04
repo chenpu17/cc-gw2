@@ -672,6 +672,207 @@ async fn provider_test_matches_key_node_behaviors() {
     let _ = stdfs::remove_dir_all(home_dir);
 }
 
+async fn mock_openai_models() -> Response {
+    Json(json!({
+        "object": "list",
+        "data": [
+            { "id": "gpt-b", "object": "model", "display_name": "GPT B" },
+            { "id": "gpt-a", "object": "model" }
+        ]
+    }))
+    .into_response()
+}
+
+async fn mock_draft_chat() -> Response {
+    Json(json!({
+        "id": "chatcmpl_draft",
+        "object": "chat.completion",
+        "choices": [{
+            "index": 0,
+            "message": { "role": "assistant", "content": "draft test ok" },
+            "finish_reason": "stop"
+        }],
+        "usage": { "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2 }
+    }))
+    .into_response()
+}
+
+#[tokio::test]
+async fn provider_models_probe_returns_normalized_list() {
+    let upstream = Router::new()
+        .route("/v1/models", get(mock_openai_models))
+        .route("/absolute/v1/models", get(mock_openai_models))
+        .route("/v1/chat/completions", post(mock_draft_chat));
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![
+        cc_gw_core::config::ProviderConfig {
+            id: "probe-openai".to_string(),
+            label: "Probe OpenAI".to_string(),
+            base_url: format!("http://{upstream_addr}"),
+            provider_type: Some("openai".to_string()),
+            ..cc_gw_core::config::ProviderConfig::default()
+        },
+        cc_gw_core::config::ProviderConfig {
+            id: "probe-absolute".to_string(),
+            label: "Probe Absolute".to_string(),
+            base_url: format!("http://{upstream_addr}/absolute/v1/chat/completions"),
+            use_absolute_url: Some(true),
+            provider_type: Some("openai".to_string()),
+            ..cc_gw_core::config::ProviderConfig::default()
+        },
+        cc_gw_core::config::ProviderConfig {
+            id: "probe-unsupported".to_string(),
+            label: "Probe Unsupported".to_string(),
+            base_url: format!("http://{upstream_addr}/custom/endpoint"),
+            use_absolute_url: Some(true),
+            provider_type: Some("openai".to_string()),
+            ..cc_gw_core::config::ProviderConfig::default()
+        },
+        cc_gw_core::config::ProviderConfig {
+            id: "probe-missing".to_string(),
+            label: "Probe Missing".to_string(),
+            // No /v1/models on this upstream path → 404 from the mock router.
+            base_url: format!("http://{upstream_addr}/nowhere"),
+            provider_type: Some("openai".to_string()),
+            ..cc_gw_core::config::ProviderConfig::default()
+        },
+    ];
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "provider-models-probe").await;
+    let client = reqwest::Client::new();
+
+    let success: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/probe-openai/models/probe"
+        ))
+        .send()
+        .await
+        .expect("send probe request")
+        .json()
+        .await
+        .expect("decode probe response");
+    assert_eq!(success.get("ok").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        success.get("models").and_then(Value::as_array).map(Vec::len),
+        Some(2)
+    );
+    // Sorted by id; label picked up from display_name.
+    assert_eq!(
+        success.pointer("/models/0/id").and_then(Value::as_str),
+        Some("gpt-a")
+    );
+    assert_eq!(
+        success.pointer("/models/1/id").and_then(Value::as_str),
+        Some("gpt-b")
+    );
+    assert_eq!(
+        success.pointer("/models/1/label").and_then(Value::as_str),
+        Some("GPT B")
+    );
+
+    let absolute: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/probe-absolute/models/probe"
+        ))
+        .send()
+        .await
+        .expect("send absolute probe request")
+        .json()
+        .await
+        .expect("decode absolute probe response");
+    assert_eq!(absolute.get("ok").and_then(Value::as_bool), Some(true));
+
+    let unsupported: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/probe-unsupported/models/probe"
+        ))
+        .send()
+        .await
+        .expect("send unsupported probe request")
+        .json()
+        .await
+        .expect("decode unsupported probe response");
+    assert_eq!(unsupported.get("ok").and_then(Value::as_bool), Some(false));
+    assert_eq!(unsupported.get("status").and_then(Value::as_u64), Some(0));
+
+    let missing: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/probe-missing/models/probe"
+        ))
+        .send()
+        .await
+        .expect("send missing probe request")
+        .json()
+        .await
+        .expect("decode missing probe response");
+    assert_eq!(missing.get("ok").and_then(Value::as_bool), Some(false));
+    assert_eq!(missing.get("status").and_then(Value::as_u64), Some(404));
+
+    // Draft provider in the request body wins over the (missing) path id —
+    // this is how the create-mode console probes unsaved configs.
+    let draft = json!({
+        "id": "unsaved-draft",
+        "label": "Unsaved Draft",
+        "type": "openai",
+        "baseUrl": format!("http://{upstream_addr}"),
+        "apiKey": "draft-key",
+        "defaultModel": "gpt-a"
+    });
+    let draft_probe: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/unsaved-draft/models/probe"
+        ))
+        .json(&json!({ "provider": draft }))
+        .send()
+        .await
+        .expect("send draft probe request")
+        .json()
+        .await
+        .expect("decode draft probe response");
+    assert_eq!(draft_probe.get("ok").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        draft_probe
+            .get("models")
+            .and_then(Value::as_array)
+            .map(Vec::len),
+        Some(2)
+    );
+
+    let draft_test: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/unsaved-draft/test"
+        ))
+        .json(&json!({ "provider": draft }))
+        .send()
+        .await
+        .expect("send draft test request")
+        .json()
+        .await
+        .expect("decode draft test response");
+    assert_eq!(draft_test.get("ok").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        draft_test.get("sample").and_then(Value::as_str),
+        Some("draft test ok")
+    );
+
+    // Without a draft, an unknown id still 404s.
+    let unknown = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/unsaved-draft/models/probe"
+        ))
+        .send()
+        .await
+        .expect("send unknown probe request");
+    assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
 #[tokio::test]
 async fn direct_proxy_responses_do_not_forward_upstream_set_cookie() {
     let upstream = Router::new().route(

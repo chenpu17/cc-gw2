@@ -51,11 +51,17 @@ export interface FormErrors {
 export type ProviderStepId = 'basics' | 'models'
 
 export interface TestVerificationProps {
-  /** false in create mode: the provider must be saved before it can be tested */
+  /** false shows a "save first" hint instead of the run button */
   available: boolean
   testing: boolean
   result: ProviderTestResult | null
   onTest: () => void
+}
+
+export interface ProbeModelsProps {
+  /** false disables the button (e.g. no Base URL yet) */
+  available: boolean
+  onProbe: () => void
 }
 
 export interface ProviderStepShared {
@@ -81,6 +87,7 @@ export interface ProviderStepShared {
   onModelNonStreamViaStreamChange: (index: number, value: string) => void
   onSetDefaultModel: (id: string) => void
   testVerification?: TestVerificationProps
+  probeModels?: ProbeModelsProps
 }
 
 export function createKey(): string {
@@ -472,7 +479,8 @@ export function ModelsStep({
   onRemoveModel,
   onModelNonStreamViaStreamChange,
   onSetDefaultModel,
-  testVerification
+  testVerification,
+  probeModels
 }: ProviderStepShared) {
   const { t } = useTranslation()
   const availableDefaultModels = form.models.filter((model) => model.id.trim().length > 0)
@@ -484,15 +492,30 @@ export function ModelsStep({
             <h3 id="provider-model-fields" className="text-sm font-semibold">{t('providers.drawer.fields.models')}</h3>
             <p className="text-xs text-muted-foreground">{t('providers.drawer.modelsDescription')}</p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onAddModel}
-            className="bg-card text-xs"
-          >
-            {t('providers.drawer.fields.addModel')}
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            {probeModels ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={probeModels.onProbe}
+                disabled={!probeModels.available}
+                title={probeModels.available ? undefined : t('providers.drawer.probe.needsBaseUrl')}
+                className="bg-card text-xs"
+              >
+                {t('providers.drawer.probe.button')}
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onAddModel}
+              className="bg-card text-xs"
+            >
+              {t('providers.drawer.fields.addModel')}
+            </Button>
+          </div>
         </div>
 
         {errors.models ? <p className="text-xs text-destructive">{errors.models}</p> : null}

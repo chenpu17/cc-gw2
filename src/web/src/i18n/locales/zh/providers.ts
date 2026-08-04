@@ -254,6 +254,25 @@ export default {
       headerValuePlaceholder: '如 my-app',
       removeHeader: '删除'
     },
+    probe: {
+      button: '探测模型',
+      needsBaseUrl: '请先填写 Base URL',
+      title: '探测可用模型',
+      subtitle: '从「{{name}}」的上游接口获取模型列表，勾选后导入。',
+      loading: '正在向上游探测模型列表…',
+      failedTitle: '探测失败',
+      failedHint: '该供应商可能不支持模型列表接口，请手动添加模型。',
+      failedFallback: '上游未返回可用的模型列表',
+      searchPlaceholder: '搜索模型 ID 或名称',
+      totalCount: '共 {{count}} 个模型',
+      selectAll: '全选',
+      clearSelection: '清空',
+      selectedCount: '已选 {{count}} 个',
+      emptyResult: '没有匹配的模型',
+      imported: '已导入',
+      importAction: '导入 {{count}} 个模型',
+      importSuccess: '已导入 {{count}} 个模型'
+    },
     errors: {
       idRequired: '请填写 Provider ID',
       idDuplicate: '该 Provider ID 已存在',

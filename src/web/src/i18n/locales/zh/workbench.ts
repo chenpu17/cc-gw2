@@ -113,7 +113,7 @@ export default {
   },
   drawer: {
     verifyTitle: '连接验证',
-    verifyHint: '对已保存的 Provider 发起一次真实请求，确认认证与网络可用。',
+    verifyHint: '对当前配置发起一次真实请求，确认认证与网络可用（未保存的草稿也可测试）。',
     verifySaveFirst: '保存 Provider 后才能进行连接测试。',
     verifyRun: '测试连接'
   }

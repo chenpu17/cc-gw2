@@ -370,13 +370,21 @@ pub(super) async fn api_provider_test(
     body: Option<Json<ProviderTestBody>>,
 ) -> Response {
     let body = body.map(|Json(payload)| payload);
-    let config = config_snapshot(&state);
-    let Some(provider) = config.providers.iter().find(|item| item.id == id).cloned() else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Provider not found" })),
-        )
-            .into_response();
+    // An inline draft (create-mode console form) wins over the saved lookup.
+    let provider = match body.as_ref().and_then(|payload| payload.provider.clone()) {
+        Some(draft) => draft,
+        None => {
+            let config = config_snapshot(&state);
+            let Some(provider) = config.providers.iter().find(|item| item.id == id).cloned()
+            else {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({ "error": "Provider not found" })),
+                )
+                    .into_response();
+            };
+            provider
+        }
     };
     let target_model = provider
         .default_model
@@ -549,6 +557,64 @@ pub(super) async fn api_provider_test(
                 "status": 0,
                 "statusText": error.to_string(),
                 "durationMs": chrono::Utc::now().timestamp_millis() - started_at
+            })),
+        )
+            .into_response(),
+    }
+}
+
+pub(super) async fn api_provider_models_probe(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+    body: Option<Json<ProviderModelsProbeBody>>,
+) -> Response {
+    let body = body.map(|Json(payload)| payload);
+    // An inline draft (create-mode console form) wins over the saved lookup.
+    let provider = match body.and_then(|payload| payload.provider) {
+        Some(draft) => draft,
+        None => {
+            let config = config_snapshot(&state);
+            let Some(provider) = config.providers.iter().find(|item| item.id == id).cloned()
+            else {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({ "error": "Provider not found" })),
+                )
+                    .into_response();
+            };
+            provider
+        }
+    };
+
+    match fetch_provider_models(&state.http_client, &provider).await {
+        Ok(models) => Json(json!({
+            "ok": true,
+            "status": 200,
+            "models": models
+        }))
+        .into_response(),
+        Err(ProviderModelsError::UnsupportedEndpoint) => Json(json!({
+            "ok": false,
+            "status": 0,
+            "statusText": "该供应商的地址无法推导模型列表端点，请手动添加模型"
+        }))
+        .into_response(),
+        Err(ProviderModelsError::Upstream { status, body }) => Json(json!({
+            "ok": false,
+            "status": status.as_u16(),
+            "statusText": if body.trim().is_empty() {
+                format!("Upstream error ({})", status.as_u16())
+            } else {
+                body
+            }
+        }))
+        .into_response(),
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({
+                "ok": false,
+                "status": 0,
+                "statusText": error.to_string()
             })),
         )
             .into_response(),

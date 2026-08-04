@@ -77,7 +77,10 @@ async function startStubProvider(port: number): Promise<http.Server> {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({
         object: 'list',
-        data: [{ id: 'stub-model', object: 'model' }],
+        data: [
+          { id: 'stub-model', object: 'model' },
+          { id: 'stub-model-probe', object: 'model', display_name: 'Stub Probe Model' },
+        ],
       }))
       return
     }

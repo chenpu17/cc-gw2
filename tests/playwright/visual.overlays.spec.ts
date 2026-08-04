@@ -114,6 +114,25 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await expectPageSnapshot(page, 'overlay-provider-drawer-edit.png')
   })
 
+  test('probe models dialog — open', async ({ page }) => {
+    await page.goto(`${harness.baseUrl()}/ui/providers`)
+    await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
+    const card = page.locator('[data-testid="provider-card"]').filter({ hasText: PROVIDER_ID })
+    await card.getByRole('button', { name: '编辑' }).click()
+    const drawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
+    await expect(drawer).toBeVisible()
+    await drawer.getByRole('button', { name: '下一步' }).click()
+    await drawer.getByRole('button', { name: '探测模型' }).click()
+    const dialog = page.getByRole('dialog', { name: '探测可用模型' })
+    await expect(dialog).toBeVisible()
+    // 等探测结果渲染完（stub 上游返回两个模型行）
+    await expect(dialog.getByText('stub-model-probe')).toBeVisible()
+    // 勾选一项让快照覆盖选中态
+    await dialog.locator('label').filter({ hasText: 'stub-model-probe' }).click()
+    await page.waitForTimeout(200)
+    await expectPageSnapshot(page, 'overlay-probe-models-dialog.png')
+  })
+
   test('endpoint dialog — create mode', async ({ page }) => {
     await page.goto(`${harness.baseUrl()}/ui/providers?tab=routing`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))

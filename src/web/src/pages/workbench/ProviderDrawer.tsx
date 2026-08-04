@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { StepNav, type StepStatus } from '@/components/ui/step-nav'
 import { toApiError } from '@/services/api'
+import { modelManagementApi } from '@/services/modelManagement'
 import type { ProviderConfig } from '@/types/providers'
 import type { ProviderTestResult } from './shared'
 import {
@@ -14,6 +15,7 @@ import {
   ProviderStepId,
   ProviderStepShared
 } from './ProviderDrawerSteps'
+import { ProbeModelsDialog } from './ProbeModelsDialog'
 import { useProviderForm } from './useProviderForm'
 
 export interface ProviderDrawerProps {
@@ -49,6 +51,11 @@ export function ProviderDrawer({
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [activeStep, setActiveStep] = useState<ProviderStepId>('basics')
+  const [probeOpen, setProbeOpen] = useState(false)
+  // Create-mode connection test runs against the unsaved draft, so its state
+  // lives here instead of the page-level testResults map (keyed by saved id).
+  const [draftTesting, setDraftTesting] = useState(false)
+  const [draftTestResult, setDraftTestResult] = useState<ProviderTestResult | null>(null)
   const dialogRef = useRef<HTMLDivElement | null>(null)
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
 
@@ -58,6 +65,9 @@ export function ProviderDrawer({
       setSubmitError(null)
       setSubmitting(false)
       setActiveStep('basics')
+      setProbeOpen(false)
+      setDraftTesting(false)
+      setDraftTestResult(null)
     }
   }, [open, provider, mode, providerForm.resetForm])
 
@@ -203,6 +213,32 @@ export function ProviderDrawer({
   const handleStepSelect = (id: string) => {
     setActiveStep(id as ProviderStepId)
   }
+
+  const handleDraftTest = async () => {
+    setDraftTesting(true)
+    setDraftTestResult(null)
+    try {
+      const response = await modelManagementApi.testProvider(form.id.trim() || 'draft', {
+        provider: providerForm.serialize()
+      })
+      setDraftTestResult({
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        durationMs: response.durationMs,
+        message: response.ok ? undefined : response.statusText,
+        testedAt: Date.now()
+      })
+    } catch (error) {
+      setDraftTestResult({
+        ok: false,
+        message: toApiError(error).message,
+        testedAt: Date.now()
+      })
+    } finally {
+      setDraftTesting(false)
+    }
+  }
   const handleNext = () => {
     if (stepIndex < PROVIDER_STEPS.length - 1) {
       setActiveStep(PROVIDER_STEPS[stepIndex + 1].id)
@@ -236,14 +272,29 @@ export function ProviderDrawer({
     onRemoveModel: providerForm.handleRemoveModel,
     onModelNonStreamViaStreamChange: providerForm.handleModelNonStreamViaStreamChange,
     onSetDefaultModel: providerForm.handleSetDefaultModel,
-    testVerification: onTest
-      ? {
-          available: mode === 'edit',
-          testing: testing ?? false,
-          result: testResult ?? null,
-          onTest
-        }
-      : undefined
+    testVerification:
+      mode === 'edit'
+        ? onTest
+          ? {
+              available: true,
+              testing: testing ?? false,
+              result: testResult ?? null,
+              onTest
+            }
+          : undefined
+        : {
+            // Create mode: test the unsaved draft via the inline provider payload.
+            available: true,
+            testing: draftTesting,
+            result: draftTestResult,
+            onTest: () => void handleDraftTest()
+          },
+    probeModels: {
+      // Probing needs at least a base URL to aim at; the backend probes the
+      // unsaved draft so unsaved edits (URL, key, headers) are respected.
+      available: form.baseUrl.trim().length > 0,
+      onProbe: () => setProbeOpen(true)
+    }
   }
 
   return (
@@ -392,6 +443,15 @@ export function ProviderDrawer({
           </div>
         </footer>
       </aside>
+      <ProbeModelsDialog
+        open={probeOpen}
+        providerId={provider?.id ?? (form.id.trim() || 'draft')}
+        providerName={provider?.label || form.label.trim() || form.id.trim() || t('providers.drawer.summary.untitled')}
+        existingModelIds={form.models.map((model) => model.id.trim()).filter(Boolean)}
+        draft={providerForm.serialize()}
+        onImport={providerForm.handleImportModels}
+        onClose={() => setProbeOpen(false)}
+      />
     </div>
   )
 }

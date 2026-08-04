@@ -133,6 +133,22 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     }))
   }
 
+  /** Append probed models, skipping IDs already present in the form. */
+  const handleImportModels = (models: Array<{ id: string; label?: string }>) => {
+    setForm((prev) => {
+      const knownIds = new Set(prev.models.map((model) => model.id.trim()))
+      const imported = models
+        .filter((model) => model.id.trim().length > 0 && !knownIds.has(model.id.trim()))
+        .map((model) => ({
+          ...createEmptyModel(),
+          id: model.id.trim(),
+          label: model.label?.trim() ?? ''
+        }))
+      if (imported.length === 0) return prev
+      return { ...prev, models: [...prev.models, ...imported] }
+    })
+  }
+
   const handleHeaderChange = (index: number, patch: Partial<FormHeader>) => {
     setForm((prev) => {
       const nextHeaders = [...prev.extraHeaders]
@@ -321,6 +337,7 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     handleModelIdChange,
     handleRemoveModel,
     handleAddModel,
+    handleImportModels,
     handleHeaderChange,
     handleAddHeader,
     handleRemoveHeader,

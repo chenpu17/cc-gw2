@@ -60,6 +60,21 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   await providerDrawer.getByRole('button', { name: '新增模型' }).click()
   await providerDrawer.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-playwright')
   await providerDrawer.getByLabel('设为默认模型').check()
+
+  // 新建模式（未保存）：探测草稿配置并勾选导入
+  await providerDrawer.getByRole('button', { name: '探测模型' }).click()
+  const createProbeDialog = page.getByRole('dialog', { name: '探测可用模型' })
+  await expect(createProbeDialog).toBeVisible()
+  await createProbeDialog.getByPlaceholder('搜索模型 ID 或名称').fill('probe')
+  await createProbeDialog.locator('label').filter({ hasText: 'stub-model-probe' }).click()
+  await createProbeDialog.getByRole('button', { name: '导入 1 个模型' }).click()
+  await expect(page.getByText('已导入 1 个模型')).toBeVisible()
+  await expect(providerDrawer.locator('input[value="stub-model-probe"][placeholder]')).toBeVisible()
+
+  // 新建模式（未保存）：对草稿发起测试连接，内联展示结果
+  await providerDrawer.getByRole('button', { name: '测试连接' }).click()
+  await expect(providerDrawer.getByText('连接成功')).toBeVisible()
+
   await providerDrawer.getByRole('button', { name: '保存设置' }).click()
 
   await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
@@ -73,6 +88,10 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   const createdProvider = config.providers.find((provider: any) => provider.id === providerId)
   expect(createdProvider).toBeTruthy()
   expect(createdProvider.baseUrl).toBe(providerBaseUrl)
+  // 新建流程中探测导入的模型随保存一起落库
+  expect(createdProvider.models.map((model: any) => model.id)).toEqual(
+    expect.arrayContaining(['stub-model-playwright', 'stub-model-probe'])
+  )
 
   // 操作按钮直接挂在卡片上
   await providerCard.getByRole('button', { name: '测试连接' }).click()
@@ -353,4 +372,59 @@ test('routing rules can be reordered by dragging the grip handle', async ({ page
   // 保存后后端 modelRoutes 的 key 顺序随之交换（验证 IndexMap 保序往返）
   persisted = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(Object.keys(persisted.routing.modelRoutes)).toEqual([sourceB, sourceA])
+})
+
+test('provider models can be probed and selectively imported', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+
+  await page.goto(`${baseUrl}/ui/providers`)
+  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+
+  // stub provider 由 harness 预置（已含 stub-model），从卡片进入编辑抽屉
+  const card = page.locator('[data-testid="provider-card"]').filter({ hasText: 'Stub Provider' })
+  await expect(card).toBeVisible()
+  await card.getByRole('button', { name: '编辑' }).click()
+  const drawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
+  await expect(drawer).toBeVisible()
+  await drawer.getByRole('button', { name: '下一步' }).click()
+
+  // 打开探测弹窗（stub 上游返回 stub-model + stub-model-probe）
+  await drawer.getByRole('button', { name: '探测模型' }).click()
+  const dialog = page.getByRole('dialog', { name: '探测可用模型' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('共 2 个模型')).toBeVisible()
+
+  // 已在表单中的 stub-model 置灰标记「已导入」，checkbox 禁用
+  const importedRow = dialog.locator('label').filter({ hasText: '已导入' })
+  await expect(importedRow).toHaveCount(1)
+  await expect(importedRow).toContainText('stub-model')
+  await expect(importedRow.locator('input[type="checkbox"]')).toBeDisabled()
+
+  // 搜索过滤后勾选新模型并导入
+  await dialog.getByPlaceholder('搜索模型 ID 或名称').fill('probe')
+  const probeRow = dialog.locator('label').filter({ hasText: 'stub-model-probe' })
+  await expect(probeRow).toHaveCount(1)
+  await expect(probeRow).toContainText('Stub Probe Model')
+  await probeRow.click()
+  await expect(dialog.getByText('已选 1 个')).toBeVisible()
+  await dialog.getByRole('button', { name: '导入 1 个模型' }).click()
+  await expect(page.getByText('已导入 1 个模型')).toBeVisible()
+
+  // 抽屉中出现新模型行（id 与 display_name 预填的 label）
+  await expect(drawer.locator('input[value="stub-model-probe"][placeholder]')).toBeVisible()
+  await expect(drawer.locator('input[value="Stub Probe Model"]')).toBeVisible()
+
+  // 保存后写入配置：新模型合并进来，已有模型保持不变
+  await drawer.getByRole('button', { name: '保存设置' }).click()
+  await expect(page.getByText('已更新 Provider：Stub Provider')).toBeVisible()
+  const configResponse = await request.get(`${baseUrl}/api/config`)
+  const config = await configResponse.json()
+  const stubProvider = config.providers.find((provider: any) => provider.id === 'stub')
+  const modelIds = stubProvider.models.map((model: any) => model.id)
+  expect(modelIds).toContain('stub-model')
+  expect(modelIds).toContain('stub-model-probe')
+  const probed = stubProvider.models.find((model: any) => model.id === 'stub-model-probe')
+  expect(probed.label).toBe('Stub Probe Model')
+  const original = stubProvider.models.find((model: any) => model.id === 'stub-model')
+  expect(original.label).toBe('Stub Model')
 })

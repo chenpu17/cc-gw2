@@ -113,7 +113,7 @@ export default {
   },
   drawer: {
     verifyTitle: 'Connection check',
-    verifyHint: 'Runs a real request against the saved provider to confirm auth and connectivity.',
+    verifyHint: 'Runs a real request against the current config — including unsaved drafts — to confirm auth and connectivity.',
     verifySaveFirst: 'Save the provider before running a connection test.',
     verifyRun: 'Test connection'
   }

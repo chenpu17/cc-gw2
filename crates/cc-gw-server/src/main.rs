@@ -48,8 +48,9 @@ use cc_gw_core::{
         upsert_request_payload,
     },
     provider::{
-        ProviderProtocol, ProxyRequest, forward_request, prepare_proxy_payload,
-        provider_prefers_anthropic_protocol, provider_prefers_openai_responses_protocol,
+        ProviderModelsError, ProviderProtocol, ProxyRequest, fetch_provider_models,
+        forward_request, prepare_proxy_payload, provider_prefers_anthropic_protocol,
+        provider_prefers_openai_responses_protocol,
     },
     routing::{GatewayEndpoint, resolve_route},
     storage::initialize_database,
@@ -187,6 +188,15 @@ struct PresetNameBody {
 struct ProviderTestBody {
     headers: Option<HashMap<String, String>>,
     query: Option<String>,
+    /// Unsaved provider draft from the console: when present, the test probes
+    /// this config directly instead of looking up the saved provider by id.
+    provider: Option<ProviderConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProviderModelsProbeBody {
+    /// Unsaved provider draft; takes precedence over the path id lookup.
+    provider: Option<ProviderConfig>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -431,6 +441,10 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/api/providers/{id}/test",
             post(admin_routes::api_provider_test),
+        )
+        .route(
+            "/api/providers/{id}/models/probe",
+            post(admin_routes::api_provider_models_probe),
         )
         .route(
             "/api/custom-endpoints",
