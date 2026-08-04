@@ -207,7 +207,7 @@ export function TargetCombobox({
         />
       </PopoverAnchor>
       <PopoverContent
-        className="flex max-h-[min(28rem,var(--radix-popover-content-available-height))] flex-col overflow-hidden rounded-xl border border-[color:var(--surface-border)] bg-popover/96 p-0 shadow-[var(--surface-shadow-lg)]"
+        className="flex max-h-[min(28rem,var(--radix-popover-content-available-height))] flex-col overflow-hidden rounded-xl border border-[color:var(--surface-border)] bg-popover p-0 shadow-[var(--surface-shadow-lg)]"
         style={{ width: 'max(var(--radix-popover-trigger-width), 360px)' }}
         align="start"
         onOpenAutoFocus={(event) => {
@@ -221,7 +221,7 @@ export function TargetCombobox({
           event.preventDefault()
         }}
       >
-        <div className="space-y-2 border-b border-border/70 px-3 py-3">
+        <div className="space-y-2 border-b border-border px-3 py-3">
           <Input
             ref={searchInputRef}
             value={search}
@@ -243,7 +243,7 @@ export function TargetCombobox({
             {groups.map((group) => (
               <div key={group.key} className="py-1">
                 <div className={cn(
-                  'sticky top-0 z-10 flex items-center justify-between bg-popover/95 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground',
+                  'sticky top-0 z-10 flex items-center justify-between bg-popover px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground',
                   group.muted && 'opacity-80'
                 )}>
                   <span className="truncate">{group.label}</span>
@@ -257,8 +257,8 @@ export function TargetCombobox({
                       role="option"
                       aria-selected={option.value === value.trim()}
                       className={cn(
-                        'flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                        option.value === value.trim() && 'bg-accent/90 text-accent-foreground'
+                        'flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                        option.value === value.trim() && 'bg-accent text-accent-foreground'
                       )}
                       onMouseDown={(event) => {
                         event.preventDefault()

@@ -29,7 +29,7 @@ export function PageSection({
         <div className="flex flex-col gap-4 p-6 pb-0 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1.5">
             {eyebrow ? (
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/78">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/80">
                 {eyebrow}
               </div>
             ) : null}

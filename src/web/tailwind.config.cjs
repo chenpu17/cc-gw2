@@ -1,4 +1,10 @@
 /** @type {import('tailwindcss').Config} */
+
+// 主题变量是纯 hex(见 global.css)。用相对颜色语法包一层 <alpha-value>,
+// 让 `bg-primary/10` 这类透明度修饰真正生效 —— 直接写 'var(--x)' 时
+// Tailwind 3.4 无法注入 alpha,会静默丢弃整条规则。
+const withAlpha = (variable) => `rgb(from var(${variable}) r g b / <alpha-value>)`
+
 module.exports = {
   darkMode: ['class', '[data-theme="dark"]'],
   content: ['./index.html', './src/**/*.{ts,tsx}'],
@@ -20,61 +26,61 @@ module.exports = {
         'xs': '475px'
       },
       colors: {
-        border: 'var(--border)',
-        input: 'var(--input)',
-        ring: 'var(--ring)',
-        background: 'var(--background)',
-        foreground: 'var(--foreground)',
+        border: withAlpha('--border'),
+        input: withAlpha('--input'),
+        ring: withAlpha('--ring'),
+        background: withAlpha('--background'),
+        foreground: withAlpha('--foreground'),
         primary: {
-          DEFAULT: 'var(--primary)',
-          foreground: 'var(--primary-foreground)'
+          DEFAULT: withAlpha('--primary'),
+          foreground: withAlpha('--primary-foreground')
         },
         secondary: {
-          DEFAULT: 'var(--secondary)',
-          foreground: 'var(--secondary-foreground)'
+          DEFAULT: withAlpha('--secondary'),
+          foreground: withAlpha('--secondary-foreground')
         },
         destructive: {
-          DEFAULT: 'var(--destructive)',
-          foreground: 'var(--destructive-foreground)'
+          DEFAULT: withAlpha('--destructive'),
+          foreground: withAlpha('--destructive-foreground')
         },
         muted: {
-          DEFAULT: 'var(--muted)',
-          foreground: 'var(--muted-foreground)'
+          DEFAULT: withAlpha('--muted'),
+          foreground: withAlpha('--muted-foreground')
         },
         accent: {
-          DEFAULT: 'var(--accent)',
-          foreground: 'var(--accent-foreground)'
+          DEFAULT: withAlpha('--accent'),
+          foreground: withAlpha('--accent-foreground')
         },
         popover: {
-          DEFAULT: 'var(--popover)',
-          foreground: 'var(--popover-foreground)'
+          DEFAULT: withAlpha('--popover'),
+          foreground: withAlpha('--popover-foreground')
         },
         card: {
-          DEFAULT: 'var(--card)',
-          foreground: 'var(--card-foreground)'
+          DEFAULT: withAlpha('--card'),
+          foreground: withAlpha('--card-foreground')
         },
         success: {
-          DEFAULT: 'var(--success)',
-          bg: 'var(--success-bg)'
+          DEFAULT: withAlpha('--success'),
+          bg: withAlpha('--success-bg')
         },
         warning: {
-          DEFAULT: 'var(--warning)',
-          bg: 'var(--warning-bg)'
+          DEFAULT: withAlpha('--warning'),
+          bg: withAlpha('--warning-bg')
         },
         error: {
-          DEFAULT: 'var(--error)',
-          bg: 'var(--error-bg)'
+          DEFAULT: withAlpha('--error'),
+          bg: withAlpha('--error-bg')
         },
         info: {
-          DEFAULT: 'var(--info)',
-          bg: 'var(--info-bg)'
+          DEFAULT: withAlpha('--info'),
+          bg: withAlpha('--info-bg')
         },
         chart: {
-          1: 'var(--chart-1)',
-          2: 'var(--chart-2)',
-          3: 'var(--chart-3)',
-          4: 'var(--chart-4)',
-          5: 'var(--chart-5)'
+          1: withAlpha('--chart-1'),
+          2: withAlpha('--chart-2'),
+          3: withAlpha('--chart-3'),
+          4: withAlpha('--chart-4'),
+          5: withAlpha('--chart-5')
         }
       },
       borderRadius: {

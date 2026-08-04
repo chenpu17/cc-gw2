@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    /* Modernist — 纯 hex 变量(配合 tailwind.config 的 var(--x),支持 color-mix) */
+    /* Modernist — 纯 hex 变量(tailwind.config 用 rgb(from var(--x) …) 包装,支持 /透明度 修饰) */
     --background: #f3f2f2;
     --foreground: #201e1d;
     --card: #ffffff;
