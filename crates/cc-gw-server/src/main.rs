@@ -42,7 +42,7 @@ use cc_gw_core::{
     observability::{
         LogPayloadUpdate, LogQuery, RequestLogInput, RequestLogUpdate, RuntimeMetricsSampler,
         UsageStats, cleanup_logs_before, clear_all_logs, compact_database, export_logs,
-        finalize_request_log, get_daily_metrics, get_database_info, get_log_detail,
+        finalize_request_log, finalize_stale_request_logs, get_daily_metrics, get_database_info, get_log_detail,
         get_metrics_overview, get_model_usage_metrics, get_recent_client_activity,
         get_recent_throughput_metrics, increment_daily_metrics, insert_request_log, mask_log_record_api_key, query_logs,
         upsert_request_payload,
@@ -320,6 +320,13 @@ async fn main() -> Result<()> {
 
     let (paths, config) = load_or_init_config(port_override)?;
     initialize_database(&paths.db_path)?;
+    let stale_finalized = finalize_stale_request_logs(&paths.db_path)?;
+    if stale_finalized > 0 {
+        info!(
+            "finalized {} request logs left in progress by a previous run",
+            stale_finalized
+        );
+    }
 
     let ui_root = resolve_web_dist().map(Arc::new);
     if let Some(path) = ui_root.as_ref() {

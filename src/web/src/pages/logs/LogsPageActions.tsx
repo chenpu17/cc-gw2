@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_VISIBLE_COLUMNS,
@@ -11,12 +12,14 @@ import {
 } from './shared'
 
 interface LogsPageActionsProps {
+  autoRefresh: boolean
   columnOptions: Array<{ id: LogColumnId; label: string }>
   exporting: boolean
   onExport: () => void
   onRefresh: () => void
   onResetColumns: () => void
   onSetDensity: (density: RowDensity) => void
+  onToggleAutoRefresh: (enabled: boolean) => void
   onToggleColumn: (column: LogColumnId) => void
   refreshing: boolean
   rowDensity: RowDensity
@@ -25,12 +28,14 @@ interface LogsPageActionsProps {
 }
 
 export function LogsPageActions({
+  autoRefresh,
   columnOptions,
   exporting,
   onExport,
   onRefresh,
   onResetColumns,
   onSetDensity,
+  onToggleAutoRefresh,
   onToggleColumn,
   refreshing,
   rowDensity,
@@ -108,7 +113,15 @@ export function LogsPageActions({
         </Button>
       </div>
 
-      <div className="flex w-full items-center xl:w-auto">
+      <div className="flex w-full items-center gap-3 xl:w-auto">
+        <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+          <Switch
+            checked={autoRefresh}
+            onCheckedChange={onToggleAutoRefresh}
+            aria-label={t('logs.actions.autoRefresh')}
+          />
+          {t('logs.actions.autoRefresh')}
+        </label>
         <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing} className="shrink-0">
           <RefreshCw className={cn('mr-2 h-4 w-4', refreshing && 'animate-spin')} />
           {refreshing ? t('common.actions.refreshing') : t('logs.actions.manualRefresh')}

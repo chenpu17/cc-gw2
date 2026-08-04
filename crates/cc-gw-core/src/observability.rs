@@ -336,7 +336,8 @@ fn decompress_payload(value: Option<Vec<u8>>) -> Option<String> {
 }
 
 fn open_db(db_path: &Path) -> Result<Connection> {
-    let conn = Connection::open(db_path).with_context(|| format!("failed to open db {}", db_path.display()))?;
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("failed to open db {}", db_path.display()))?;
     // Raise rusqlite's default 5s busy_timeout so concurrent proxy writes aren't
     // SQLITE_BUSY'd (and then silently dropped) while an admin VACUUM / log
     // cleanup holds the write lock for tens of seconds.
@@ -450,6 +451,21 @@ pub fn finalize_request_log(db_path: &Path, id: i64, update: &RequestLogUpdate) 
         ],
     )?;
     Ok(())
+}
+
+/// Finalize request logs left "in progress" by a previous process that exited
+/// before it could finalize them. Returns the number of rows updated.
+pub fn finalize_stale_request_logs(db_path: &Path) -> Result<u64> {
+    let conn = open_db(db_path)?;
+    let updated = conn.execute(
+        "UPDATE request_logs
+         SET status_code = 499,
+             error = 'gateway restarted before request completed',
+             error_source = 'gateway'
+         WHERE status_code IS NULL",
+        [],
+    )?;
+    Ok(updated as u64)
 }
 
 pub fn upsert_request_payload(
@@ -1832,6 +1848,97 @@ mod tests {
         );
         assert_eq!(payload.upstream_request, None);
         assert_eq!(payload.upstream_response, None);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn finalize_stale_request_logs_closes_only_pending_records() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-stale-sweep-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let pending_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now,
+                session_id: None,
+                source_ip: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "pending-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert pending request log");
+
+        let finished_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now - 1,
+                session_id: None,
+                source_ip: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "finished-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert finished request log");
+        finalize_request_log(
+            &db_path,
+            finished_id,
+            &RequestLogUpdate {
+                latency_ms: Some(42),
+                status_code: Some(200),
+                ..RequestLogUpdate::default()
+            },
+        )
+        .expect("finalize finished request log");
+
+        let updated = finalize_stale_request_logs(&db_path).expect("sweep stale request logs");
+        assert_eq!(updated, 1);
+
+        let conn = open_db(&db_path).expect("open db");
+        let (pending_status, pending_error, pending_error_source, pending_latency): (
+            i64,
+            String,
+            String,
+            Option<i64>,
+        ) = conn
+            .query_row(
+                "SELECT status_code, error, error_source, latency_ms FROM request_logs WHERE id = ?1",
+                params![pending_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("query pending log");
+        assert_eq!(pending_status, 499);
+        assert_eq!(pending_error, "gateway restarted before request completed");
+        assert_eq!(pending_error_source, "gateway");
+        assert_eq!(pending_latency, None);
+
+        let (finished_status, finished_error_source): (i64, Option<String>) = conn
+            .query_row(
+                "SELECT status_code, error_source FROM request_logs WHERE id = ?1",
+                params![finished_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query finished log");
+        assert_eq!(finished_status, 200);
+        assert_eq!(finished_error_source, None);
 
         let _ = std::fs::remove_dir_all(root);
     }

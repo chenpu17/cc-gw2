@@ -30,6 +30,7 @@ export default {
     columns: 'Columns',
     visibleCount: '{{count}} columns visible',
     manualRefresh: 'Manual refresh',
+    autoRefresh: 'Auto refresh',
     refreshing: 'Refreshing...',
     export: 'Export ZIP',
     exporting: 'Exporting...',

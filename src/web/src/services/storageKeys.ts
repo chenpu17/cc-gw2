@@ -14,7 +14,8 @@ export const storageKeys = {
     statusFilter: 'cc-gw.logs.status-filter',
     fromDate: 'cc-gw.logs.from-date',
     toDate: 'cc-gw.logs.to-date',
-    selectedApiKeys: 'cc-gw.logs.selected-api-keys'
+    selectedApiKeys: 'cc-gw.logs.selected-api-keys',
+    autoRefresh: 'cc-gw.logs.auto-refresh'
   },
   apiKeys: {
     rangeDays: 'cc-gw.api-keys.range-days',

@@ -13,12 +13,14 @@ export default function LogsPage() {
       <PageToolbar
         actions={
           <LogsPageActions
+            autoRefresh={state.autoRefresh}
             columnOptions={state.columnOptions}
             exporting={state.exporting}
             onExport={() => void state.handleExport()}
             onRefresh={() => void state.logsQuery.refetch()}
             onResetColumns={state.resetVisibleColumns}
             onSetDensity={state.setRowDensity}
+            onToggleAutoRefresh={state.setAutoRefresh}
             onToggleColumn={state.toggleColumn}
             refreshing={state.logsQuery.isFetching}
             rowDensity={state.rowDensity}

@@ -483,6 +483,7 @@ pub(super) async fn api_provider_test(
             passthrough_headers: incoming_headers,
             query: request_query.clone(),
         },
+        None,
     )
     .await
     {

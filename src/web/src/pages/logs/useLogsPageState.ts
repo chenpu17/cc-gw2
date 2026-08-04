@@ -26,6 +26,11 @@ import {
   type StatusFilter
 } from './shared'
 
+const AUTO_REFRESH_INTERVAL_MS = 3_000
+// Only auto-scroll back to the top when the user is already near the top,
+// so polling never yanks the page away from someone reading older rows.
+const AUTO_SCROLL_TOP_THRESHOLD_PX = 200
+
 export function useLogsPageState() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
@@ -55,6 +60,10 @@ export function useLogsPageState() {
     ''
   )
   const [page, setPage] = useState(1)
+  const [autoRefresh, setAutoRefresh] = usePersistentState<boolean>(
+    storageKeys.logs.autoRefresh,
+    true
+  )
   const [pageSize, setPageSize] = usePersistentState<number>(
     storageKeys.logs.pageSize,
     loadStoredPageSize,
@@ -145,7 +154,12 @@ export function useLogsPageState() {
   const logsQuery = useApiQuery<LogListResponse, ApiError>(
     queryKeys.logs.list(queryParams),
     logsApi.listRequest(queryParams),
-    { gcTime: 60_000 }
+    {
+      gcTime: 60_000,
+      // Poll only on the first page (newest logs live there); paging through
+      // history stays stable instead of jumping on every refresh.
+      refetchInterval: autoRefresh && page === 1 ? AUTO_REFRESH_INTERVAL_MS : false
+    }
   )
   const providersQuery = useApiQuery<ProviderSummary[], ApiError>(
     queryKeys.providers.all(),
@@ -172,6 +186,13 @@ export function useLogsPageState() {
       variant: 'error'
     })
   }, [logsQuery.error, logsQuery.isError, pushToast, t])
+
+  useEffect(() => {
+    if (!autoRefresh || page !== 1) return
+    if (typeof window === 'undefined') return
+    if (window.scrollY >= AUTO_SCROLL_TOP_THRESHOLD_PX) return
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [autoRefresh, page, logsQuery.dataUpdatedAt])
 
   useEffect(() => {
     if (!providersQuery.isError || !providersQuery.error) return
@@ -431,6 +452,7 @@ export function useLogsPageState() {
     apiKeys,
     apiKeysQuery,
     applyQuickView,
+    autoRefresh,
     columnOptions,
     customEndpoints: customEndpointsQuery.data?.endpoints,
     endpointFilter,
@@ -456,6 +478,7 @@ export function useLogsPageState() {
     resetVisibleColumns,
     selectedApiKeys,
     selectedLogId,
+    setAutoRefresh,
     setEndpointFilter,
     setFiltersExpanded,
     setFromDate,

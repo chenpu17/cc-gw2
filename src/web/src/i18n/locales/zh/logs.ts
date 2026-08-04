@@ -30,6 +30,7 @@ filters: {
     columns: '列设置',
     visibleCount: '已显示 {{count}} 列',
     manualRefresh: '手动刷新',
+    autoRefresh: '自动刷新',
     refreshing: '刷新中...',
     export: '导出 ZIP 日志',
     exporting: '导出中...',

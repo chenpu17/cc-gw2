@@ -301,6 +301,7 @@ pub async fn forward_request(
     provider: &ProviderConfig,
     protocol: ProviderProtocol,
     request: ProxyRequest,
+    timeout: Option<std::time::Duration>,
 ) -> Result<reqwest::Response> {
     let payload = prepare_proxy_payload(request.body, &request.model, request.stream);
 
@@ -316,12 +317,15 @@ pub async fn forward_request(
         request.query.as_deref(),
     );
 
-    let response = client
-        .post(url)
-        .headers(headers)
-        .json(&payload)
-        .send()
-        .await?;
+    // A per-request timeout covers the entire request, including reading the
+    // response body, so callers must only set it when they wait for the full
+    // body (non-streaming requests and non-stream-via-stream materialization);
+    // streaming passthrough would kill legitimate long-lived streams.
+    let mut builder = client.post(url).headers(headers).json(&payload);
+    if let Some(timeout) = timeout {
+        builder = builder.timeout(timeout);
+    }
+    let response = builder.send().await?;
 
     Ok(response)
 }

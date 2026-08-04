@@ -6,6 +6,11 @@ const ERROR_SOURCE_CLIENT: &str = "client";
 const ERROR_SOURCE_GATEWAY: &str = "gateway";
 const ERROR_SOURCE_UPSTREAM: &str = "upstream";
 
+/// Whole-request timeout (connect through response body fully read) applied to
+/// upstream requests whose body the gateway waits for in full. Streaming
+/// passthrough requests must not use it — it would kill legitimate long streams.
+const UPSTREAM_NON_STREAM_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
 fn upstream_error_source_for_status(status_code: i64) -> Option<String> {
     (status_code >= 400).then(|| ERROR_SOURCE_UPSTREAM.to_string())
 }
@@ -1257,6 +1262,8 @@ pub(super) async fn proxy_standard_request(
         },
     )
     .ok();
+    let mut request_log_finalizer = request_log_id
+        .map(|log_id| RequestLogFinalizer::new(state.paths.db_path.clone(), log_id, started_at));
     let provider_type = provider_type_name(&target.provider);
     let target_protocol = if provider_prefers_anthropic_protocol(&target.provider) {
         ProviderProtocol::AnthropicMessages
@@ -1358,6 +1365,7 @@ pub(super) async fn proxy_standard_request(
     }
 
     let upstream_query = query.clone();
+    let upstream_timeout = (!stream).then_some(UPSTREAM_NON_STREAM_TIMEOUT);
     let proxy_result = forward_request(
         &state.http_client,
         &target.provider,
@@ -1370,6 +1378,7 @@ pub(super) async fn proxy_standard_request(
             passthrough_headers: HeaderMap::new(),
             query: upstream_query.clone(),
         },
+        upstream_timeout,
     )
     .await;
 
@@ -1400,6 +1409,7 @@ pub(super) async fn proxy_standard_request(
                             passthrough_headers: HeaderMap::new(),
                             query: upstream_query.clone(),
                         },
+                        upstream_timeout,
                     )
                     .await
                     {
@@ -1480,6 +1490,13 @@ pub(super) async fn proxy_standard_request(
                 started_at,
                 store_response_payload: response_payload_storage_enabled(&config),
             });
+            if stream {
+                // Log ownership moves to the streaming finalizer inside the
+                // response stream; disarm the synchronous guard.
+                if let Some(finalizer) = request_log_finalizer.take() {
+                    finalizer.disarm();
+                }
+            }
             if upstream_stream && !stream {
                 let (
                     result,
@@ -1513,7 +1530,9 @@ pub(super) async fn proxy_standard_request(
                         cache_creation_tokens: Some(usage.cache_creation_tokens),
                         ..RequestLogUpdate::default()
                     };
-                    let _ = finalize_request_log(&state.paths.db_path, log_id, &update);
+                    if let Some(finalizer) = request_log_finalizer.as_mut() {
+                        finalizer.finish(&update);
+                    }
                     let _ = increment_daily_metrics(
                         &state.paths.db_path,
                         &endpoint_id,
@@ -1587,7 +1606,9 @@ pub(super) async fn proxy_standard_request(
                         cache_creation_tokens: Some(usage.cache_creation_tokens),
                         ..RequestLogUpdate::default()
                     };
-                    let _ = finalize_request_log(&state.paths.db_path, log_id, &update);
+                    if let Some(finalizer) = request_log_finalizer.as_mut() {
+                        finalizer.finish(&update);
+                    }
                     let _ = increment_daily_metrics(
                         &state.paths.db_path,
                         &endpoint_id,
@@ -1628,7 +1649,9 @@ pub(super) async fn proxy_standard_request(
                         cache_creation_tokens: Some(usage.cache_creation_tokens),
                         ..RequestLogUpdate::default()
                     };
-                    let _ = finalize_request_log(&state.paths.db_path, log_id, &update);
+                    if let Some(finalizer) = request_log_finalizer.as_mut() {
+                        finalizer.finish(&update);
+                    }
                     let _ = increment_daily_metrics(
                         &state.paths.db_path,
                         &endpoint_id,
@@ -1654,7 +1677,7 @@ pub(super) async fn proxy_standard_request(
         Err(error) => {
             tracing::warn!(error = %error, provider = %target.provider_id, "upstream request failed");
             let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
-            if let Some(log_id) = request_log_id {
+            if let Some(finalizer) = request_log_finalizer.as_mut() {
                 let update = RequestLogUpdate {
                     latency_ms: Some(latency_ms),
                     status_code: Some(502),
@@ -1662,7 +1685,7 @@ pub(super) async fn proxy_standard_request(
                     error_source: Some(ERROR_SOURCE_UPSTREAM.to_string()),
                     ..RequestLogUpdate::default()
                 };
-                let _ = finalize_request_log(&state.paths.db_path, log_id, &update);
+                finalizer.fail(&update);
                 let _ = increment_daily_metrics(
                     &state.paths.db_path,
                     &endpoint_id,
@@ -2646,6 +2669,64 @@ fn compute_tpot_ms(total_latency_ms: i64, output_tokens: i64, ttft_ms: Option<i6
     Some((raw * 100.0).round() / 100.0)
 }
 
+/// RAII counterpart of `StreamingResponseFinalizer` for requests that are
+/// finalized synchronously inside the handler (non-streaming and
+/// materialized-stream paths). If the handler future is dropped before an
+/// explicit finish/fail (client disconnect, cancellation), the request log is
+/// closed as interrupted instead of being left "in progress" forever.
+struct RequestLogFinalizer {
+    db_path: std::path::PathBuf,
+    log_id: i64,
+    started_at: i64,
+    completed: bool,
+}
+
+impl RequestLogFinalizer {
+    fn new(db_path: std::path::PathBuf, log_id: i64, started_at: i64) -> Self {
+        Self {
+            db_path,
+            log_id,
+            started_at,
+            completed: false,
+        }
+    }
+
+    fn finish(&mut self, update: &RequestLogUpdate) {
+        self.complete_with(update);
+    }
+
+    fn fail(&mut self, update: &RequestLogUpdate) {
+        self.complete_with(update);
+    }
+
+    /// Disarm without writing: ownership of the request log moved to a
+    /// `StreamingResponseFinalizer` for streaming passthrough responses.
+    fn disarm(mut self) {
+        self.completed = true;
+    }
+
+    fn complete_with(&mut self, update: &RequestLogUpdate) {
+        self.completed = true;
+        let _ = finalize_request_log(&self.db_path, self.log_id, update);
+    }
+}
+
+impl Drop for RequestLogFinalizer {
+    fn drop(&mut self) {
+        if self.completed {
+            return;
+        }
+        let update = RequestLogUpdate {
+            latency_ms: Some(chrono::Utc::now().timestamp_millis() - self.started_at),
+            status_code: Some(499),
+            error: Some("request cancelled before completion".to_string()),
+            error_source: Some(ERROR_SOURCE_CLIENT.to_string()),
+            ..RequestLogUpdate::default()
+        };
+        let _ = finalize_request_log(&self.db_path, self.log_id, &update);
+    }
+}
+
 struct StreamingResponseFinalizer {
     log_context: Option<StreamingLogContext>,
     client_response_protocol: ProviderProtocol,
@@ -2876,6 +2957,108 @@ mod tests {
             sessions: auth::SessionStore::default(),
             event_bus: tokio::sync::broadcast::channel(256).0,
         }
+    }
+
+    #[test]
+    fn dropped_request_log_finalizer_marks_log_interrupted() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-request-log-finalizer-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let started_at = chrono::Utc::now().timestamp_millis();
+        let log_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: started_at,
+                session_id: None,
+                source_ip: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "mock-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert request log");
+
+        drop(RequestLogFinalizer::new(
+            db_path.clone(),
+            log_id,
+            started_at,
+        ));
+
+        let logs = query_logs(&db_path, &LogQuery::default()).expect("query logs");
+        let record = logs
+            .items
+            .iter()
+            .find(|item| item.id == log_id)
+            .expect("log exists");
+        assert_eq!(record.status_code, Some(499));
+        assert_eq!(
+            record.error.as_deref(),
+            Some("request cancelled before completion")
+        );
+        assert_eq!(record.error_source.as_deref(), Some(ERROR_SOURCE_CLIENT));
+        assert!(record.latency_ms.is_some());
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn finished_request_log_finalizer_does_not_overwrite_on_drop() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-request-log-finalizer-finish-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let started_at = chrono::Utc::now().timestamp_millis();
+        let log_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: started_at,
+                session_id: None,
+                source_ip: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "mock-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert request log");
+
+        let mut finalizer = RequestLogFinalizer::new(db_path.clone(), log_id, started_at);
+        finalizer.finish(&RequestLogUpdate {
+            latency_ms: Some(120),
+            status_code: Some(200),
+            ..RequestLogUpdate::default()
+        });
+        drop(finalizer);
+
+        let logs = query_logs(&db_path, &LogQuery::default()).expect("query logs");
+        let record = logs
+            .items
+            .iter()
+            .find(|item| item.id == log_id)
+            .expect("log exists");
+        assert_eq!(record.status_code, Some(200));
+        assert_eq!(record.error, None);
+        assert_eq!(record.error_source, None);
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
