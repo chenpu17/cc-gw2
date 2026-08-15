@@ -38,6 +38,7 @@ export interface FormState {
   authMode: 'apiKey' | 'authToken' | 'xAuthToken'
   nonStreamViaStream: boolean
   useAbsoluteUrl: boolean
+  streamUsage: boolean
   extraHeaders: FormHeader[]
 }
 
@@ -77,6 +78,7 @@ export interface ProviderStepShared {
   onAuthModeChange: (value: FormState['authMode']) => void
   onNonStreamViaStreamChange: (checked: boolean) => void
   onUseAbsoluteUrlChange: (checked: boolean) => void
+  onStreamUsageChange: (checked: boolean) => void
   onAddHeader: () => void
   onRemoveHeader: (index: number) => void
   onHeaderChange: (index: number, patch: Partial<FormHeader>) => void
@@ -178,6 +180,7 @@ export function buildInitialState(provider?: ProviderConfig): FormState {
       authMode: defaultAuthModeForType('custom'),
       nonStreamViaStream: false,
       useAbsoluteUrl: false,
+      streamUsage: false,
       extraHeaders: []
     }
   }
@@ -196,6 +199,8 @@ export function buildInitialState(provider?: ProviderConfig): FormState {
     authMode: provider.authMode ?? defaultAuthModeForType(provider.type ?? 'custom'),
     nonStreamViaStream: provider.nonStreamViaStream ?? false,
     useAbsoluteUrl: provider.useAbsoluteUrl ?? false,
+    // Older backends don't return this field; missing/null both map to off.
+    streamUsage: provider.streamUsage === true,
     extraHeaders: Object.entries(provider.extraHeaders ?? {}).map(([name, value]) => ({
       name,
       value,
@@ -226,6 +231,7 @@ export function BasicsStep({
   onAuthModeChange,
   onNonStreamViaStreamChange,
   onUseAbsoluteUrlChange,
+  onStreamUsageChange,
   onAddHeader,
   onRemoveHeader,
   onHeaderChange
@@ -396,6 +402,22 @@ export function BasicsStep({
                 checked={form.useAbsoluteUrl}
                 onCheckedChange={onUseAbsoluteUrlChange}
                 aria-label={t('providers.drawer.fields.useAbsoluteUrl')}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">{t('providers.drawer.fields.streamUsage')}</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {t('providers.drawer.fields.streamUsageHint')}
+                </p>
+              </div>
+              <Switch
+                checked={form.streamUsage}
+                onCheckedChange={onStreamUsageChange}
+                aria-label={t('providers.drawer.fields.streamUsage')}
               />
             </div>
           </div>

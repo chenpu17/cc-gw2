@@ -263,6 +263,7 @@ export function ProviderDrawer({
     onAuthModeChange: providerForm.handleAuthModeChange,
     onNonStreamViaStreamChange: providerForm.handleProviderNonStreamViaStreamChange,
     onUseAbsoluteUrlChange: providerForm.handleUseAbsoluteUrlChange,
+    onStreamUsageChange: providerForm.handleStreamUsageChange,
     onAddHeader: providerForm.handleAddHeader,
     onRemoveHeader: providerForm.handleRemoveHeader,
     onHeaderChange: providerForm.handleHeaderChange,

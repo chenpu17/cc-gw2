@@ -231,6 +231,8 @@ export default {
       nonStreamViaStreamHint: 'Only applies when the client request is non-streaming. The gateway sends a streaming upstream request, reads the full SSE response, then returns JSON once.',
       useAbsoluteUrl: 'Use absolute URL',
       useAbsoluteUrlHint: 'When on, the Base URL is used verbatim as the upstream URL; the gateway will not append any suffix (e.g. /v1/messages, /v1/chat/completions). Use this for providers that expose a fully-qualified endpoint. The protocol (request body format) is still determined by the provider type and is unaffected.',
+      streamUsage: 'Request usage stats on streams',
+      streamUsageHint: 'Only applies when streaming requests are forwarded to an OpenAI-protocol upstream. When on, the gateway sends stream_options.include_usage so the upstream returns token usage at the end of the stream. Some OpenAI-compatible upstreams reject this parameter and return errors or empty streams; turn it off if that happens.',
       models: 'Model configuration',
       showAdvanced: 'Show advanced options',
       hideAdvanced: 'Hide advanced options',

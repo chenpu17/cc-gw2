@@ -193,6 +193,13 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     }))
   }
 
+  const handleStreamUsageChange = (checked: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      streamUsage: checked
+    }))
+  }
+
   const handleModelNonStreamViaStreamChange = (index: number, value: string) => {
     const nextValue = value === 'inherit' ? undefined : value === 'enabled'
     handleModelChange(index, { nonStreamViaStream: nextValue })
@@ -316,6 +323,11 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     if (form.useAbsoluteUrl) {
       payload.useAbsoluteUrl = true
     }
+    // Only send when explicitly on: absent field keeps older backends and
+    // hand-edited configs on their default (off) behavior.
+    if (form.streamUsage) {
+      payload.streamUsage = true
+    }
     return payload
   }
 
@@ -344,6 +356,7 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     handleAuthModeChange,
     handleProviderNonStreamViaStreamChange,
     handleUseAbsoluteUrlChange,
+    handleStreamUsageChange,
     handleModelNonStreamViaStreamChange,
     handleSetDefaultModel
   }

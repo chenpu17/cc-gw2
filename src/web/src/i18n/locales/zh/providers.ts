@@ -230,6 +230,8 @@ export default {
       nonStreamViaStreamHint: '仅在客户端请求非流式时生效。网关向上游发送流式请求，读取完整 SSE 后一次性返回 JSON。',
       useAbsoluteUrl: '使用绝对路径',
       useAbsoluteUrlHint: '勾选后,Base URL 将原样作为上游请求地址(需填完整端点,如 https://x/internal/v1/messages),网关不再自动追加 /v1/messages、/v1/chat/completions 等后缀。协议(请求体格式)仍由 Provider 类型决定,互不影响。',
+      streamUsage: '流式请求携带 usage 统计',
+      streamUsageHint: '仅在流式请求转发到 OpenAI 协议上游时生效。开启后网关会附加 stream_options.include_usage，让上游在流末尾返回 token 用量。部分 OpenAI 兼容上游不认识该参数，会导致报错或流式返回为空；如遇此情况请关闭。',
       models: '模型配置',
       showAdvanced: '显示高级选项',
       hideAdvanced: '隐藏高级选项',
