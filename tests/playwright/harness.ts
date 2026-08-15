@@ -103,6 +103,26 @@ async function startStubProvider(port: number): Promise<http.Server> {
         const message = Array.isArray(body.messages) && body.messages.length > 0
           ? body.messages[body.messages.length - 1]?.content ?? ''
           : ''
+        const messageText = typeof message === 'string' ? message : ''
+
+        // Streaming requests get an OpenAI-style SSE stream. The trailing
+        // prompt marker switches between the two usage chunk shapes real
+        // upstreams use: top-level `usage` vs GLM-style nested in
+        // choices[0].delta.usage — e2e asserts both reach the client.
+        if (body.stream === true) {
+          // Marker detection over the raw body: the converted content shape
+          // varies (string vs content-part array), so match anywhere.
+          const nestUsageInDelta = JSON.stringify(body.messages ?? '').includes('delta-usage')
+          const usageChunk = nestUsageInDelta
+            ? { id: 'chatcmpl_stub', object: 'chat.completion.chunk', model: body.model ?? 'stub-model', choices: [{ index: 0, delta: { usage: { prompt_tokens: 41, completion_tokens: 7, total_tokens: 48 } } }] }
+            : { id: 'chatcmpl_stub', object: 'chat.completion.chunk', model: body.model ?? 'stub-model', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 } }
+          res.writeHead(200, { 'content-type': 'text/event-stream' })
+          res.write(`data: ${JSON.stringify({ id: 'chatcmpl_stub', object: 'chat.completion.chunk', model: body.model ?? 'stub-model', choices: [{ index: 0, delta: { role: 'assistant', content: 'Stub stream' } }] })}\n\n`)
+          res.write(`data: ${JSON.stringify(usageChunk)}\n\n`)
+          res.end('data: [DONE]\n\n')
+          return
+        }
+
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({
           id: 'chatcmpl_stub',
@@ -110,7 +130,7 @@ async function startStubProvider(port: number): Promise<http.Server> {
           model: body.model ?? 'stub-model',
           choices: [{
             index: 0,
-            message: { role: 'assistant', content: `Stub response:${typeof message === 'string' ? message : ''}` },
+            message: { role: 'assistant', content: `Stub response:${messageText}` },
             finish_reason: 'stop',
           }],
           usage: {

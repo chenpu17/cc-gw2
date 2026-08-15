@@ -114,6 +114,30 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await expectPageSnapshot(page, 'overlay-provider-drawer-edit.png')
   })
 
+  // 高级选项展开态：非流式转流式 / 使用绝对路径 / 流式 usage 统计（警示色提示）。
+  // streamUsage 提示文案较其余开关更长，基线固定换行与 warning 色渲染。
+  // 元素级快照：视口级截图会受抽屉滚动落点不稳定影响（scrollIntoViewIfNeeded
+  // 的最小滚动量每次不同），只截高级区块本身则与滚动位置无关。
+  test('provider drawer — advanced options expanded', async ({ page }) => {
+    await page.goto(`${harness.baseUrl()}/ui/providers`)
+    await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
+    const card = page.locator('[data-testid="provider-card"]').filter({ hasText: PROVIDER_ID })
+    await card.getByRole('button', { name: '编辑' }).click()
+    const drawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
+    await expect(drawer).toBeVisible()
+    // 编辑模式高级选项默认展开；若折叠（开关不可见）则点开
+    const advanced = drawer.locator('details').filter({ hasText: '高级选项' })
+    const usageToggle = drawer.getByRole('switch', { name: '流式请求携带 usage 统计' })
+    if (!(await usageToggle.isVisible())) await advanced.locator('summary').click()
+    await expect(usageToggle).toBeVisible()
+    await page.waitForTimeout(200)
+    await expect(advanced).toHaveScreenshot('overlay-provider-drawer-advanced.png', {
+      animations: 'disabled',
+      caret: 'hide',
+      maxDiffPixelRatio: 0.015,
+    })
+  })
+
   test('probe models dialog — open', async ({ page }) => {
     await page.goto(`${harness.baseUrl()}/ui/providers`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
