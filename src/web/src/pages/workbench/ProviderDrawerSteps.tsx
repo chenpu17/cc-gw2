@@ -410,7 +410,7 @@ export function BasicsStep({
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
                 <p className="text-sm font-medium">{t('providers.drawer.fields.streamUsage')}</p>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <p className="text-xs leading-relaxed text-warning">
                   {t('providers.drawer.fields.streamUsageHint')}
                 </p>
               </div>

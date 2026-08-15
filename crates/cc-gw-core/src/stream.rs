@@ -662,7 +662,17 @@ impl CrossProtocolStreamTransformer {
 
     fn openai_chat_to_anthropic(&mut self, event: Value) -> Vec<String> {
         let mut out = Vec::new();
-        self.usage.update_from_openai(event.get("usage"));
+        // Some OpenAI-compatible upstreams (e.g. GLM) nest the usage in
+        // choices[0].delta.usage instead of the chunk top level; read both
+        // so the client-visible message_delta carries real token counts.
+        self.usage.update_from_openai(event.get("usage").or_else(|| {
+            event
+                .get("choices")
+                .and_then(Value::as_array)
+                .and_then(|choices| choices.first())
+                .and_then(|choice| choice.get("delta"))
+                .and_then(|delta| delta.get("usage"))
+        }));
         let choice = event
             .get("choices")
             .and_then(Value::as_array)
@@ -2581,6 +2591,33 @@ mod tests {
         );
         assert!(joined.contains("\"partial_json\":\"{\\\"command\\\":\\\"git status\\\"}\""));
         assert!(joined.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[test]
+    fn openai_chat_to_anthropic_stream_reads_delta_nested_usage() {
+        // GLM-style upstreams nest usage in choices[0].delta.usage; the
+        // synthesized client-facing message_delta must still carry it.
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "claude-sonnet-4-6",
+        )
+        .expect("supported transformer");
+        let mut chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_gl\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}\n\n\
+             data: {\"id\":\"chatcmpl_gl\",\"choices\":[{\"index\":0,\"delta\":{\"usage\":{\"prompt_tokens\":41,\"completion_tokens\":7,\"total_tokens\":48}}}]}\n\n",
+        );
+        chunks.extend(transformer.finish());
+        let joined = chunks.join("");
+
+        assert!(
+            joined.contains("\"type\":\"message_delta\""),
+            "must emit terminal message_delta"
+        );
+        assert!(
+            joined.contains("\"usage\":{\"input_tokens\":41,\"output_tokens\":7}"),
+            "delta-nested usage must reach the client message_delta, got: {joined}"
+        );
     }
 
     #[test]
