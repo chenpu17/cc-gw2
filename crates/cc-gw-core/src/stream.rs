@@ -821,9 +821,14 @@ impl CrossProtocolStreamTransformer {
             }
         }
 
+        // OpenAI's include_usage ordering sends finish_reason in chunk N and
+        // the real usage in a separate trailing chunk N+1 (choices: []).
+        // Terminating here would freeze message_delta.usage at whatever was
+        // known at chunk N — typically 0/0. Record the stop reason only; the
+        // terminal events are synthesized later, at [DONE] / stream end
+        // (transform_event_block / finish), once trailing usage has landed.
         if let Some(reason) = choice.get("finish_reason").and_then(Value::as_str) {
             self.stop_reason = Some(reason.to_string());
-            out.extend(self.synthesize_finish());
         }
 
         out
@@ -2052,7 +2057,17 @@ fn materialize_openai_chat_stream(sse_stream: &str) -> Option<String> {
             .and_then(Value::as_str)
             .map(ToString::to_string)
             .or(model);
-        usage.update_from_openai(event.get("usage"));
+        // Some OpenAI-compatible upstreams (e.g. GLM) nest the usage in
+        // choices[0].delta.usage instead of the chunk top level; read both
+        // like the stream transformer and observer do.
+        usage.update_from_openai(event.get("usage").or_else(|| {
+            event
+                .get("choices")
+                .and_then(Value::as_array)
+                .and_then(|choices| choices.first())
+                .and_then(|choice| choice.get("delta"))
+                .and_then(|delta| delta.get("usage"))
+        }));
 
         let Some(choice) = event
             .get("choices")
@@ -2576,11 +2591,12 @@ mod tests {
             "claude-sonnet-4-6",
         )
         .expect("supported transformer");
-        let chunks = transformer.push(
+        let mut chunks = transformer.push(
             "data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"}}]}\n\n\
              data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"git status\\\"}\"}}]}}]}\n\n\
              data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
         );
+        chunks.extend(transformer.finish());
         let joined = chunks.join("");
 
         assert!(joined.contains("event: message_start"));
@@ -2621,6 +2637,113 @@ mod tests {
     }
 
     #[test]
+    fn openai_chat_to_anthropic_stream_reads_trailing_usage_chunk() {
+        // Standard OpenAI include_usage ordering: finish_reason arrives in
+        // chunk N, real usage in a separate trailing chunk N+1 (choices: []),
+        // then [DONE]. The terminal message_delta must carry the trailing
+        // usage, not the 0/0 snapshot known at chunk N.
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "claude-sonnet-4-6",
+        )
+        .expect("supported transformer");
+        let mut chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_std\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}\n\n\
+             data: {\"id\":\"chatcmpl_std\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}\n\n\
+             data: {\"id\":\"chatcmpl_std\",\"choices\":[],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5,\"total_tokens\":18}}\n\n\
+             data: [DONE]\n\n",
+        );
+        chunks.extend(transformer.finish());
+        let joined = chunks.join("");
+
+        assert!(
+            joined.contains("\"usage\":{\"input_tokens\":13,\"output_tokens\":5}"),
+            "trailing usage chunk must reach the client message_delta, got: {joined}"
+        );
+        // finish_reason=length maps to max_tokens; it must survive the
+        // deferred termination unchanged.
+        assert!(
+            joined.contains("\"stop_reason\":\"max_tokens\""),
+            "stop reason must map through deferred finish, got: {joined}"
+        );
+        // Exactly one terminal pair — the finish_reason chunk must not
+        // synthesize a second, usage-less message_delta/message_stop.
+        assert_eq!(
+            joined.matches("\"type\":\"message_delta\"").count(),
+            1,
+            "exactly one message_delta expected, got: {joined}"
+        );
+        assert_eq!(
+            joined.matches("\"type\":\"message_stop\"").count(),
+            1,
+            "exactly one message_stop expected, got: {joined}"
+        );
+    }
+
+    #[test]
+    fn openai_chat_to_anthropic_stream_finishes_at_done_without_trailing_usage() {
+        // Streams whose upstream never sends usage ([DONE] straight after
+        // finish_reason) must still terminate with the full event tail.
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "claude-sonnet-4-6",
+        )
+        .expect("supported transformer");
+        let mut chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n\
+             data: {\"id\":\"chatcmpl_x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+             data: [DONE]\n\n",
+        );
+        chunks.extend(transformer.finish());
+        let joined = chunks.join("");
+
+        assert!(
+            joined.contains("\"type\":\"message_delta\""),
+            "must emit terminal message_delta, got: {joined}"
+        );
+        assert!(
+            joined.contains("\"stop_reason\":\"end_turn\""),
+            "finish_reason=stop must map to end_turn, got: {joined}"
+        );
+        assert_eq!(
+            joined.matches("\"type\":\"message_stop\"").count(),
+            1,
+            "exactly one message_stop expected, got: {joined}"
+        );
+    }
+
+    #[test]
+    fn openai_chat_to_anthropic_stream_finishes_on_eof_without_done() {
+        // Some OpenAI-compatible upstreams close the stream without a
+        // [DONE] sentinel; the deferred termination must still fire on
+        // finish() (EOF) so the client stream is well-formed.
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiChatCompletions,
+            "claude-sonnet-4-6",
+        )
+        .expect("supported transformer");
+        let mut chunks = transformer.push(
+            "data: {\"id\":\"chatcmpl_e\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n\
+             data: {\"id\":\"chatcmpl_e\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+             data: {\"id\":\"chatcmpl_e\",\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":2,\"total_tokens\":9}}\n\n",
+        );
+        chunks.extend(transformer.finish());
+        let joined = chunks.join("");
+
+        assert!(
+            joined.contains("\"usage\":{\"input_tokens\":7,\"output_tokens\":2}"),
+            "usage chunk without trailing [DONE] must reach message_delta, got: {joined}"
+        );
+        assert!(
+            joined.contains("\"type\":\"message_stop\""),
+            "must emit message_stop at EOF, got: {joined}"
+        );
+    }
+
+    #[test]
     fn openai_chat_to_anthropic_stream_infers_tool_use_without_finish_reason() {
         let mut transformer = CrossProtocolStreamTransformer::new(
             ProviderProtocol::AnthropicMessages,
@@ -2650,10 +2773,11 @@ mod tests {
             "claude-sonnet-4-6",
         )
         .expect("supported transformer");
-        let chunks = transformer.push(
+        let mut chunks = transformer.push(
             "data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"git status\\\"}\"}}]}}]}\n\n\
              data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
         );
+        chunks.extend(transformer.finish());
         let joined = chunks.join("");
 
         assert!(joined.contains("\"stop_reason\":\"tool_use\""));
@@ -2667,10 +2791,11 @@ mod tests {
             "claude-sonnet-4-6",
         )
         .expect("supported transformer");
-        let chunks = transformer.push(
+        let mut chunks = transformer.push(
             "data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"git status\\\"\"}}]}}]}\n\n\
              data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"finish_reason\":\"length\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
         );
+        chunks.extend(transformer.finish());
         let joined = chunks.join("");
 
         assert!(joined.contains("\"stop_reason\":\"max_tokens\""));
@@ -2685,10 +2810,11 @@ mod tests {
             "claude-sonnet-4-6",
         )
         .expect("supported transformer");
-        let chunks = transformer.push(
+        let mut chunks = transformer.push(
             "data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"git status\\\"}\"}}]}}]}\n\n\
              data: {\"id\":\"chatcmpl_tool\",\"choices\":[{\"index\":0,\"finish_reason\":\"content_filter\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
         );
+        chunks.extend(transformer.finish());
         let joined = chunks.join("");
 
         assert!(joined.contains("\"stop_reason\":\"refusal\""));
@@ -2807,9 +2933,10 @@ mod tests {
             "test-model",
         )
         .expect("supported transformer");
-        let chunks = transformer.push(
+        let mut chunks = transformer.push(
             "data: {\"id\":\"chatcmpl_context_limit\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"model_context_window_exceeded\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0}}\n\n",
         );
+        chunks.extend(transformer.finish());
         let joined = chunks.join("");
 
         assert!(joined.contains("\"stop_reason\":\"max_tokens\""));
@@ -2938,10 +3065,11 @@ mod tests {
         )
         .expect("supported transformer")
         .with_anthropic_reasoning(false);
-        let chunks = transformer.push(
+        let mut chunks = transformer.push(
             "data: {\"id\":\"chatcmpl_reason\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"I should create the HTML file now.\"}}]}\n\n\
              data: {\"id\":\"chatcmpl_reason\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":4}}\n\n",
         );
+        chunks.extend(transformer.finish());
         let joined = chunks.join("");
 
         assert!(joined.contains("event: message_start"));
@@ -3085,6 +3213,27 @@ mod tests {
         assert!(payload.contains("\"text\":\"hello\""));
         assert!(!payload.contains("response.output_text.delta"));
         assert!(!payload.contains("data:"));
+    }
+
+    #[test]
+    fn materialize_openai_chat_stream_reads_delta_nested_usage() {
+        // GLM-style upstreams nest usage in choices[0].delta.usage; the
+        // materialized non-streaming response must still carry it.
+        let payload = materialize_stream_response(
+            ProviderProtocol::OpenAiChatCompletions,
+            "data: {\"id\":\"chatcmpl_gl\",\"created\":1,\"model\":\"glm-test\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":null}]}\n\n\
+             data: {\"id\":\"chatcmpl_gl\",\"created\":1,\"model\":\"glm-test\",\"choices\":[{\"index\":0,\"delta\":{\"usage\":{\"prompt_tokens\":41,\"completion_tokens\":7,\"total_tokens\":48}},\"finish_reason\":\"stop\"}]}\n\n\
+             data: [DONE]\n\n",
+        )
+        .expect("materialized payload");
+
+        let parsed: Value = serde_json::from_str(&payload).expect("valid json");
+        let usage = parsed
+            .get("usage")
+            .expect("usage object present");
+        assert_eq!(usage.get("prompt_tokens").and_then(Value::as_i64), Some(41));
+        assert_eq!(usage.get("completion_tokens").and_then(Value::as_i64), Some(7));
+        assert!(payload.contains("\"text\":\"hi\"") || payload.contains("\"content\":\"hi\""));
     }
 
     #[test]

@@ -6946,3 +6946,210 @@ async fn events_stream_serves_sse_and_pushes_recorded_events() {
     gateway_handle.abort();
     let _ = stdfs::remove_dir_all(paths.home_dir);
 }
+
+/// Cross-protocol streaming (Anthropic client ← OpenAI chat upstream) with the
+/// standard `stream_options.include_usage` chunk ordering: finish_reason in
+/// chunk N, real usage in a separate trailing chunk N+1 (`choices: []`), then
+/// [DONE]. Regression guard for the deferred-termination fix: the terminal
+/// message_delta must carry the trailing usage, not the 0/0 snapshot known at
+/// chunk N, and the event tail must stay well-formed (single terminal pair).
+#[tokio::test]
+async fn anthropic_to_openai_stream_carries_trailing_usage_chunk() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from(
+                    "data: {\"id\":\"chatcmpl_std\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl_std\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}\n\n\
+data: {\"id\":\"chatcmpl_std\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5,\"total_tokens\":18}}\n\n\
+data: [DONE]\n\n",
+                ))
+                .expect("build stream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-client".to_string(),
+            "mock-openai:gpt-test".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-openai-trailing-usage").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-client",
+            "max_tokens": 64,
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send streaming request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.text().await.expect("read stream body");
+    assert!(
+        body.contains(
+            "\"usage\":{\"input_tokens\":13,\"output_tokens\":5}"
+        ),
+        "trailing usage chunk must reach the client message_delta, got: {body}"
+    );
+    assert!(
+        body.contains("\"stop_reason\":\"max_tokens\""),
+        "finish_reason=length must map to max_tokens, got: {body}"
+    );
+    assert_eq!(
+        body.matches("\"type\":\"message_delta\"").count(),
+        1,
+        "exactly one message_delta expected, got: {body}"
+    );
+    assert_eq!(
+        body.matches("\"type\":\"message_stop\"").count(),
+        1,
+        "exactly one message_stop expected, got: {body}"
+    );
+
+    // The gateway's own telemetry must record the same real counts.
+    sleep(Duration::from_millis(250)).await;
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("stream log item");
+    assert_eq!(item.get("status_code").and_then(Value::as_i64), Some(200));
+    assert_eq!(item.get("input_tokens").and_then(Value::as_i64), Some(13));
+    assert_eq!(item.get("output_tokens").and_then(Value::as_i64), Some(5));
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+/// Guard the deferred-termination edge the fix widens: an upstream that dies
+/// right after the finish_reason chunk — before the trailing usage chunk and
+/// [DONE] — must still yield a well-formed Anthropic stream (terminal
+/// message_delta + message_stop synthesized at EOF), not a truncated one.
+#[tokio::test]
+async fn anthropic_to_openai_stream_upstream_dies_after_finish_reason() {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind raw upstream listener");
+    let upstream_addr = listener.local_addr().expect("listener addr");
+    let upstream_handle = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept request");
+        let mut request_buf = [0_u8; 4096];
+        let _ = socket.read(&mut request_buf).await;
+        let stream_payload = concat!(
+            "data: {\"id\":\"chatcmpl_cut\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"partial\"},\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"chatcmpl_cut\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
+        );
+        let response_head = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "content-type: text/event-stream\r\n",
+            "transfer-encoding: chunked\r\n",
+            "connection: close\r\n",
+            "\r\n"
+        );
+        let response = format!(
+            "{response_head}{:x}\r\n{stream_payload}\r\n0\r\n\r\n",
+            stream_payload.len()
+        );
+        socket
+            .write_all(response.as_bytes())
+            .await
+            .expect("write cut stream response");
+        let _ = socket.shutdown().await;
+    });
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-client".to_string(),
+            "mock-openai:gpt-test".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-openai-cut-after-finish").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-client",
+            "max_tokens": 64,
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send streaming request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.text().await.expect("read stream body");
+    assert!(
+        body.contains("\"type\":\"message_delta\""),
+        "EOF after finish_reason must still synthesize message_delta, got: {body}"
+    );
+    assert!(
+        body.contains("\"type\":\"message_stop\""),
+        "EOF after finish_reason must still synthesize message_stop, got: {body}"
+    );
+    assert!(
+        body.contains("\"stop_reason\":\"end_turn\""),
+        "finish_reason=stop must map to end_turn, got: {body}"
+    );
+    assert_eq!(
+        body.matches("\"type\":\"message_stop\"").count(),
+        1,
+        "exactly one message_stop expected, got: {body}"
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
