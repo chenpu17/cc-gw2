@@ -2,6 +2,7 @@ pub mod api_keys;
 pub mod config;
 pub mod convert;
 pub mod events;
+pub mod health;
 pub mod models;
 pub mod observability;
 pub mod provider;

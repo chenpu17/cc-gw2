@@ -1,9 +1,11 @@
 use anyhow::{Result, bail};
+use std::collections::HashSet;
 
 use crate::{
     config::{
         CustomEndpointConfig, EndpointRoutingConfig, GatewayConfig, ModelRouteMap, ProviderConfig,
     },
+    health::FailoverPolicy,
     provider::ProviderProtocol,
 };
 
@@ -21,12 +23,34 @@ pub struct RouteTarget {
     pub model_id: String,
 }
 
+/// A resolved route with its full failover candidate chain.
+///
+/// Non-aggregate paths always carry exactly one candidate and `failover:
+/// None`. Aggregated models expand to their member backends in priority
+/// order; `failover` carries the model's parsed policy so the proxy loop can
+/// record failures and skip cooling backends.
+#[derive(Debug, Clone)]
+pub struct RoutePlan {
+    pub candidates: Vec<RouteTarget>,
+    pub failover: Option<FailoverPolicy>,
+}
+
+impl RoutePlan {
+    pub fn primary(&self) -> &RouteTarget {
+        &self.candidates[0]
+    }
+}
+
 /// Why [`resolve_route`] settled on a target. Surfaced by the routing
 /// "hit simulation" admin endpoint so operators can see which rule fired.
 /// Serialized as `{"kind": "<camelCase variant>", "<camelCase fields>"}` for the
 /// web console.
 #[derive(Debug, Clone, serde::Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum RouteMatchReason {
     /// Matched an explicit `model_routes` entry (exact or wildcard), possibly
     /// after expanding a model alias (e.g. `claude-sonnet-latest`).
@@ -256,7 +280,16 @@ pub fn resolve_route(
     requested_model: Option<&str>,
     thinking: bool,
 ) -> Result<RouteTarget> {
-    Ok(resolve_route_inner(config, endpoint, protocol, request_body, requested_model, thinking)?.0)
+    Ok(resolve_route_plan(
+        config,
+        endpoint,
+        protocol,
+        request_body,
+        requested_model,
+        thinking,
+    )?
+    .primary()
+    .clone())
 }
 
 /// Same resolution as [`resolve_route`] but also reports which rule fired —
@@ -269,7 +302,113 @@ pub fn resolve_route_with_reason(
     requested_model: Option<&str>,
     thinking: bool,
 ) -> Result<(RouteTarget, RouteMatchReason)> {
-    resolve_route_inner(config, endpoint, protocol, request_body, requested_model, thinking)
+    let (plan, reason) = resolve_route_plan_with_reason(
+        config,
+        endpoint,
+        protocol,
+        request_body,
+        requested_model,
+        thinking,
+    )?;
+    Ok((plan.primary().clone(), reason))
+}
+
+/// Resolve a route into its full failover candidate chain: aggregated models
+/// expand to their ordered member backends, everything else yields a
+/// single-candidate plan.
+pub fn resolve_route_plan(
+    config: &GatewayConfig,
+    endpoint: GatewayEndpoint<'_>,
+    protocol: ProviderProtocol,
+    request_body: &serde_json::Value,
+    requested_model: Option<&str>,
+    thinking: bool,
+) -> Result<RoutePlan> {
+    Ok(resolve_route_inner(
+        config,
+        endpoint,
+        protocol,
+        request_body,
+        requested_model,
+        thinking,
+    )?
+    .0)
+}
+
+/// Same resolution as [`resolve_route_plan`] but also reports which rule
+/// fired — powers the routing simulator's candidate-chain display.
+pub fn resolve_route_plan_with_reason(
+    config: &GatewayConfig,
+    endpoint: GatewayEndpoint<'_>,
+    protocol: ProviderProtocol,
+    request_body: &serde_json::Value,
+    requested_model: Option<&str>,
+    thinking: bool,
+) -> Result<(RoutePlan, RouteMatchReason)> {
+    resolve_route_inner(
+        config,
+        endpoint,
+        protocol,
+        request_body,
+        requested_model,
+        thinking,
+    )
+}
+
+/// Expand a resolved target into a [`RoutePlan`]: aggregated models expand to
+/// their member backends in priority order (unresolvable members skipped,
+/// duplicates dropped), everything else stays a single candidate.
+fn expand_route_plan(target: RouteTarget, providers: &[ProviderConfig]) -> Result<RoutePlan> {
+    if !target.provider.is_aggregate() {
+        return Ok(RoutePlan {
+            candidates: vec![target],
+            failover: None,
+        });
+    }
+
+    let model = target
+        .provider
+        .models
+        .iter()
+        .find(|model| model.id == target.model_id);
+
+    let mut seen = HashSet::new();
+    let mut candidates = Vec::new();
+    if let Some(model) = model {
+        for member in model.members.as_deref().unwrap_or(&[]) {
+            // `providerId:*` resolves to the aggregate model's own id, so a
+            // member can reference "the same-named model on that provider".
+            let Some(member_target) =
+                resolve_by_identifier(&member.target, providers, Some(&target.model_id))
+            else {
+                continue;
+            };
+            // Nested aggregates are rejected at save time; skip as a runtime
+            // guard for hand-edited configs.
+            if member_target.provider.is_aggregate() {
+                continue;
+            }
+            if seen.insert((
+                member_target.provider_id.clone(),
+                member_target.model_id.clone(),
+            )) {
+                candidates.push(member_target);
+            }
+        }
+    }
+
+    if candidates.is_empty() {
+        bail!(
+            "聚合模型 {} 的后端成员均不可用，请检查聚合 Provider 的成员配置",
+            target.model_id
+        );
+    }
+
+    let failover = model.map(|model| FailoverPolicy::from_config(model.failover.as_ref()));
+    Ok(RoutePlan {
+        candidates,
+        failover,
+    })
 }
 
 fn resolve_route_inner(
@@ -279,7 +418,7 @@ fn resolve_route_inner(
     request_body: &serde_json::Value,
     requested_model: Option<&str>,
     thinking: bool,
-) -> Result<(RouteTarget, RouteMatchReason)> {
+) -> Result<(RoutePlan, RouteMatchReason)> {
     let providers = &config.providers;
     if providers.is_empty() {
         bail!("未配置任何模型提供商，请先在 Web UI 中添加 Provider。");
@@ -298,8 +437,9 @@ fn resolve_route_inner(
         match find_mapped_identifier(requested_model, &endpoint_config.model_routes) {
             Some(id) => (Some(id), false),
             None => match requested_model.and_then(|model| {
-                apply_model_alias(model)
-                    .and_then(|alias| find_mapped_identifier(Some(alias.as_str()), &endpoint_config.model_routes))
+                apply_model_alias(model).and_then(|alias| {
+                    find_mapped_identifier(Some(alias.as_str()), &endpoint_config.model_routes)
+                })
             }) {
                 Some(id) => (Some(id), true),
                 None => (None, false),
@@ -308,7 +448,10 @@ fn resolve_route_inner(
     if let Some(mapped_identifier) = mapped_identifier {
         if let Some(target) = resolve_by_identifier(&mapped_identifier, providers, requested_model)
         {
-            return Ok((target, RouteMatchReason::ModelRoute { via_alias }));
+            return Ok((
+                expand_route_plan(target, providers)?,
+                RouteMatchReason::ModelRoute { via_alias },
+            ));
         }
     }
 
@@ -317,7 +460,10 @@ fn resolve_route_inner(
         if let Some(target) =
             resolve_by_identifier(requested_model, providers, Some(requested_model))
         {
-            return Ok((target, RouteMatchReason::DirectMatch));
+            return Ok((
+                expand_route_plan(target, providers)?,
+                RouteMatchReason::DirectMatch,
+            ));
         }
     }
 
@@ -325,7 +471,10 @@ fn resolve_route_inner(
     if thinking {
         if let Some(reasoning) = endpoint_config.defaults.reasoning.as_deref() {
             if let Some(target) = resolve_by_identifier(reasoning, providers, requested_model) {
-                return Ok((target, RouteMatchReason::ThinkingDefault));
+                return Ok((
+                    expand_route_plan(target, providers)?,
+                    RouteMatchReason::ThinkingDefault,
+                ));
             }
         }
     }
@@ -337,7 +486,7 @@ fn resolve_route_inner(
         if let Some(background) = endpoint_config.defaults.background.as_deref() {
             if let Some(target) = resolve_by_identifier(background, providers, requested_model) {
                 return Ok((
-                    target,
+                    expand_route_plan(target, providers)?,
                     RouteMatchReason::LongContextDefault {
                         token_estimate,
                         threshold,
@@ -350,7 +499,10 @@ fn resolve_route_inner(
     // 5) completion default
     if let Some(completion) = endpoint_config.defaults.completion.as_deref() {
         if let Some(target) = resolve_by_identifier(completion, providers, requested_model) {
-            return Ok((target, RouteMatchReason::CompletionDefault));
+            return Ok((
+                expand_route_plan(target, providers)?,
+                RouteMatchReason::CompletionDefault,
+            ));
         }
     }
 
@@ -369,12 +521,13 @@ fn resolve_route_inner(
             .or_else(|| provider.models.first().map(|model| model.id.clone()))
             .ok_or_else(|| anyhow::anyhow!("Provider {} 未配置任何模型", provider.id))?;
 
+        let target = RouteTarget {
+            provider: provider.clone(),
+            provider_id: provider.id.clone(),
+            model_id,
+        };
         return Ok((
-            RouteTarget {
-                provider: provider.clone(),
-                provider_id: provider.id.clone(),
-                model_id,
-            },
+            expand_route_plan(target, providers)?,
             RouteMatchReason::Fallback,
         ));
     }
@@ -386,7 +539,8 @@ fn resolve_route_inner(
 mod tests {
     use super::*;
     use crate::config::{
-        CustomEndpointConfig, DefaultsConfig, EndpointPathConfig, ProviderModelConfig,
+        AggregateMemberConfig, CustomEndpointConfig, DefaultsConfig, EndpointPathConfig,
+        ProviderModelConfig,
     };
     use serde_json::json;
 
@@ -710,8 +864,14 @@ mod tests {
 
         assert_eq!(target.provider_id, "alpha");
         match reason {
-            RouteMatchReason::LongContextDefault { token_estimate, threshold } => {
-                assert!(token_estimate > 10, "token estimate should exceed threshold");
+            RouteMatchReason::LongContextDefault {
+                token_estimate,
+                threshold,
+            } => {
+                assert!(
+                    token_estimate > 10,
+                    "token estimate should exceed threshold"
+                );
                 assert_eq!(threshold, 10);
             }
             other => panic!("expected LongContextDefault, got {other:?}"),
@@ -768,9 +928,8 @@ mod tests {
         // The web console reads variant names AND struct-variant fields as
         // camelCase (see POST /api/routing/simulate + types/routing.ts). Both
         // rename rules must hold, or the UI silently reads `undefined`.
-        let model_route =
-            serde_json::to_string(&RouteMatchReason::ModelRoute { via_alias: true })
-                .expect("serialize model route");
+        let model_route = serde_json::to_string(&RouteMatchReason::ModelRoute { via_alias: true })
+            .expect("serialize model route");
         assert_eq!(model_route, r#"{"kind":"modelRoute","viaAlias":true}"#);
 
         let long_context = serde_json::to_string(&RouteMatchReason::LongContextDefault {
@@ -787,5 +946,151 @@ mod tests {
             serde_json::to_string(&RouteMatchReason::Fallback).unwrap(),
             r#"{"kind":"fallback"}"#
         );
+    }
+
+    fn aggregate_provider(id: &str, model: &str, targets: &[&str]) -> ProviderConfig {
+        ProviderConfig {
+            id: id.to_string(),
+            label: id.to_string(),
+            provider_type: Some(crate::config::AGGREGATE_PROVIDER_TYPE.to_string()),
+            models: vec![ProviderModelConfig {
+                id: model.to_string(),
+                label: None,
+                members: Some(
+                    targets
+                        .iter()
+                        .map(|target| AggregateMemberConfig {
+                            target: target.to_string(),
+                        })
+                        .collect(),
+                ),
+                ..ProviderModelConfig::default()
+            }],
+            ..ProviderConfig::default()
+        }
+    }
+
+    #[test]
+    fn aggregate_model_expands_to_ordered_candidates() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![
+            aggregate_provider("team", "glm-5.1", &["p2:gpt-4o", "p1:glm-4.7"]),
+            provider("p1", "glm-4.7"),
+            provider("p2", "gpt-4o"),
+        ];
+
+        let plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            Some("glm-5.1"),
+            false,
+        )
+        .expect("expand aggregate model");
+
+        assert_eq!(plan.candidates.len(), 2);
+        assert_eq!(plan.candidates[0].provider_id, "p2");
+        assert_eq!(plan.candidates[0].model_id, "gpt-4o");
+        assert_eq!(plan.candidates[1].provider_id, "p1");
+        assert_eq!(plan.candidates[1].model_id, "glm-4.7");
+        assert_eq!(plan.failover, Some(FailoverPolicy::default()));
+
+        // The legacy single-target API keeps returning the first candidate.
+        let target = resolve_route(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            Some("glm-5.1"),
+            false,
+        )
+        .expect("resolve aggregate primary");
+        assert_eq!(target.provider_id, "p2");
+    }
+
+    #[test]
+    fn aggregate_wildcard_member_uses_aggregate_model_id() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![
+            aggregate_provider("team", "glm-5.1", &["p1:*"]),
+            provider("p1", "glm-4.7"),
+        ];
+
+        let plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            Some("glm-5.1"),
+            false,
+        )
+        .expect("expand wildcard member");
+
+        assert_eq!(plan.candidates.len(), 1);
+        assert_eq!(plan.candidates[0].provider_id, "p1");
+        assert_eq!(plan.candidates[0].model_id, "glm-5.1");
+    }
+
+    #[test]
+    fn aggregate_dangling_and_duplicate_members_are_handled() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![
+            aggregate_provider("team", "glm-5.1", &["p1:glm-4.7", "gone:m", "p1:glm-4.7"]),
+            provider("p1", "glm-4.7"),
+        ];
+
+        // Unresolvable members are skipped; duplicates keep first occurrence.
+        let plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            Some("glm-5.1"),
+            false,
+        )
+        .expect("expand with dangling member");
+        assert_eq!(plan.candidates.len(), 1);
+        assert_eq!(plan.candidates[0].provider_id, "p1");
+
+        // Every member dangling -> explicit error instead of silent misroute.
+        config.providers = vec![
+            aggregate_provider("team", "glm-5.1", &["gone-a:m", "gone-b:m"]),
+            provider("p1", "glm-4.7"),
+        ];
+        let error = resolve_route_plan(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            Some("glm-5.1"),
+            false,
+        )
+        .expect_err("all members dangling");
+        assert!(
+            error
+                .to_string()
+                .contains("聚合模型 glm-5.1 的后端成员均不可用"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn non_aggregate_routes_stay_single_candidate() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("p1", "glm-4.7")];
+
+        let plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "messages": [] }),
+            Some("glm-4.7"),
+            false,
+        )
+        .expect("resolve non-aggregate");
+
+        assert_eq!(plan.candidates.len(), 1);
+        assert_eq!(plan.failover, None);
     }
 }

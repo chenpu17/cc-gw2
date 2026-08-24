@@ -28,6 +28,38 @@ pub struct ProviderModelConfig {
     pub id: String,
     pub label: Option<String>,
     pub non_stream_via_stream: Option<bool>,
+    /// Ordered backends backing this model. Only meaningful (and only valid)
+    /// on models of `aggregate` providers — array order = failover priority.
+    pub members: Option<Vec<AggregateMemberConfig>>,
+    /// Failover policy override for aggregated models.
+    pub failover: Option<FailoverPolicyConfig>,
+}
+
+/// Provider type marker for virtual providers that never forward requests
+/// themselves: each of their models is an aggregated model mapping a public
+/// model id to an ordered list of real upstream backends.
+pub const AGGREGATE_PROVIDER_TYPE: &str = "aggregate";
+
+/// One real backend of an aggregated model. `target` uses the same identifier
+/// syntax as route targets: `providerId:modelId` or `providerId:*` (the
+/// aggregate model's own id on that provider). Array order = priority.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AggregateMemberConfig {
+    pub target: String,
+}
+
+/// Failover policy for an aggregated model. All fields optional — defaults
+/// live in `cc_gw_core::health::FailoverPolicy` (3 / 900s / 600s / common
+/// auth+rate-limit+5xx codes; transport errors always count).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct FailoverPolicyConfig {
+    pub consecutive_failures: Option<u32>,
+    pub cooldown_seconds: Option<u64>,
+    pub failure_window_seconds: Option<u64>,
+    /// Upstream status codes counting as backend failures, e.g. "401"/"5xx".
+    pub trigger_status_codes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -88,6 +120,14 @@ pub struct ProviderConfig {
     pub extra_headers: HashMap<String, String>,
     #[serde(rename = "type")]
     pub provider_type: Option<String>,
+}
+
+impl ProviderConfig {
+    /// Aggregate providers are virtual: they carry aggregated models that
+    /// expand to real backends during routing and never forward requests.
+    pub fn is_aggregate(&self) -> bool {
+        self.provider_type.as_deref() == Some(AGGREGATE_PROVIDER_TYPE)
+    }
 }
 
 impl Default for ProviderConfig {
@@ -346,7 +386,8 @@ impl GatewayConfig {
 
     pub fn validate_for_save(&self) -> Result<()> {
         self.validate()?;
-        self.validate_route_provider_references()
+        self.validate_route_provider_references()?;
+        self.validate_aggregate_providers()
     }
 
     fn validate_provider_ids(&self) -> Result<HashSet<String>> {
@@ -423,6 +464,98 @@ impl GatewayConfig {
         Ok(())
     }
 
+    /// Validate aggregated models: members only on aggregate providers, every
+    /// member resolvable and non-nested, failover numbers in range. Only run
+    /// on save — startup keeps tolerating dangling references (consistent
+    /// with route targets), `expand_route_plan` skips dead members at runtime.
+    fn validate_aggregate_providers(&self) -> Result<()> {
+        let providers_by_id: HashMap<&str, &ProviderConfig> = self
+            .providers
+            .iter()
+            .map(|provider| (provider.id.as_str(), provider))
+            .collect();
+
+        for provider in &self.providers {
+            for model in &provider.models {
+                let scope = format!("Provider {} 的模型 {}", provider.id, model.id);
+                let members = model.members.as_deref().unwrap_or(&[]);
+
+                if !provider.is_aggregate() {
+                    if !members.is_empty() {
+                        bail!(
+                            "{scope} 配置了 members，但 members 仅支持聚合类型（type=aggregate）的 Provider"
+                        );
+                    }
+                    if model.failover.is_some() {
+                        bail!(
+                            "{scope} 配置了 failover，但 failover 仅支持聚合类型（type=aggregate）的 Provider"
+                        );
+                    }
+                    continue;
+                }
+
+                if members.is_empty() {
+                    bail!("聚合 {scope} 未配置后端成员（members）");
+                }
+
+                for member in members {
+                    let Some((member_provider_id, member_model_id)) = member.target.split_once(':')
+                    else {
+                        bail!(
+                            "{scope} 的成员 target 必须形如 providerId:modelId: {}",
+                            member.target
+                        );
+                    };
+                    if member_provider_id.trim().is_empty() || member_model_id.trim().is_empty() {
+                        bail!(
+                            "{scope} 的成员 target 必须形如 providerId:modelId: {}",
+                            member.target
+                        );
+                    }
+                    let Some(member_provider) = providers_by_id.get(member_provider_id.trim())
+                    else {
+                        bail!(
+                            "{scope} 的成员 target 引用了不存在的 Provider: {}",
+                            member_provider_id.trim()
+                        );
+                    };
+                    if member_provider.is_aggregate() {
+                        bail!(
+                            "{scope} 的成员 target 不能指向另一个聚合 Provider: {}（不支持嵌套聚合）",
+                            member_provider_id.trim()
+                        );
+                    }
+                }
+
+                if let Some(failover) = model.failover.as_ref() {
+                    if let Some(value) = failover.consecutive_failures {
+                        if value < 1 {
+                            bail!("{scope} 的连续失败阈值必须 ≥ 1: {value}");
+                        }
+                    }
+                    if let Some(seconds) = failover.cooldown_seconds {
+                        if !(1..=86_400).contains(&seconds) {
+                            bail!("{scope} 的冷却秒数必须在 1-86400 之间: {seconds}");
+                        }
+                    }
+                    if let Some(seconds) = failover.failure_window_seconds {
+                        if seconds < 1 {
+                            bail!("{scope} 的失败判定窗口秒数必须 ≥ 1: {seconds}");
+                        }
+                    }
+                    if let Some(codes) = failover.trigger_status_codes.as_deref() {
+                        for code in codes {
+                            if !is_valid_status_code_token(code) {
+                                bail!("{scope} 的触发状态码必须形如 \"429\" 或 \"5xx\": {code}");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn effective_http(&self) -> Option<HttpConfig> {
         self.http.clone().filter(|cfg| cfg.enabled)
     }
@@ -432,6 +565,20 @@ impl GatewayConfig {
             .clone()
             .filter(|cfg| cfg.enabled && !cfg.key_path.is_empty() && !cfg.cert_path.is_empty())
     }
+}
+
+/// "Nxx" class token ("5xx") or a three-digit status code ("429") within
+/// 100-599.
+fn is_valid_status_code_token(token: &str) -> bool {
+    let bytes = token.as_bytes();
+    if bytes.len() != 3 {
+        return false;
+    }
+    let class = bytes[0].wrapping_sub(b'0');
+    if bytes[1] == b'x' && bytes[2] == b'x' {
+        return (1..=5).contains(&class);
+    }
+    (1..=5).contains(&class) && bytes[1].is_ascii_digit() && bytes[2].is_ascii_digit()
 }
 
 fn env_path<F>(get_var: &mut F, key: &str) -> Option<PathBuf>
@@ -785,5 +932,201 @@ mod tests {
             );
 
         config.validate_for_save().expect("valid route target");
+    }
+
+    fn upstream_provider(id: &str, model: &str) -> ProviderConfig {
+        ProviderConfig {
+            id: id.to_string(),
+            label: id.to_string(),
+            base_url: format!("https://{id}.example.com"),
+            default_model: Some(model.to_string()),
+            models: vec![ProviderModelConfig {
+                id: model.to_string(),
+                label: None,
+                ..ProviderModelConfig::default()
+            }],
+            provider_type: Some("openai".to_string()),
+            ..ProviderConfig::default()
+        }
+    }
+
+    fn aggregate_provider(id: &str, targets: &[&str]) -> ProviderConfig {
+        ProviderConfig {
+            id: id.to_string(),
+            label: id.to_string(),
+            provider_type: Some(AGGREGATE_PROVIDER_TYPE.to_string()),
+            models: vec![ProviderModelConfig {
+                id: "glm-5.1".to_string(),
+                label: None,
+                members: Some(
+                    targets
+                        .iter()
+                        .map(|target| AggregateMemberConfig {
+                            target: target.to_string(),
+                        })
+                        .collect(),
+                ),
+                ..ProviderModelConfig::default()
+            }],
+            ..ProviderConfig::default()
+        }
+    }
+
+    #[test]
+    fn validate_for_save_accepts_well_formed_aggregate_provider() {
+        let config = GatewayConfig {
+            providers: vec![
+                aggregate_provider("team", &["p1:glm-4.7", "p2:gpt-4o", "p1:*"]),
+                upstream_provider("p1", "glm-4.7"),
+                upstream_provider("p2", "gpt-4o"),
+            ],
+            ..GatewayConfig::default()
+        };
+
+        config
+            .validate_for_save()
+            .expect("valid aggregate provider");
+    }
+
+    #[test]
+    fn validate_for_save_rejects_members_on_non_aggregate_providers() {
+        let config = GatewayConfig {
+            providers: vec![
+                aggregate_provider("p1", &["p2:m"]),
+                upstream_provider("p2", "m"),
+            ],
+            ..GatewayConfig::default()
+        };
+        let mut config = config;
+        config.providers[0].provider_type = Some("openai".to_string());
+
+        let error = config.validate_for_save().expect_err("members on upstream");
+        assert!(
+            error.to_string().contains("仅支持聚合类型"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn validate_for_save_rejects_aggregate_model_without_members() {
+        let config = GatewayConfig {
+            providers: vec![
+                {
+                    let mut provider = aggregate_provider("team", &["p1:m"]);
+                    provider.models[0].members = None;
+                    provider
+                },
+                upstream_provider("p1", "m"),
+            ],
+            ..GatewayConfig::default()
+        };
+
+        let error = config.validate_for_save().expect_err("missing members");
+        assert!(
+            error.to_string().contains("未配置后端成员"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn validate_for_save_rejects_dangling_and_nested_members() {
+        let dangling = GatewayConfig {
+            providers: vec![aggregate_provider("team", &["gone:m"])],
+            ..GatewayConfig::default()
+        };
+        let error = dangling.validate_for_save().expect_err("dangling member");
+        assert!(
+            error.to_string().contains("不存在的 Provider: gone"),
+            "unexpected error: {error}"
+        );
+
+        let nested = GatewayConfig {
+            providers: vec![
+                aggregate_provider("team", &["other:glm-5.1"]),
+                aggregate_provider("other", &["team:glm-5.1"]),
+            ],
+            ..GatewayConfig::default()
+        };
+        let error = nested.validate_for_save().expect_err("nested aggregate");
+        assert!(
+            error.to_string().contains("不支持嵌套聚合"),
+            "unexpected error: {error}"
+        );
+
+        let malformed = GatewayConfig {
+            providers: vec![
+                aggregate_provider("team", &["p1"]),
+                upstream_provider("p1", "m"),
+            ],
+            ..GatewayConfig::default()
+        };
+        let error = malformed.validate_for_save().expect_err("malformed target");
+        assert!(
+            error.to_string().contains("必须形如 providerId:modelId"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn validate_for_save_rejects_out_of_range_failover_values() {
+        let mut config = GatewayConfig {
+            providers: vec![
+                aggregate_provider("team", &["p1:m"]),
+                upstream_provider("p1", "m"),
+            ],
+            ..GatewayConfig::default()
+        };
+        config.providers[0].models[0].failover = Some(FailoverPolicyConfig {
+            consecutive_failures: Some(0),
+            cooldown_seconds: Some(1),
+            failure_window_seconds: Some(1),
+            trigger_status_codes: None,
+        });
+        let error = config.validate_for_save().expect_err("zero threshold");
+        assert!(
+            error.to_string().contains("连续失败阈值必须 ≥ 1"),
+            "unexpected error: {error}"
+        );
+
+        config.providers[0].models[0].failover = Some(FailoverPolicyConfig {
+            consecutive_failures: Some(1),
+            cooldown_seconds: Some(100_000),
+            failure_window_seconds: Some(1),
+            trigger_status_codes: None,
+        });
+        let error = config
+            .validate_for_save()
+            .expect_err("cooldown out of range");
+        assert!(
+            error.to_string().contains("冷却秒数必须在 1-86400"),
+            "unexpected error: {error}"
+        );
+
+        config.providers[0].models[0].failover = Some(FailoverPolicyConfig {
+            consecutive_failures: Some(1),
+            cooldown_seconds: Some(60),
+            failure_window_seconds: Some(1),
+            trigger_status_codes: Some(vec!["999".to_string()]),
+        });
+        let error = config.validate_for_save().expect_err("bad trigger code");
+        assert!(
+            error.to_string().contains("触发状态码必须形如"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn validate_startup_tolerates_broken_aggregate_members() {
+        // Consistent with route targets: startup validation stays tolerant of
+        // dangling references (e.g. config edited by hand); only saves are
+        // strict, and expand_route_plan skips dead members at runtime.
+        let config = GatewayConfig {
+            providers: vec![aggregate_provider("team", &["gone:m"])],
+            ..GatewayConfig::default()
+        };
+
+        config
+            .validate()
+            .expect("startup tolerates dangling member");
     }
 }
