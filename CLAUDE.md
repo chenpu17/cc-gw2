@@ -4,100 +4,105 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-cc-gw2 is a Rust-backed local AI gateway proxy (compatible with Claude Code / Anthropic / OpenAI APIs) with a React web console and a Node.js CLI. It proxies API requests to configured providers with model routing, API key management, cross-protocol conversion, request logging, and a profiler.
+cc-gw2 (npm package `@chenpu17/cc-gw`, CLI binary `cc-gw`) is a Rust-backed local-first AI gateway proxy compatible with Claude Code / Anthropic / OpenAI APIs. It has a React web console (served at `/ui`, product landing site at `/`) and a Node.js CLI. It proxies API requests to configured providers with model routing, API key management, cross-protocol conversion, request logging, and event/metrics dashboards. The Rust backend replaced an older Node.js server; external behavior, `~/.cc-gw` paths, SQLite data, and key/encryption formats stay backward compatible.
+
+`AGENTS.md` holds repo conventions (naming, commit style) and also applies here.
 
 ## Build & Development Commands
 
 ```bash
-# Backend (Rust) - run dev server
-cargo run -p cc-gw-server
+pnpm install                # install workspace deps
+pnpm dev                    # run Rust gateway in dev (cargo run -p cc-gw-server)
+pnpm build                  # full: Rust release + CLI + web + native binary bundle
+pnpm typecheck              # tsc --noEmit for src/cli and src/web
 
-# Backend - run Rust tests
-cargo test
+cargo test                                        # all Rust tests
+cargo test -p cc-gw-core api_keys                 # one module's tests
+cargo test api_status_reports_live_and_recent     # a single test by name
 
-# Backend - release build
-cargo build --release -p cc-gw-server
-
-# Frontend (React) - dev server
-cd src/web && pnpm dev
-
-# Frontend - build
-pnpm --filter @cc-gw/web build
-
-# CLI - build
-pnpm --filter @cc-gw/cli build
-
-# Full build (backend + CLI + web + native bundle)
-pnpm build
-
-# Run Rust unit test for a specific module
-cargo test -p cc-gw-core api_keys
-cargo test -p cc-gw-server proxy_routes
-
-# Typecheck all TypeScript
-pnpm typecheck
-
-# E2E tests (Playwright, requires full build first)
-pnpm test:e2e:web:core
-
-# Dry-run npm pack
-pnpm pack:dry-run
+cd src/web && pnpm dev                            # web console dev server (Vite)
+pnpm --filter @cc-gw/cli exec tsx index.ts start --foreground   # run CLI from source
 ```
+
+Web has **no unit test runner** — all frontend coverage is Playwright E2E.
+
+```bash
+pnpm test:e2e:web:core                             # behavior suites (needs pnpm build first; scripts do it)
+pnpm test:e2e:web:hardening                        # low-frequency/dangerous-path suite
+pnpm test:e2e:web:visual                           # visual regression (darwin-local baselines)
+pnpm exec playwright test tests/playwright/dashboard.spec.ts    # one spec file
+pnpm test:e2e:web:update-snapshots                 # refresh visual baselines (only for intentional UI changes)
+pnpm smoke:cli                                     # packaged CLI smoke flow
+pnpm pack:dry-run                                  # verify npm packaging
+```
+
+First E2E run needs `pnpm exec playwright install --with-deps chromium`.
 
 ## Architecture
 
 ### Dual-Language Monorepo
 
-- **Rust workspace** (`crates/`): Backend server and core logic
-  - `cc-gw-core`: Shared library — API key management, config, routing, protocol conversion, streaming, observability, storage/migrations, profiling
-  - `cc-gw-server`: Axum HTTP server — proxy routes, admin API, web auth, profiler routes, UI static serving
-- **pnpm workspace** (`src/`, `packages/`): Frontend and tooling
-  - `src/web/`: React + Vite + Tailwind web console (SPA served at `/ui`)
-  - `src/cli/`: Node.js CLI entry point (`cc-gw` binary)
-  - `packages/native/*`: Platform-specific Rust binary wrappers for npm distribution
+- **Rust workspace** (`crates/`): backend server and all core logic
+  - `cc-gw-core`: config, routing, protocol conversion (`convert.rs`), streaming (`stream.rs`), storage/migrations (`storage.rs`), API keys, events, observability, provider/model types
+  - `cc-gw-server`: Axum HTTP server — route modules: `proxy_routes` (the proxy path), `admin_routes` (`/api/*`), `auth_routes`/`auth.rs` (web console login), `dashboard_routes`, `ui_routes` (SPA + landing static serving), `web_middleware`
+- **pnpm workspace**: 
+  - `src/web/`: React 18 + Vite + Tailwind web console. Pages under `src/web/src/pages/`; `pages/workbench` is the provider/routing workbench at `/providers` (the old `/models` + `/routing` pages redirect here); `pages/setup` is the cold-start wizard.
+  - `src/cli/`: Node.js CLI (`start`/`stop`/`restart`/`status`/`version`); resolves the Rust binary via platform native npm package → `CC_GW_SERVER_BIN` → `bin/<platform>-<arch>/` → `target/release|debug` → `cargo run` fallback chain.
+  - `packages/native/*`: platform-specific Rust binary wrapper packages for npm distribution (darwin-arm64, linux-x64/arm64 musl, win32-x64 static CRT).
 
 ### Request Flow
 
-1. Incoming request hits proxy routes (`/v1/messages`, `/openai/v1/chat/completions`, or custom endpoint paths)
-2. `authorize_request_with_context()` resolves the API key via `resolve_api_key()` (checks hash, wildcard, enabled status, allowed endpoints)
-3. `resolve_route()` selects provider + model based on endpoint routing config, model routes (with wildcard pattern support), aliases, and fallback chain (model routes → direct match → thinking default → long-context default → completion default → global fallback)
-4. `build_request_body_for_target()` converts between Anthropic/OpenAI protocols if cross-protocol routing is needed
-5. `forward_request()` sends to the upstream provider; response is proxied back with usage stats extraction and optional stream transformation
-6. Request logs, daily metrics, and API key usage are recorded in SQLite
+1. Incoming request hits proxy routes (`/v1/messages`, `/openai/v1/chat/completions`, `/v1/responses`, or custom endpoint paths from `custom_endpoints`).
+2. `authorize_request_with_context()` resolves the API key via `resolve_api_key()` (hash lookup, wildcard, enabled status, allowed endpoints).
+3. `resolve_route()` selects provider + model. Fallback chain: model routes (exact/wildcard, via aliases) → direct model match against providers → thinking/reasoning default → long-context default (token estimate vs `long_context_threshold`) → completion default → global fallback (`enable_routing_fallback`). `resolve_route_with_reason()` powers the admin "hit simulation" endpoint.
+4. `build_request_body_for_target()` converts between Anthropic/OpenAI protocols when cross-protocol routing is needed.
+5. `forward_request()` sends to the upstream provider; the response is proxied back with usage-stats extraction and optional stream transformation.
+6. Request logs, daily metrics, API key usage, and events are recorded in SQLite.
 
 ### Key Design Patterns
 
-- **Config**: `~/.cc-gw/config.json` (JSON), hot-reloaded via `RwLock<GatewayConfig>`. Config is validated on update and atomically saved.
-- **Database**: SQLite at `~/.cc-gw/data/gateway.db`. Schema uses incremental migrations via `maybe_add_column()`. WAL mode enabled.
-- **API Key Auth**: Keys are SHA-256 hashed for storage, AES-256-GCM encrypted for the ciphertext column. One wildcard key is auto-created. Auth supports bearer token and x-api-key header.
-- **Streaming**: SSE streams are observed by `SseStreamObserver` for usage stats; `CrossProtocolStreamTransformer` handles real-time Anthropic↔OpenAI conversion. `RequestActivityGuard` (RAII) tracks active requests per endpoint/IP/session.
-- **Protocol Conversion**: Bidirectional conversion between Anthropic Messages API and OpenAI Chat Completions / Responses API in `crates/cc-gw-core/src/convert.rs`.
-- **Routing**: Model alias resolution (e.g., `claude-sonnet-latest` → concrete version), wildcard pattern matching in model routes, and per-endpoint routing overrides via `custom_endpoints`.
+- **Config**: `~/.cc-gw/config.json`, hot-reloaded via `RwLock<GatewayConfig>`; validated on update, atomically saved.
+- **Database**: SQLite at `~/.cc-gw/data/gateway.db`, WAL mode; schema evolves via incremental `maybe_add_column()`-style migrations; must stay readable by older versions.
+- **API Key Auth**: SHA-256 hash column + AES-256-GCM ciphertext column; one wildcard key auto-created; bearer token and `x-api-key` header both accepted. Legacy `encryption.key`, key ciphertext, and scrypt web-auth password formats must keep working.
+- **Streaming**: `SseStreamObserver` (core `stream.rs`) watches SSE for usage stats; `CrossProtocolStreamTransformer` does real-time Anthropic↔OpenAI conversion. `RequestActivityGuard` (RAII, in server `proxy_routes.rs`) tracks active requests per endpoint/IP/session.
+- **Protocol Conversion**: bidirectional Anthropic Messages ↔ OpenAI Chat Completions / Responses in `cc-gw-core/src/convert.rs`.
 
-### Frontend
+### Frontend Conventions
 
-- React 18 + React Router + TanStack Query + i18next
-- UI components: Radix UI primitives + Tailwind CSS + shadcn-style patterns (`src/web/src/components/ui/`)
-- Charts: ECharts via echarts-for-react
-- API calls go through `src/web/src/services/` using axios
+- **Design system is "Modernist"** (sharp corners, single red accent, no shadows/gradients): enforced by the `modernist-webui` skill (`.claude/skills/modernist-webui/`); token source of truth is `src/web/src/styles/global.css` + `src/web/tailwind.config.cjs`. Any UI work must conform — invoke the skill when adding/polishing UI.
+- **i18n**: messages split per feature in `src/web/src/i18n/locales/{zh,en}/<feature>.ts` — update **both** locales together. English plurals use i18next `_one`/`_other` key suffixes (e.g. `routeCount_one`), never `{one, other}` object form.
+- **API layer**: `src/web/src/services/` (axios) + TanStack Query hooks (`useApiQuery`, `useAppMutation`). Error handling uses `toApiError(error).message` — not `instanceof Error`.
+- UI component primitives: Radix UI + shadcn-style components in `src/web/src/components/ui/`; charts via echarts-for-react.
+
+### E2E Test Architecture
+
+- `tests/playwright/harness.ts` spawns the **built Rust binary** (`target/release` → `target/debug`) with an isolated temp `CC_GW_HOME`, a free port, and a built-in stub upstream provider — tests never touch the developer's real `~/.cc-gw`.
+- Playwright projects: `desktop-zh` is canonical and runs every spec; `desktop-en`/`narrow-zh`/`narrow-en` only match `visual*.spec.ts`. Tags `@overlay-only` and `@data` run exclusively under `desktop-zh`.
+- Visual baselines are darwin-local artifacts (CI never compares them); snapshot filenames encode the project name.
 
 ### Database Tables (core)
 
-- `request_logs` — per-request telemetry with session/IP/endpoint/tokens/latency
+- `request_logs` — per-request telemetry (session/IP/endpoint/tokens/latency)
 - `request_payloads` — optional request/response body storage (BLOB)
-- `daily_metrics` — aggregated per-date-per-endpoint stats (composite PK: date + endpoint)
+- `daily_metrics` — per-date-per-endpoint aggregates (composite PK: date + endpoint)
 - `api_keys` — key hash, encrypted ciphertext, allowed endpoints, usage counters
-- `api_key_audit_logs` — audit trail for key CRUD
+- `api_key_audit_logs` — key CRUD audit trail
 - `gateway_events` — system event log
-- `profiler_sessions` / `profiler_turns` — per-session profiling data
+
+Authoritative schema doc: `docs/database-schema.md`; API compatibility matrix: `docs/api-compatibility.md`; system design: `docs/system-design.md`.
 
 ## Configuration
 
-- Data directory: `~/.cc-gw/` (overridable via `CC_GW_HOME` env var)
-- Server port: 4100 (overridable via `PORT` env var)
-- HTTP body limit: 10MB default
-- Logging: `RUST_LOG` env var (default: `cc_gw_server=info,axum=info`)
+- Data directory: `~/.cc-gw/` (override with `CC_GW_HOME`)
+- Server port: 4100 (override with `PORT`)
+- Logging: `RUST_LOG` (default `cc_gw_server=info,axum=info`)
+- Version check (used by stub/CLI): `CC_GW_VERSION_CHECK_REGISTRY_BASE_URL`, `CC_GW_VERSION_CHECK_PACKAGE_NAME`
+
+## Conventions
+
+- Commit style: `fix: …`, `feat: …`, `chore: …`, `release: …` — short imperative subjects, one change per commit. Keep API payload fields camelCase to match existing Web contracts and Rust `serde` renames.
+- Rust: `cargo fmt` defaults; TypeScript: 2-space, no semicolons; React files `PascalCase.tsx`, hooks `useXxx.ts`.
 
 ## CI
 
-GitHub Actions runs on push/PR: Rust tests, full build, Playwright E2E (core + hardening), CLI smoke test, and npm pack verification.
+GitHub Actions (`.github/workflows/ci.yml`, `release.yml`): Rust tests, full build, Playwright E2E (core + hardening), CLI smoke test, npm pack verification; release pipeline publishes the root package + 4 platform native packages.
