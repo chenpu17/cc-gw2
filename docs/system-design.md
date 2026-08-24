@@ -315,6 +315,7 @@ SQLite 主要承担以下职责：
 
 ## 13. 相关文档
 
+- 聚合模型设计：[`aggregate-models.md`](./aggregate-models.md)
 - 存储设计：[`database-schema.md`](./database-schema.md)
 - API 兼容矩阵：[`api-compatibility.md`](./api-compatibility.md)
 - npm 打包：[`npm-packaging.md`](./npm-packaging.md)

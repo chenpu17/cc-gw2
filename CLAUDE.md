@@ -56,7 +56,7 @@ First E2E run needs `pnpm exec playwright install --with-deps chromium`.
 2. `authorize_request_with_context()` resolves the API key via `resolve_api_key()` (hash lookup, wildcard, enabled status, allowed endpoints).
 3. `resolve_route()` selects provider + model. Fallback chain: model routes (exact/wildcard, via aliases) → direct model match against providers → thinking/reasoning default → long-context default (token estimate vs `long_context_threshold`) → completion default → global fallback (`enable_routing_fallback`). `resolve_route_with_reason()` powers the admin "hit simulation" endpoint.
 4. `build_request_body_for_target()` converts between Anthropic/OpenAI protocols when cross-protocol routing is needed.
-5. `forward_request()` sends to the upstream provider; the response is proxied back with usage-stats extraction and optional stream transformation.
+5. `forward_request()` sends to the upstream provider; the response is proxied back with usage-stats extraction and optional stream transformation. For aggregate providers (`type: "aggregate"`, virtual models mapping to ordered member backends, see `docs/aggregate-models.md`), `resolve_route_plan()` expands a candidate chain and the proxy loop fails over on consecutive failures with cooldown-based recovery (`health.rs` `BackendHealthRegistry`).
 6. Request logs, daily metrics, API key usage, and events are recorded in SQLite.
 
 ### Key Design Patterns
