@@ -260,11 +260,23 @@ pub(super) struct RoutingSimulateBody {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct RouteCandidateInfo {
+    provider_id: String,
+    provider_label: String,
+    model_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct RoutingSimulateResponse {
     provider_id: String,
     provider_label: String,
     model_id: String,
     reason: cc_gw_core::routing::RouteMatchReason,
+    /// Full failover candidate chain (aggregated models expand to their
+    /// member backends in priority order; single-candidate routes report one
+    /// entry). Additive — older consoles ignore it.
+    candidates: Vec<RouteCandidateInfo>,
 }
 
 /// Routing "hit simulation": given an endpoint + requested model, resolve the
@@ -321,7 +333,7 @@ pub(super) async fn api_routing_simulate(
         .filter(|value| !value.is_empty());
     let thinking = payload.thinking.unwrap_or(false);
 
-    match cc_gw_core::routing::resolve_route_with_reason(
+    match cc_gw_core::routing::resolve_route_plan_with_reason(
         &config,
         endpoint,
         protocol,
@@ -329,19 +341,66 @@ pub(super) async fn api_routing_simulate(
         requested_model,
         thinking,
     ) {
-        Ok((target, reason)) => Json(RoutingSimulateResponse {
-            provider_id: target.provider_id,
-            provider_label: target.provider.label.clone(),
-            model_id: target.model_id,
-            reason,
-        })
-        .into_response(),
+        Ok((plan, reason)) => {
+            let primary = plan.primary();
+            Json(RoutingSimulateResponse {
+                provider_id: primary.provider_id.clone(),
+                provider_label: primary.provider.label.clone(),
+                model_id: primary.model_id.clone(),
+                reason,
+                candidates: plan
+                    .candidates
+                    .iter()
+                    .map(|candidate| RouteCandidateInfo {
+                        provider_id: candidate.provider_id.clone(),
+                        provider_label: candidate.provider.label.clone(),
+                        model_id: candidate.model_id.clone(),
+                    })
+                    .collect(),
+            })
+            .into_response()
+        }
         Err(err) => (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": err.to_string() })),
         )
             .into_response(),
     }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackendHealthEntry {
+    #[serde(flatten)]
+    snapshot: cc_gw_core::health::BackendHealthSnapshot,
+    state: &'static str,
+    cooldown_remaining_seconds: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct BackendsHealthResponse {
+    backends: Vec<BackendHealthEntry>,
+}
+
+/// Read-only snapshot of backend health for the console's aggregate-model
+/// cards and tests: which backends are degraded or cooling, and when the
+/// cooldown lifts. Backends absent from the list have never failed.
+pub(super) async fn api_backends_health(
+    State(state): State<AppState>,
+) -> Json<BackendsHealthResponse> {
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let backends = state
+        .backend_health
+        .snapshot()
+        .into_iter()
+        .map(|snapshot| BackendHealthEntry {
+            state: snapshot.state(now_ms),
+            cooldown_remaining_seconds: snapshot.cooldown_remaining_seconds(now_ms),
+            snapshot,
+        })
+        .collect();
+    Json(BackendsHealthResponse { backends })
 }
 
 pub(super) async fn api_config_info(State(state): State<AppState>) -> Json<ConfigInfoResponse> {

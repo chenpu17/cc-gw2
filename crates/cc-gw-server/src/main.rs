@@ -457,6 +457,10 @@ fn build_router(state: AppState) -> Router {
             post(admin_routes::api_provider_models_probe),
         )
         .route(
+            "/api/providers/backends/health",
+            get(admin_routes::api_backends_health),
+        )
+        .route(
             "/api/custom-endpoints",
             get(admin_routes::api_custom_endpoints).post(admin_routes::api_custom_endpoints_create),
         )
