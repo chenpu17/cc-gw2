@@ -11,8 +11,10 @@ export interface GatewayHarness {
   tempHome: string
   gatewayPort: number
   stubPort: number
+  secondaryPort: number
   gatewayProcess: ChildProcessWithoutNullStreams | null
   stubServer: http.Server | null
+  secondaryServer: http.Server | null
   start: () => Promise<void>
   stop: () => Promise<void>
   baseUrl: () => string
@@ -28,6 +30,10 @@ export interface GatewayHarnessOptions {
    * stub provider and an `agg` aggregate provider whose `agg-model` tries the
    * failing member first, then the healthy one. */
   aggregate?: boolean
+  /** Spawns a second, independent stub upstream (own port/process) as the
+   * `secondary` provider. Combined with `aggregate`, also adds `agg-cross-model`
+   * whose member chain spans both providers — for cross-provider failover e2e. */
+  secondaryUpstream?: boolean
 }
 
 function resolveBuiltServerBinary(): string | null {
@@ -64,7 +70,11 @@ async function findFreePort(): Promise<number> {
   })
 }
 
-async function startStubProvider(port: number): Promise<http.Server> {
+async function startStubProvider(
+  port: number,
+  options: { marker?: string } = {}
+): Promise<http.Server> {
+  const marker = options.marker ?? 'Stub'
   const rootPackage = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as { version?: string }
   const currentVersion = rootPackage.version ?? '0.0.0'
   const server = http.createServer((req, res) => {
@@ -109,12 +119,14 @@ async function startStubProvider(port: number): Promise<http.Server> {
           : ''
         const messageText = typeof message === 'string' ? message : ''
 
-        // The aggregate-failover fixture's "always broken" backend: lets e2e
+        // The aggregate-failover fixtures' "always broken" backends: lets e2e
         // exercise priority failover without tearing down the stub server.
-        if (body.model === 'stub-model-failing') {
+        // `stub-model-broken` is a second dead model so the cross-provider
+        // case starts from a fresh (not-yet-cooling) health key.
+        if (body.model === 'stub-model-failing' || body.model === 'stub-model-broken') {
           res.writeHead(500, { 'content-type': 'application/json' })
           res.end(JSON.stringify({
-            error: { message: 'stub-model-failing always fails', type: 'server_error', code: 500 },
+            error: { message: `${body.model} always fails`, type: 'server_error', code: 500 },
           }))
           return
         }
@@ -131,7 +143,7 @@ async function startStubProvider(port: number): Promise<http.Server> {
             ? { id: 'chatcmpl_stub', object: 'chat.completion.chunk', model: body.model ?? 'stub-model', choices: [{ index: 0, delta: { usage: { prompt_tokens: 41, completion_tokens: 7, total_tokens: 48 } } }] }
             : { id: 'chatcmpl_stub', object: 'chat.completion.chunk', model: body.model ?? 'stub-model', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 } }
           res.writeHead(200, { 'content-type': 'text/event-stream' })
-          res.write(`data: ${JSON.stringify({ id: 'chatcmpl_stub', object: 'chat.completion.chunk', model: body.model ?? 'stub-model', choices: [{ index: 0, delta: { role: 'assistant', content: 'Stub stream' } }] })}\n\n`)
+          res.write(`data: ${JSON.stringify({ id: 'chatcmpl_stub', object: 'chat.completion.chunk', model: body.model ?? 'stub-model', choices: [{ index: 0, delta: { role: 'assistant', content: `${marker} stream` } }] })}\n\n`)
           res.write(`data: ${JSON.stringify(usageChunk)}\n\n`)
           res.end('data: [DONE]\n\n')
           return
@@ -144,7 +156,7 @@ async function startStubProvider(port: number): Promise<http.Server> {
           model: body.model ?? 'stub-model',
           choices: [{
             index: 0,
-            message: { role: 'assistant', content: `Stub response:${messageText}` },
+            message: { role: 'assistant', content: `${marker} response:${messageText}` },
             finish_reason: 'stop',
           }],
           usage: {
@@ -208,6 +220,7 @@ function writeConfig(
   tempHome: string,
   gatewayPort: number,
   stubPort: number,
+  secondaryPort: number,
   options: GatewayHarnessOptions = {}
 ): void {
   const configDir = path.join(tempHome, '.cc-gw')
@@ -232,22 +245,47 @@ function writeConfig(
     models: [{ id: 'stub-model', label: 'Stub Model' }],
   }
   const providers: Array<Record<string, unknown>> = [stubProvider]
+  if (options.secondaryUpstream) {
+    // A second, genuinely separate upstream (own port + server process) so
+    // aggregate member chains can span two providers.
+    providers.push({
+      id: 'secondary',
+      label: 'Secondary Provider',
+      type: 'openai',
+      baseUrl: `http://127.0.0.1:${secondaryPort}`,
+      apiKey: 'stub-key',
+      defaultModel: 'stub-model-secondary',
+      models: [{ id: 'stub-model-secondary', label: 'Secondary Model' }],
+    })
+  }
   if (options.aggregate) {
     ;(stubProvider.models as Array<Record<string, unknown>>).push({
       id: 'stub-model-failing',
       label: 'Stub Failing Model',
     })
+    const aggregateModels: Array<Record<string, unknown>> = [
+      {
+        id: 'agg-model',
+        members: [{ target: 'stub:stub-model-failing' }, { target: 'stub:stub-model' }],
+        failover: { consecutiveFailures: 1, cooldownSeconds: 60 },
+      },
+    ]
+    if (options.secondaryUpstream) {
+      ;(stubProvider.models as Array<Record<string, unknown>>).push({
+        id: 'stub-model-broken',
+        label: 'Stub Broken Model',
+      })
+      aggregateModels.push({
+        id: 'agg-cross-model',
+        members: [{ target: 'stub:stub-model-broken' }, { target: 'secondary:stub-model-secondary' }],
+        failover: { consecutiveFailures: 1, cooldownSeconds: 60 },
+      })
+    }
     providers.push({
       id: 'agg',
       label: '聚合测试',
       type: 'aggregate',
-      models: [
-        {
-          id: 'agg-model',
-          members: [{ target: 'stub:stub-model-failing' }, { target: 'stub:stub-model' }],
-          failover: { consecutiveFailures: 1, cooldownSeconds: 60 },
-        },
-      ],
+      models: aggregateModels,
     })
   }
 
@@ -348,15 +386,21 @@ export function createGatewayHarness(options: GatewayHarnessOptions = {}): Gatew
     tempHome: '',
     gatewayPort: 0,
     stubPort: 0,
+    secondaryPort: 0,
     gatewayProcess: null,
     stubServer: null,
+    secondaryServer: null,
     baseUrl: () => `http://127.0.0.1:${harness.gatewayPort}`,
     start: async () => {
       harness.stubPort = await findFreePort()
       harness.gatewayPort = await findFreePort()
       harness.tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-gw-web-e2e-'))
       harness.stubServer = await startStubProvider(harness.stubPort)
-      writeConfig(harness.tempHome, harness.gatewayPort, harness.stubPort, options)
+      if (options.secondaryUpstream) {
+        harness.secondaryPort = await findFreePort()
+        harness.secondaryServer = await startStubProvider(harness.secondaryPort, { marker: 'Secondary stub' })
+      }
+      writeConfig(harness.tempHome, harness.gatewayPort, harness.stubPort, harness.secondaryPort, options)
       harness.gatewayProcess = await startGatewayWithStubRegistry(harness.tempHome, harness.gatewayPort, harness.stubPort)
       await waitForServer(harness.gatewayPort)
     },
@@ -370,6 +414,9 @@ export function createGatewayHarness(options: GatewayHarnessOptions = {}): Gatew
       }
       if (harness.stubServer) {
         await new Promise<void>((resolve) => harness.stubServer?.close(() => resolve()))
+      }
+      if (harness.secondaryServer) {
+        await new Promise<void>((resolve) => harness.secondaryServer?.close(() => resolve()))
       }
       if (harness.tempHome && fs.existsSync(harness.tempHome)) {
         fs.rmSync(harness.tempHome, { recursive: true, force: true })

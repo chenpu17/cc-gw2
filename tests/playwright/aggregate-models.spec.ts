@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { createGatewayHarness } from './harness'
 
-const harness = createGatewayHarness({ aggregate: true })
+const harness = createGatewayHarness({ aggregate: true, secondaryUpstream: true })
 
 test.beforeAll(async () => {
   await harness.start()
@@ -74,6 +74,52 @@ test('aggregate model fails over transparently and records the chain', async ({ 
   expect(second.status()).toBe(200)
   const secondBody = await second.json()
   expect(JSON.stringify(secondBody.content)).toContain('Stub response')
+})
+
+// ---------------------------------------------------------------------------
+// 跨供应商降级：agg-cross-model 成员链横跨两个独立上游进程
+// [stub:stub-model-broken(恒 500), secondary:stub-model-secondary]，
+// 验证不同 provider / 不同 baseUrl 之间的透明切换。
+// ---------------------------------------------------------------------------
+test('aggregate model fails over across providers on separate upstreams', async ({ request }) => {
+  const baseUrl = harness.baseUrl()
+
+  const response = await request.post(`${baseUrl}/v1/messages`, {
+    data: anthropicPayload('agg-cross-model'),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(response.status()).toBe(200)
+  const body = await response.json()
+  expect(JSON.stringify(body.content)).toContain('Secondary stub response')
+
+  // 日志行记录实际服务的 secondary 供应商后端
+  const logsResponse = await request.get(`${baseUrl}/api/logs?limit=20`)
+  expect(logsResponse.ok()).toBeTruthy()
+  const logs = await logsResponse.json()
+  const row = (logs.items ?? []).find((item: any) => item.client_model === 'agg-cross-model')
+  expect(row).toBeTruthy()
+  expect(row.provider).toBe('secondary')
+  expect(row.model).toBe('stub-model-secondary')
+
+  // 降级链：主 stub 的坏模型 500 → 独立 secondary 上游接管
+  const eventsResponse = await request.get(`${baseUrl}/api/events?limit=50`)
+  expect(eventsResponse.ok()).toBeTruthy()
+  const events = await eventsResponse.json()
+  const failoverEvent = (events.events ?? []).find(
+    (event: any) =>
+      event.type === 'provider_failover' &&
+      (event.details?.attempts ?? []).some((attempt: any) => attempt.provider === 'secondary')
+  )
+  expect(failoverEvent).toBeTruthy()
+  const attempts = failoverEvent.details?.attempts ?? []
+  expect(attempts).toHaveLength(2)
+  expect(attempts[0].provider).toBe('stub')
+  expect(attempts[0].model).toBe('stub-model-broken')
+  expect(attempts[0].outcome).toBe('failed:status')
+  expect(attempts[0].status).toBe(500)
+  expect(attempts[1].provider).toBe('secondary')
+  expect(attempts[1].model).toBe('stub-model-secondary')
+  expect(attempts[1].outcome).toBe('selected')
 })
 
 // ---------------------------------------------------------------------------
