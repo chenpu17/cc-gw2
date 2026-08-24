@@ -216,6 +216,30 @@ function ResultArea({
           <div className="mt-1 text-[11px] text-muted-foreground">{meta.detail}</div>
         ) : null}
       </div>
+      {(result.candidates?.length ?? 0) > 1 ? (
+        <div className="rounded-lg border border-border bg-secondary/50 px-3 py-2.5">
+          <div className="text-[11px] font-semibold text-muted-foreground">
+            {t('providers.aggregate.simulator.candidatesTitle')}
+          </div>
+          <ol className="mt-1.5 space-y-1">
+            {(result.candidates ?? []).map((candidate, index) => (
+              <li key={`${candidate.providerId}:${candidate.modelId}`} className="flex items-center gap-2 text-xs">
+                <span className="w-4 shrink-0 text-center text-[10.5px] tabular-nums text-muted-foreground">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 truncate font-mono text-foreground">
+                  {candidate.providerLabel}:{candidate.modelId}
+                </span>
+                {index === 0 ? (
+                  <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
+                    {t('providers.aggregate.simulator.primaryBadge')}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
       {isFallback ? (
         <p className="text-[11px] text-muted-foreground">{t('workbench.hitSim.fallbackHint')}</p>
       ) : null}

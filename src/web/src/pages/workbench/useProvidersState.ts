@@ -49,7 +49,7 @@ export function useProvidersState(
       const haystack = [
         provider.id,
         provider.label ?? '',
-        provider.baseUrl,
+        provider.baseUrl ?? '',
         provider.defaultModel ?? '',
         ...(provider.models?.map((model) => model.id) ?? [])
       ]
@@ -287,7 +287,26 @@ export function useProvidersState(
   const handleDeleteProvider = async (provider: ProviderConfig) => {
     if (!ensureConfig()) return
 
-    const nextProviders = providers.filter((item) => item.id !== provider.id)
+    const nextProviders = providers
+      .filter((item) => item.id !== provider.id)
+      // Deleting a provider also drops it from aggregate-model member chains;
+      // aggregate models left with no members are removed (the backend rejects
+      // empty member lists on save).
+      .map((item) => {
+        if (item.type !== 'aggregate' || !item.models) return item
+        const models = item.models
+          .map((model) => ({
+            ...model,
+            members: (model.members ?? []).filter(
+              (member) => member.target.split(':')[0] !== provider.id
+            )
+          }))
+          .filter((model) => (model.members ?? []).length > 0)
+        const defaultModel = models.some((model) => model.id === item.defaultModel)
+          ? item.defaultModel
+          : undefined
+        return { ...item, models, defaultModel }
+      })
     const sanitizeRoutes = (routes: Record<string, string> | undefined): Record<string, string> => {
       const nextRoutes: Record<string, string> = {}
       if (!routes) return nextRoutes

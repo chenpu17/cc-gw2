@@ -12,19 +12,52 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import type { ProviderConfig, ProviderModelConfig } from '@/types/providers'
+import type {
+  AggregateMemberConfig,
+  FailoverPolicyConfig,
+  ProviderConfig,
+  ProviderModelConfig
+} from '@/types/providers'
 import { cn } from '@/lib/utils'
 import type { ProviderTestResult } from './shared'
+import type { TargetOption } from './TargetCombobox'
 import { TestResultInline } from './TestResultInline'
 
-export interface FormModel extends ProviderModelConfig {
+export interface FormModel extends Omit<ProviderModelConfig, 'members' | 'failover'> {
   _key: string
+  /** Draft-state member chain (aggregate models); array order = priority. */
+  members: FormMember[]
+  /** Draft failover inputs as strings; empty = keep gateway default. */
+  failover: FormFailover
+}
+
+export interface FormMember extends AggregateMemberConfig {
+  _key: string
+}
+
+export interface FormFailover {
+  consecutiveFailures: string
+  cooldownSeconds: string
+  failureWindowSeconds: string
+  triggerStatusCodes: string
 }
 
 export interface FormHeader {
   name: string
   value: string
   _key: string
+}
+
+/** Per-aggregate-model error messages keyed by the model's `_key`. */
+export interface FormErrors {
+  id?: string
+  baseUrl?: string
+  models?: string
+  extraHeaders?: string
+  rpmLimit?: string
+  rpmMaxWaitSeconds?: string
+  members?: Record<string, string>
+  failover?: Record<string, string>
 }
 
 export interface FormState {
@@ -92,6 +125,15 @@ export interface ProviderStepShared {
   onRemoveModel: (index: number) => void
   onModelNonStreamViaStreamChange: (index: number, value: string) => void
   onSetDefaultModel: (id: string) => void
+  /** Aggregate-model member chain editing (keyed by _key so reorder is safe).
+   * Optional: only the workbench drawer wires these; the setup wizard renders
+   * concrete provider types only. */
+  memberOptions?: TargetOption[]
+  onAddMember?: (modelKey: string) => void
+  onRemoveMember?: (modelKey: string, memberKey: string) => void
+  onMemberTargetChange?: (modelKey: string, memberKey: string, target: string) => void
+  onReorderMembers?: (modelKey: string, activeKey: string, overKey: string) => void
+  onModelFailoverChange?: (modelKey: string, patch: Partial<FormFailover>) => void
   testVerification?: TestVerificationProps
   probeModels?: ProbeModelsProps
 }
@@ -107,7 +149,36 @@ export function createEmptyModel(): FormModel {
   return {
     _key: createKey(),
     id: '',
-    label: ''
+    label: '',
+    members: [],
+    failover: createEmptyFailover()
+  }
+}
+
+export function createEmptyMember(): FormMember {
+  return {
+    _key: createKey(),
+    target: ''
+  }
+}
+
+export function createEmptyFailover(): FormFailover {
+  return {
+    consecutiveFailures: '',
+    cooldownSeconds: '',
+    failureWindowSeconds: '',
+    triggerStatusCodes: ''
+  }
+}
+
+export function formFailoverFromConfig(failover?: FailoverPolicyConfig): FormFailover {
+  return {
+    consecutiveFailures:
+      failover?.consecutiveFailures != null ? String(failover.consecutiveFailures) : '',
+    cooldownSeconds: failover?.cooldownSeconds != null ? String(failover.cooldownSeconds) : '',
+    failureWindowSeconds:
+      failover?.failureWindowSeconds != null ? String(failover.failureWindowSeconds) : '',
+    triggerStatusCodes: failover?.triggerStatusCodes?.join(', ') ?? ''
   }
 }
 
@@ -139,7 +210,8 @@ export const PROVIDER_TYPE_PRESETS: Record<Exclude<ProviderConfig['type'], undef
   anthropic: {
     baseUrl: 'https://api.anthropic.com/v1'
   },
-  custom: {}
+  custom: {},
+  aggregate: {}
 }
 
 export const PROVIDER_TYPE_OPTIONS: Array<{ value: ProviderConfig['type']; label: string }> = [
@@ -148,8 +220,20 @@ export const PROVIDER_TYPE_OPTIONS: Array<{ value: ProviderConfig['type']; label
   { value: 'huawei', label: 'Huawei Cloud' },
   { value: 'kimi', label: 'Kimi' },
   { value: 'anthropic', label: 'Anthropic' },
-  { value: 'custom', label: 'Custom' }
+  { value: 'custom', label: 'Custom' },
+  { value: 'aggregate', label: 'Aggregate' }
 ]
+
+/** Localized label for a provider type; brand names stay untranslated. */
+export function providerTypeLabel(
+  type: ProviderConfig['type'] | undefined,
+  t: (key: string) => string
+): string {
+  if (type === 'aggregate') return t('providers.aggregate.typeLabel')
+  return (
+    PROVIDER_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? 'Custom'
+  )
+}
 
 export const PROVIDER_STEPS: Array<{ id: ProviderStepId; labelKey: string }> = [
   { id: 'basics', labelKey: 'providers.drawer.steps.basics' },
@@ -194,13 +278,18 @@ export function buildInitialState(provider?: ProviderConfig): FormState {
   return {
     id: provider.id,
     label: provider.label ?? provider.id,
-    baseUrl: provider.baseUrl,
+    baseUrl: provider.baseUrl ?? '',
     apiKey: provider.apiKey ?? '',
     type: provider.type ?? 'custom',
     defaultModel: provider.defaultModel ?? '',
     models: (provider.models ?? []).map((model) => ({
       ...model,
-      _key: createKey()
+      _key: createKey(),
+      members: (model.members ?? []).map((member) => ({
+        ...member,
+        _key: createKey()
+      })),
+      failover: formFailoverFromConfig(model.failover)
     })),
     authMode: provider.authMode ?? defaultAuthModeForType(provider.type ?? 'custom'),
     nonStreamViaStream: provider.nonStreamViaStream ?? false,
@@ -224,7 +313,9 @@ export function mapPresetModel(model: Omit<FormModel, '_key'>): FormModel {
     _key: createKey(),
     id: model.id,
     label: model.label,
-    nonStreamViaStream: model.nonStreamViaStream
+    nonStreamViaStream: model.nonStreamViaStream,
+    members: [],
+    failover: createEmptyFailover()
   }
 }
 
@@ -247,6 +338,7 @@ export function BasicsStep({
   onHeaderChange
 }: ProviderStepShared) {
   const { t } = useTranslation()
+  const isAggregate = form.type === 'aggregate'
   return (
     <div className="space-y-8">
       <section className="space-y-5" aria-labelledby="provider-type-fields">
@@ -270,9 +362,11 @@ export function BasicsStep({
                     : 'border-border bg-card text-foreground hover:border-primary/20 hover:bg-accent/50'
                 )}
               >
-                <div className="text-sm font-semibold">{option.label}</div>
+                <div className="text-sm font-semibold">{providerTypeLabel(option.value, t)}</div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {PROVIDER_TYPE_PRESETS[option.value ?? 'custom']?.baseUrl ?? t('providers.drawer.hints.customProvider')}
+                  {option.value === 'aggregate'
+                    ? t('providers.aggregate.drawer.typeHint')
+                    : PROVIDER_TYPE_PRESETS[option.value ?? 'custom']?.baseUrl ?? t('providers.drawer.hints.customProvider')}
                 </div>
               </button>
             )
@@ -309,18 +403,28 @@ export function BasicsStep({
           </Label>
         </div>
 
-        <Label className="flex flex-col gap-2 text-sm">
-          <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.baseUrl')}</span>
-          <Input
-            value={form.baseUrl}
-            onChange={(event) => onFieldChange('baseUrl')(event.target.value)}
-            placeholder={t('providers.drawer.fields.baseUrlPlaceholder')}
-            aria-invalid={Boolean(errors.baseUrl)}
-          />
-          {errors.baseUrl ? <span className="text-xs text-destructive">{errors.baseUrl}</span> : null}
-        </Label>
+        {isAggregate ? (
+          <div className="space-y-2 border border-border bg-card p-4">
+            <p className="text-sm font-semibold">{t('providers.aggregate.drawer.explainerTitle')}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {t('providers.aggregate.drawer.explainerBody')}
+            </p>
+          </div>
+        ) : (
+          <Label className="flex flex-col gap-2 text-sm">
+            <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.baseUrl')}</span>
+            <Input
+              value={form.baseUrl}
+              onChange={(event) => onFieldChange('baseUrl')(event.target.value)}
+              placeholder={t('providers.drawer.fields.baseUrlPlaceholder')}
+              aria-invalid={Boolean(errors.baseUrl)}
+            />
+            {errors.baseUrl ? <span className="text-xs text-destructive">{errors.baseUrl}</span> : null}
+          </Label>
+        )}
       </section>
 
+      {isAggregate ? null : (
       <section className="space-y-4" aria-labelledby="provider-auth-fields">
         <div className="space-y-1">
           <h3 id="provider-auth-fields" className="text-sm font-semibold">{t('providers.drawer.sections.auth')}</h3>
@@ -532,6 +636,7 @@ export function BasicsStep({
           </div>
         </Disclosure>
       </section>
+      )}
     </div>
   )
 }

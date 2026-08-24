@@ -11,11 +11,12 @@ import {
   describeAuthMode,
   ModelsStep,
   PROVIDER_STEPS,
-  PROVIDER_TYPE_OPTIONS,
   ProviderStepId,
-  ProviderStepShared
+  providerTypeLabel
 } from './ProviderDrawerSteps'
+import { AggregateModelsStep } from './AggregateModelsStep'
 import { ProbeModelsDialog } from './ProbeModelsDialog'
+import type { TargetOption } from './TargetCombobox'
 import { useProviderForm } from './useProviderForm'
 
 export interface ProviderDrawerProps {
@@ -23,6 +24,8 @@ export interface ProviderDrawerProps {
   mode: 'create' | 'edit'
   provider?: ProviderConfig
   existingProviderIds: string[]
+  /** Full provider list — member-target options + aggregate reference validation. */
+  allProviders: ProviderConfig[]
   onClose: () => void
   onSubmit: (payload: ProviderConfig) => Promise<void>
   /** latest recorded test result for the provider being edited */
@@ -38,6 +41,7 @@ export function ProviderDrawer({
   mode,
   provider,
   existingProviderIds,
+  allProviders,
   onClose,
   onSubmit,
   testResult,
@@ -46,7 +50,7 @@ export function ProviderDrawer({
   onDelete
 }: ProviderDrawerProps) {
   const { t } = useTranslation()
-  const providerForm = useProviderForm({ mode, provider, existingProviderIds })
+  const providerForm = useProviderForm({ mode, provider, existingProviderIds, providers: allProviders })
   const { form, errors, advancedOpen, providerIdRef } = providerForm
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -108,32 +112,68 @@ export function ProviderDrawer({
   }, [open, mode])
 
   const isCreate = mode === 'create'
+  const isAggregate = form.type === 'aggregate'
   const availableDefaultModels = useMemo(
     () => form.models.filter((model) => model.id.trim().length > 0),
     [form.models]
   )
   const selectedTypeLabel = useMemo(
-    () => PROVIDER_TYPE_OPTIONS.find((item) => item.value === form.type)?.label ?? 'Custom',
-    [form.type]
+    () => providerTypeLabel(form.type, t),
+    [form.type, t]
+  )
+  const memberCount = useMemo(
+    () => form.models.reduce((sum, model) => sum + model.members.filter((m) => m.target.trim().length > 0).length, 0),
+    [form.models]
   )
   const draftProviderName = form.label.trim() || form.id.trim() || t('providers.drawer.summary.untitled')
   const providerSummaryItems = useMemo(
-    () => [
-      {
-        label: t('providers.drawer.summary.type'),
-        value: selectedTypeLabel
-      },
-      {
-        label: t('providers.drawer.summary.auth'),
-        value: describeAuthMode(form.type, form.authMode, t)
-      },
-      {
-        label: t('providers.drawer.summary.models'),
-        value: availableDefaultModels.length.toLocaleString()
-      }
-    ],
-    [availableDefaultModels.length, form.authMode, form.type, selectedTypeLabel, t]
+    () =>
+      isAggregate
+        ? [
+            { label: t('providers.drawer.summary.type'), value: selectedTypeLabel },
+            {
+              label: t('providers.drawer.summary.models'),
+              value: availableDefaultModels.length.toLocaleString()
+            },
+            { label: t('providers.aggregate.drawer.summaryMembers'), value: memberCount.toLocaleString() }
+          ]
+        : [
+            { label: t('providers.drawer.summary.type'), value: selectedTypeLabel },
+            { label: t('providers.drawer.summary.auth'), value: describeAuthMode(form.type, form.authMode, t) },
+            { label: t('providers.drawer.summary.models'), value: availableDefaultModels.length.toLocaleString() }
+          ],
+    [isAggregate, availableDefaultModels.length, memberCount, form.authMode, form.type, selectedTypeLabel, t]
   )
+
+  /** Member-backends for aggregate models: every concrete provider model,
+   * excluding aggregate providers themselves (no nested aggregation in v1). */
+  const memberOptions = useMemo<TargetOption[]>(() => {
+    const options: TargetOption[] = []
+    for (const provider of allProviders) {
+      if (provider.type === 'aggregate') continue
+      const providerDisplay =
+        provider.label && provider.label !== provider.id
+          ? `${provider.label} (${provider.id})`
+          : provider.id
+      const models = provider.models?.length
+        ? provider.models
+        : provider.defaultModel
+          ? [{ id: provider.defaultModel }]
+          : []
+      for (const model of models) {
+        options.push({
+          value: `${provider.id}:${model.id}`,
+          label: `${providerDisplay} · ${model.label ?? model.id}`,
+          providerId: provider.id,
+          providerLabel: providerDisplay,
+          modelId: model.id,
+          modelLabel: model.label ?? model.id,
+          kind: 'model'
+        })
+      }
+    }
+    return options
+  }, [allProviders])
 
   const handleSubmit = async () => {
     setSubmitError(null)
@@ -145,7 +185,11 @@ export function ProviderDrawer({
         if (validationErrors.extraHeaders) {
           providerForm.setAdvancedOpen(true)
         }
-      } else if (validationErrors.models) {
+      } else if (
+        validationErrors.models ||
+        validationErrors.members ||
+        validationErrors.failover
+      ) {
         setActiveStep('models')
       }
       return
@@ -173,8 +217,8 @@ export function ProviderDrawer({
   const trimmedId = form.id.trim()
   const idValid = trimmedId.length > 0 && (mode === 'edit' || !existingProviderIds.includes(trimmedId))
   const trimmedUrl = form.baseUrl.trim()
-  let urlValid = trimmedUrl.length > 0
-  if (urlValid) {
+  let urlValid = isAggregate || trimmedUrl.length > 0
+  if (urlValid && !isAggregate) {
     try {
       // eslint-disable-next-line no-new
       new URL(trimmedUrl)
@@ -207,7 +251,11 @@ export function ProviderDrawer({
     } else {
       status = 'upcoming'
     }
-    return { id: step.id, label: t(step.labelKey), status }
+    const labelKey =
+      isAggregate && step.id === 'models'
+        ? 'providers.drawer.steps.aggregateModels'
+        : step.labelKey
+    return { id: step.id, label: t(labelKey), status }
   })
 
   const handleStepSelect = (id: string) => {
@@ -250,7 +298,9 @@ export function ProviderDrawer({
     }
   }
 
-  const stepProps: ProviderStepShared = {
+  // Untyped on purpose: the concrete member/failover handlers must stay
+  // non-optional for AggregateModelsStep's Required<...> props.
+  const stepProps = {
     form,
     errors,
     isCreate,
@@ -273,8 +323,15 @@ export function ProviderDrawer({
     onRemoveModel: providerForm.handleRemoveModel,
     onModelNonStreamViaStreamChange: providerForm.handleModelNonStreamViaStreamChange,
     onSetDefaultModel: providerForm.handleSetDefaultModel,
-    testVerification:
-      mode === 'edit'
+    memberOptions,
+    onAddMember: providerForm.handleAddMember,
+    onRemoveMember: providerForm.handleRemoveMember,
+    onMemberTargetChange: providerForm.handleMemberTargetChange,
+    onReorderMembers: providerForm.handleReorderMembers,
+    onModelFailoverChange: providerForm.handleModelFailoverChange,
+    testVerification: isAggregate
+      ? undefined
+      : mode === 'edit'
         ? onTest
           ? {
               available: true,
@@ -290,12 +347,14 @@ export function ProviderDrawer({
             result: draftTestResult,
             onTest: () => void handleDraftTest()
           },
-    probeModels: {
-      // Probing needs at least a base URL to aim at; the backend probes the
-      // unsaved draft so unsaved edits (URL, key, headers) are respected.
-      available: form.baseUrl.trim().length > 0,
-      onProbe: () => setProbeOpen(true)
-    }
+    probeModels: isAggregate
+      ? undefined
+      : {
+          // Probing needs at least a base URL to aim at; the backend probes the
+          // unsaved draft so unsaved edits (URL, key, headers) are respected.
+          available: form.baseUrl.trim().length > 0,
+          onProbe: () => setProbeOpen(true)
+        }
   }
 
   return (
@@ -357,7 +416,13 @@ export function ProviderDrawer({
             <StepNav steps={stepItems} current={activeStep} onSelect={handleStepSelect} className="mb-6" />
 
             {activeStep === 'basics' ? <BasicsStep {...stepProps} /> : null}
-            {activeStep === 'models' ? <ModelsStep {...stepProps} /> : null}
+            {activeStep === 'models' ? (
+              isAggregate ? (
+                <AggregateModelsStep {...stepProps} />
+              ) : (
+                <ModelsStep {...stepProps} />
+              )
+            ) : null}
           </div>
 
           <aside className="hidden min-h-0 overflow-y-auto border-l border-border/45 bg-secondary/40 px-5 py-5 xl:block">
@@ -382,9 +447,19 @@ export function ProviderDrawer({
                   {t('providers.drawer.sections.checklist')}
                 </p>
                 <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  <li>{t('providers.drawer.hints.checkUrl')}</li>
-                  <li>{t('providers.drawer.hints.checkAuth')}</li>
-                  <li>{t('providers.drawer.hints.checkModels')}</li>
+                  {isAggregate ? (
+                    <>
+                      <li>{t('providers.aggregate.drawer.checkMembers')}</li>
+                      <li>{t('providers.aggregate.drawer.checkPriority')}</li>
+                      <li>{t('providers.aggregate.drawer.checkFailover')}</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>{t('providers.drawer.hints.checkUrl')}</li>
+                      <li>{t('providers.drawer.hints.checkAuth')}</li>
+                      <li>{t('providers.drawer.hints.checkModels')}</li>
+                    </>
+                  )}
                 </ul>
               </div>
 

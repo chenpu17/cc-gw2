@@ -1,13 +1,35 @@
+/**
+ * One backend of an aggregated model. `target` is `"providerId:modelId"`
+ * (or `"providerId:*"` = the member model reusing the aggregate model's own
+ * id). Array order is the failover priority: index 0 is tried first.
+ */
+export interface AggregateMemberConfig {
+  target: string
+}
+
+/** Failover tuning for one aggregated model; absent fields use gateway defaults. */
+export interface FailoverPolicyConfig {
+  consecutiveFailures?: number
+  cooldownSeconds?: number
+  failureWindowSeconds?: number
+  /** e.g. ["429", "5xx"]; transport errors always trigger. */
+  triggerStatusCodes?: string[]
+}
+
 export interface ProviderModelConfig {
   id: string
   label?: string
   nonStreamViaStream?: boolean
+  /** Present only on models of an `aggregate` provider. */
+  members?: AggregateMemberConfig[]
+  failover?: FailoverPolicyConfig
 }
 
 export interface ProviderConfig {
   id: string
   label: string
-  baseUrl: string
+  /** Absent on `aggregate` providers (they have no upstream of their own). */
+  baseUrl?: string
   apiKey?: string
   authMode?: 'apiKey' | 'authToken' | 'xAuthToken'
   defaultModel?: string
@@ -20,7 +42,24 @@ export interface ProviderConfig {
   rpmMaxWaitSeconds?: number
   models?: ProviderModelConfig[]
   extraHeaders?: Record<string, string>
-  type?: 'openai' | 'deepseek' | 'kimi' | 'anthropic' | 'huawei' | 'custom'
+  type?: 'openai' | 'deepseek' | 'kimi' | 'anthropic' | 'huawei' | 'custom' | 'aggregate'
+}
+
+/** Backend health entry from `GET /api/providers/backends/health`; keyed by `providerId:modelId`. */
+export interface BackendHealthEntry {
+  key: string
+  provider: string
+  model: string
+  consecutiveFailures: number
+  lastFailureAt: number | null
+  lastSuccessAt: number | null
+  cooldownUntil: number | null
+  state: 'cooling' | 'degraded' | 'healthy'
+  cooldownRemainingSeconds: number | null
+}
+
+export interface BackendsHealthResponse {
+  backends: BackendHealthEntry[]
 }
 
 export interface DefaultsConfig {

@@ -175,6 +175,63 @@ export default {
     routeCount: '被 {{count}} 条路由规则引用',
     health: { ok: '正常', fail: '异常', untested: '未测' }
   },
+  aggregate: {
+    typeLabel: '聚合',
+    card: {
+      statAggregateModels: '聚合模型',
+      statMembers: '成员后端',
+      allHealthy: '成员后端均正常',
+      coolingBadge: '已降级 · {{minutes}} 分钟后重试',
+      degradedBadge: '连续失败 {{count}} 次',
+      noMembers: '尚未配置聚合模型'
+    },
+    drawer: {
+      typeHint: '虚拟供应商 · 多后端自动降级',
+      explainerTitle: '聚合供应商说明',
+      explainerBody: '聚合供应商没有自己的上游地址与密钥。它旗下的每个「聚合模型」是一个虚拟模型名，映射到一组真实后端（可跨供应商、跨模型名）。请求按成员顺序尝试：高优先级后端连续失败后自动切换到低优先级，冷却期满自动恢复。',
+      stepTitle: '聚合模型',
+      modelsDescription: '每个聚合模型是对客户端暴露的虚拟模型名，由一组有序的真实后端成员组成。',
+      modelIdLabel: '聚合模型 ID',
+      modelIdPlaceholder: '如 glm-5.1',
+      modelIdHint: '客户端请求中填写的模型名；路由规则可直接映射到 聚合供应商:模型ID。',
+      membersTitle: '后端成员（按优先级）',
+      memberTarget: '成员后端',
+      memberPlaceholder: '选择 providerId:modelId',
+      memberEmptyHint: '尚未添加成员。请从下方选择至少一个真实后端模型。',
+      memberHint: '拖动手柄调整优先级（自上而下依次尝试）；支持手填 providerId:* 表示该供应商的同名模型。',
+      addMember: '添加成员',
+      primaryBadge: '首选',
+      failoverTitle: '降级策略（高级）',
+      consecutiveFailures: '连续失败阈值',
+      consecutiveFailuresHint: '默认 3',
+      cooldownSeconds: '冷却时间（秒）',
+      cooldownSecondsHint: '默认 900',
+      failureWindowSeconds: '失败统计窗口（秒）',
+      failureWindowSecondsHint: '默认 600',
+      triggerStatusCodes: '触发降级的状态码',
+      triggerStatusCodesHint: '默认 429, 5xx；网络错误始终触发',
+      defaultsHint: '留空表示使用默认值。配额耗尽场景建议把冷却时间调大（最长 86400 秒 = 24 小时）。',
+      noModelsTitle: '尚未配置聚合模型',
+      noModelsHint: '添加一个聚合模型（如 glm-5.1），再为它选择成员后端。',
+      summaryMembers: '成员后端数',
+      checkMembers: '每个聚合模型至少配置一个成员后端。',
+      checkPriority: '成员顺序即降级优先级，首选排在最上。',
+      checkFailover: '按需调整连续失败阈值与冷却时间。'
+    },
+    errors: {
+      memberRequired: '每个聚合模型至少需要一个成员后端',
+      memberInvalid: '成员格式必须为 providerId:modelId',
+      memberDangling: '成员指向的供应商不存在：{{provider}}',
+      memberNested: '成员不能指向聚合供应商：{{provider}}',
+      memberDuplicate: '成员后端重复：{{target}}',
+      failoverInvalid: '降级策略数值超出范围（阈值 ≥1，冷却 1-86400 秒，窗口 ≥1 秒）',
+      triggerCodesInvalid: '触发状态码格式无效（支持 1xx-5xx 类别或 100-599 具体码，逗号分隔）'
+    },
+    simulator: {
+      candidatesTitle: '降级候选链（按优先级）',
+      primaryBadge: '首选'
+    }
+  },
   drawer: {
     createTitle: '新增 Provider',
     editTitle: '编辑 Provider',
@@ -197,7 +254,8 @@ export default {
     },
     steps: {
       basics: '基础与认证',
-      modelsVerify: '模型与验证'
+      modelsVerify: '模型与验证',
+      aggregateModels: '聚合模型'
     },
     hints: {
       type: '先选择 Provider 模板，可自动填入推荐 Base URL。',

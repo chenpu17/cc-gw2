@@ -16,12 +16,14 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { queryKeys } from '@/services/queryKeys'
 import type { ModelUsageMetric } from '@/pages/dashboard/types'
 import type { CustomEndpoint } from '@/types/endpoints'
-import type { GatewayConfig, ProviderConfig } from '@/types/providers'
+import type { BackendsHealthResponse, GatewayConfig, ProviderConfig } from '@/types/providers'
 import { PROVIDER_TYPE_OPTIONS } from './ProviderDrawerSteps'
 import { ProviderCard } from './ProviderCard'
 import { findRoutesForProvider, type ProviderTestResult } from './shared'
 
 type ProviderSortMode = 'usage' | 'name'
+
+const BACKENDS_HEALTH_POLL_MS = 10_000
 
 /**
  * Providers card grid: filter/sort toolbar on top, 3-column responsive grid of
@@ -69,6 +71,22 @@ export function ProvidersCardGrid({
     { url: '/api/stats/model', method: 'GET', params: { days: 1, limit: 50 } },
     { retry: false }
   )
+
+  // Poll backend failover health only while an aggregate provider exists —
+  // member cards show degraded/cooling badges from this snapshot.
+  const hasAggregateProvider = filteredProviders.some((provider) => provider.type === 'aggregate')
+  const backendsHealthQuery = useApiQuery<BackendsHealthResponse>(
+    queryKeys.providers.backendsHealth(),
+    { url: '/api/providers/backends/health', method: 'GET' },
+    { retry: false, refetchInterval: BACKENDS_HEALTH_POLL_MS, enabled: hasAggregateProvider }
+  )
+  const backendsHealth = useMemo(() => {
+    const map = new Map<string, BackendsHealthResponse['backends'][number]>()
+    for (const entry of backendsHealthQuery.data?.backends ?? []) {
+      map.set(entry.key, entry)
+    }
+    return map
+  }, [backendsHealthQuery.data])
 
   // Aggregate per-model stats into per-provider 24h request counts and a
   // request-weighted average latency. Providers absent from the stats get 0
@@ -195,6 +213,7 @@ export function ProvidersCardGrid({
               avgLatencyMs={usageQuery.isSuccess ? latencyByProvider.get(provider.id) ?? null : null}
               routeCount={routeCountByProvider.get(provider.id) ?? 0}
               testResult={testResults[provider.id] ?? null}
+              backendsHealth={backendsHealth}
               onTest={() => onTest(provider)}
               onEdit={() => onEdit(provider)}
             />

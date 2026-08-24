@@ -1,14 +1,16 @@
 import { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ProviderConfig } from '@/types/providers'
+import type { FailoverPolicyConfig, ProviderConfig } from '@/types/providers'
 import {
   buildInitialState,
   createEmptyHeader,
+  createEmptyMember,
   createEmptyModel,
   defaultAuthModeForType,
   mapPresetModel,
   PROVIDER_TYPE_PRESETS,
   type FormErrors,
+  type FormFailover,
   type FormHeader,
   type FormModel,
   type FormState
@@ -19,11 +21,58 @@ const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
 
 const RPM_LIMIT_MAX = 1_000_000
 const RPM_WAIT_SECONDS_MAX = 3600
+const FAILOVER_THRESHOLD_MAX = 100
+const FAILOVER_COOLDOWN_MAX = 86_400
+const FAILOVER_WINDOW_MAX = 86_400
+
+/** `providerId:modelId` / `providerId:*`; the member-target grammar. */
+const MEMBER_TARGET_PATTERN = /^[^:\s]+:[^:\s]+$/
+
+/** Status-code trigger tokens: `1xx`-`5xx` classes or literal 100-599. */
+function isValidStatusCodeToken(token: string): boolean {
+  if (/^[1-5]xx$/.test(token)) return true
+  if (/^\d{3}$/.test(token)) {
+    const code = Number(token)
+    return code >= 100 && code <= 599
+  }
+  return false
+}
+
+/** Empty string inputs omit the field entirely — the gateway default applies. */
+function serializeFailover(failover: FormFailover): FailoverPolicyConfig | undefined {
+  const result: FailoverPolicyConfig = {}
+  const consecutiveFailures = Number(failover.consecutiveFailures.trim())
+  if (failover.consecutiveFailures.trim() && Number.isInteger(consecutiveFailures)) {
+    result.consecutiveFailures = consecutiveFailures
+  }
+  const cooldownSeconds = Number(failover.cooldownSeconds.trim())
+  if (failover.cooldownSeconds.trim() && Number.isInteger(cooldownSeconds)) {
+    result.cooldownSeconds = cooldownSeconds
+  }
+  const failureWindowSeconds = Number(failover.failureWindowSeconds.trim())
+  if (failover.failureWindowSeconds.trim() && Number.isInteger(failureWindowSeconds)) {
+    result.failureWindowSeconds = failureWindowSeconds
+  }
+  const codes = failover.triggerStatusCodes
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean)
+  if (codes.length > 0) {
+    result.triggerStatusCodes = codes
+  }
+  return Object.keys(result).length > 0 ? result : undefined
+}
 
 interface UseProviderFormOptions {
   mode: 'create' | 'edit'
   provider?: ProviderConfig
   existingProviderIds: string[]
+  /**
+   * Full provider list (workbench only) — lets aggregate validation reject
+   * members pointing at missing or nested-aggregate providers. Absent (setup
+   * wizard) skips the reference checks.
+   */
+  providers?: ProviderConfig[]
 }
 
 /**
@@ -31,7 +80,7 @@ interface UseProviderFormOptions {
  * validation and serialization. Shared by the workbench drawer and the
  * setup wizard so both stay on the same rules.
  */
-export function useProviderForm({ mode, provider, existingProviderIds }: UseProviderFormOptions) {
+export function useProviderForm({ mode, provider, existingProviderIds, providers }: UseProviderFormOptions) {
   const { t } = useTranslation()
   const [form, setForm] = useState<FormState>(() => buildInitialState(provider))
   const [errors, setErrors] = useState<FormErrors>({})
@@ -212,6 +261,57 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     setForm((prev) => ({ ...prev, defaultModel: id }))
   }
 
+  /** Aggregate member chain editing — all keyed by _key so dnd reorders stay stable. */
+  const patchModelByKey = (modelKey: string, patch: (model: FormModel) => FormModel) => {
+    setForm((prev) => ({
+      ...prev,
+      models: prev.models.map((model) => (model._key === modelKey ? patch(model) : model))
+    }))
+  }
+
+  const handleAddMember = (modelKey: string) => {
+    patchModelByKey(modelKey, (model) => ({
+      ...model,
+      members: [...model.members, createEmptyMember()]
+    }))
+  }
+
+  const handleRemoveMember = (modelKey: string, memberKey: string) => {
+    patchModelByKey(modelKey, (model) => ({
+      ...model,
+      members: model.members.filter((member) => member._key !== memberKey)
+    }))
+  }
+
+  const handleMemberTargetChange = (modelKey: string, memberKey: string, target: string) => {
+    patchModelByKey(modelKey, (model) => ({
+      ...model,
+      members: model.members.map((member) =>
+        member._key === memberKey ? { ...member, target } : member
+      )
+    }))
+  }
+
+  const handleReorderMembers = (modelKey: string, activeKey: string, overKey: string) => {
+    if (activeKey === overKey) return
+    patchModelByKey(modelKey, (model) => {
+      const from = model.members.findIndex((member) => member._key === activeKey)
+      const to = model.members.findIndex((member) => member._key === overKey)
+      if (from < 0 || to < 0) return model
+      const next = [...model.members]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return { ...model, members: next }
+    })
+  }
+
+  const handleModelFailoverChange = (modelKey: string, patch: Partial<FormFailover>) => {
+    patchModelByKey(modelKey, (model) => ({
+      ...model,
+      failover: { ...model.failover, ...patch }
+    }))
+  }
+
   const validateErrors = (): FormErrors => {
     const nextErrors: FormErrors = {}
     const trimmedId = form.id.trim()
@@ -229,14 +329,92 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
       nextErrors.id = t('providers.drawer.errors.idRequired')
     }
 
-    if (trimmedUrl.length === 0) {
-      nextErrors.baseUrl = t('providers.drawer.errors.baseUrlInvalid')
-    } else {
-      try {
-        // eslint-disable-next-line no-new
-        new URL(trimmedUrl)
-      } catch {
+    // Aggregate providers have no upstream URL of their own.
+    if (form.type !== 'aggregate') {
+      if (trimmedUrl.length === 0) {
         nextErrors.baseUrl = t('providers.drawer.errors.baseUrlInvalid')
+      } else {
+        try {
+          // eslint-disable-next-line no-new
+          new URL(trimmedUrl)
+        } catch {
+          nextErrors.baseUrl = t('providers.drawer.errors.baseUrlInvalid')
+        }
+      }
+    }
+
+    if (form.type === 'aggregate') {
+      if (form.models.length === 0) {
+        nextErrors.models = t('providers.drawer.errors.modelsRequired')
+      }
+      const memberErrors: Record<string, string> = {}
+      const failoverErrors: Record<string, string> = {}
+      const providerById = new Map((providers ?? []).map((item) => [item.id, item]))
+      for (const model of form.models) {
+        const targets = model.members
+          .map((member) => member.target.trim())
+          .filter((target) => target.length > 0)
+        if (targets.length === 0) {
+          memberErrors[model._key] = t('providers.aggregate.errors.memberRequired')
+        } else {
+          const seen = new Set<string>()
+          for (const target of targets) {
+            if (!MEMBER_TARGET_PATTERN.test(target)) {
+              memberErrors[model._key] = t('providers.aggregate.errors.memberInvalid')
+              break
+            }
+            const [memberProviderId] = target.split(':')
+            if (providers) {
+              const referenced = providerById.get(memberProviderId)
+              if (!referenced) {
+                memberErrors[model._key] = t('providers.aggregate.errors.memberDangling', {
+                  provider: memberProviderId
+                })
+                break
+              }
+              if (referenced.type === 'aggregate' || memberProviderId === form.id.trim()) {
+                memberErrors[model._key] = t('providers.aggregate.errors.memberNested', {
+                  provider: memberProviderId
+                })
+                break
+              }
+            }
+            if (seen.has(target)) {
+              memberErrors[model._key] = t('providers.aggregate.errors.memberDuplicate', {
+                target
+              })
+              break
+            }
+            seen.add(target)
+          }
+        }
+
+        const numericRanges: Array<[string, number, number]> = [
+          [model.failover.consecutiveFailures, 1, FAILOVER_THRESHOLD_MAX],
+          [model.failover.cooldownSeconds, 1, FAILOVER_COOLDOWN_MAX],
+          [model.failover.failureWindowSeconds, 1, FAILOVER_WINDOW_MAX]
+        ]
+        const numericInvalid = numericRanges.some(([raw, min, max]) => {
+          const trimmed = raw.trim()
+          if (!trimmed) return false
+          const parsed = Number(trimmed)
+          return !Number.isInteger(parsed) || parsed < min || parsed > max
+        })
+        const codeTokens = model.failover.triggerStatusCodes
+          .split(',')
+          .map((token) => token.trim())
+          .filter(Boolean)
+        if (numericInvalid) {
+          failoverErrors[model._key] = t('providers.aggregate.errors.failoverInvalid')
+        } else if (codeTokens.some((token) => !isValidStatusCodeToken(token))) {
+          failoverErrors[model._key] = t('providers.aggregate.errors.triggerCodesInvalid')
+        }
+      }
+      if (Object.keys(memberErrors).length > 0) {
+        nextErrors.members = memberErrors
+      }
+      if (Object.keys(failoverErrors).length > 0) {
+        nextErrors.failover = failoverErrors
       }
     }
 
@@ -304,11 +482,20 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
   const validate = (): boolean => Object.keys(validateErrors()).length === 0
 
   const serialize = (): ProviderConfig => {
+    const isAggregate = form.type === 'aggregate'
     const trimmedModels = form.models
       .map((model) => ({
         id: model.id.trim(),
         label: model.label?.trim() ? model.label.trim() : undefined,
-        nonStreamViaStream: model.nonStreamViaStream
+        nonStreamViaStream: model.nonStreamViaStream,
+        ...(isAggregate
+          ? {
+              members: model.members
+                .map((member) => ({ target: member.target.trim() }))
+                .filter((member) => member.target.length > 0),
+              failover: serializeFailover(model.failover)
+            }
+          : null)
       }))
       .filter((model) => model.id.length > 0)
 
@@ -328,13 +515,15 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     const payload: ProviderConfig = {
       id: form.id.trim(),
       label: form.label.trim() || form.id.trim(),
-      baseUrl: form.baseUrl.trim(),
-      apiKey: form.apiKey.trim() || undefined,
+      // Aggregate providers forward through their member backends; they have
+      // no base URL of their own and the field is omitted on the wire.
+      baseUrl: isAggregate ? undefined : form.baseUrl.trim(),
+      apiKey: isAggregate ? undefined : form.apiKey.trim() || undefined,
       type: form.type ?? 'custom',
-      defaultModel: form.defaultModel || undefined,
+      defaultModel: isAggregate ? undefined : form.defaultModel || undefined,
       models: trimmedModels.length > 0 ? trimmedModels : undefined,
-      extraHeaders: hasExtraHeaders ? extraHeaders : undefined,
-      authMode
+      extraHeaders: isAggregate ? undefined : hasExtraHeaders ? extraHeaders : undefined,
+      authMode: isAggregate ? undefined : authMode
     }
     if (form.nonStreamViaStream) {
       payload.nonStreamViaStream = true
@@ -391,7 +580,12 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     handleUseAbsoluteUrlChange,
     handleStreamUsageChange,
     handleModelNonStreamViaStreamChange,
-    handleSetDefaultModel
+    handleSetDefaultModel,
+    handleAddMember,
+    handleRemoveMember,
+    handleMemberTargetChange,
+    handleReorderMembers,
+    handleModelFailoverChange
   }
 }
 

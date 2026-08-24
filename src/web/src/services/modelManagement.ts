@@ -1,5 +1,10 @@
 import { apiClient, unwrapResponse } from '@/services/api'
-import type { GatewayConfig, ProviderConfig, RoutingPreset } from '@/types/providers'
+import type {
+  BackendsHealthResponse,
+  GatewayConfig,
+  ProviderConfig,
+  RoutingPreset
+} from '@/types/providers'
 
 export interface ProviderTestPayload {
   headers?: Record<string, string>
@@ -70,5 +75,10 @@ export const modelManagementApi = {
         draft ? { provider: draft } : {}
       )
     )
+  },
+
+  /** Backend health snapshot for aggregated-model failover (cooling/degraded backends). */
+  backendsHealth(): Promise<BackendsHealthResponse> {
+    return unwrapResponse(apiClient.get<BackendsHealthResponse>('/api/providers/backends/health'))
   }
 }

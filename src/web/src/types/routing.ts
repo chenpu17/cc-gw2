@@ -21,9 +21,20 @@ export interface RoutingSimulateRequest {
   body?: unknown
 }
 
+export interface RouteCandidate {
+  providerId: string
+  providerLabel: string
+  modelId: string
+}
+
 export interface RoutingSimulateResponse {
   providerId: string
   providerLabel: string
   modelId: string
   reason: RouteMatchReason
+  /**
+   * Full failover candidate chain — an aggregated model expands to its member
+   * backends in priority order; single-candidate routes report one entry.
+   */
+  candidates?: RouteCandidate[]
 }

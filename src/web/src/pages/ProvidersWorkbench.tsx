@@ -282,6 +282,7 @@ export default function ProvidersWorkbenchPage() {
         existingProviderIds={providers.providers
           .map((item) => item.id)
           .filter((id) => (providers.drawerMode === 'edit' && providers.editingProvider ? id !== providers.editingProvider.id : true))}
+        allProviders={providers.providers}
         testResult={providers.editingProvider ? providers.testResults[providers.editingProvider.id] ?? null : null}
         testing={providers.editingProvider ? providers.testingProviderId === providers.editingProvider.id : false}
         onTest={() => {

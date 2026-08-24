@@ -176,6 +176,64 @@ export default {
     routeCount_other: 'Referenced by {{count}} route rules',
     health: { ok: 'Healthy', fail: 'Error', untested: 'Untested' }
   },
+  aggregate: {
+    typeLabel: 'Aggregate',
+    card: {
+      statAggregateModels: 'Aggregated',
+      statMembers: 'Member backends',
+      allHealthy: 'All member backends healthy',
+      coolingBadge: 'Degraded · retries in {{minutes}} min',
+      degradedBadge_one: '{{count}} consecutive failure',
+      degradedBadge_other: '{{count}} consecutive failures',
+      noMembers: 'No aggregated models yet'
+    },
+    drawer: {
+      typeHint: 'Virtual provider · automatic failover',
+      explainerTitle: 'About aggregate providers',
+      explainerBody: 'An aggregate provider has no upstream URL or key of its own. Each of its aggregated models is a virtual model name mapped to an ordered set of real backends (across providers and model names). Requests try members in order: after consecutive failures the gateway switches to lower-priority backends and recovers automatically once the cooldown expires.',
+      stepTitle: 'Aggregated models',
+      modelsDescription: 'Each aggregated model is a virtual name exposed to clients, backed by an ordered list of real member backends.',
+      modelIdLabel: 'Aggregated model ID',
+      modelIdPlaceholder: 'e.g. glm-5.1',
+      modelIdHint: 'The model name clients send; route rules may target aggregateProvider:modelId directly.',
+      membersTitle: 'Member backends (by priority)',
+      memberTarget: 'Member backend',
+      memberPlaceholder: 'Pick providerId:modelId',
+      memberEmptyHint: 'No members yet. Pick at least one real backend model below.',
+      memberHint: 'Drag the handle to reorder (tried top-down); you can also type providerId:* for the same-named model on a provider.',
+      addMember: 'Add member',
+      primaryBadge: 'Primary',
+      failoverTitle: 'Failover policy (advanced)',
+      consecutiveFailures: 'Consecutive-failure threshold',
+      consecutiveFailuresHint: 'Default 3',
+      cooldownSeconds: 'Cooldown (seconds)',
+      cooldownSecondsHint: 'Default 900',
+      failureWindowSeconds: 'Failure window (seconds)',
+      failureWindowSecondsHint: 'Default 600',
+      triggerStatusCodes: 'Status codes that trigger failover',
+      triggerStatusCodesHint: 'Default 429, 5xx; transport errors always trigger',
+      defaultsHint: 'Leave empty to use defaults. For exhausted daily quotas, raise the cooldown (up to 86400s = 24h).',
+      noModelsTitle: 'No aggregated models yet',
+      noModelsHint: 'Add an aggregated model (e.g. glm-5.1), then pick its member backends.',
+      summaryMembers: 'Member backends',
+      checkMembers: 'Every aggregated model needs at least one member backend.',
+      checkPriority: 'Member order is the failover priority — primary on top.',
+      checkFailover: 'Tune the failure threshold and cooldown as needed.'
+    },
+    errors: {
+      memberRequired: 'Each aggregated model needs at least one member backend',
+      memberInvalid: 'Member format must be providerId:modelId',
+      memberDangling: 'Member references a missing provider: {{provider}}',
+      memberNested: 'Member must not point at an aggregate provider: {{provider}}',
+      memberDuplicate: 'Duplicate member backend: {{target}}',
+      failoverInvalid: 'Failover values out of range (threshold ≥1, cooldown 1-86400s, window ≥1s)',
+      triggerCodesInvalid: 'Invalid status-code tokens (use 1xx-5xx classes or 100-599 codes, comma-separated)'
+    },
+    simulator: {
+      candidatesTitle: 'Failover candidates (by priority)',
+      primaryBadge: 'Primary'
+    }
+  },
   drawer: {
     createTitle: 'Add Provider',
     editTitle: 'Edit Provider',
@@ -198,7 +256,8 @@ export default {
     },
     steps: {
       basics: 'Basics & Auth',
-      modelsVerify: 'Models & Verify'
+      modelsVerify: 'Models & Verify',
+      aggregateModels: 'Aggregated Models'
     },
     hints: {
       type: 'Start from a provider template to prefill the recommended Base URL.',

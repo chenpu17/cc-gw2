@@ -12,7 +12,8 @@ export const queryKeys = {
     all: () => ['custom-endpoints'] as const
   },
   providers: {
-    all: () => ['providers', 'all'] as const
+    all: () => ['providers', 'all'] as const,
+    backendsHealth: () => ['providers', 'backends-health'] as const
   },
   stats: {
     overview: (endpoint = 'all') => ['stats', 'overview', endpoint] as const,
