@@ -7391,3 +7391,536 @@ async fn anthropic_to_openai_stream_upstream_dies_after_finish_reason() {
     upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
 }
+
+// ---------------------------------------------------------------------------
+// Aggregated-model failover
+// ---------------------------------------------------------------------------
+
+fn aggregate_provider_config(
+    id: &str,
+    model: &str,
+    targets: &[&str],
+    failover: Option<cc_gw_core::config::FailoverPolicyConfig>,
+) -> cc_gw_core::config::ProviderConfig {
+    cc_gw_core::config::ProviderConfig {
+        id: id.to_string(),
+        label: id.to_string(),
+        provider_type: Some("aggregate".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: model.to_string(),
+            label: None,
+            members: Some(
+                targets
+                    .iter()
+                    .map(|target| cc_gw_core::config::AggregateMemberConfig {
+                        target: target.to_string(),
+                    })
+                    .collect(),
+            ),
+            failover,
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
+fn anthropic_backend_config(
+    id: &str,
+    model: &str,
+    base_url: String,
+) -> cc_gw_core::config::ProviderConfig {
+    cc_gw_core::config::ProviderConfig {
+        id: id.to_string(),
+        label: id.to_string(),
+        base_url,
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some(model.to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: model.to_string(),
+            label: None,
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
+/// Upstream stub for failover tests: every request is recorded with the model
+/// name it carried; `claude-primary` answers 500 (the "dead" backend),
+/// `claude-backup` answers a normal Anthropic message.
+async fn spawn_failover_upstream() -> (SocketAddr, JoinHandle<()>, Arc<Mutex<Vec<String>>>) {
+    let hits = Arc::new(Mutex::new(Vec::<String>::new()));
+    let hits_for_route = Arc::clone(&hits);
+    let upstream = Router::new().route(
+        "/v1/messages",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let hits = Arc::clone(&hits_for_route);
+            async move {
+                let model = payload
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                hits.lock().expect("lock hits").push(model.clone());
+                if model == "claude-primary" {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "type": "error", "error": { "type": "api_error", "message": "primary is dead" } })),
+                    )
+                        .into_response()
+                } else {
+                    Json(json!({
+                        "id": "msg_backup",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": model,
+                        "content": [{ "type": "text", "text": "backup-ok" }],
+                        "stop_reason": "end_turn",
+                        "usage": { "input_tokens": 5, "output_tokens": 3 }
+                    }))
+                    .into_response()
+                }
+            }
+        }),
+    );
+    let (addr, handle) = spawn_router(upstream).await;
+    (addr, handle, hits)
+}
+
+fn failover_gateway_config(
+    upstream_addr: SocketAddr,
+    failover: Option<cc_gw_core::config::FailoverPolicyConfig>,
+) -> GatewayConfig {
+    let mut config = GatewayConfig::default();
+    let base_url = format!("http://{upstream_addr}");
+    config.providers = vec![
+        aggregate_provider_config(
+            "team",
+            "team-claude",
+            &["primary:claude-primary", "backup:claude-backup"],
+            failover,
+        ),
+        anthropic_backend_config("primary", "claude-primary", base_url.clone()),
+        anthropic_backend_config("backup", "claude-backup", base_url),
+    ];
+    config
+}
+
+async fn create_gateway_api_key(client: &reqwest::Client, gateway_addr: SocketAddr) -> String {
+    let create: Value = client
+        .post(format!("http://{gateway_addr}/api/keys"))
+        .json(&json!({ "name": "failover-test" }))
+        .send()
+        .await
+        .expect("create api key")
+        .json()
+        .await
+        .expect("decode api key create");
+    create
+        .get("key")
+        .and_then(Value::as_str)
+        .expect("created api key")
+        .to_string()
+}
+
+async fn fetch_events(client: &reqwest::Client, gateway_addr: SocketAddr) -> Vec<Value> {
+    let events: Value = client
+        .get(format!("http://{gateway_addr}/api/events?limit=50"))
+        .send()
+        .await
+        .expect("request events")
+        .json()
+        .await
+        .expect("decode events");
+    events
+        .get("events")
+        .and_then(Value::as_array)
+        .expect("events array")
+        .clone()
+}
+
+#[tokio::test]
+async fn aggregate_failover_switches_to_next_backend_and_records_event() {
+    let (upstream_addr, upstream_handle, _hits) = spawn_failover_upstream().await;
+    let config = failover_gateway_config(upstream_addr, None);
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "agg-failover-basic").await;
+    let client = reqwest::Client::new();
+    let api_key = create_gateway_api_key(&client, gateway_addr).await;
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("x-api-key", &api_key)
+        .json(&json!({
+            "model": "team-claude",
+            "max_tokens": 64,
+            "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]
+        }))
+        .send()
+        .await
+        .expect("send aggregated request")
+        .json()
+        .await
+        .expect("decode aggregated response");
+    assert_eq!(
+        response
+            .get("content")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("text"))
+            .and_then(Value::as_str),
+        Some("backup-ok")
+    );
+
+    // The log row reports the backend that actually served the request, while
+    // client_model preserves the requested aggregate name.
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=10"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs");
+    let row = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .expect("log items")
+        .iter()
+        .find(|item| item.get("client_model").and_then(Value::as_str) == Some("team-claude"))
+        .expect("find aggregated request log row");
+    assert_eq!(row.get("provider").and_then(Value::as_str), Some("backup"));
+    assert_eq!(
+        row.get("model").and_then(Value::as_str),
+        Some("claude-backup")
+    );
+
+    // The failover chain is visible in the event log.
+    let failover_event = fetch_events(&client, gateway_addr)
+        .await
+        .into_iter()
+        .find(|event| event.get("type").and_then(Value::as_str) == Some("provider_failover"))
+        .expect("find provider_failover event");
+    let attempts = failover_event
+        .get("details")
+        .and_then(|details| details.get("attempts"))
+        .and_then(Value::as_array)
+        .expect("attempts array");
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(
+        attempts[0].get("provider").and_then(Value::as_str),
+        Some("primary")
+    );
+    assert_eq!(
+        attempts[0].get("outcome").and_then(Value::as_str),
+        Some("failed:status")
+    );
+    assert_eq!(attempts[0].get("status").and_then(Value::as_i64), Some(500));
+    assert_eq!(
+        attempts[1].get("provider").and_then(Value::as_str),
+        Some("backup")
+    );
+    assert_eq!(
+        attempts[1].get("outcome").and_then(Value::as_str),
+        Some("selected")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn aggregate_failover_skips_backend_after_consecutive_failures() {
+    let (upstream_addr, upstream_handle, hits) = spawn_failover_upstream().await;
+    let config = failover_gateway_config(
+        upstream_addr,
+        Some(cc_gw_core::config::FailoverPolicyConfig {
+            consecutive_failures: Some(2),
+            cooldown_seconds: Some(60),
+            failure_window_seconds: Some(600),
+            trigger_status_codes: None,
+        }),
+    );
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "agg-failover-skip").await;
+    let client = reqwest::Client::new();
+    let api_key = create_gateway_api_key(&client, gateway_addr).await;
+
+    let request_body = json!({
+        "model": "team-claude",
+        "max_tokens": 64,
+        "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]
+    });
+    for _ in 0..2 {
+        let response = client
+            .post(format!("http://{gateway_addr}/v1/messages"))
+            .header("x-api-key", &api_key)
+            .json(&request_body)
+            .send()
+            .await
+            .expect("send aggregated request");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+    assert_eq!(
+        hits.lock()
+            .expect("lock hits")
+            .iter()
+            .filter(|m| *m == "claude-primary")
+            .count(),
+        2,
+        "primary hit once per request before tripping"
+    );
+
+    // Two consecutive failures tripped the primary: state shows cooling and
+    // the third request skips it entirely.
+    let health: Value = client
+        .get(format!(
+            "http://{gateway_addr}/api/providers/backends/health"
+        ))
+        .send()
+        .await
+        .expect("request backends health")
+        .json()
+        .await
+        .expect("decode backends health");
+    let primary = health
+        .get("backends")
+        .and_then(Value::as_array)
+        .expect("backends array")
+        .iter()
+        .find(|backend| {
+            backend.get("key").and_then(Value::as_str) == Some("primary:claude-primary")
+        })
+        .expect("find primary health entry");
+    assert_eq!(
+        primary.get("state").and_then(Value::as_str),
+        Some("cooling")
+    );
+    assert!(
+        primary
+            .get("cooldownRemainingSeconds")
+            .and_then(Value::as_i64)
+            .is_some_and(|seconds| seconds > 0 && seconds <= 60)
+    );
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("x-api-key", &api_key)
+        .json(&request_body)
+        .send()
+        .await
+        .expect("send third aggregated request");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        hits.lock()
+            .expect("lock hits")
+            .iter()
+            .filter(|m| *m == "claude-primary")
+            .count(),
+        2,
+        "cooling primary must not receive a third attempt"
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn aggregate_failover_retrips_on_single_recovery_failure() {
+    let (upstream_addr, upstream_handle, hits) = spawn_failover_upstream().await;
+    let config = failover_gateway_config(
+        upstream_addr,
+        Some(cc_gw_core::config::FailoverPolicyConfig {
+            consecutive_failures: Some(1),
+            cooldown_seconds: Some(1),
+            failure_window_seconds: Some(600),
+            trigger_status_codes: None,
+        }),
+    );
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "agg-failover-recover").await;
+    let client = reqwest::Client::new();
+    let api_key = create_gateway_api_key(&client, gateway_addr).await;
+
+    let request_body = json!({
+        "model": "team-claude",
+        "max_tokens": 64,
+        "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]
+    });
+    let send = || async {
+        let response = client
+            .post(format!("http://{gateway_addr}/v1/messages"))
+            .header("x-api-key", &api_key)
+            .json(&request_body)
+            .send()
+            .await
+            .expect("send aggregated request");
+        assert_eq!(response.status(), StatusCode::OK);
+    };
+
+    // First request fails on the primary and trips it (threshold 1).
+    send().await;
+    // Cooldown (1s) expires -> the primary is probed again, fails once more,
+    // and re-trips immediately because the counter survived the cooldown.
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    send().await;
+
+    assert_eq!(
+        hits.lock()
+            .expect("lock hits")
+            .iter()
+            .filter(|m| *m == "claude-primary")
+            .count(),
+        2,
+        "primary probed once per cooldown cycle"
+    );
+    let health: Value = client
+        .get(format!(
+            "http://{gateway_addr}/api/providers/backends/health"
+        ))
+        .send()
+        .await
+        .expect("request backends health")
+        .json()
+        .await
+        .expect("decode backends health");
+    let primary_state = health
+        .get("backends")
+        .and_then(Value::as_array)
+        .expect("backends array")
+        .iter()
+        .find(|backend| {
+            backend.get("key").and_then(Value::as_str) == Some("primary:claude-primary")
+        })
+        .expect("find primary health entry")
+        .get("state")
+        .and_then(Value::as_str)
+        .expect("state")
+        .to_string();
+    assert_eq!(primary_state, "cooling");
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn aggregate_failover_stream_handshake_failure_falls_through() {
+    let hits = Arc::new(Mutex::new(Vec::<String>::new()));
+    let hits_for_route = Arc::clone(&hits);
+    let upstream = Router::new().route(
+        "/v1/messages",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let hits = Arc::clone(&hits_for_route);
+            async move {
+                let model = payload
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                hits.lock().expect("lock hits").push(model.clone());
+                if model == "claude-primary" {
+                    // Handshake failure before any SSE byte is written.
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        Json(json!({ "type": "error", "error": { "message": "overloaded" } })),
+                    )
+                        .into_response()
+                } else {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "text/event-stream")
+                        .body(Body::from(concat!(
+                            "event: message_start\n",
+                            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-backup\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n",
+                            "event: content_block_delta\n",
+                            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"stream-failover-ok\"}}\n\n",
+                            "event: message_delta\n",
+                            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":1,\"output_tokens\":3}}\n\n",
+                            "event: message_stop\n",
+                            "data: {\"type\":\"message_stop\"}\n\n"
+                        )))
+                        .expect("build SSE response")
+                }
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let config = failover_gateway_config(upstream_addr, None);
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "agg-failover-stream").await;
+    let client = reqwest::Client::new();
+    let api_key = create_gateway_api_key(&client, gateway_addr).await;
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("x-api-key", &api_key)
+        .json(&json!({
+            "model": "team-claude",
+            "max_tokens": 64,
+            "stream": true,
+            "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]
+        }))
+        .send()
+        .await
+        .expect("send streaming aggregated request");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.text().await.expect("read stream body");
+    assert!(
+        body.contains("stream-failover-ok"),
+        "stream should be served by the backup backend, got: {body}"
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn aggregate_single_backend_failure_passes_error_through() {
+    let (upstream_addr, upstream_handle, hits) = spawn_failover_upstream().await;
+    let mut config = failover_gateway_config(upstream_addr, None);
+    // Single-member aggregate: the last (and only) candidate's error is
+    // passed through to the client unchanged — same as a direct route.
+    config.providers[0] =
+        aggregate_provider_config("team", "team-claude", &["primary:claude-primary"], None);
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "agg-failover-last").await;
+    let client = reqwest::Client::new();
+    let api_key = create_gateway_api_key(&client, gateway_addr).await;
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("x-api-key", &api_key)
+        .json(&json!({
+            "model": "team-claude",
+            "max_tokens": 64,
+            "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]
+        }))
+        .send()
+        .await
+        .expect("send aggregated request");
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body: Value = response.json().await.expect("decode error body");
+    assert_eq!(
+        body.pointer("/error/message").and_then(Value::as_str),
+        Some("primary is dead")
+    );
+    assert_eq!(hits.lock().expect("lock hits").len(), 1);
+
+    // Single-candidate routes never emit provider_failover events.
+    let has_failover_event = fetch_events(&client, gateway_addr)
+        .await
+        .iter()
+        .any(|event| event.get("type").and_then(Value::as_str) == Some("provider_failover"));
+    assert!(
+        !has_failover_event,
+        "single-candidate routes must not emit provider_failover"
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
