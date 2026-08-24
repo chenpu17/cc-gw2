@@ -35,6 +35,8 @@
   - Pencil 画板、页面实现入口与 Playwright 回归入口
 - [api-key-max-concurrency.md](./api-key-max-concurrency.md)
   - API Key 单 Key 最大并发限制：语义、数据库变更、内存追踪、429 响应和管理台 UI
+- [provider-rpm-limit.md](./provider-rpm-limit.md)
+  - Provider 级 RPM 限流与排队等待：语义、滑动窗口实现、429 + Retry-After 和管理台 UI
 
 如果后续继续补文档，优先遵守这条规则：
 

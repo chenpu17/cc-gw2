@@ -39,6 +39,8 @@ export interface FormState {
   nonStreamViaStream: boolean
   useAbsoluteUrl: boolean
   streamUsage: boolean
+  rpmLimit: string
+  rpmMaxWaitSeconds: string
   extraHeaders: FormHeader[]
 }
 
@@ -47,6 +49,8 @@ export interface FormErrors {
   baseUrl?: string
   models?: string
   extraHeaders?: string
+  rpmLimit?: string
+  rpmMaxWaitSeconds?: string
 }
 
 export type ProviderStepId = 'basics' | 'models'
@@ -181,6 +185,8 @@ export function buildInitialState(provider?: ProviderConfig): FormState {
       nonStreamViaStream: false,
       useAbsoluteUrl: false,
       streamUsage: false,
+      rpmLimit: '',
+      rpmMaxWaitSeconds: '',
       extraHeaders: []
     }
   }
@@ -201,6 +207,10 @@ export function buildInitialState(provider?: ProviderConfig): FormState {
     useAbsoluteUrl: provider.useAbsoluteUrl ?? false,
     // Older backends don't return this field; missing/null both map to off.
     streamUsage: provider.streamUsage === true,
+    // Rust serializes unset Option fields as null; missing/null both map to unset.
+    rpmLimit: provider.rpmLimit != null ? String(provider.rpmLimit) : '',
+    rpmMaxWaitSeconds:
+      provider.rpmMaxWaitSeconds != null ? String(provider.rpmMaxWaitSeconds) : '',
     extraHeaders: Object.entries(provider.extraHeaders ?? {}).map(([name, value]) => ({
       name,
       value,
@@ -420,6 +430,42 @@ export function BasicsStep({
                 aria-label={t('providers.drawer.fields.streamUsage')}
               />
             </div>
+          </div>
+
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">{t('providers.drawer.fields.rpmLimitSection')}</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t('providers.drawer.fields.rpmLimitHint')}
+              </p>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <Label className="flex flex-col gap-1.5 text-sm">
+                <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.rpmLimit')}</span>
+                <Input
+                  type="number"
+                  min={1}
+                  value={form.rpmLimit}
+                  onChange={(event) => onFieldChange('rpmLimit')(event.target.value)}
+                  placeholder={t('providers.drawer.fields.rpmLimitPlaceholder')}
+                  aria-invalid={Boolean(errors.rpmLimit)}
+                />
+              </Label>
+              <Label className="flex flex-col gap-1.5 text-sm">
+                <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.rpmMaxWaitSeconds')}</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={3600}
+                  value={form.rpmMaxWaitSeconds}
+                  onChange={(event) => onFieldChange('rpmMaxWaitSeconds')(event.target.value)}
+                  placeholder={t('providers.drawer.fields.rpmMaxWaitPlaceholder')}
+                  aria-invalid={Boolean(errors.rpmMaxWaitSeconds)}
+                />
+              </Label>
+            </div>
+            {errors.rpmLimit ? <p className="mt-2 text-xs text-destructive">{errors.rpmLimit}</p> : null}
+            {errors.rpmMaxWaitSeconds ? <p className="mt-2 text-xs text-destructive">{errors.rpmMaxWaitSeconds}</p> : null}
           </div>
 
           <div className="mt-4 border-t border-border pt-4">

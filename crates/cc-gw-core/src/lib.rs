@@ -5,6 +5,7 @@ pub mod events;
 pub mod models;
 pub mod observability;
 pub mod provider;
+pub mod ratelimit;
 pub mod routing;
 pub mod storage;
 pub mod stream;

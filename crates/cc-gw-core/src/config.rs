@@ -77,6 +77,13 @@ pub struct ProviderConfig {
     /// Opt-in: some OpenAI-compatible upstreams reject/truncate the stream
     /// when they see it, yielding an empty response.
     pub stream_usage: Option<bool>,
+    /// Per-minute upstream request cap for this provider; None or 0 = unlimited.
+    /// When reached, further requests are held in queue (see `ratelimit`) until
+    /// a window slot frees, instead of letting the upstream return 429.
+    pub rpm_limit: Option<u32>,
+    /// Max seconds a request may be held once the RPM cap is reached;
+    /// None = 30s default. Beyond it the request is rejected with 429 + Retry-After.
+    pub rpm_max_wait_seconds: Option<u64>,
     pub models: Vec<ProviderModelConfig>,
     pub extra_headers: HashMap<String, String>,
     #[serde(rename = "type")]
@@ -95,6 +102,8 @@ impl Default for ProviderConfig {
             non_stream_via_stream: None,
             use_absolute_url: None,
             stream_usage: None,
+            rpm_limit: None,
+            rpm_max_wait_seconds: None,
             models: Vec::new(),
             extra_headers: HashMap::new(),
             provider_type: None,
@@ -307,6 +316,31 @@ impl GatewayConfig {
         }
 
         self.validate_provider_ids()?;
+        self.validate_provider_rate_limits()?;
+        Ok(())
+    }
+
+    fn validate_provider_rate_limits(&self) -> Result<()> {
+        const MAX_RPM_LIMIT: u32 = 1_000_000;
+        const MAX_RPM_WAIT_SECONDS: u64 = 86_400;
+        for provider in &self.providers {
+            if let Some(rpm_limit) = provider.rpm_limit {
+                if rpm_limit > MAX_RPM_LIMIT {
+                    bail!(
+                        "Provider {} 的 RPM 限额不能超过 {MAX_RPM_LIMIT}: {rpm_limit}",
+                        provider.id
+                    );
+                }
+            }
+            if let Some(wait_seconds) = provider.rpm_max_wait_seconds {
+                if wait_seconds > MAX_RPM_WAIT_SECONDS {
+                    bail!(
+                        "Provider {} 的 RPM 最长等待秒数不能超过 {MAX_RPM_WAIT_SECONDS}: {wait_seconds}",
+                        provider.id
+                    );
+                }
+            }
+        }
         Ok(())
     }
 

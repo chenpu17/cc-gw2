@@ -49,6 +49,71 @@ impl NetworkByteRecorder {
     }
 }
 
+/// Records the `provider_rate_limit_rejected` gateway event when a request is
+/// turned away because the provider's RPM cap is full and its queue wait would
+/// exceed the configured max wait.
+#[allow(clippy::too_many_arguments)]
+fn record_provider_rate_limit_rejected(
+    state: &AppState,
+    api_key_context: &cc_gw_core::api_keys::ResolvedApiKey,
+    provider_id: &str,
+    rpm_limit: u32,
+    retry_after_seconds: u64,
+    endpoint_id: &str,
+    source_ip: Option<String>,
+    user_agent: Option<String>,
+) {
+    record_and_broadcast_event(
+        state,
+        RecordEventInput {
+            event_type: "provider_rate_limit_rejected".to_string(),
+            level: Some("warn".to_string()),
+            source: Some("proxy".to_string()),
+            title: Some("Provider RPM limit exceeded".to_string()),
+            message: Some(format!(
+                "Request rejected: provider {provider_id} exceeded RPM limit of {rpm_limit}; retry after {retry_after_seconds}s"
+            )),
+            api_key_id: Some(api_key_context.id),
+            api_key_name: Some(api_key_context.name.clone()),
+            endpoint: Some(endpoint_id.to_string()),
+            ip_address: source_ip,
+            user_agent,
+            details: Some(json!({
+                "provider": provider_id,
+                "rpmLimit": rpm_limit,
+                "retryAfterSeconds": retry_after_seconds
+            })),
+            ..RecordEventInput::default()
+        },
+    );
+}
+
+/// 429 response for RPM-capped providers, with `Retry-After` so clients back
+/// off instead of immediately retrying into the same cap.
+fn provider_rate_limited_response(
+    state: &AppState,
+    endpoint_id: &str,
+    retry_after_seconds: u64,
+) -> Response {
+    let mut response = json_response_with_network(
+        state,
+        endpoint_id,
+        StatusCode::TOO_MANY_REQUESTS,
+        &json!({
+            "error": {
+                "code": "provider_rate_limit_exceeded",
+                "message": format!(
+                    "Provider RPM limit exceeded; retry after {retry_after_seconds}s"
+                )
+            }
+        }),
+    );
+    if let Ok(value) = HeaderValue::from_str(&retry_after_seconds.to_string()) {
+        response.headers_mut().insert(header::RETRY_AFTER, value);
+    }
+    response
+}
+
 #[derive(Debug)]
 struct RequestActivityGuard {
     active_requests: Arc<AtomicU64>,
@@ -1244,6 +1309,37 @@ pub(super) async fn proxy_standard_request(
         }
     };
 
+    // Hold-and-wait RPM admission: queue the request when the provider's
+    // per-minute cap is reached instead of letting the upstream answer 429
+    // (which clients tend to retry immediately, feeding a 429 storm).
+    let rpm_limit = target.provider.rpm_limit.unwrap_or(0);
+    let rpm_max_wait = std::time::Duration::from_secs(
+        target
+            .provider
+            .rpm_max_wait_seconds
+            .unwrap_or(DEFAULT_RPM_MAX_WAIT_SECONDS),
+    );
+    if rpm_limit > 0
+        && let AcquireOutcome::Rejected { retry_after } = state
+            .provider_rate_limiter
+            .acquire(&target.provider_id, rpm_limit, rpm_max_wait)
+            .await
+    {
+        let retry_after_seconds =
+            (retry_after.as_secs() + u64::from(retry_after.subsec_millis() > 0)).max(1);
+        record_provider_rate_limit_rejected(
+            &state,
+            &api_key_context,
+            &target.provider_id,
+            rpm_limit,
+            retry_after_seconds,
+            &endpoint_id,
+            source_ip.clone(),
+            user_agent.clone(),
+        );
+        return provider_rate_limited_response(&state, &endpoint_id, retry_after_seconds);
+    }
+
     let stream = body.get("stream").and_then(Value::as_bool).unwrap_or(false);
     let request_log_id = insert_request_log(
         &state.paths.db_path,
@@ -1397,6 +1493,25 @@ pub(super) async fn proxy_standard_request(
                     openai_compatibility_mode,
                     &initial_request_body,
                 ) {
+                    // Each compat retry is a fresh upstream request and must
+                    // respect the provider's RPM cap. On rejection stop
+                    // retrying and keep the already-captured >=400 response so
+                    // the normal response paths still finalize the request log.
+                    if rpm_limit > 0
+                        && matches!(
+                            state
+                                .provider_rate_limiter
+                                .acquire(&target.provider_id, rpm_limit, rpm_max_wait)
+                                .await,
+                            AcquireOutcome::Rejected { .. }
+                        )
+                    {
+                        tracing::warn!(
+                            provider = %target.provider_id,
+                            "OpenAI compatibility retry skipped: provider RPM limit reached"
+                        );
+                        break;
+                    }
                     if let Ok(retry_response) = forward_request(
                         &state.http_client,
                         &target.provider,
@@ -2951,6 +3066,7 @@ mod tests {
             network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
             network_egress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
             runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
+            provider_rate_limiter: Arc::new(ProviderRateLimiter::new()),
             http_client: reqwest::Client::builder().build().expect("client"),
             version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
             version_check_package_name: "@chenpu17/cc-gw".to_string(),

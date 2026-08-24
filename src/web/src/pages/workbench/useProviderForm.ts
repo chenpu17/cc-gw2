@@ -17,6 +17,9 @@ import {
 /** RFC 7230 header field name token: no spaces, colons or control characters. */
 const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
 
+const RPM_LIMIT_MAX = 1_000_000
+const RPM_WAIT_SECONDS_MAX = 3600
+
 interface UseProviderFormOptions {
   mode: 'create' | 'edit'
   provider?: ProviderConfig
@@ -260,6 +263,22 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
       nextErrors.models = t('providers.drawer.errors.defaultInvalid')
     }
 
+    const trimmedRpmLimit = form.rpmLimit.trim()
+    if (trimmedRpmLimit.length > 0) {
+      const parsed = Number(trimmedRpmLimit)
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > RPM_LIMIT_MAX) {
+        nextErrors.rpmLimit = t('providers.drawer.errors.rpmLimitInvalid')
+      }
+    }
+
+    const trimmedRpmWait = form.rpmMaxWaitSeconds.trim()
+    if (trimmedRpmWait.length > 0) {
+      const parsed = Number(trimmedRpmWait)
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > RPM_WAIT_SECONDS_MAX) {
+        nextErrors.rpmMaxWaitSeconds = t('providers.drawer.errors.rpmMaxWaitInvalid')
+      }
+    }
+
     if (form.extraHeaders.length > 0) {
       const seenHeaderNames = new Set<string>()
       for (const header of form.extraHeaders) {
@@ -327,6 +346,20 @@ export function useProviderForm({ mode, provider, existingProviderIds }: UseProv
     // hand-edited configs on their default (off) behavior.
     if (form.streamUsage) {
       payload.streamUsage = true
+    }
+    // Empty inputs omit the fields entirely: absent keeps the unlimited /
+    // default-wait behavior on the backend.
+    const rpmLimit = Number(form.rpmLimit.trim())
+    if (form.rpmLimit.trim().length > 0 && Number.isInteger(rpmLimit) && rpmLimit >= 1) {
+      payload.rpmLimit = rpmLimit
+    }
+    const rpmMaxWaitSeconds = Number(form.rpmMaxWaitSeconds.trim())
+    if (
+      form.rpmMaxWaitSeconds.trim().length > 0 &&
+      Number.isInteger(rpmMaxWaitSeconds) &&
+      rpmMaxWaitSeconds >= 1
+    ) {
+      payload.rpmMaxWaitSeconds = rpmMaxWaitSeconds
     }
     return payload
   }

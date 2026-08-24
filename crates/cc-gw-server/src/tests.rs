@@ -248,6 +248,7 @@ fn build_test_state(
         network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         network_egress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
+        provider_rate_limiter: Arc::new(ProviderRateLimiter::new()),
         http_client: reqwest::Client::builder().build().expect("client"),
         version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
         version_check_package_name: "@chenpu17/cc-gw".to_string(),
@@ -756,7 +757,10 @@ async fn provider_models_probe_returns_normalized_list() {
         .expect("decode probe response");
     assert_eq!(success.get("ok").and_then(Value::as_bool), Some(true));
     assert_eq!(
-        success.get("models").and_then(Value::as_array).map(Vec::len),
+        success
+            .get("models")
+            .and_then(Value::as_array)
+            .map(Vec::len),
         Some(2)
     );
     // Sorted by id; label picked up from display_name.
@@ -6706,6 +6710,227 @@ async fn api_key_concurrency_limit_returns_429_and_records_event() {
 }
 
 #[tokio::test]
+async fn provider_rpm_limit_returns_429_with_retry_after_and_records_event() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            Json(json!({
+                "choices": [{
+                    "message": { "content": "ok" }
+                }],
+                "usage": {
+                    "prompt_tokens": 4,
+                    "completion_tokens": 2
+                }
+            }))
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.defaults.completion = Some("gpt-test".to_string());
+    if let Some(openai) = config.endpoint_routing.get_mut("openai") {
+        openai.defaults.completion = Some("gpt-test".to_string());
+    }
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        // Cap of 1 RPM with no queue wait: the second request must be
+        // rejected synchronously instead of being held or forwarded.
+        rpm_limit: Some(1),
+        rpm_max_wait_seconds: Some(0),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+
+    let (home_dir, gateway_addr, gateway_handle) = spawn_test_gateway(config, "rpm-429").await;
+    let client = reqwest::Client::new();
+
+    let create: Value = client
+        .post(format!("http://{gateway_addr}/api/keys"))
+        .json(&json!({ "name": "rpm-test" }))
+        .send()
+        .await
+        .expect("create api key")
+        .json()
+        .await
+        .expect("decode api key create");
+    let api_key = create
+        .get("key")
+        .and_then(Value::as_str)
+        .expect("created api key")
+        .to_string();
+
+    let request_body = json!({
+        "model": "gpt-test",
+        "messages": [{ "role": "user", "content": "hello" }]
+    });
+
+    // First request consumes the only RPM slot for the window.
+    let first = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .header("x-api-key", &api_key)
+        .json(&request_body)
+        .send()
+        .await
+        .expect("send first request");
+    assert_eq!(first.status(), StatusCode::OK);
+
+    // Second request within the same window is rejected with 429 + Retry-After.
+    let rejected = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .header("x-api-key", &api_key)
+        .json(&request_body)
+        .send()
+        .await
+        .expect("send second request");
+    assert_eq!(rejected.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        rejected
+            .headers()
+            .get(header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok()),
+        Some("60")
+    );
+
+    let rejected_body: Value = rejected.json().await.expect("decode rejected response");
+    assert_eq!(
+        rejected_body
+            .get("error")
+            .and_then(|error| error.get("code"))
+            .and_then(Value::as_str),
+        Some("provider_rate_limit_exceeded")
+    );
+    assert!(
+        rejected_body
+            .get("error")
+            .and_then(|error| error.get("message"))
+            .and_then(Value::as_str)
+            .is_some_and(|message| message.contains("RPM limit"))
+    );
+
+    // The rejection is visible in the event log with the RPM context.
+    let events: Value = client
+        .get(format!("http://{gateway_addr}/api/events?limit=10"))
+        .send()
+        .await
+        .expect("request events")
+        .json()
+        .await
+        .expect("decode events");
+    let rejection_event = events
+        .get("events")
+        .and_then(Value::as_array)
+        .expect("events array")
+        .iter()
+        .find(|event| {
+            event.get("type").and_then(Value::as_str) == Some("provider_rate_limit_rejected")
+        })
+        .expect("find provider rate limit rejection event");
+    assert_eq!(
+        rejection_event.get("level").and_then(Value::as_str),
+        Some("warn")
+    );
+    assert_eq!(
+        rejection_event.get("source").and_then(Value::as_str),
+        Some("proxy")
+    );
+    assert_eq!(
+        rejection_event
+            .get("details")
+            .and_then(|details| details.get("rpmLimit"))
+            .and_then(Value::as_i64),
+        Some(1)
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn provider_without_rpm_limit_is_not_throttled() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            Json(json!({
+                "choices": [{
+                    "message": { "content": "ok" }
+                }],
+                "usage": {
+                    "prompt_tokens": 4,
+                    "completion_tokens": 2
+                }
+            }))
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.defaults.completion = Some("gpt-test".to_string());
+    if let Some(openai) = config.endpoint_routing.get_mut("openai") {
+        openai.defaults.completion = Some("gpt-test".to_string());
+    }
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "rpm-unlimited").await;
+    let client = reqwest::Client::new();
+
+    let create: Value = client
+        .post(format!("http://{gateway_addr}/api/keys"))
+        .json(&json!({ "name": "rpm-unlimited-test" }))
+        .send()
+        .await
+        .expect("create api key")
+        .json()
+        .await
+        .expect("decode api key create");
+    let api_key = create
+        .get("key")
+        .and_then(Value::as_str)
+        .expect("created api key")
+        .to_string();
+
+    for _ in 0..3 {
+        let response = client
+            .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+            .header("x-api-key", &api_key)
+            .json(&json!({
+                "model": "gpt-test",
+                "messages": [{ "role": "user", "content": "hello" }]
+            }))
+            .send()
+            .await
+            .expect("send request");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn dashboard_summary_returns_all_sections() {
     let paths = test_paths("dashboard-summary");
     initialize_database(&paths.db_path).expect("init db");
@@ -6822,7 +7047,11 @@ async fn events_stats_aggregates_by_level_and_respects_days_window() {
         ("provider_proxy_failure", Some("error"), now),
         ("web_auth_login_failure", Some("warn"), now),
         ("openai_compatibility_mode_learned", Some("info"), now),
-        ("provider_proxy_failure", Some("error"), now - 7 * 24 * 60 * 60 * 1000),
+        (
+            "provider_proxy_failure",
+            Some("error"),
+            now - 7 * 24 * 60 * 60 * 1000,
+        ),
     ] {
         record_event(
             &paths.db_path,
@@ -7012,9 +7241,7 @@ data: [DONE]\n\n",
 
     let body = response.text().await.expect("read stream body");
     assert!(
-        body.contains(
-            "\"usage\":{\"input_tokens\":13,\"output_tokens\":5}"
-        ),
+        body.contains("\"usage\":{\"input_tokens\":13,\"output_tokens\":5}"),
         "trailing usage chunk must reach the client message_delta, got: {body}"
     );
     assert!(

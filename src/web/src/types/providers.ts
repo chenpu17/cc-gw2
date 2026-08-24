@@ -14,6 +14,10 @@ export interface ProviderConfig {
   nonStreamViaStream?: boolean
   useAbsoluteUrl?: boolean
   streamUsage?: boolean
+  /** Per-minute upstream request cap; undefined/0 = unlimited. Held in queue when reached. */
+  rpmLimit?: number
+  /** Max seconds a request may be held once the RPM cap is hit; undefined = 30s default. */
+  rpmMaxWaitSeconds?: number
   models?: ProviderModelConfig[]
   extraHeaders?: Record<string, string>
   type?: 'openai' | 'deepseek' | 'kimi' | 'anthropic' | 'huawei' | 'custom'

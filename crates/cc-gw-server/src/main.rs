@@ -42,16 +42,17 @@ use cc_gw_core::{
     observability::{
         LogPayloadUpdate, LogQuery, RequestLogInput, RequestLogUpdate, RuntimeMetricsSampler,
         UsageStats, cleanup_logs_before, clear_all_logs, compact_database, export_logs,
-        finalize_request_log, finalize_stale_request_logs, get_daily_metrics, get_database_info, get_log_detail,
-        get_metrics_overview, get_model_usage_metrics, get_recent_client_activity,
-        get_recent_throughput_metrics, increment_daily_metrics, insert_request_log, mask_log_record_api_key, query_logs,
-        upsert_request_payload,
+        finalize_request_log, finalize_stale_request_logs, get_daily_metrics, get_database_info,
+        get_log_detail, get_metrics_overview, get_model_usage_metrics, get_recent_client_activity,
+        get_recent_throughput_metrics, increment_daily_metrics, insert_request_log,
+        mask_log_record_api_key, query_logs, upsert_request_payload,
     },
     provider::{
         ProviderModelsError, ProviderProtocol, ProxyRequest, fetch_provider_models,
         forward_request, prepare_proxy_payload, provider_prefers_anthropic_protocol,
         provider_prefers_openai_responses_protocol,
     },
+    ratelimit::{AcquireOutcome, DEFAULT_RPM_MAX_WAIT_SECONDS, ProviderRateLimiter},
     routing::{GatewayEndpoint, resolve_route},
     storage::initialize_database,
     stream::{
@@ -94,6 +95,7 @@ struct AppState {
     network_ingress_bytes_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
     network_egress_bytes_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
     runtime_metrics: Arc<Mutex<RuntimeMetricsSampler>>,
+    provider_rate_limiter: Arc<ProviderRateLimiter>,
     http_client: reqwest::Client,
     version_check_registry_base_url: String,
     version_check_package_name: String,
@@ -362,6 +364,7 @@ async fn main() -> Result<()> {
         network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         network_egress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
+        provider_rate_limiter: Arc::new(ProviderRateLimiter::new()),
         http_client: reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(30))
             .build()

@@ -247,6 +247,12 @@ export default {
       modelNonStreamViaStreamDisabled: '禁用',
       setDefault: '设为默认模型',
       removeModel: '删除模型',
+      rpmLimitSection: 'RPM 限流（排队等待）',
+      rpmLimitHint: '达到每分钟请求上限后,新请求会在网关排队等待空位再放行,避免上游 429 与客户端重试风暴;等待超过最长等待时间将返回 429 并附带 Retry-After。两项留空均表示不启用限流。',
+      rpmLimit: '每分钟请求上限（RPM）',
+      rpmLimitPlaceholder: '如 60',
+      rpmMaxWaitSeconds: '最长等待（秒）',
+      rpmMaxWaitPlaceholder: '默认 30',
       extraHeaders: '自定义请求头',
       extraHeadersHint: '附加到发往该 Provider 的上游请求,并覆盖客户端发送的同名头。认证类请求头(Authorization、x-api-key 等)由网关根据 API Key 统一设置,无法在此覆盖。',
       addHeader: '新增请求头',
@@ -283,7 +289,9 @@ export default {
       modelInvalid: '模型 ID 不可为空或重复',
       defaultInvalid: '默认模型必须在模型列表中',
       headerNameInvalid: '请求头名称只能包含字母、数字及 - _ . * + 等字符(不可含空格或冒号)',
-      headerNameDuplicate: '请求头名称不可重复'
+      headerNameDuplicate: '请求头名称不可重复',
+      rpmLimitInvalid: 'RPM 上限须为 1 到 1000000 之间的整数',
+      rpmMaxWaitInvalid: '最长等待须为 1 到 3600 之间的整数秒数'
     },
     toast: {
       saveFailure: '保存失败：{{message}}'

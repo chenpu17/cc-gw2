@@ -248,6 +248,12 @@ export default {
       modelNonStreamViaStreamDisabled: 'Disabled',
       setDefault: 'Set as default',
       removeModel: 'Remove model',
+      rpmLimitSection: 'RPM rate limit (queue & hold)',
+      rpmLimitHint: 'Once the per-minute request cap is reached, new requests are held in a gateway queue until a slot frees up, avoiding upstream 429s and client retry storms; requests held past the max wait are rejected with 429 + Retry-After. Leave both empty to disable limiting.',
+      rpmLimit: 'Requests per minute (RPM)',
+      rpmLimitPlaceholder: 'e.g. 60',
+      rpmMaxWaitSeconds: 'Max wait (seconds)',
+      rpmMaxWaitPlaceholder: 'Default 30',
       extraHeaders: 'Custom request headers',
       extraHeadersHint: 'Appended to upstream requests for this provider and override any same-named headers sent by the client. Authentication headers (Authorization, x-api-key, etc.) are set by the gateway from the API key and cannot be overridden here.',
       addHeader: 'Add header',
@@ -288,7 +294,9 @@ export default {
       modelInvalid: 'Model IDs must be unique and non-empty',
       defaultInvalid: 'Default model must exist in the list',
       headerNameInvalid: 'Header names may only contain letters, digits, and - _ . * + characters (no spaces or colons)',
-      headerNameDuplicate: 'Each header name must be unique'
+      headerNameDuplicate: 'Each header name must be unique',
+      rpmLimitInvalid: 'RPM limit must be an integer between 1 and 1000000',
+      rpmMaxWaitInvalid: 'Max wait must be an integer between 1 and 3600 seconds'
     },
     toast: {
       saveFailure: 'Save failed: {{message}}'
