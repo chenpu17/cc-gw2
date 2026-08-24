@@ -375,8 +375,7 @@ pub(super) async fn api_provider_test(
         Some(draft) => draft,
         None => {
             let config = config_snapshot(&state);
-            let Some(provider) = config.providers.iter().find(|item| item.id == id).cloned()
-            else {
+            let Some(provider) = config.providers.iter().find(|item| item.id == id).cloned() else {
                 return (
                     StatusCode::NOT_FOUND,
                     Json(json!({ "error": "Provider not found" })),
@@ -386,6 +385,19 @@ pub(super) async fn api_provider_test(
             provider
         }
     };
+    // Aggregate providers are virtual (no base URL to probe or test); their
+    // health is the health of their member backends.
+    if provider.is_aggregate() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "ok": false,
+                "status": 0,
+                "statusText": "聚合 Provider 不支持连通性测试，请对其成员 Provider 分别测试"
+            })),
+        )
+            .into_response();
+    }
     let target_model = provider
         .default_model
         .clone()
@@ -574,8 +586,7 @@ pub(super) async fn api_provider_models_probe(
         Some(draft) => draft,
         None => {
             let config = config_snapshot(&state);
-            let Some(provider) = config.providers.iter().find(|item| item.id == id).cloned()
-            else {
+            let Some(provider) = config.providers.iter().find(|item| item.id == id).cloned() else {
                 return (
                     StatusCode::NOT_FOUND,
                     Json(json!({ "error": "Provider not found" })),
@@ -585,6 +596,15 @@ pub(super) async fn api_provider_models_probe(
             provider
         }
     };
+    // Aggregate providers have no upstream to probe for a model list.
+    if provider.is_aggregate() {
+        return Json(json!({
+            "ok": false,
+            "status": 0,
+            "statusText": "聚合 Provider 没有上游模型列表，请从成员 Provider 探测后选择"
+        }))
+        .into_response();
+    }
 
     match fetch_provider_models(&state.http_client, &provider).await {
         Ok(models) => Json(json!({
@@ -671,12 +691,16 @@ pub(crate) struct CustomEndpointsResponse {
     endpoints: Vec<cc_gw_core::config::CustomEndpointConfig>,
 }
 
-pub(super) async fn api_custom_endpoints(State(state): State<AppState>) -> Json<CustomEndpointsResponse> {
+pub(super) async fn api_custom_endpoints(
+    State(state): State<AppState>,
+) -> Json<CustomEndpointsResponse> {
     let config = config_snapshot(&state);
     // Serialize the typed struct directly (not via serde_json::Value / json!): the
     // latter round-trips IndexMap through serde_json::Map (BTreeMap, sorted), which
     // would scramble modelRoutes key order. Direct serialization preserves it.
-    Json(CustomEndpointsResponse { endpoints: config.custom_endpoints })
+    Json(CustomEndpointsResponse {
+        endpoints: config.custom_endpoints,
+    })
 }
 
 pub(super) async fn api_custom_endpoints_create(

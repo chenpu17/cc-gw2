@@ -114,6 +114,159 @@ fn provider_rate_limited_response(
     response
 }
 
+fn now_millis() -> i64 {
+    chrono::Utc::now().timestamp_millis()
+}
+
+fn backend_key(provider_id: &str, model_id: &str) -> String {
+    format!("{provider_id}:{model_id}")
+}
+
+/// Aggregated routes only wait a short RPM grace on non-final candidates so a
+/// busy preferred backend fails over quickly instead of queueing the request
+/// for its full configured max-wait; the final candidate keeps the full
+/// hold-and-wait contract.
+const FAILOVER_CANDIDATE_RPM_MAX_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
+const FAILOVER_SELECTED: &str = "selected";
+const FAILOVER_FAILED_STATUS: &str = "failed:status";
+const FAILOVER_FAILED_TRANSPORT: &str = "failed:transport";
+const FAILOVER_RATE_LIMITED: &str = "rate-limited";
+const FAILOVER_SKIPPED_COOLDOWN: &str = "skipped:cooldown";
+
+/// One candidate attempt in a failover chain, serialized into the
+/// `provider_failover` event's `details.attempts` array.
+struct FailoverAttempt {
+    provider_id: String,
+    model_id: String,
+    outcome: &'static str,
+    status: Option<u16>,
+    error: Option<String>,
+    latency_ms: i64,
+    detail: Option<Value>,
+}
+
+impl FailoverAttempt {
+    fn to_json(&self) -> Value {
+        let mut object = json!({
+            "provider": self.provider_id,
+            "model": self.model_id,
+            "outcome": self.outcome,
+            "latencyMs": self.latency_ms,
+        });
+        if let Some(status) = self.status {
+            object["status"] = json!(status);
+        }
+        if let Some(error) = &self.error {
+            object["error"] = json!(error);
+        }
+        if let Some(detail) = &self.detail {
+            object["detail"] = detail.clone();
+        }
+        object
+    }
+}
+
+struct RateRejection {
+    provider_id: String,
+    rpm_limit: u32,
+    retry_after_seconds: u64,
+}
+
+struct TransportFailure {
+    error: anyhow::Error,
+    provider_id: String,
+    model_id: String,
+}
+
+/// The candidate the request settled on, carrying everything the dispatch
+/// paths need — recomputed per candidate so a failover switch swaps provider
+/// protocol/conversion context along with the target.
+struct SelectedCandidate {
+    provider_id: String,
+    model_id: String,
+    target_protocol: ProviderProtocol,
+    cross_protocol: bool,
+    upstream_stream: bool,
+    backend_key: String,
+    policy: FailoverPolicy,
+}
+
+/// Emit the `provider_failover` gateway event documenting a degraded chain:
+/// either a successful switch to a later candidate (`final_candidate` set) or
+/// every candidate being unavailable. Only sent for multi-candidate routes,
+/// so direct single-provider traffic never produces these events.
+#[allow(clippy::too_many_arguments)]
+fn emit_provider_failover_event(
+    state: &AppState,
+    api_key_context: &cc_gw_core::api_keys::ResolvedApiKey,
+    endpoint_id: &str,
+    source_ip: Option<&str>,
+    user_agent: Option<&str>,
+    requested_model: Option<&str>,
+    attempts: &[FailoverAttempt],
+    final_candidate: Option<&SelectedCandidate>,
+) {
+    let model = requested_model.unwrap_or_default();
+    let attempts_json: Vec<Value> = attempts.iter().map(FailoverAttempt::to_json).collect();
+    let message = match final_candidate {
+        Some(candidate) => format!(
+            "模型 {model} 的首选后端不可用，已自动切换到 Provider {}（共 {} 次尝试）",
+            candidate.provider_id,
+            attempts.len()
+        ),
+        None => format!(
+            "模型 {model} 的全部聚合后端当前不可用（共 {} 次尝试）",
+            attempts.len()
+        ),
+    };
+    record_and_broadcast_event(
+        state,
+        RecordEventInput {
+            event_type: "provider_failover".to_string(),
+            level: Some("warn".to_string()),
+            source: Some("proxy".to_string()),
+            title: Some("Provider failover".to_string()),
+            message: Some(message),
+            endpoint: Some(endpoint_id.to_string()),
+            ip_address: source_ip.map(ToString::to_string),
+            api_key_id: Some(api_key_context.id),
+            api_key_name: Some(api_key_context.name.clone()),
+            user_agent: user_agent.map(ToString::to_string),
+            details: Some(json!({
+                "model": model,
+                "provider": final_candidate.map(|candidate| candidate.provider_id.clone()),
+                "finalModel": final_candidate.map(|candidate| candidate.model_id.clone()),
+                "attempts": attempts_json,
+            })),
+            ..RecordEventInput::default()
+        },
+    );
+}
+
+/// Target upstream protocol for a provider, extracted from the proxy flow so
+/// the failover loop can recompute it per candidate.
+fn infer_target_protocol(
+    provider: &cc_gw_core::config::ProviderConfig,
+    protocol: ProviderProtocol,
+) -> ProviderProtocol {
+    if provider_prefers_anthropic_protocol(provider) {
+        ProviderProtocol::AnthropicMessages
+    } else {
+        match protocol {
+            ProviderProtocol::AnthropicMessages => {
+                if provider_prefers_openai_responses_protocol(provider) {
+                    ProviderProtocol::OpenAiResponses
+                } else {
+                    ProviderProtocol::OpenAiChatCompletions
+                }
+            }
+            ProviderProtocol::OpenAiChatCompletions => ProviderProtocol::OpenAiChatCompletions,
+            ProviderProtocol::OpenAiResponses => ProviderProtocol::OpenAiResponses,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct RequestActivityGuard {
     active_requests: Arc<AtomicU64>,
@@ -1286,7 +1439,7 @@ pub(super) async fn proxy_standard_request(
     };
 
     let requested_model = extract_requested_model(&body);
-    let target = match resolve_route(
+    let plan = match resolve_route_plan(
         &config,
         endpoint,
         protocol,
@@ -1294,7 +1447,7 @@ pub(super) async fn proxy_standard_request(
         requested_model,
         extract_thinking(&body),
     ) {
-        Ok(target) => target,
+        Ok(plan) => plan,
         Err(error) => {
             return json_response_with_network(
                 &state,
@@ -1309,533 +1462,792 @@ pub(super) async fn proxy_standard_request(
         }
     };
 
-    // Hold-and-wait RPM admission: queue the request when the provider's
-    // per-minute cap is reached instead of letting the upstream answer 429
-    // (which clients tend to retry immediately, feeding a 429 storm).
-    let rpm_limit = target.provider.rpm_limit.unwrap_or(0);
-    let rpm_max_wait = std::time::Duration::from_secs(
-        target
-            .provider
-            .rpm_max_wait_seconds
-            .unwrap_or(DEFAULT_RPM_MAX_WAIT_SECONDS),
-    );
-    if rpm_limit > 0
-        && let AcquireOutcome::Rejected { retry_after } = state
-            .provider_rate_limiter
-            .acquire(&target.provider_id, rpm_limit, rpm_max_wait)
-            .await
-    {
-        let retry_after_seconds =
-            (retry_after.as_secs() + u64::from(retry_after.subsec_millis() > 0)).max(1);
-        record_provider_rate_limit_rejected(
-            &state,
-            &api_key_context,
-            &target.provider_id,
-            rpm_limit,
-            retry_after_seconds,
-            &endpoint_id,
-            source_ip.clone(),
-            user_agent.clone(),
-        );
-        return provider_rate_limited_response(&state, &endpoint_id, retry_after_seconds);
-    }
-
+    // Request-wide values that do not depend on the resolved candidate.
     let stream = body.get("stream").and_then(Value::as_bool).unwrap_or(false);
-    let request_log_id = insert_request_log(
-        &state.paths.db_path,
-        &RequestLogInput {
-            timestamp: started_at,
-            session_id: session_id.clone(),
-            source_ip: source_ip.clone(),
-            endpoint: endpoint_id.clone(),
-            provider: target.provider_id.clone(),
-            model: target.model_id.clone(),
-            client_model: requested_model.map(ToString::to_string),
-            stream,
-            api_key_id: Some(api_key_context.id),
-            api_key_name: Some(api_key_context.name.clone()),
-            api_key_value: encrypted_api_key_value.clone(),
-        },
-    )
-    .ok();
-    let mut request_log_finalizer = request_log_id
-        .map(|log_id| RequestLogFinalizer::new(state.paths.db_path.clone(), log_id, started_at));
-    let provider_type = provider_type_name(&target.provider);
-    let target_protocol = if provider_prefers_anthropic_protocol(&target.provider) {
-        ProviderProtocol::AnthropicMessages
-    } else {
-        match protocol {
-            ProviderProtocol::AnthropicMessages => {
-                if provider_prefers_openai_responses_protocol(&target.provider) {
-                    ProviderProtocol::OpenAiResponses
-                } else {
-                    ProviderProtocol::OpenAiChatCompletions
-                }
-            }
-            ProviderProtocol::OpenAiChatCompletions => ProviderProtocol::OpenAiChatCompletions,
-            ProviderProtocol::OpenAiResponses => ProviderProtocol::OpenAiResponses,
-        }
-    };
-
     let endpoint_compatibility_enabled =
         openai_compatibility_enabled_for_endpoint(&config, endpoint, protocol);
-    let converted_request_body = build_request_body_for_target(
-        &body,
-        protocol,
-        target_protocol,
-        provider_type,
-        endpoint_compatibility_enabled,
-        target.provider.stream_usage.unwrap_or(false),
-    );
-    let cross_protocol = !matches!(
-        (protocol, target_protocol),
-        (
-            ProviderProtocol::AnthropicMessages,
-            ProviderProtocol::AnthropicMessages
-        ) | (
-            ProviderProtocol::OpenAiChatCompletions,
-            ProviderProtocol::OpenAiChatCompletions
-        ) | (
-            ProviderProtocol::OpenAiResponses,
-            ProviderProtocol::OpenAiResponses
-        )
-    );
-    let request_declares_tools =
-        openai_request_declares_tools(&converted_request_body, target_protocol);
-    let request_uses_reasoning_tokens =
-        openai_request_uses_reasoning_tokens(&converted_request_body, target_protocol);
-    let openai_compatibility_enabled = endpoint_compatibility_enabled && cross_protocol;
-    let openai_compatibility_mode = if openai_compatibility_enabled
-        && matches!(
-            target_protocol,
-            ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
-        ) {
-        let cached = cached_openai_compatibility_mode(
-            &state,
-            &target.provider_id,
-            target_protocol,
-            &target.model_id,
-            request_declares_tools,
-            request_uses_reasoning_tokens,
-        );
-        if request_declares_tools && cached == OpenAiCompatibilityMode::Compatibility {
-            OpenAiCompatibilityMode::ToolHistoryCompatibility
-        } else {
-            cached
-        }
-    } else {
-        OpenAiCompatibilityMode::Standard
-    };
-    let initial_request_body = apply_openai_compatibility_mode(
-        &converted_request_body,
-        target_protocol,
-        openai_compatibility_mode,
-    );
-    let target_model_id = target.model_id.clone();
     let sanitize_classifier_response = is_claude_code_auto_mode_classifier_request(protocol, &body);
     let emit_anthropic_reasoning =
         protocol != ProviderProtocol::AnthropicMessages || thinking_explicitly_enabled(&body);
     let allow_anthropic_reasoning_fallback = !sanitize_classifier_response;
-    let upstream_stream =
-        stream || target_uses_non_stream_via_stream(&target.provider, &target_model_id);
-    let initial_upstream_body = prepare_proxy_payload(
-        initial_request_body.clone(),
-        &target_model_id,
-        upstream_stream,
-    );
-    let mut upstream_request_payload = if request_payload_storage && initial_upstream_body != body {
-        serde_json::to_string(&initial_upstream_body).ok()
-    } else {
-        None
-    };
-    if let (Some(log_id), true) = (request_log_id, request_payload_storage) {
-        let _ = upsert_request_payload(
-            &state.paths.db_path,
-            log_id,
-            &LogPayloadUpdate {
-                client_request: client_request_payload.as_deref(),
-                upstream_request: upstream_request_payload.as_deref(),
-                ..LogPayloadUpdate::default()
+    let upstream_timeout = (!stream).then_some(UPSTREAM_NON_STREAM_TIMEOUT);
+    let upstream_query = query.clone();
+
+    // Serial failover across the route's candidate chain. Non-aggregated
+    // routes always carry exactly one candidate and hit the `is_last` path
+    // everywhere, so their behavior matches the previous single-target flow:
+    // trigger statuses pass through untouched, RPM rejections answer 429
+    // immediately, and only the health-registry bookkeeping is new (and
+    // invisible to the direct request itself).
+    let total_candidates = plan.candidates.len();
+    let failover_policy = plan.failover;
+    let direct_policy = FailoverPolicy::default();
+
+    let mut attempts: Vec<FailoverAttempt> = Vec::new();
+    let mut last_rate_rejection: Option<RateRejection> = None;
+    let mut shortest_cooldown_ms: Option<i64> = None;
+    let mut terminal_transport: Option<TransportFailure> = None;
+    let mut terminal_response: Option<(SelectedCandidate, reqwest::Response)> = None;
+    let mut selected: Option<(SelectedCandidate, reqwest::Response)> = None;
+
+    // Created lazily before the first forwarded attempt so requests turned
+    // away before any forward (RPM / all-cooling) keep having no log row,
+    // matching the pre-failover RPM rejection behavior.
+    let mut request_log_id: Option<i64> = None;
+    let mut request_log_finalizer: Option<RequestLogFinalizer> = None;
+
+    for (index, target) in plan.candidates.iter().enumerate() {
+        let is_last = index + 1 == total_candidates;
+        let policy = failover_policy.as_ref().unwrap_or(&direct_policy);
+        let backend_key = backend_key(&target.provider_id, &target.model_id);
+
+        // Cooling backends are skipped on aggregated routes only; direct
+        // routes never skip, though their failures still feed the registry.
+        if failover_policy.is_some()
+            && let Some(remaining_ms) = state
+                .backend_health
+                .cooldown_remaining(&backend_key, now_millis())
+        {
+            shortest_cooldown_ms = Some(shortest_cooldown_ms.unwrap_or(i64::MAX).min(remaining_ms));
+            attempts.push(FailoverAttempt {
+                provider_id: target.provider_id.clone(),
+                model_id: target.model_id.clone(),
+                outcome: FAILOVER_SKIPPED_COOLDOWN,
+                status: None,
+                error: None,
+                latency_ms: 0,
+                detail: Some(json!({ "cooldownRemainingMs": remaining_ms })),
+            });
+            continue;
+        }
+
+        // Hold-and-wait RPM admission: queue the request when the provider's
+        // per-minute cap is reached instead of letting the upstream answer 429
+        // (which clients tend to retry immediately, feeding a 429 storm).
+        // Non-final candidates only wait a short grace so a busy preferred
+        // backend fails over quickly instead of queueing for its full
+        // max-wait; the final candidate keeps the full hold-and-wait contract.
+        // A rejection is a local admission decision, not a backend failure,
+        // so it never feeds the health registry.
+        let rpm_limit = target.provider.rpm_limit.unwrap_or(0);
+        let configured_wait = std::time::Duration::from_secs(
+            target
+                .provider
+                .rpm_max_wait_seconds
+                .unwrap_or(DEFAULT_RPM_MAX_WAIT_SECONDS),
+        );
+        let rpm_max_wait = if is_last {
+            configured_wait
+        } else {
+            configured_wait.min(FAILOVER_CANDIDATE_RPM_MAX_WAIT)
+        };
+        if rpm_limit > 0
+            && let AcquireOutcome::Rejected { retry_after } = state
+                .provider_rate_limiter
+                .acquire(&target.provider_id, rpm_limit, rpm_max_wait)
+                .await
+        {
+            let retry_after_seconds =
+                (retry_after.as_secs() + u64::from(retry_after.subsec_millis() > 0)).max(1);
+            attempts.push(FailoverAttempt {
+                provider_id: target.provider_id.clone(),
+                model_id: target.model_id.clone(),
+                outcome: FAILOVER_RATE_LIMITED,
+                status: None,
+                error: None,
+                latency_ms: 0,
+                detail: Some(json!({
+                    "rpmLimit": rpm_limit,
+                    "retryAfterSeconds": retry_after_seconds
+                })),
+            });
+            last_rate_rejection = Some(RateRejection {
+                provider_id: target.provider_id.clone(),
+                rpm_limit,
+                retry_after_seconds,
+            });
+            continue;
+        }
+
+        // The first candidate that actually forwards creates the request log
+        // row (carrying that first attempted backend), so every later fail
+        // path has a row to finalize. The actually-serving backend is
+        // rewritten at finalize time via `RequestLogUpdate`.
+        if request_log_id.is_none() {
+            request_log_id = insert_request_log(
+                &state.paths.db_path,
+                &RequestLogInput {
+                    timestamp: started_at,
+                    session_id: session_id.clone(),
+                    source_ip: source_ip.clone(),
+                    endpoint: endpoint_id.clone(),
+                    provider: target.provider_id.clone(),
+                    model: target.model_id.clone(),
+                    client_model: requested_model.map(ToString::to_string),
+                    stream,
+                    api_key_id: Some(api_key_context.id),
+                    api_key_name: Some(api_key_context.name.clone()),
+                    api_key_value: encrypted_api_key_value.clone(),
+                },
+            )
+            .ok();
+            request_log_finalizer = request_log_id.map(|log_id| {
+                RequestLogFinalizer::new(state.paths.db_path.clone(), log_id, started_at)
+            });
+            if let (Some(log_id), true) = (request_log_id, request_payload_storage) {
+                let _ = upsert_request_payload(
+                    &state.paths.db_path,
+                    log_id,
+                    &LogPayloadUpdate {
+                        client_request: client_request_payload.as_deref(),
+                        ..LogPayloadUpdate::default()
+                    },
+                );
+            }
+        }
+
+        // Per-candidate derivation: protocol inference, request conversion
+        // and compat-mode learning are all keyed to the provider.
+        let provider_type = provider_type_name(&target.provider);
+        let target_protocol = infer_target_protocol(&target.provider, protocol);
+        let converted_request_body = build_request_body_for_target(
+            &body,
+            protocol,
+            target_protocol,
+            provider_type,
+            endpoint_compatibility_enabled,
+            target.provider.stream_usage.unwrap_or(false),
+        );
+        let cross_protocol = !matches!(
+            (protocol, target_protocol),
+            (
+                ProviderProtocol::AnthropicMessages,
+                ProviderProtocol::AnthropicMessages
+            ) | (
+                ProviderProtocol::OpenAiChatCompletions,
+                ProviderProtocol::OpenAiChatCompletions
+            ) | (
+                ProviderProtocol::OpenAiResponses,
+                ProviderProtocol::OpenAiResponses
+            )
+        );
+        let request_declares_tools =
+            openai_request_declares_tools(&converted_request_body, target_protocol);
+        let request_uses_reasoning_tokens =
+            openai_request_uses_reasoning_tokens(&converted_request_body, target_protocol);
+        let openai_compatibility_enabled = endpoint_compatibility_enabled && cross_protocol;
+        let openai_compatibility_mode = if openai_compatibility_enabled
+            && matches!(
+                target_protocol,
+                ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
+            ) {
+            let cached = cached_openai_compatibility_mode(
+                &state,
+                &target.provider_id,
+                target_protocol,
+                &target.model_id,
+                request_declares_tools,
+                request_uses_reasoning_tokens,
+            );
+            if request_declares_tools && cached == OpenAiCompatibilityMode::Compatibility {
+                OpenAiCompatibilityMode::ToolHistoryCompatibility
+            } else {
+                cached
+            }
+        } else {
+            OpenAiCompatibilityMode::Standard
+        };
+        let initial_request_body = apply_openai_compatibility_mode(
+            &converted_request_body,
+            target_protocol,
+            openai_compatibility_mode,
+        );
+        let upstream_stream =
+            stream || target_uses_non_stream_via_stream(&target.provider, &target.model_id);
+        let initial_upstream_body = prepare_proxy_payload(
+            initial_request_body.clone(),
+            &target.model_id,
+            upstream_stream,
+        );
+        let upstream_request_payload = if request_payload_storage && initial_upstream_body != body {
+            serde_json::to_string(&initial_upstream_body).ok()
+        } else {
+            None
+        };
+        if let (Some(log_id), true) = (request_log_id, request_payload_storage) {
+            let _ = upsert_request_payload(
+                &state.paths.db_path,
+                log_id,
+                &LogPayloadUpdate {
+                    upstream_request: upstream_request_payload.as_deref(),
+                    ..LogPayloadUpdate::default()
+                },
+            );
+        }
+
+        let attempt_started_at = now_millis();
+        let mut response = match forward_request(
+            &state.http_client,
+            &target.provider,
+            target_protocol,
+            ProxyRequest {
+                model: target.model_id.clone(),
+                body: initial_request_body.clone(),
+                stream: upstream_stream,
+                incoming_headers: headers.clone(),
+                passthrough_headers: HeaderMap::new(),
+                query: upstream_query.clone(),
             },
+            upstream_timeout,
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                state
+                    .backend_health
+                    .record_failure(&backend_key, policy, now_millis());
+                attempts.push(FailoverAttempt {
+                    provider_id: target.provider_id.clone(),
+                    model_id: target.model_id.clone(),
+                    outcome: FAILOVER_FAILED_TRANSPORT,
+                    status: None,
+                    error: Some(sanitize_upstream_error(&error)),
+                    latency_ms: now_millis() - attempt_started_at,
+                    detail: None,
+                });
+                terminal_transport = Some(TransportFailure {
+                    error,
+                    provider_id: target.provider_id.clone(),
+                    model_id: target.model_id.clone(),
+                });
+                continue;
+            }
+        };
+
+        // OpenAI compatibility retry stays inside the candidate: it repairs
+        // body compatibility against the same provider while the outer loop
+        // switches providers. Each compat retry is a fresh upstream request
+        // and must respect the provider's RPM cap; on rejection stop
+        // retrying and keep the already-captured >=400 response so the outer
+        // failover check still sees it.
+        if openai_compatibility_enabled
+            && matches!(
+                target_protocol,
+                ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
+            )
+            && response.status().as_u16() >= 400
+        {
+            for (retry_mode, retry_body) in retry_bodies_for_openai_compatibility(
+                &converted_request_body,
+                target_protocol,
+                openai_compatibility_mode,
+                &initial_request_body,
+            ) {
+                if rpm_limit > 0
+                    && matches!(
+                        state
+                            .provider_rate_limiter
+                            .acquire(&target.provider_id, rpm_limit, rpm_max_wait)
+                            .await,
+                        AcquireOutcome::Rejected { .. }
+                    )
+                {
+                    tracing::warn!(
+                        provider = %target.provider_id,
+                        "OpenAI compatibility retry skipped: provider RPM limit reached"
+                    );
+                    break;
+                }
+                if let Ok(retry_response) = forward_request(
+                    &state.http_client,
+                    &target.provider,
+                    target_protocol,
+                    ProxyRequest {
+                        model: target.model_id.clone(),
+                        body: retry_body.clone(),
+                        stream: upstream_stream,
+                        incoming_headers: headers.clone(),
+                        passthrough_headers: HeaderMap::new(),
+                        query: upstream_query.clone(),
+                    },
+                    upstream_timeout,
+                )
+                .await
+                {
+                    if retry_response.status().as_u16() < 400 {
+                        response = retry_response;
+                        remember_openai_compatibility_mode(
+                            &state,
+                            &target.provider_id,
+                            target_protocol,
+                            &target.model_id,
+                            request_declares_tools,
+                            request_uses_reasoning_tokens,
+                            retry_mode,
+                        );
+                        record_and_broadcast_event(
+                            &state,
+                            RecordEventInput {
+                                event_type: "openai_compatibility_mode_learned".to_string(),
+                                level: Some("info".to_string()),
+                                source: Some("proxy".to_string()),
+                                title: Some("OpenAI compatibility mode learned".to_string()),
+                                message: Some(format!(
+                                    "Provider {} accepted {} requests after retrying in {} mode",
+                                    target.provider_id,
+                                    provider_protocol_name(target_protocol),
+                                    openai_compatibility_mode_name(retry_mode)
+                                )),
+                                endpoint: Some(endpoint_id.clone()),
+                                ip_address: source_ip.clone(),
+                                api_key_id: Some(api_key_context.id),
+                                api_key_name: Some(api_key_context.name.clone()),
+                                api_key_value: encrypted_api_key_value.clone(),
+                                user_agent: user_agent.clone(),
+                                mode: Some(openai_compatibility_mode_name(retry_mode).to_string()),
+                                details: Some(json!({
+                                    "provider": target.provider_id,
+                                    "model": target.model_id,
+                                    "requestProtocol": provider_protocol_name(protocol),
+                                    "targetProtocol": provider_protocol_name(target_protocol)
+                                })),
+                                ..RecordEventInput::default()
+                            },
+                        );
+                        let retry_upstream_body = prepare_proxy_payload(
+                            retry_body.clone(),
+                            &target.model_id,
+                            upstream_stream,
+                        );
+                        let retry_payload =
+                            if request_payload_storage && retry_upstream_body != body {
+                                serde_json::to_string(&retry_upstream_body).ok()
+                            } else {
+                                None
+                            };
+                        if let (Some(log_id), true) = (request_log_id, request_payload_storage) {
+                            let _ = upsert_request_payload(
+                                &state.paths.db_path,
+                                log_id,
+                                &LogPayloadUpdate {
+                                    upstream_request: retry_payload.as_deref(),
+                                    ..LogPayloadUpdate::default()
+                                },
+                            );
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        let candidate = SelectedCandidate {
+            provider_id: target.provider_id.clone(),
+            model_id: target.model_id.clone(),
+            target_protocol,
+            cross_protocol,
+            upstream_stream,
+            backend_key,
+            policy: *policy,
+        };
+        let status = response.status().as_u16();
+        let attempt_latency = now_millis() - attempt_started_at;
+        if policy.triggers.contains(status) {
+            // The trigger-status check runs before any into_* consumer touches
+            // the response — the last moment a candidate switch is possible
+            // without having written a byte to the client. The final
+            // candidate passes its upstream error through unchanged instead
+            // (exactly the pre-failover single-target behavior).
+            state
+                .backend_health
+                .record_failure(&candidate.backend_key, policy, now_millis());
+            attempts.push(FailoverAttempt {
+                provider_id: target.provider_id.clone(),
+                model_id: target.model_id.clone(),
+                outcome: FAILOVER_FAILED_STATUS,
+                status: Some(status),
+                error: None,
+                latency_ms: attempt_latency,
+                detail: None,
+            });
+            if is_last {
+                selected = Some((candidate, response));
+                break;
+            }
+            terminal_response = Some((candidate, response));
+            continue;
+        }
+
+        state
+            .backend_health
+            .record_success(&candidate.backend_key, now_millis());
+        attempts.push(FailoverAttempt {
+            provider_id: target.provider_id.clone(),
+            model_id: target.model_id.clone(),
+            outcome: FAILOVER_SELECTED,
+            status: Some(status),
+            error: None,
+            latency_ms: attempt_latency,
+            detail: None,
+        });
+        selected = Some((candidate, response));
+        break;
+    }
+
+    let (candidate, response) = match selected {
+        Some(pair) => pair,
+        None if attempts.iter().all(|attempt| {
+            matches!(
+                attempt.outcome,
+                FAILOVER_RATE_LIMITED | FAILOVER_SKIPPED_COOLDOWN
+            )
+        }) =>
+        {
+            // Every candidate was turned away before any forward: keep the
+            // existing RPM-rejection contract when a rate limit is the cause,
+            // or answer an all-cooling 429 so clients back off until the
+            // shortest cooldown expires.
+            if let Some(rejection) = last_rate_rejection {
+                record_provider_rate_limit_rejected(
+                    &state,
+                    &api_key_context,
+                    &rejection.provider_id,
+                    rejection.rpm_limit,
+                    rejection.retry_after_seconds,
+                    &endpoint_id,
+                    source_ip.clone(),
+                    user_agent.clone(),
+                );
+                return provider_rate_limited_response(
+                    &state,
+                    &endpoint_id,
+                    rejection.retry_after_seconds,
+                );
+            }
+            let retry_after_seconds = shortest_cooldown_ms
+                .map(|millis| ((millis + 999) / 1000).max(1) as u64)
+                .unwrap_or(1);
+            emit_provider_failover_event(
+                &state,
+                &api_key_context,
+                &endpoint_id,
+                source_ip.as_deref(),
+                user_agent.as_deref(),
+                requested_model,
+                &attempts,
+                None,
+            );
+            let mut response = json_response_with_network(
+                &state,
+                &endpoint_id,
+                StatusCode::TOO_MANY_REQUESTS,
+                &json!({
+                    "error": {
+                        "code": "aggregate_backends_unavailable",
+                        "message": "All aggregate backends are cooling down after repeated failures; retry later"
+                    }
+                }),
+            );
+            if let Ok(value) = HeaderValue::from_str(&retry_after_seconds.to_string()) {
+                response.headers_mut().insert(header::RETRY_AFTER, value);
+            }
+            return response;
+        }
+        None => {
+            // At least one real upstream attempt failed. A transport failure
+            // keeps the classic 502 + provider_proxy_failure contract; a
+            // captured trigger-status response is passed through unchanged.
+            if let Some(failure) = terminal_transport {
+                tracing::warn!(
+                    error = %failure.error,
+                    provider = %failure.provider_id,
+                    "upstream request failed"
+                );
+                let latency_ms = now_millis() - started_at;
+                if let Some(finalizer) = request_log_finalizer.as_mut() {
+                    finalizer.fail(&RequestLogUpdate {
+                        latency_ms: Some(latency_ms),
+                        status_code: Some(502),
+                        error: Some(failure.error.to_string()),
+                        error_source: Some(ERROR_SOURCE_UPSTREAM.to_string()),
+                        provider: Some(failure.provider_id.clone()),
+                        model: Some(failure.model_id.clone()),
+                        ..RequestLogUpdate::default()
+                    });
+                    let _ = increment_daily_metrics(
+                        &state.paths.db_path,
+                        &endpoint_id,
+                        latency_ms,
+                        &UsageStats::default(),
+                    );
+                }
+                if total_candidates > 1 {
+                    emit_provider_failover_event(
+                        &state,
+                        &api_key_context,
+                        &endpoint_id,
+                        source_ip.as_deref(),
+                        user_agent.as_deref(),
+                        requested_model,
+                        &attempts,
+                        None,
+                    );
+                }
+                record_and_broadcast_event(
+                    &state,
+                    RecordEventInput {
+                        event_type: "provider_proxy_failure".to_string(),
+                        level: Some("error".to_string()),
+                        source: Some("proxy".to_string()),
+                        title: Some("Provider request failed".to_string()),
+                        message: Some(failure.error.to_string()),
+                        endpoint: Some(endpoint_id.clone()),
+                        api_key_id: Some(api_key_context.id),
+                        api_key_name: Some(api_key_context.name),
+                        api_key_value: encrypted_api_key_value,
+                        user_agent,
+                        details: Some(json!({ "provider": failure.provider_id })),
+                        ..RecordEventInput::default()
+                    },
+                );
+                return json_response_with_network(
+                    &state,
+                    &endpoint_id,
+                    StatusCode::BAD_GATEWAY,
+                    &json!({
+                        "error": {
+                            "message": sanitize_upstream_error(&failure.error),
+                            "provider": failure.provider_id
+                        }
+                    }),
+                );
+            }
+            match terminal_response {
+                Some(pair) => pair,
+                None => unreachable!("failover loop ended without a selection or terminal failure"),
+            }
+        }
+    };
+
+    if total_candidates > 1
+        && attempts
+            .iter()
+            .any(|attempt| attempt.outcome != FAILOVER_SELECTED)
+    {
+        emit_provider_failover_event(
+            &state,
+            &api_key_context,
+            &endpoint_id,
+            source_ip.as_deref(),
+            user_agent.as_deref(),
+            requested_model,
+            &attempts,
+            Some(&candidate),
         );
     }
 
-    let upstream_query = query.clone();
-    let upstream_timeout = (!stream).then_some(UPSTREAM_NON_STREAM_TIMEOUT);
-    let proxy_result = forward_request(
-        &state.http_client,
-        &target.provider,
-        target_protocol,
-        ProxyRequest {
-            model: target_model_id.clone(),
-            body: initial_request_body.clone(),
-            stream: upstream_stream,
-            incoming_headers: headers.clone(),
-            passthrough_headers: HeaderMap::new(),
-            query: upstream_query.clone(),
-        },
-        upstream_timeout,
-    )
-    .await;
-
-    match proxy_result {
-        Ok(mut response) => {
-            if openai_compatibility_enabled
-                && matches!(
-                    target_protocol,
-                    ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses
-                )
-                && response.status().as_u16() >= 400
-            {
-                for (retry_mode, retry_body) in retry_bodies_for_openai_compatibility(
-                    &converted_request_body,
-                    target_protocol,
-                    openai_compatibility_mode,
-                    &initial_request_body,
-                ) {
-                    // Each compat retry is a fresh upstream request and must
-                    // respect the provider's RPM cap. On rejection stop
-                    // retrying and keep the already-captured >=400 response so
-                    // the normal response paths still finalize the request log.
-                    if rpm_limit > 0
-                        && matches!(
-                            state
-                                .provider_rate_limiter
-                                .acquire(&target.provider_id, rpm_limit, rpm_max_wait)
-                                .await,
-                            AcquireOutcome::Rejected { .. }
-                        )
-                    {
-                        tracing::warn!(
-                            provider = %target.provider_id,
-                            "OpenAI compatibility retry skipped: provider RPM limit reached"
-                        );
-                        break;
-                    }
-                    if let Ok(retry_response) = forward_request(
-                        &state.http_client,
-                        &target.provider,
-                        target_protocol,
-                        ProxyRequest {
-                            model: target_model_id.clone(),
-                            body: retry_body.clone(),
-                            stream: upstream_stream,
-                            incoming_headers: headers.clone(),
-                            passthrough_headers: HeaderMap::new(),
-                            query: upstream_query.clone(),
+    {
+        let target_protocol = candidate.target_protocol;
+        let cross_protocol = candidate.cross_protocol;
+        let upstream_stream = candidate.upstream_stream;
+        let streaming_log_context = request_log_id.map(|log_id| StreamingLogContext {
+            db_path: state.paths.db_path.clone(),
+            log_id,
+            endpoint_id: endpoint_id.clone(),
+            api_key_id: api_key_context.id,
+            started_at,
+            store_response_payload: response_payload_storage_enabled(&config),
+            backend_provider: Some(candidate.provider_id.clone()),
+            backend_model: Some(candidate.model_id.clone()),
+        });
+        if stream {
+            // Log ownership moves to the streaming finalizer inside the
+            // response stream; disarm the synchronous guard.
+            if let Some(finalizer) = request_log_finalizer.take() {
+                finalizer.disarm();
+            }
+        }
+        if upstream_stream && !stream {
+            let (
+                result,
+                usage,
+                upstream_response_payload,
+                client_response_payload,
+                response_status,
+            ) = into_materialized_stream_response(
+                response,
+                protocol,
+                target_protocol,
+                &candidate.provider_id,
+                requested_model.unwrap_or(""),
+                sanitize_classifier_response,
+                emit_anthropic_reasoning,
+                allow_anthropic_reasoning_fallback,
+                network_recorder.clone(),
+            )
+            .await;
+            let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
+            let status_code = response_status.as_u16() as i64;
+            // A 200 handshake whose stream turned out to carry an error
+            // event still means the backend is unhealthy — record it so
+            // the next request skips this backend (in-request failover is
+            // not attempted here; the error is passed through as today).
+            if candidate.policy.triggers.contains(response_status.as_u16()) {
+                state.backend_health.record_failure(
+                    &candidate.backend_key,
+                    &candidate.policy,
+                    now_millis(),
+                );
+            }
+            if let Some(log_id) = request_log_id {
+                let update = RequestLogUpdate {
+                    latency_ms: Some(latency_ms),
+                    status_code: Some(status_code),
+                    error_source: upstream_error_source_for_status(status_code),
+                    input_tokens: Some(usage.input_tokens),
+                    output_tokens: Some(usage.output_tokens),
+                    cached_tokens: Some(usage.cached_tokens),
+                    cache_read_tokens: Some(usage.cache_read_tokens),
+                    cache_creation_tokens: Some(usage.cache_creation_tokens),
+                    provider: Some(candidate.provider_id.clone()),
+                    model: Some(candidate.model_id.clone()),
+                    ..RequestLogUpdate::default()
+                };
+                if let Some(finalizer) = request_log_finalizer.as_mut() {
+                    finalizer.finish(&update);
+                }
+                let _ =
+                    increment_daily_metrics(&state.paths.db_path, &endpoint_id, latency_ms, &usage);
+                let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                let store_response_payload = response_payload_storage_enabled(&config);
+                if store_response_payload {
+                    let _ = upsert_request_payload(
+                        &state.paths.db_path,
+                        log_id,
+                        &LogPayloadUpdate {
+                            upstream_response: upstream_response_payload.as_deref().filter(
+                                |payload| Some(*payload) != client_response_payload.as_deref(),
+                            ),
+                            client_response: client_response_payload.as_deref(),
+                            ..LogPayloadUpdate::default()
                         },
-                        upstream_timeout,
-                    )
-                    .await
-                    {
-                        if retry_response.status().as_u16() < 400 {
-                            response = retry_response;
-                            remember_openai_compatibility_mode(
-                                &state,
-                                &target.provider_id,
-                                target_protocol,
-                                &target.model_id,
-                                request_declares_tools,
-                                request_uses_reasoning_tokens,
-                                retry_mode,
-                            );
-                            record_and_broadcast_event(
-                                &state,
-                                RecordEventInput {
-                                    event_type: "openai_compatibility_mode_learned".to_string(),
-                                    level: Some("info".to_string()),
-                                    source: Some("proxy".to_string()),
-                                    title: Some("OpenAI compatibility mode learned".to_string()),
-                                    message: Some(format!(
-                                        "Provider {} accepted {} requests after retrying in {} mode",
-                                        target.provider_id,
-                                        provider_protocol_name(target_protocol),
-                                        openai_compatibility_mode_name(retry_mode)
-                                    )),
-                                    endpoint: Some(endpoint_id.clone()),
-                                    ip_address: source_ip.clone(),
-                                    api_key_id: Some(api_key_context.id),
-                                    api_key_name: Some(api_key_context.name.clone()),
-                                    api_key_value: encrypted_api_key_value.clone(),
-                                    user_agent: user_agent.clone(),
-                                    mode: Some(
-                                        openai_compatibility_mode_name(retry_mode).to_string(),
-                                    ),
-                                    details: Some(json!({
-                                        "provider": target.provider_id,
-                                        "model": target.model_id,
-                                        "requestProtocol": provider_protocol_name(protocol),
-                                        "targetProtocol": provider_protocol_name(target_protocol)
-                                    })),
-                                    ..RecordEventInput::default()
-                                },
-                            );
-                            let retry_upstream_body = prepare_proxy_payload(
-                                retry_body.clone(),
-                                &target_model_id,
-                                upstream_stream,
-                            );
-                            upstream_request_payload =
-                                if request_payload_storage && retry_upstream_body != body {
-                                    serde_json::to_string(&retry_upstream_body).ok()
-                                } else {
-                                    None
-                                };
-                            if let (Some(log_id), true) = (request_log_id, request_payload_storage)
-                            {
-                                let _ = upsert_request_payload(
-                                    &state.paths.db_path,
-                                    log_id,
-                                    &LogPayloadUpdate {
-                                        upstream_request: upstream_request_payload.as_deref(),
-                                        ..LogPayloadUpdate::default()
-                                    },
-                                );
-                            }
-                            break;
-                        }
-                    }
+                    );
                 }
             }
-            let streaming_log_context = request_log_id.map(|log_id| StreamingLogContext {
-                db_path: state.paths.db_path.clone(),
-                log_id,
-                endpoint_id: endpoint_id.clone(),
-                api_key_id: api_key_context.id,
-                started_at,
-                store_response_payload: response_payload_storage_enabled(&config),
-            });
-            if stream {
-                // Log ownership moves to the streaming finalizer inside the
-                // response stream; disarm the synchronous guard.
-                if let Some(finalizer) = request_log_finalizer.take() {
-                    finalizer.disarm();
-                }
-            }
-            if upstream_stream && !stream {
-                let (
-                    result,
-                    usage,
-                    upstream_response_payload,
-                    client_response_payload,
-                    response_status,
-                ) = into_materialized_stream_response(
+            result
+        } else if cross_protocol && stream {
+            into_streaming_converted_response(
+                response,
+                protocol,
+                target_protocol,
+                &candidate.provider_id,
+                requested_model.unwrap_or(""),
+                emit_anthropic_reasoning,
+                allow_anthropic_reasoning_fallback,
+                network_recorder.clone(),
+                streaming_log_context,
+                Some(activity_guard),
+            )
+            .await
+        } else if stream {
+            into_streaming_proxy_response(
+                response,
+                target_protocol,
+                network_recorder.clone(),
+                streaming_log_context,
+                Some(activity_guard),
+            )
+            .await
+        } else if cross_protocol {
+            let status_code = response.status().as_u16() as i64;
+            let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
+            let (result, usage, upstream_response_payload, client_response_payload) =
+                into_converted_response(
                     response,
                     protocol,
                     target_protocol,
-                    &target.provider_id,
+                    &candidate.provider_id,
                     requested_model.unwrap_or(""),
-                    sanitize_classifier_response,
                     emit_anthropic_reasoning,
                     allow_anthropic_reasoning_fallback,
                     network_recorder.clone(),
                 )
                 .await;
-                let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
-                let status_code = response_status.as_u16() as i64;
-                if let Some(log_id) = request_log_id {
-                    let update = RequestLogUpdate {
-                        latency_ms: Some(latency_ms),
-                        status_code: Some(status_code),
-                        error_source: upstream_error_source_for_status(status_code),
-                        input_tokens: Some(usage.input_tokens),
-                        output_tokens: Some(usage.output_tokens),
-                        cached_tokens: Some(usage.cached_tokens),
-                        cache_read_tokens: Some(usage.cache_read_tokens),
-                        cache_creation_tokens: Some(usage.cache_creation_tokens),
-                        ..RequestLogUpdate::default()
-                    };
-                    if let Some(finalizer) = request_log_finalizer.as_mut() {
-                        finalizer.finish(&update);
-                    }
-                    let _ = increment_daily_metrics(
-                        &state.paths.db_path,
-                        &endpoint_id,
-                        latency_ms,
-                        &usage,
-                    );
-                    let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
-                    let store_response_payload = response_payload_storage_enabled(&config);
-                    if store_response_payload {
-                        let _ = upsert_request_payload(
-                            &state.paths.db_path,
-                            log_id,
-                            &LogPayloadUpdate {
-                                upstream_response: upstream_response_payload.as_deref().filter(
-                                    |payload| Some(*payload) != client_response_payload.as_deref(),
-                                ),
-                                client_response: client_response_payload.as_deref(),
-                                ..LogPayloadUpdate::default()
-                            },
-                        );
-                    }
-                }
-                result
-            } else if cross_protocol && stream {
-                into_streaming_converted_response(
-                    response,
-                    protocol,
-                    target_protocol,
-                    &target.provider_id,
-                    requested_model.unwrap_or(""),
-                    emit_anthropic_reasoning,
-                    allow_anthropic_reasoning_fallback,
-                    network_recorder.clone(),
-                    streaming_log_context,
-                    Some(activity_guard),
-                )
-                .await
-            } else if stream {
-                into_streaming_proxy_response(
-                    response,
-                    target_protocol,
-                    network_recorder.clone(),
-                    streaming_log_context,
-                    Some(activity_guard),
-                )
-                .await
-            } else if cross_protocol {
-                let status_code = response.status().as_u16() as i64;
-                let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
-                let (result, usage, upstream_response_payload, client_response_payload) =
-                    into_converted_response(
-                        response,
-                        protocol,
-                        target_protocol,
-                        &target.provider_id,
-                        requested_model.unwrap_or(""),
-                        emit_anthropic_reasoning,
-                        allow_anthropic_reasoning_fallback,
-                        network_recorder.clone(),
-                    )
-                    .await;
-                if let Some(log_id) = request_log_id {
-                    let update = RequestLogUpdate {
-                        latency_ms: Some(latency_ms),
-                        status_code: Some(status_code),
-                        error_source: upstream_error_source_for_status(status_code),
-                        input_tokens: Some(usage.input_tokens),
-                        output_tokens: Some(usage.output_tokens),
-                        cached_tokens: Some(usage.cached_tokens),
-                        cache_read_tokens: Some(usage.cache_read_tokens),
-                        cache_creation_tokens: Some(usage.cache_creation_tokens),
-                        ..RequestLogUpdate::default()
-                    };
-                    if let Some(finalizer) = request_log_finalizer.as_mut() {
-                        finalizer.finish(&update);
-                    }
-                    let _ = increment_daily_metrics(
-                        &state.paths.db_path,
-                        &endpoint_id,
-                        latency_ms,
-                        &usage,
-                    );
-                    let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
-                    let store_response_payload = response_payload_storage_enabled(&config);
-                    if store_response_payload {
-                        let _ = upsert_request_payload(
-                            &state.paths.db_path,
-                            log_id,
-                            &LogPayloadUpdate {
-                                upstream_response: upstream_response_payload.as_deref().filter(
-                                    |payload| Some(*payload) != client_response_payload.as_deref(),
-                                ),
-                                client_response: client_response_payload.as_deref(),
-                                ..LogPayloadUpdate::default()
-                            },
-                        );
-                    }
-                }
-                result
-            } else {
-                let status_code = response.status().as_u16() as i64;
-                let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
-                let (result, usage, response_payload) =
-                    into_proxy_response(response, !stream, network_recorder.clone()).await;
-                if let Some(log_id) = request_log_id {
-                    let update = RequestLogUpdate {
-                        latency_ms: Some(latency_ms),
-                        status_code: Some(status_code),
-                        error_source: upstream_error_source_for_status(status_code),
-                        input_tokens: Some(usage.input_tokens),
-                        output_tokens: Some(usage.output_tokens),
-                        cached_tokens: Some(usage.cached_tokens),
-                        cache_read_tokens: Some(usage.cache_read_tokens),
-                        cache_creation_tokens: Some(usage.cache_creation_tokens),
-                        ..RequestLogUpdate::default()
-                    };
-                    if let Some(finalizer) = request_log_finalizer.as_mut() {
-                        finalizer.finish(&update);
-                    }
-                    let _ = increment_daily_metrics(
-                        &state.paths.db_path,
-                        &endpoint_id,
-                        latency_ms,
-                        &usage,
-                    );
-                    let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
-                    let store_response_payload = response_payload_storage_enabled(&config);
-                    if store_response_payload {
-                        let _ = upsert_request_payload(
-                            &state.paths.db_path,
-                            log_id,
-                            &LogPayloadUpdate {
-                                client_response: response_payload.as_deref(),
-                                ..LogPayloadUpdate::default()
-                            },
-                        );
-                    }
-                }
-                result
-            }
-        }
-        Err(error) => {
-            tracing::warn!(error = %error, provider = %target.provider_id, "upstream request failed");
-            let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
-            if let Some(finalizer) = request_log_finalizer.as_mut() {
+            if let Some(log_id) = request_log_id {
                 let update = RequestLogUpdate {
                     latency_ms: Some(latency_ms),
-                    status_code: Some(502),
-                    error: Some(error.to_string()),
-                    error_source: Some(ERROR_SOURCE_UPSTREAM.to_string()),
+                    status_code: Some(status_code),
+                    error_source: upstream_error_source_for_status(status_code),
+                    input_tokens: Some(usage.input_tokens),
+                    output_tokens: Some(usage.output_tokens),
+                    cached_tokens: Some(usage.cached_tokens),
+                    cache_read_tokens: Some(usage.cache_read_tokens),
+                    cache_creation_tokens: Some(usage.cache_creation_tokens),
+                    provider: Some(candidate.provider_id.clone()),
+                    model: Some(candidate.model_id.clone()),
                     ..RequestLogUpdate::default()
                 };
-                finalizer.fail(&update);
-                let _ = increment_daily_metrics(
-                    &state.paths.db_path,
-                    &endpoint_id,
-                    latency_ms,
-                    &UsageStats::default(),
-                );
+                if let Some(finalizer) = request_log_finalizer.as_mut() {
+                    finalizer.finish(&update);
+                }
+                let _ =
+                    increment_daily_metrics(&state.paths.db_path, &endpoint_id, latency_ms, &usage);
+                let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                let store_response_payload = response_payload_storage_enabled(&config);
+                if store_response_payload {
+                    let _ = upsert_request_payload(
+                        &state.paths.db_path,
+                        log_id,
+                        &LogPayloadUpdate {
+                            upstream_response: upstream_response_payload.as_deref().filter(
+                                |payload| Some(*payload) != client_response_payload.as_deref(),
+                            ),
+                            client_response: client_response_payload.as_deref(),
+                            ..LogPayloadUpdate::default()
+                        },
+                    );
+                }
             }
-            record_and_broadcast_event(
-                &state,
-                RecordEventInput {
-                    event_type: "provider_proxy_failure".to_string(),
-                    level: Some("error".to_string()),
-                    source: Some("proxy".to_string()),
-                    title: Some("Provider request failed".to_string()),
-                    message: Some(error.to_string()),
-                    endpoint: Some(endpoint_id.clone()),
-                    api_key_id: Some(api_key_context.id),
-                    api_key_name: Some(api_key_context.name),
-                    api_key_value: encrypted_api_key_value,
-                    user_agent,
-                    details: Some(json!({ "provider": target.provider_id })),
-                    ..RecordEventInput::default()
-                },
-            );
-            json_response_with_network(
-                &state,
-                &endpoint_id,
-                StatusCode::BAD_GATEWAY,
-                &json!({
-                    "error": {
-                        "message": sanitize_upstream_error(&error),
-                        "provider": target.provider_id
-                    }
-                }),
-            )
+            result
+        } else {
+            let status_code = response.status().as_u16() as i64;
+            let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
+            let (result, usage, response_payload) =
+                into_proxy_response(response, !stream, network_recorder.clone()).await;
+            if let Some(log_id) = request_log_id {
+                let update = RequestLogUpdate {
+                    latency_ms: Some(latency_ms),
+                    status_code: Some(status_code),
+                    error_source: upstream_error_source_for_status(status_code),
+                    input_tokens: Some(usage.input_tokens),
+                    output_tokens: Some(usage.output_tokens),
+                    cached_tokens: Some(usage.cached_tokens),
+                    cache_read_tokens: Some(usage.cache_read_tokens),
+                    cache_creation_tokens: Some(usage.cache_creation_tokens),
+                    provider: Some(candidate.provider_id.clone()),
+                    model: Some(candidate.model_id.clone()),
+                    ..RequestLogUpdate::default()
+                };
+                if let Some(finalizer) = request_log_finalizer.as_mut() {
+                    finalizer.finish(&update);
+                }
+                let _ =
+                    increment_daily_metrics(&state.paths.db_path, &endpoint_id, latency_ms, &usage);
+                let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                let store_response_payload = response_payload_storage_enabled(&config);
+                if store_response_payload {
+                    let _ = upsert_request_payload(
+                        &state.paths.db_path,
+                        log_id,
+                        &LogPayloadUpdate {
+                            client_response: response_payload.as_deref(),
+                            ..LogPayloadUpdate::default()
+                        },
+                    );
+                }
+            }
+            result
         }
     }
 }
@@ -3009,6 +3421,8 @@ fn finalize_stream_logging(
         tpot_ms: compute_tpot_ms(latency_ms, usage.output_tokens, ttft_ms),
         error: error.clone(),
         error_source,
+        provider: context.backend_provider.clone(),
+        model: context.backend_model.clone(),
         ..RequestLogUpdate::default()
     };
     let _ = finalize_request_log(&context.db_path, context.log_id, &update);
@@ -3067,6 +3481,7 @@ mod tests {
             network_egress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
             runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
             provider_rate_limiter: Arc::new(ProviderRateLimiter::new()),
+            backend_health: Arc::new(BackendHealthRegistry::new()),
             http_client: reqwest::Client::builder().build().expect("client"),
             version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
             version_check_package_name: "@chenpu17/cc-gw".to_string(),

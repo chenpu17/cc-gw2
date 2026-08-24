@@ -38,6 +38,7 @@ use cc_gw_core::{
         openai_responses_request_to_anthropic, openai_responses_response_to_anthropic,
     },
     events::{RecordEventInput, get_event_stats, list_events, record_event},
+    health::{BackendHealthRegistry, FailoverPolicy},
     models::{build_models_response, build_models_response_for_endpoint},
     observability::{
         LogPayloadUpdate, LogQuery, RequestLogInput, RequestLogUpdate, RuntimeMetricsSampler,
@@ -53,7 +54,7 @@ use cc_gw_core::{
         provider_prefers_openai_responses_protocol,
     },
     ratelimit::{AcquireOutcome, DEFAULT_RPM_MAX_WAIT_SECONDS, ProviderRateLimiter},
-    routing::{GatewayEndpoint, resolve_route},
+    routing::{GatewayEndpoint, resolve_route_plan},
     storage::initialize_database,
     stream::{
         CrossProtocolStreamTransformer, SseStreamObserver, materialize_stream_response,
@@ -96,6 +97,7 @@ struct AppState {
     network_egress_bytes_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
     runtime_metrics: Arc<Mutex<RuntimeMetricsSampler>>,
     provider_rate_limiter: Arc<ProviderRateLimiter>,
+    backend_health: Arc<BackendHealthRegistry>,
     http_client: reqwest::Client,
     version_check_registry_base_url: String,
     version_check_package_name: String,
@@ -214,6 +216,10 @@ struct StreamingLogContext {
     api_key_id: i64,
     started_at: i64,
     store_response_payload: bool,
+    /// Backend that actually served the request; rewritten into the log row
+    /// at finalize time when failover picked a later aggregate candidate.
+    backend_provider: Option<String>,
+    backend_model: Option<String>,
 }
 
 fn join_non_empty_texts(texts: Vec<String>) -> Option<String> {
@@ -365,6 +371,7 @@ async fn main() -> Result<()> {
         network_egress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
         provider_rate_limiter: Arc::new(ProviderRateLimiter::new()),
+        backend_health: Arc::new(BackendHealthRegistry::new()),
         http_client: reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(30))
             .build()

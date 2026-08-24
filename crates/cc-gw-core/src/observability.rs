@@ -38,6 +38,12 @@ pub struct RequestLogUpdate {
     pub tpot_ms: Option<f64>,
     pub error: Option<String>,
     pub error_source: Option<String>,
+    /// Rewrite the row's provider/model to the backend that actually served
+    /// the request. Set when aggregated-model failover picked a later
+    /// candidate than the one the row was inserted with; `client_model`
+    /// already preserves the requested (aggregate) model name.
+    pub provider: Option<String>,
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -433,7 +439,9 @@ pub fn finalize_request_log(db_path: &Path, id: i64, update: &RequestLogUpdate) 
              ttft_ms = ?9,
              tpot_ms = ?10,
              error = ?11,
-             error_source = ?12
+             error_source = ?12,
+             provider = COALESCE(?13, provider),
+             model = COALESCE(?14, model)
          WHERE id = ?1",
         params![
             id,
@@ -447,7 +455,9 @@ pub fn finalize_request_log(db_path: &Path, id: i64, update: &RequestLogUpdate) 
             update.ttft_ms,
             update.tpot_ms,
             update.error,
-            update.error_source
+            update.error_source,
+            update.provider,
+            update.model
         ],
     )?;
     Ok(())

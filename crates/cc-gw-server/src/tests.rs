@@ -249,6 +249,7 @@ fn build_test_state(
         network_egress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         runtime_metrics: Arc::new(Mutex::new(RuntimeMetricsSampler::new())),
         provider_rate_limiter: Arc::new(ProviderRateLimiter::new()),
+        backend_health: Arc::new(BackendHealthRegistry::new()),
         http_client: reqwest::Client::builder().build().expect("client"),
         version_check_registry_base_url: "https://registry.npmjs.org".to_string(),
         version_check_package_name: "@chenpu17/cc-gw".to_string(),
@@ -1608,6 +1609,7 @@ data: [DONE]\n\n",
             id: "gpt-stream-only".to_string(),
             label: Some("GPT Stream Only".to_string()),
             non_stream_via_stream: Some(true),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1735,6 +1737,7 @@ async fn openai_chat_non_stream_via_stream_surfaces_sse_error_event() {
             id: "gpt-stream-only".to_string(),
             label: Some("GPT Stream Only".to_string()),
             non_stream_via_stream: Some(true),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1864,6 +1867,7 @@ data: [DONE]\n\n"
             id: "gpt-stream-only".to_string(),
             label: Some("GPT Stream Only".to_string()),
             non_stream_via_stream: Some(true),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -1935,6 +1939,7 @@ data: [DONE]\n\n",
             id: "gpt-stream-only".to_string(),
             label: Some("GPT Stream Only".to_string()),
             non_stream_via_stream: Some(true),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2018,6 +2023,7 @@ data: [DONE]\n\n",
             id: "gpt-stream-only".to_string(),
             label: Some("GPT Stream Only".to_string()),
             non_stream_via_stream: Some(true),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2092,6 +2098,7 @@ async fn anthropic_to_openai_non_stream_via_stream_surfaces_sse_error_event() {
             id: "glm-stream-only".to_string(),
             label: Some("GLM Stream Only".to_string()),
             non_stream_via_stream: Some(true),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2176,6 +2183,7 @@ data: [DONE]\n\n",
             id: "glm-stream-only".to_string(),
             label: Some("GLM Stream Only".to_string()),
             non_stream_via_stream: Some(true),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2313,6 +2321,7 @@ data: [DONE]\n\n",
             id: "glm-stream-only".to_string(),
             label: Some("GLM Stream Only".to_string()),
             non_stream_via_stream: Some(true),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2572,6 +2581,7 @@ data: [DONE]\n\n",
             id: "glm-stream-only".to_string(),
             label: Some("GLM Stream Only".to_string()),
             non_stream_via_stream: Some(true),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];
@@ -2647,6 +2657,7 @@ data: [DONE]\n\n",
             id: "glm-stream-only".to_string(),
             label: Some("GLM Stream Only".to_string()),
             non_stream_via_stream: Some(true),
+            ..Default::default()
         }],
         ..cc_gw_core::config::ProviderConfig::default()
     }];

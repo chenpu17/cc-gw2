@@ -206,6 +206,17 @@ impl BackendHealthRegistry {
         }
     }
 
+    /// Remaining cooldown in ms while the backend is cooling down; `None`
+    /// when available. Powers the failover loop's skip bookkeeping and the
+    /// all-cooling 429's `Retry-After`. Fails open (`None`).
+    pub fn cooldown_remaining(&self, key: &str, now_ms: i64) -> Option<i64> {
+        let Ok(entries) = self.entries.lock() else {
+            return None;
+        };
+        let until = entries.get(key)?.cooldown_until;
+        (now_ms < until).then(|| until - now_ms)
+    }
+
     pub fn record_failure(&self, key: &str, policy: &FailoverPolicy, now_ms: i64) {
         let Ok(mut entries) = self.entries.lock() else {
             return;
