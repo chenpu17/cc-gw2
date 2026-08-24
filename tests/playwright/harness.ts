@@ -24,6 +24,10 @@ export interface GatewayHarnessOptions {
     username: string
     password: string
   }
+  /** Aggregate-failover fixture: adds `stub-model-failing` (always 500) to the
+   * stub provider and an `agg` aggregate provider whose `agg-model` tries the
+   * failing member first, then the healthy one. */
+  aggregate?: boolean
 }
 
 function resolveBuiltServerBinary(): string | null {
@@ -104,6 +108,16 @@ async function startStubProvider(port: number): Promise<http.Server> {
           ? body.messages[body.messages.length - 1]?.content ?? ''
           : ''
         const messageText = typeof message === 'string' ? message : ''
+
+        // The aggregate-failover fixture's "always broken" backend: lets e2e
+        // exercise priority failover without tearing down the stub server.
+        if (body.model === 'stub-model-failing') {
+          res.writeHead(500, { 'content-type': 'application/json' })
+          res.end(JSON.stringify({
+            error: { message: 'stub-model-failing always fails', type: 'server_error', code: 500 },
+          }))
+          return
+        }
 
         // Streaming requests get an OpenAI-style SSE stream. The trailing
         // prompt marker switches between the two usage chunk shapes real
@@ -208,20 +222,39 @@ function writeConfig(
 
   const authRecord = options.auth?.enabled ? createLegacyPasswordRecord(options.auth.password) : null
 
+  const stubProvider: Record<string, unknown> = {
+    id: 'stub',
+    label: 'Stub Provider',
+    type: 'openai',
+    baseUrl: `http://127.0.0.1:${stubPort}`,
+    apiKey: 'stub-key',
+    defaultModel: 'stub-model',
+    models: [{ id: 'stub-model', label: 'Stub Model' }],
+  }
+  const providers: Array<Record<string, unknown>> = [stubProvider]
+  if (options.aggregate) {
+    ;(stubProvider.models as Array<Record<string, unknown>>).push({
+      id: 'stub-model-failing',
+      label: 'Stub Failing Model',
+    })
+    providers.push({
+      id: 'agg',
+      label: '聚合测试',
+      type: 'aggregate',
+      models: [
+        {
+          id: 'agg-model',
+          members: [{ target: 'stub:stub-model-failing' }, { target: 'stub:stub-model' }],
+          failover: { consecutiveFailures: 1, cooldownSeconds: 60 },
+        },
+      ],
+    })
+  }
+
   const config = {
     host: '127.0.0.1',
     port: gatewayPort,
-    providers: [
-      {
-        id: 'stub',
-        label: 'Stub Provider',
-        type: 'openai',
-        baseUrl: `http://127.0.0.1:${stubPort}`,
-        apiKey: 'stub-key',
-        defaultModel: 'stub-model',
-        models: [{ id: 'stub-model', label: 'Stub Model' }],
-      },
-    ],
+    providers,
     defaults: { ...baseDefaults },
     endpointRouting: {
       anthropic: { defaults: { ...baseDefaults }, modelRoutes: {} },
