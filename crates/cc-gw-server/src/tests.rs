@@ -8041,3 +8041,147 @@ async fn aggregate_failover_all_backends_cooling_returns_429_unavailable() {
     upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
 }
+
+#[tokio::test]
+async fn aggregate_failover_rpm_rejection_moves_to_next_candidate_without_health_hit() {
+    let (upstream_addr, upstream_handle, _hits) = spawn_failover_upstream().await;
+    // Both members are healthy upstream models; the preferred candidate's
+    // provider carries a 1-RPM cap with no queue wait, so admission (not the
+    // backend) is what fails.
+    let mut config = failover_gateway_config(upstream_addr, None);
+    config.providers[0] = aggregate_provider_config(
+        "team",
+        "team-claude",
+        &["primary:claude-backup", "backup:claude-backup"],
+        None,
+    );
+    config.providers[1].rpm_limit = Some(1);
+    config.providers[1].rpm_max_wait_seconds = Some(0);
+    // A direct route to the capped provider to burn its only RPM slot.
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing
+            .model_routes
+            .insert("warm-up".to_string(), "primary:claude-backup".to_string());
+    }
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "agg-failover-rpm").await;
+    let client = reqwest::Client::new();
+    let api_key = create_gateway_api_key(&client, gateway_addr).await;
+
+    let request_body = json!({
+        "model": "team-claude",
+        "max_tokens": 64,
+        "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]
+    });
+
+    // Warm-up request consumes the preferred provider's only RPM slot.
+    let warm_up = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("x-api-key", &api_key)
+        .json(&json!({
+            "model": "warm-up",
+            "max_tokens": 64,
+            "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]
+        }))
+        .send()
+        .await
+        .expect("send warm-up request");
+    assert_eq!(warm_up.status(), StatusCode::OK);
+
+    // Aggregate request: the preferred candidate is rejected by local RPM
+    // admission (immediately, thanks to the clamped max-wait), so the chain
+    // moves on and the backup serves the client transparently.
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("x-api-key", &api_key)
+        .json(&request_body)
+        .send()
+        .await
+        .expect("send aggregated request")
+        .json()
+        .await
+        .expect("decode aggregated response");
+    assert_eq!(
+        response
+            .get("content")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("text"))
+            .and_then(Value::as_str),
+        Some("backup-ok")
+    );
+
+    // The RPM rejection is an admission decision, not a backend failure: the
+    // preferred backend must not appear in the health registry as failed.
+    let health: Value = client
+        .get(format!("http://{gateway_addr}/api/providers/backends/health"))
+        .send()
+        .await
+        .expect("request backend health")
+        .json()
+        .await
+        .expect("decode backend health");
+    let has_preferred_entry = health
+        .get("backends")
+        .and_then(Value::as_array)
+        .map(|backends| {
+            backends.iter().any(|backend| {
+                backend.get("key").and_then(Value::as_str) == Some("primary:claude-backup")
+            })
+        })
+        .unwrap_or(false);
+    assert!(
+        !has_preferred_entry,
+        "RPM rejection must not feed the backend health registry: {health}"
+    );
+
+    // The attempt chain records the rate-limited hop followed by the backup.
+    let failover_event = fetch_events(&client, gateway_addr)
+        .await
+        .into_iter()
+        .find(|event| {
+            event.get("type").and_then(Value::as_str) == Some("provider_failover")
+                && event
+                    .get("details")
+                    .and_then(|details| details.get("attempts"))
+                    .and_then(Value::as_array)
+                    .map(|attempts| {
+                        attempts
+                            .iter()
+                            .any(|attempt| attempt.get("outcome").and_then(Value::as_str)
+                                == Some("rate-limited"))
+                    })
+                    .unwrap_or(false)
+        })
+        .expect("find rate-limited provider_failover event");
+    let attempts = failover_event
+        .get("details")
+        .and_then(|details| details.get("attempts"))
+        .and_then(Value::as_array)
+        .expect("attempts array");
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(
+        attempts[0].get("provider").and_then(Value::as_str),
+        Some("primary")
+    );
+    assert_eq!(
+        attempts[0].get("outcome").and_then(Value::as_str),
+        Some("rate-limited")
+    );
+    assert!(
+        attempts[0].get("status").is_none(),
+        "rate-limited attempts must not carry an upstream status"
+    );
+    assert_eq!(
+        attempts[1].get("provider").and_then(Value::as_str),
+        Some("backup")
+    );
+    assert_eq!(
+        attempts[1].get("outcome").and_then(Value::as_str),
+        Some("selected")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
