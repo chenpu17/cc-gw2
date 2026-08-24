@@ -7924,3 +7924,120 @@ async fn aggregate_single_backend_failure_passes_error_through() {
     upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
 }
+
+#[tokio::test]
+async fn aggregate_failover_all_backends_cooling_returns_429_unavailable() {
+    let (upstream_addr, upstream_handle, hits) = spawn_failover_upstream().await;
+    // Both members hit the always-failing model (each under its own provider
+    // id, so they carry distinct backend health keys). Threshold 1 means the
+    // first request cools both candidates down.
+    let mut config = failover_gateway_config(
+        upstream_addr,
+        Some(cc_gw_core::config::FailoverPolicyConfig {
+            consecutive_failures: Some(1),
+            cooldown_seconds: Some(60),
+            failure_window_seconds: Some(600),
+            trigger_status_codes: None,
+        }),
+    );
+    config.providers[0] = aggregate_provider_config(
+        "team",
+        "team-claude",
+        &["primary:claude-primary", "backup:claude-primary"],
+        Some(cc_gw_core::config::FailoverPolicyConfig {
+            consecutive_failures: Some(1),
+            cooldown_seconds: Some(60),
+            failure_window_seconds: Some(600),
+            trigger_status_codes: None,
+        }),
+    );
+    config.providers[2] =
+        anthropic_backend_config("backup", "claude-primary", format!("http://{upstream_addr}"));
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "agg-failover-all-cooling").await;
+    let client = reqwest::Client::new();
+    let api_key = create_gateway_api_key(&client, gateway_addr).await;
+
+    let request_body = json!({
+        "model": "team-claude",
+        "max_tokens": 64,
+        "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]
+    });
+
+    // First request: both candidates fail the trigger check; the last one's
+    // raw error is passed through, and both backends enter cooldown.
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("x-api-key", &api_key)
+        .json(&request_body)
+        .send()
+        .await
+        .expect("send first aggregated request");
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(hits.lock().expect("lock hits").len(), 2);
+
+    // Second request: every candidate is skipped by cooldown, so the gateway
+    // answers the aggregate_backends_unavailable 429 (with Retry-After set to
+    // the shortest remaining cooldown) without forwarding anything upstream.
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("x-api-key", &api_key)
+        .json(&request_body)
+        .send()
+        .await
+        .expect("send second aggregated request");
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        response
+            .headers()
+            .get("retry-after")
+            .and_then(|value| value.to_str().ok()),
+        Some("60")
+    );
+    let body: Value = response.json().await.expect("decode 429 body");
+    assert_eq!(
+        body.pointer("/error/code").and_then(Value::as_str),
+        Some("aggregate_backends_unavailable")
+    );
+    assert_eq!(hits.lock().expect("lock hits").len(), 2);
+
+    // The all-cooling attempt chain is recorded in the failover event.
+    let cooling_event = fetch_events(&client, gateway_addr)
+        .await
+        .into_iter()
+        .filter(|event| event.get("type").and_then(Value::as_str) == Some("provider_failover"))
+        .find(|event| {
+            event
+                .get("details")
+                .and_then(|details| details.get("attempts"))
+                .and_then(Value::as_array)
+                .map(|attempts| {
+                    attempts
+                        .iter()
+                        .any(|attempt| attempt.get("outcome").and_then(Value::as_str)
+                            == Some("skipped:cooldown"))
+                })
+                .unwrap_or(false)
+        })
+        .expect("find all-cooling provider_failover event");
+    let attempts = cooling_event
+        .get("details")
+        .and_then(|details| details.get("attempts"))
+        .and_then(Value::as_array)
+        .expect("attempts array");
+    assert_eq!(attempts.len(), 2);
+    for attempt in attempts {
+        assert_eq!(
+            attempt.get("outcome").and_then(Value::as_str),
+            Some("skipped:cooldown")
+        );
+        assert!(
+            attempt.get("status").is_none(),
+            "cooldown-skipped attempts must not carry an upstream status"
+        );
+    }
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
