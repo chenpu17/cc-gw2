@@ -2657,10 +2657,16 @@ async fn into_streaming_converted_response(
 
     let stream = stream! {
         let _activity_guard = activity_guard;
+        let mut utf8 = Utf8StreamDecoder::new();
         loop {
             match upstream.try_next().await {
                 Ok(Some(chunk)) => {
-                    let text = String::from_utf8_lossy(&chunk).to_string();
+                    let text = utf8.push(&chunk);
+                    if text.is_empty() {
+                        // A multi-byte character is split across chunks; wait
+                        // for its remaining bytes before decoding anything.
+                        continue;
+                    }
                     let observation = observer.push(&text);
                     finalizer.record_usage(observer.usage_stats());
                     if observation.saw_first_token {
@@ -2691,6 +2697,21 @@ async fn into_streaming_converted_response(
                     yield Err::<Bytes, std::io::Error>(std::io::Error::other(message));
                     return;
                 }
+            }
+        }
+
+        let leftover = utf8.flush();
+        if !leftover.is_empty() {
+            let observation = observer.push(&leftover);
+            if observation.saw_first_token {
+                let seen_at = chrono::Utc::now().timestamp_millis();
+                finalizer.record_first_token_at(seen_at);
+            }
+            finalizer.push_upstream_response(&leftover);
+            for transformed in transformer.push(&leftover) {
+                network_recorder.record_egress(transformed.len());
+                finalizer.push_client_response(&transformed);
+                yield Ok::<Bytes, std::io::Error>(Bytes::from(transformed));
             }
         }
 
@@ -3102,17 +3123,23 @@ async fn into_streaming_proxy_response(
 
     let stream = stream! {
         let _activity_guard = activity_guard;
+        let mut utf8 = Utf8StreamDecoder::new();
         loop {
             match upstream.try_next().await {
                 Ok(Some(chunk)) => {
-                    let text = String::from_utf8_lossy(&chunk).to_string();
-                    let observation = observer.push(&text);
-                    finalizer.record_usage(observer.usage_stats());
-                    if observation.saw_first_token {
-                        let seen_at = chrono::Utc::now().timestamp_millis();
-                        finalizer.record_first_token_at(seen_at);
+                    // The client receives the raw bytes untouched; the decoder
+                    // only feeds the observer/finalizer a correct string view
+                    // of a stream whose characters may split across chunks.
+                    let text = utf8.push(&chunk);
+                    if !text.is_empty() {
+                        let observation = observer.push(&text);
+                        finalizer.record_usage(observer.usage_stats());
+                        if observation.saw_first_token {
+                            let seen_at = chrono::Utc::now().timestamp_millis();
+                            finalizer.record_first_token_at(seen_at);
+                        }
+                        finalizer.push_client_response(&text);
                     }
-                    finalizer.push_client_response(&text);
                     network_recorder.record_egress(chunk.len());
                     yield Ok::<Bytes, std::io::Error>(chunk);
                 }
@@ -3134,6 +3161,16 @@ async fn into_streaming_proxy_response(
                     return;
                 }
             }
+        }
+
+        let leftover = utf8.flush();
+        if !leftover.is_empty() {
+            let observation = observer.push(&leftover);
+            if observation.saw_first_token {
+                let seen_at = chrono::Utc::now().timestamp_millis();
+                finalizer.record_first_token_at(seen_at);
+            }
+            finalizer.push_client_response(&leftover);
         }
 
         let observation = observer.finish();

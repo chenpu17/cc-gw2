@@ -186,6 +186,65 @@ pub struct StreamObservation {
     pub saw_terminal_event: bool,
 }
 
+/// Incremental UTF-8 decoder for raw response-body chunks: keeps an
+/// incomplete multi-byte suffix buffered across chunk boundaries so characters
+/// split by the transport reassemble, instead of each half being lossy-decoded
+/// into U+FFFD replacement characters. Genuinely invalid sequences still
+/// degrade to U+FFFD, matching `String::from_utf8_lossy` semantics.
+#[derive(Debug, Default)]
+pub struct Utf8StreamDecoder {
+    pending: Vec<u8>,
+}
+
+impl Utf8StreamDecoder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Decode one raw chunk; a trailing incomplete multi-byte sequence is
+    /// buffered until the next chunk completes it (may return an empty string).
+    pub fn push(&mut self, bytes: &[u8]) -> String {
+        self.pending.extend_from_slice(bytes);
+        let mut out = String::new();
+        loop {
+            match std::str::from_utf8(&self.pending) {
+                Ok(text) => {
+                    out.push_str(text);
+                    self.pending.clear();
+                    return out;
+                }
+                Err(error) => {
+                    let valid_up_to = error.valid_up_to();
+                    if valid_up_to > 0 {
+                        let head = std::str::from_utf8(&self.pending[..valid_up_to])
+                            .expect("from_utf8 reported this prefix as valid");
+                        out.push_str(head);
+                        self.pending.drain(..valid_up_to);
+                    }
+                    match error.error_len() {
+                        // Incomplete multi-byte tail: wait for the next chunk.
+                        None => return out,
+                        // Hard-invalid sequence: degrade it to one U+FFFD and
+                        // keep decoding the rest of the chunk.
+                        Some(invalid_len) => {
+                            self.pending.drain(..invalid_len);
+                            out.push('\u{FFFD}');
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Drain whatever is left at end of stream (an EOF mid-character is a
+    /// malformed upstream; degrade the remainder instead of dropping it).
+    pub fn flush(&mut self) -> String {
+        let remaining = String::from_utf8_lossy(&self.pending).to_string();
+        self.pending.clear();
+        remaining
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SseStreamObserver {
     protocol: ProviderProtocol,
@@ -2298,9 +2357,34 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CrossProtocolStreamTransformer, SseStreamObserver, materialize_stream_response};
+    use super::{
+        CrossProtocolStreamTransformer, SseStreamObserver, Utf8StreamDecoder,
+        materialize_stream_response,
+    };
     use crate::provider::ProviderProtocol;
     use serde_json::{Value, json};
+
+    #[test]
+    fn utf8_decoder_reassembles_characters_split_across_chunks() {
+        let mut decoder = Utf8StreamDecoder::new();
+        let bytes = "你好".as_bytes();
+        // Split mid-character (byte 1 of 3 of 你) across two pushes.
+        assert_eq!(decoder.push(&bytes[..1]), "");
+        assert_eq!(decoder.push(&bytes[1..]), "你好");
+        assert_eq!(decoder.flush(), "");
+    }
+
+    #[test]
+    fn utf8_decoder_degrades_invalid_bytes_but_keeps_valid_text() {
+        let mut decoder = Utf8StreamDecoder::new();
+        // 0xFF is never valid UTF-8; the valid text around it must survive.
+        let text = decoder.push(&[b'a', 0xFF, b'b']);
+        assert_eq!(text, "a\u{FFFD}b");
+        // An EOF mid-character flushes the remainder as U+FFFD, not silence.
+        let mut truncated = Utf8StreamDecoder::new();
+        assert_eq!(truncated.push(&"好".as_bytes()[..2]), "");
+        assert_eq!(truncated.flush(), "\u{FFFD}");
+    }
 
     #[test]
     fn anthropic_observer_tracks_ttft_and_usage() {

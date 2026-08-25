@@ -7294,6 +7294,94 @@ data: [DONE]\n\n",
     let _ = stdfs::remove_dir_all(home_dir);
 }
 
+/// The LIVE cross-protocol conversion loop must reassemble multi-byte UTF-8
+/// characters split across raw byte chunks — per-chunk lossy decoding turns
+/// the split halves into U+FFFD replacement characters for the client.
+#[tokio::test]
+async fn anthropic_to_openai_live_stream_preserves_utf8_split_across_chunks() {
+    let prefix = "data: {\"id\":\"chatcmpl_utf8\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"";
+    let text = "你好".as_bytes();
+    let suffix = "\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl_utf8\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+data: [DONE]\n\n";
+
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move || async move {
+            // Split 你好 mid-character (byte 1 of 3) across two body chunks.
+            let mut first = Vec::new();
+            first.extend_from_slice(prefix.as_bytes());
+            first.extend_from_slice(&text[..1]);
+            let mut second = Vec::new();
+            second.extend_from_slice(&text[1..]);
+            second.extend_from_slice(suffix.as_bytes());
+
+            let stream = stream! {
+                yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(first));
+                yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(second));
+            };
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from_stream(stream))
+                .expect("build split utf8 stream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-client".to_string(),
+            "mock-openai:gpt-test".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-openai-live-utf8").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-client",
+            "max_tokens": 64,
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send streaming request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.text().await.expect("read stream body");
+    assert!(
+        body.contains("你好"),
+        "multi-byte characters split across upstream chunks must reach the client intact, got: {body}"
+    );
+    assert!(
+        !body.contains('\u{FFFD}'),
+        "no U+FFFD replacement characters may leak from chunk-boundary decoding, got: {body}"
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
 /// Guard the deferred-termination edge the fix widens: an upstream that dies
 /// right after the finish_reason chunk — before the trailing usage chunk and
 /// [DONE] — must still yield a well-formed Anthropic stream (terminal

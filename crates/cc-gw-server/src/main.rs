@@ -57,8 +57,8 @@ use cc_gw_core::{
     routing::{GatewayEndpoint, resolve_route_plan},
     storage::initialize_database,
     stream::{
-        CrossProtocolStreamTransformer, SseStreamObserver, materialize_stream_response,
-        usage_stats_from_payload,
+        CrossProtocolStreamTransformer, SseStreamObserver, Utf8StreamDecoder,
+        materialize_stream_response, usage_stats_from_payload,
     },
     ui::resolve_web_dist,
 };
