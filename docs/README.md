@@ -13,6 +13,8 @@
   - 本地目录结构、SQLite 表设计和兼容迁移策略
 - [api-compatibility.md](./api-compatibility.md)
   - 对外 HTTP 接口、别名路径和当前兼容范围
+- [aggregate-models.md](./aggregate-models.md)
+  - 聚合模型与虚拟供应商：概念模型、降级策略语义、请求内终态矩阵
 - [product-positioning.md](./product-positioning.md)
   - 产品定位、适用团队规模、推荐叙事和官网/README 一致性基线
 - [landing-publishing.md](./landing-publishing.md)

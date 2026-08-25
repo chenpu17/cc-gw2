@@ -71,6 +71,7 @@ Web console:  http://127.0.0.1:4100/ui
 - 常驻内存占用实测下降到旧实现的约 `1/20`
 - npm 安装默认分发预编译原生二进制，普通用户不需要本机 Rust 环境
 - Web 控制台、CLI 命令习惯、配置文件路径与 SQLite 数据格式继续兼容
+- 聚合模型：一个虚拟模型名挂多个后端（可跨供应商、跨模型名），按优先级自动降级，配额用完不再手动切流量
 
 ## 控制台预览
 
@@ -132,6 +133,7 @@ http://127.0.0.1:4100/ui
 - 已覆盖 Web 管理台和客户端依赖的核心接口，包括 `/ui`、`/assets/*`、`/favicon.ico`、`/api/*`、`/v1/*`、`/openai/v1/*`
 - 已实现 Anthropic / OpenAI Chat / OpenAI Responses 的代理与流式转换
 - 已实现 API Key、日志、事件、统计、路由预设、自定义端点和 SQLite 兼容迁移
+- 已实现聚合模型（虚拟供应商 + 成员链串行优先级降级、冷却自动恢复与后端健康观测），详见 [`docs/aggregate-models.md`](docs/aggregate-models.md)
 
 ## 本地开发
 
