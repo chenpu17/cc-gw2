@@ -7382,6 +7382,196 @@ data: [DONE]\n\n";
     let _ = stdfs::remove_dir_all(home_dir);
 }
 
+/// A mid-stream upstream SSE error must reach the LIVE cross-protocol client
+/// as a protocol-correct error event (the transformer drops error chunks)
+/// and must finalize the log as a failed request, not a clean success.
+#[tokio::test]
+async fn anthropic_client_receives_error_event_from_openai_upstream_sse_error() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from(
+                    "data: {\"id\":\"chatcmpl_err\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"partial\"},\"finish_reason\":null}]}\n\n\
+data: {\"error\":{\"message\":\"quota exhausted\",\"type\":\"insufficient_quota\",\"code\":\"429\"}}\n\n",
+                ))
+                .expect("build error stream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-client".to_string(),
+            "mock-openai:gpt-test".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-openai-live-sse-error").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-client",
+            "max_tokens": 64,
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send streaming request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.text().await.expect("read stream body");
+    assert!(
+        body.contains("event: error"),
+        "client must receive a terminal Anthropic error event, got: {body}"
+    );
+    assert!(
+        body.contains("quota exhausted"),
+        "the upstream error message must be converted into the client event, got: {body}"
+    );
+    assert!(
+        !body.contains("\"type\":\"message_stop\""),
+        "no synthesized happy ending after an upstream error event, got: {body}"
+    );
+
+    sleep(Duration::from_millis(250)).await;
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("stream log item");
+    assert_eq!(item.get("status_code").and_then(Value::as_i64), Some(429));
+    assert!(
+        item.get("error")
+            .and_then(Value::as_str)
+            .is_some_and(|error| error.contains("quota exhausted")),
+        "log must carry the upstream error, got: {item}"
+    );
+    assert_eq!(
+        item.get("error_source").and_then(Value::as_str),
+        Some("upstream")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+/// Same-protocol passthrough: the raw error bytes already reach the client;
+/// the fix is that the log records the stream as failed, not clean success.
+#[tokio::test]
+async fn openai_passthrough_stream_sse_error_is_logged_as_failure() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from(
+                    "data: {\"id\":\"chatcmpl_err\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"partial\"},\"finish_reason\":null}]}\n\n\
+data: {\"error\":{\"message\":\"upstream exploded\",\"type\":\"server_error\",\"code\":null}}\n\n",
+                ))
+                .expect("build error stream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-passthrough-sse-error").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-test",
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send streaming request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.text().await.expect("read stream body");
+    assert!(
+        body.contains("upstream exploded"),
+        "passthrough clients keep receiving the raw error bytes, got: {body}"
+    );
+
+    sleep(Duration::from_millis(250)).await;
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("stream log item");
+    assert_eq!(
+        item.get("status_code").and_then(Value::as_i64),
+        Some(502),
+        "SSE error passthrough must be recorded as a failed stream, got: {item}"
+    );
+    assert!(
+        item.get("error")
+            .and_then(Value::as_str)
+            .is_some_and(|error| error.contains("upstream exploded")),
+        "log must carry the upstream error, got: {item}"
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
 /// Guard the deferred-termination edge the fix widens: an upstream that dies
 /// right after the finish_reason chunk — before the trailing usage chunk and
 /// [DONE] — must still yield a well-formed Anthropic stream (terminal

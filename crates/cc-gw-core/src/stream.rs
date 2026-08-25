@@ -184,6 +184,7 @@ impl UsageState {
 pub struct StreamObservation {
     pub saw_first_token: bool,
     pub saw_terminal_event: bool,
+    pub saw_error_event: bool,
 }
 
 /// Incremental UTF-8 decoder for raw response-body chunks: keeps an
@@ -252,6 +253,7 @@ pub struct SseStreamObserver {
     usage: UsageState,
     first_content_seen: bool,
     terminal_event_seen: bool,
+    error_event: Option<Value>,
 }
 
 impl SseStreamObserver {
@@ -262,6 +264,7 @@ impl SseStreamObserver {
             usage: UsageState::default(),
             first_content_seen: false,
             terminal_event_seen: false,
+            error_event: None,
         }
     }
 
@@ -294,6 +297,15 @@ impl SseStreamObserver {
 
     pub fn is_complete(&self) -> bool {
         self.terminal_event_seen
+    }
+
+    /// The last upstream SSE error event observed on this stream, if any
+    /// (Anthropic `event: error`, OpenAI top-level `error` object, Responses
+    /// `error` / `response.failed` types). Lets the proxy record the request
+    /// as failed instead of a clean-success stream that silently lost the
+    /// upstream error.
+    pub fn error_event(&self) -> Option<&Value> {
+        self.error_event.as_ref()
     }
 
     fn observe_event_block(&mut self, block: &str, observation: &mut StreamObservation) {
@@ -329,6 +341,11 @@ impl SseStreamObserver {
 
         if self.detect_terminal_event(&event) {
             self.mark_terminal(observation);
+        }
+
+        if self.detect_error_event(&event) {
+            self.error_event = Some(event.clone());
+            observation.saw_error_event = true;
         }
 
         match self.protocol {
@@ -386,6 +403,21 @@ impl SseStreamObserver {
             ProviderProtocol::OpenAiResponses => matches!(
                 event.get("type").and_then(Value::as_str),
                 Some("response.completed") | Some("response.done")
+            ),
+        }
+    }
+
+    fn detect_error_event(&self, event: &Value) -> bool {
+        match self.protocol {
+            ProviderProtocol::AnthropicMessages => {
+                event.get("type").and_then(Value::as_str) == Some("error")
+            }
+            // OpenAI-compatible upstreams surface mid-stream failures as a
+            // top-level `error` object (normal chunks never carry one).
+            ProviderProtocol::OpenAiChatCompletions => event.get("error").is_some(),
+            ProviderProtocol::OpenAiResponses => matches!(
+                event.get("type").and_then(Value::as_str),
+                Some("error") | Some("response.failed")
             ),
         }
     }
@@ -2363,6 +2395,43 @@ mod tests {
     };
     use crate::provider::ProviderProtocol;
     use serde_json::{Value, json};
+
+    #[test]
+    fn sse_observer_detects_error_events_by_protocol() {
+        let mut anthropic = SseStreamObserver::new(ProviderProtocol::AnthropicMessages);
+        let observation = anthropic.push(
+            "event: error\n\
+             data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
+        );
+        assert!(observation.saw_error_event);
+        assert_eq!(
+            anthropic
+                .error_event()
+                .and_then(|event| event.pointer("/error/message"))
+                .and_then(Value::as_str),
+            Some("Overloaded")
+        );
+
+        let mut openai_chat = SseStreamObserver::new(ProviderProtocol::OpenAiChatCompletions);
+        let observation = openai_chat.push(
+            "data: {\"error\":{\"message\":\"quota exhausted\",\"type\":\"insufficient_quota\",\"code\":\"429\"}}\n\n",
+        );
+        assert!(observation.saw_error_event);
+
+        let mut openai_responses = SseStreamObserver::new(ProviderProtocol::OpenAiResponses);
+        let observation = openai_responses.push(
+            "data: {\"type\":\"response.failed\",\"response\":{}}\n\n",
+        );
+        assert!(observation.saw_error_event);
+
+        // Normal chunks in every protocol must not trip the detector.
+        let mut normal = SseStreamObserver::new(ProviderProtocol::OpenAiChatCompletions);
+        let observation = normal.push(
+            "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\n",
+        );
+        assert!(!observation.saw_error_event);
+        assert!(normal.error_event().is_none());
+    }
 
     #[test]
     fn utf8_decoder_reassembles_characters_split_across_chunks() {

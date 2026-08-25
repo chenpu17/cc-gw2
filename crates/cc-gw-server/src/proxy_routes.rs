@@ -2658,6 +2658,7 @@ async fn into_streaming_converted_response(
     let stream = stream! {
         let _activity_guard = activity_guard;
         let mut utf8 = Utf8StreamDecoder::new();
+        let mut error_forwarded = false;
         loop {
             match upstream.try_next().await {
                 Ok(Some(chunk)) => {
@@ -2674,6 +2675,30 @@ async fn into_streaming_converted_response(
                         finalizer.record_first_token_at(seen_at);
                     }
                     finalizer.push_upstream_response(&text);
+                    // The transformer has no shape for upstream error events,
+                    // so convert one into the client's protocol by hand —
+                    // once — or the client would only see the stream end.
+                    if observation.saw_error_event && !error_forwarded {
+                        error_forwarded = true;
+                        if let Some(event) = observer.error_event() {
+                            if let Some((message, error_type, code)) =
+                                extract_upstream_error_fields(event)
+                            {
+                                let frame = sse_error_frame(
+                                    request_protocol,
+                                    &upstream_error_payload(
+                                        request_protocol,
+                                        &message,
+                                        &error_type,
+                                        code.as_deref(),
+                                    ),
+                                );
+                                network_recorder.record_egress(frame.len());
+                                finalizer.push_client_response(&frame);
+                                yield Ok::<Bytes, std::io::Error>(Bytes::from(frame));
+                            }
+                        }
+                    }
                     for transformed in transformer.push(&text) {
                         network_recorder.record_egress(transformed.len());
                         finalizer.push_client_response(&transformed);
@@ -2720,6 +2745,28 @@ async fn into_streaming_converted_response(
             let seen_at = chrono::Utc::now().timestamp_millis();
             finalizer.record_first_token_at(seen_at);
         }
+
+        // An upstream SSE error event ends the stream as a failed request —
+        // no synthesized happy ending, the log records what actually happened.
+        if let Some(event) = observer.error_event() {
+            let (message, _error_type, code) = extract_upstream_error_fields(event)
+                .unwrap_or_else(|| {
+                    (
+                        "upstream stream error event".to_string(),
+                        "api_error".to_string(),
+                        None,
+                    )
+                });
+            let status = upstream_error_status(code.as_deref(), &message);
+            finalizer.record_usage(observer.usage_stats());
+            finalizer.fail(
+                status.as_u16() as i64,
+                format!("upstream stream error event: {message}"),
+                ERROR_SOURCE_UPSTREAM.to_string(),
+            );
+            return;
+        }
+
         for transformed in transformer.finish() {
             network_recorder.record_egress(transformed.len());
             finalizer.push_client_response(&transformed);
@@ -2957,6 +3004,19 @@ fn compact_upstream_text(value: &str) -> String {
         .collect()
 }
 
+/// Frame an error payload as an SSE event in the CLIENT's protocol. Live
+/// streaming clients must receive a terminal error event instead of a
+/// silently truncated stream — the cross-protocol transformer drops upstream
+/// error chunks (they carry no choices/delta structure to convert).
+fn sse_error_frame(protocol: ProviderProtocol, payload: &Value) -> String {
+    match protocol {
+        ProviderProtocol::AnthropicMessages => format!("event: error\ndata: {payload}\n\n"),
+        ProviderProtocol::OpenAiChatCompletions | ProviderProtocol::OpenAiResponses => {
+            format!("data: {payload}\n\n")
+        }
+    }
+}
+
 fn protocol_error_message(payload: &Value) -> Option<&str> {
     payload
         .get("error")
@@ -3178,6 +3238,28 @@ async fn into_streaming_proxy_response(
             let seen_at = chrono::Utc::now().timestamp_millis();
             finalizer.record_first_token_at(seen_at);
         }
+
+        // Passthrough clients already received the raw upstream error bytes;
+        // here only the log must tell the truth about how the stream ended.
+        if let Some(event) = observer.error_event() {
+            let (message, _error_type, code) = extract_upstream_error_fields(event)
+                .unwrap_or_else(|| {
+                    (
+                        "upstream stream error event".to_string(),
+                        "api_error".to_string(),
+                        None,
+                    )
+                });
+            let status = upstream_error_status(code.as_deref(), &message);
+            finalizer.record_usage(observer.usage_stats());
+            finalizer.fail(
+                status.as_u16() as i64,
+                format!("upstream stream error event: {message}"),
+                ERROR_SOURCE_UPSTREAM.to_string(),
+            );
+            return;
+        }
+
         finalizer.record_usage(observer.usage_stats());
         finalizer.finish();
     };
