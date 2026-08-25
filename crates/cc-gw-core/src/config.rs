@@ -275,6 +275,9 @@ pub struct GatewayConfig {
     pub enable_routing_fallback: Option<bool>,
     pub log_retention_days: Option<u32>,
     pub log_export_timeout_seconds: Option<u32>,
+    /// 流式转发逐 chunk 空闲超时（秒）：上游在流中途长时间不发送任何
+    /// 字节时主动终止，避免挂起的流永久占用请求槽位。默认 300。
+    pub upstream_stream_idle_timeout_seconds: Option<u64>,
     pub model_routes: ModelRouteMap,
     pub endpoint_routing: HashMap<String, EndpointRoutingConfig>,
     pub custom_endpoints: Vec<CustomEndpointConfig>,
@@ -322,6 +325,7 @@ impl Default for GatewayConfig {
             enable_routing_fallback: Some(false),
             log_retention_days: Some(30),
             log_export_timeout_seconds: None,
+            upstream_stream_idle_timeout_seconds: None,
             model_routes: Default::default(),
             endpoint_routing,
             custom_endpoints: Vec::new(),
@@ -387,7 +391,13 @@ impl GatewayConfig {
     pub fn validate_for_save(&self) -> Result<()> {
         self.validate()?;
         self.validate_route_provider_references()?;
-        self.validate_aggregate_providers()
+        self.validate_aggregate_providers()?;
+        if let Some(seconds) = self.upstream_stream_idle_timeout_seconds {
+            if !(1..=86_400).contains(&seconds) {
+                bail!("上游流式空闲超时秒数必须在 1-86400 之间: {seconds}");
+            }
+        }
+        Ok(())
     }
 
     fn validate_provider_ids(&self) -> Result<HashSet<String>> {
@@ -885,6 +895,31 @@ mod tests {
         config
             .validate()
             .expect("startup validation tolerates stale route");
+    }
+
+    #[test]
+    fn validate_for_save_rejects_out_of_range_stream_idle_timeout() {
+        let mut config = GatewayConfig::default();
+        config.upstream_stream_idle_timeout_seconds = Some(0);
+        let error = config.validate_for_save().expect_err("zero idle timeout");
+        assert!(
+            error.to_string().contains("空闲超时秒数必须在 1-86400"),
+            "unexpected error: {error}"
+        );
+
+        config.upstream_stream_idle_timeout_seconds = Some(86_401);
+        let error = config
+            .validate_for_save()
+            .expect_err("idle timeout above ceiling");
+        assert!(
+            error.to_string().contains("空闲超时秒数必须在 1-86400"),
+            "unexpected error: {error}"
+        );
+
+        config.upstream_stream_idle_timeout_seconds = Some(1);
+        config
+            .validate_for_save()
+            .expect("in-range idle timeout is accepted");
     }
 
     #[test]

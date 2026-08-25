@@ -7485,6 +7485,117 @@ data: {\"error\":{\"message\":\"quota exhausted\",\"type\":\"insufficient_quota\
     let _ = stdfs::remove_dir_all(home_dir);
 }
 
+/// An upstream that goes silent mid-stream (sends a chunk, then nothing —
+/// never EOF) must be terminated by the per-chunk idle timeout instead of
+/// holding the request slot forever. The client gets the bytes that arrived
+/// plus a terminated connection, and the log records the failure.
+#[tokio::test]
+async fn hung_upstream_stream_is_terminated_by_idle_timeout() {
+    let first_chunk = "data: {\"id\":\"chatcmpl_hung\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"partial\"},\"finish_reason\":null}]}\n\n";
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move || async move {
+            let stream = stream! {
+                yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(first_chunk));
+                // Go silent forever: no further events, no EOF.
+                std::future::pending::<()>().await;
+            };
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from_stream(stream))
+                .expect("build hung stream response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.upstream_stream_idle_timeout_seconds = Some(1);
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic_routing) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic_routing.model_routes.insert(
+            "claude-client".to_string(),
+            "mock-openai:gpt-test".to_string(),
+        );
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "hung-upstream-idle-timeout").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-client",
+            "max_tokens": 64,
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send streaming request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Fail fast if the idle timeout ever regresses: without it this never
+    // resolves and the outer timeout fails the test instead of hanging CI.
+    // The abrupt chunked-EOF from terminating the stream surfaces as a decode
+    // error client-side — expected, so map it to an empty chunk and fold.
+    let received = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        response
+            .bytes_stream()
+            .map(|item| item.unwrap_or_default())
+            .fold(String::new(), |mut acc, chunk| async move {
+                acc.push_str(&String::from_utf8_lossy(&chunk));
+                acc
+            }),
+    )
+    .await
+    .expect("idle timeout must terminate a hung upstream stream");
+    assert!(
+        received.contains("partial"),
+        "bytes sent before the hang must still reach the client, got: {received}"
+    );
+
+    sleep(Duration::from_millis(250)).await;
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("stream log item");
+    assert_eq!(item.get("status_code").and_then(Value::as_i64), Some(502));
+    assert!(
+        item.get("error")
+            .and_then(Value::as_str)
+            .is_some_and(|error| error.contains("idle timeout")),
+        "log must record the idle timeout failure, got: {item}"
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
 /// Same-protocol passthrough: the raw error bytes already reach the client;
 /// the fix is that the log records the stream as failed, not clean success.
 #[tokio::test]
@@ -8229,8 +8340,11 @@ async fn aggregate_failover_all_backends_cooling_returns_429_unavailable() {
             trigger_status_codes: None,
         }),
     );
-    config.providers[2] =
-        anthropic_backend_config("backup", "claude-primary", format!("http://{upstream_addr}"));
+    config.providers[2] = anthropic_backend_config(
+        "backup",
+        "claude-primary",
+        format!("http://{upstream_addr}"),
+    );
     let (home_dir, gateway_addr, gateway_handle) =
         spawn_test_gateway(config, "agg-failover-all-cooling").await;
     let client = reqwest::Client::new();
@@ -8290,10 +8404,9 @@ async fn aggregate_failover_all_backends_cooling_returns_429_unavailable() {
                 .and_then(|details| details.get("attempts"))
                 .and_then(Value::as_array)
                 .map(|attempts| {
-                    attempts
-                        .iter()
-                        .any(|attempt| attempt.get("outcome").and_then(Value::as_str)
-                            == Some("skipped:cooldown"))
+                    attempts.iter().any(|attempt| {
+                        attempt.get("outcome").and_then(Value::as_str) == Some("skipped:cooldown")
+                    })
                 })
                 .unwrap_or(false)
         })
@@ -8392,7 +8505,9 @@ async fn aggregate_failover_rpm_rejection_moves_to_next_candidate_without_health
     // The RPM rejection is an admission decision, not a backend failure: the
     // preferred backend must not appear in the health registry as failed.
     let health: Value = client
-        .get(format!("http://{gateway_addr}/api/providers/backends/health"))
+        .get(format!(
+            "http://{gateway_addr}/api/providers/backends/health"
+        ))
         .send()
         .await
         .expect("request backend health")
@@ -8424,10 +8539,9 @@ async fn aggregate_failover_rpm_rejection_moves_to_next_candidate_without_health
                     .and_then(|details| details.get("attempts"))
                     .and_then(Value::as_array)
                     .map(|attempts| {
-                        attempts
-                            .iter()
-                            .any(|attempt| attempt.get("outcome").and_then(Value::as_str)
-                                == Some("rate-limited"))
+                        attempts.iter().any(|attempt| {
+                            attempt.get("outcome").and_then(Value::as_str) == Some("rate-limited")
+                        })
                     })
                     .unwrap_or(false)
         })

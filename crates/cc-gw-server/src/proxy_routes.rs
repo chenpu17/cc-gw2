@@ -11,6 +11,22 @@ const ERROR_SOURCE_UPSTREAM: &str = "upstream";
 /// passthrough requests must not use it — it would kill legitimate long streams.
 const UPSTREAM_NON_STREAM_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
+/// Default for the per-chunk idle timeout on streaming forwards: an upstream
+/// that stops sending bytes mid-stream for this long is treated as hung and
+/// the stream is terminated (override via `upstreamStreamIdleTimeoutSeconds`).
+const DEFAULT_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS: u64 = 300;
+
+fn upstream_stream_idle_timeout(state: &AppState) -> std::time::Duration {
+    let configured = state
+        .config
+        .read()
+        .expect("config lock poisoned")
+        .upstream_stream_idle_timeout_seconds;
+    std::time::Duration::from_secs(
+        configured.unwrap_or(DEFAULT_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS),
+    )
+}
+
 fn upstream_error_source_for_status(status_code: i64) -> Option<String> {
     (status_code >= 400).then(|| ERROR_SOURCE_UPSTREAM.to_string())
 }
@@ -2659,8 +2675,31 @@ async fn into_streaming_converted_response(
         let _activity_guard = activity_guard;
         let mut utf8 = Utf8StreamDecoder::new();
         let mut error_forwarded = false;
+        let idle_timeout = upstream_stream_idle_timeout(&network_recorder.state);
         loop {
-            match upstream.try_next().await {
+            let next_chunk = match tokio::time::timeout(idle_timeout, upstream.try_next()).await {
+                Ok(outcome) => outcome,
+                Err(_elapsed) => {
+                    let message = format!(
+                        "upstream stream idle timeout after {}s",
+                        idle_timeout.as_secs()
+                    );
+                    if observer.is_complete() {
+                        finalizer.record_usage(observer.usage_stats());
+                        finalizer.finish();
+                        tracing::warn!(error = %message, "ignoring idle timeout after terminal SSE event");
+                        return;
+                    }
+                    finalizer.fail(
+                        StatusCode::BAD_GATEWAY.as_u16() as i64,
+                        message.clone(),
+                        ERROR_SOURCE_UPSTREAM.to_string(),
+                    );
+                    yield Err::<Bytes, std::io::Error>(std::io::Error::other(message));
+                    return;
+                }
+            };
+            match next_chunk {
                 Ok(Some(chunk)) => {
                     let text = utf8.push(&chunk);
                     if text.is_empty() {
@@ -3184,8 +3223,31 @@ async fn into_streaming_proxy_response(
     let stream = stream! {
         let _activity_guard = activity_guard;
         let mut utf8 = Utf8StreamDecoder::new();
+        let idle_timeout = upstream_stream_idle_timeout(&network_recorder.state);
         loop {
-            match upstream.try_next().await {
+            let next_chunk = match tokio::time::timeout(idle_timeout, upstream.try_next()).await {
+                Ok(outcome) => outcome,
+                Err(_elapsed) => {
+                    let message = format!(
+                        "upstream stream idle timeout after {}s",
+                        idle_timeout.as_secs()
+                    );
+                    if observer.is_complete() {
+                        finalizer.record_usage(observer.usage_stats());
+                        finalizer.finish();
+                        tracing::warn!(error = %message, "ignoring idle timeout after terminal SSE event");
+                        return;
+                    }
+                    finalizer.fail(
+                        StatusCode::BAD_GATEWAY.as_u16() as i64,
+                        message.clone(),
+                        ERROR_SOURCE_UPSTREAM.to_string(),
+                    );
+                    yield Err::<Bytes, std::io::Error>(std::io::Error::other(message));
+                    return;
+                }
+            };
+            match next_chunk {
                 Ok(Some(chunk)) => {
                     // The client receives the raw bytes untouched; the decoder
                     // only feeds the observer/finalizer a correct string view
