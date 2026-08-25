@@ -298,7 +298,10 @@ pub enum ProviderModelsError {
     /// The provider's base URL cannot be mapped to a model-list endpoint
     /// (e.g. an absolute URL that doesn't end in a known chat path).
     UnsupportedEndpoint,
-    Upstream { status: StatusCode, body: String },
+    Upstream {
+        status: StatusCode,
+        body: String,
+    },
     Transport(reqwest::Error),
     InvalidResponse,
 }
@@ -628,9 +631,10 @@ mod tests {
         provider
             .extra_headers
             .insert("app-id".to_string(), "gateway-app".to_string());
-        provider
-            .extra_headers
-            .insert("authorization".to_string(), "Bearer should-be-ignored".to_string());
+        provider.extra_headers.insert(
+            "authorization".to_string(),
+            "Bearer should-be-ignored".to_string(),
+        );
 
         let mut incoming = HeaderMap::new();
         incoming.insert(

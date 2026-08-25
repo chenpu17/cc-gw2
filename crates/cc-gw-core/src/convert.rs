@@ -947,7 +947,9 @@ fn merge_adjacent_anthropic_messages(messages: Vec<Value>) -> Vec<Value> {
             merged.push(msg);
             continue;
         };
-        let content = obj.remove("content").unwrap_or_else(|| Value::Array(vec![]));
+        let content = obj
+            .remove("content")
+            .unwrap_or_else(|| Value::Array(vec![]));
         let mut blocks: Vec<Value> = match content {
             Value::Array(blocks) => blocks,
             other => vec![other],
@@ -2443,10 +2445,7 @@ mod tests {
         // Top-level `reasoning` items carry no cryptographic signature, so they
         // can't be synthesized into Anthropic thinking blocks; the converter
         // drops them, leaving no message in history.
-        assert_eq!(
-            converted["messages"].as_array().map(Vec::len),
-            Some(0)
-        );
+        assert_eq!(converted["messages"].as_array().map(Vec::len), Some(0));
     }
 
     #[test]

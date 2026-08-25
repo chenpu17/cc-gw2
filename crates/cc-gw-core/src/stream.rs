@@ -756,14 +756,15 @@ impl CrossProtocolStreamTransformer {
         // Some OpenAI-compatible upstreams (e.g. GLM) nest the usage in
         // choices[0].delta.usage instead of the chunk top level; read both
         // so the client-visible message_delta carries real token counts.
-        self.usage.update_from_openai(event.get("usage").or_else(|| {
-            event
-                .get("choices")
-                .and_then(Value::as_array)
-                .and_then(|choices| choices.first())
-                .and_then(|choice| choice.get("delta"))
-                .and_then(|delta| delta.get("usage"))
-        }));
+        self.usage
+            .update_from_openai(event.get("usage").or_else(|| {
+                event
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first())
+                    .and_then(|choice| choice.get("delta"))
+                    .and_then(|delta| delta.get("usage"))
+            }));
         let choice = event
             .get("choices")
             .and_then(Value::as_array)
@@ -2419,9 +2420,8 @@ mod tests {
         assert!(observation.saw_error_event);
 
         let mut openai_responses = SseStreamObserver::new(ProviderProtocol::OpenAiResponses);
-        let observation = openai_responses.push(
-            "data: {\"type\":\"response.failed\",\"response\":{}}\n\n",
-        );
+        let observation =
+            openai_responses.push("data: {\"type\":\"response.failed\",\"response\":{}}\n\n");
         assert!(observation.saw_error_event);
 
         // Normal chunks in every protocol must not trip the detector.
@@ -3381,11 +3381,12 @@ mod tests {
         .expect("materialized payload");
 
         let parsed: Value = serde_json::from_str(&payload).expect("valid json");
-        let usage = parsed
-            .get("usage")
-            .expect("usage object present");
+        let usage = parsed.get("usage").expect("usage object present");
         assert_eq!(usage.get("prompt_tokens").and_then(Value::as_i64), Some(41));
-        assert_eq!(usage.get("completion_tokens").and_then(Value::as_i64), Some(7));
+        assert_eq!(
+            usage.get("completion_tokens").and_then(Value::as_i64),
+            Some(7)
+        );
         assert!(payload.contains("\"text\":\"hi\"") || payload.contains("\"content\":\"hi\""));
     }
 

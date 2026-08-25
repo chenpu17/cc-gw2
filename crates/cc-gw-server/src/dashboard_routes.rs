@@ -51,7 +51,8 @@ pub(super) async fn api_dashboard_summary(
         // `/api/events` only accepts a single level filter, so merge the
         // error and warn pages and keep the 10 most recent entries. Honor the
         // endpoint filter so the attention feed matches the scoped dashboard.
-        let mut recent_errors = list_events(db_path, 10, None, Some("error"), None, endpoint)?.events;
+        let mut recent_errors =
+            list_events(db_path, 10, None, Some("error"), None, endpoint)?.events;
         recent_errors.extend(list_events(db_path, 10, None, Some("warn"), None, endpoint)?.events);
         recent_errors.sort_by(|a, b| b.id.cmp(&a.id));
         recent_errors.truncate(10);

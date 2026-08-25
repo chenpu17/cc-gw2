@@ -64,7 +64,8 @@ pub struct EventStats {
 }
 
 fn open_db(db_path: &Path) -> Result<Connection> {
-    let conn = Connection::open(db_path).with_context(|| format!("failed to open db {}", db_path.display()))?;
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("failed to open db {}", db_path.display()))?;
     // Raise rusqlite's default 5s busy_timeout so concurrent proxy writes aren't
     // SQLITE_BUSY'd (and then silently dropped) while an admin VACUUM / log
     // cleanup holds the write lock for tens of seconds.
@@ -260,7 +261,11 @@ mod tests {
             ("stream_filtered_warn", Some("warn"), now),
             ("stream_filtered_warn", Some("warn"), now),
             ("openai_compatibility_mode_learned", Some("info"), now),
-            ("provider_proxy_failure", Some("error"), now - 7 * 24 * 60 * 60 * 1000),
+            (
+                "provider_proxy_failure",
+                Some("error"),
+                now - 7 * 24 * 60 * 60 * 1000,
+            ),
         ] {
             record_event(
                 &db_path,
@@ -291,7 +296,8 @@ mod tests {
         assert_eq!(all.info, 1);
 
         // Windowed: the 7-day-old error event falls outside a 24h cutoff.
-        let recent = get_event_stats(&db_path, Some(now - 24 * 60 * 60 * 1000)).expect("windowed stats");
+        let recent =
+            get_event_stats(&db_path, Some(now - 24 * 60 * 60 * 1000)).expect("windowed stats");
         assert_eq!(recent.total, 4);
         assert_eq!(recent.error, 1);
 
