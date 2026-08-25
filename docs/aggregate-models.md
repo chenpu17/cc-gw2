@@ -68,7 +68,8 @@ pub struct FailoverPolicyConfig {
 | 全部候选 rate-limited | 429 + Retry-After（现有契约） | 无 | 无 |
 | 全部候选冷却跳过 | 429 `aggregate_backends_unavailable` + Retry-After（最短冷却） | 无 | 发 |
 | materialized（non_stream_via_stream）握手 200 但 SSE error | v1 不回环 failover，只记失败 | `record_failure` | 无 |
-| 流式中途（yield 后）失败 | 维持现状 502 | 不记（因果弱） | 无 |
+| 直播流握手 200 但 SSE error 事件 | 转换路径向客户端补发协议正确的 error 事件；日志按失败记录 | 不记（因果弱） | 无 |
+| 流式中途（yield 后）transport 失败 / 长时间静默 | 502（空闲超时终止挂起的流） | 不记（因果弱） | 无 |
 
 ## 6. 非目标（v2 方向，接口已预留）
 

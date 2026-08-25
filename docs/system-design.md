@@ -219,11 +219,15 @@ SQLite 主要承担以下职责：
 流式链路是兼容性最敏感的部分，当前设计分成两层：
 
 - `SseStreamObserver`
-  - 观察上游 SSE，提取 usage、结束原因、耗时、payload 统计信息
+  - 观察上游 SSE，提取 usage、结束原因、耗时、payload 统计信息；识别上游 SSE error 事件
 - `CrossProtocolStreamTransformer`
   - 在 Anthropic / OpenAI 协议之间做增量事件转换
 - `materialize_stream_response`
   - 在日志落盘前把流式 chunk 整理为完整离线响应对象，避免把原始 SSE 片段直接写入 payload
+- `Utf8StreamDecoder`
+  - 转发循环按原始字节 chunk 增量解码 UTF-8，跨 chunk 拆分的多字节字符正确重组，不再退化为 U+FFFD
+
+转发循环的两个不变量：上游在流中途长时间静默（默认 300s，可经 `upstreamStreamIdleTimeoutSeconds` 配置）按 502 终止并释放请求槽；上游以 SSE error 事件结束时，转换路径向客户端补发协议正确的 error 事件，日志按失败记录（同协议透传客户端本就收到原始错误字节，仅修日志）。
 
 设计目标：
 
