@@ -167,7 +167,7 @@ fn resolve_provider_model(provider: &ProviderConfig, requested_model: &str) -> O
     None
 }
 
-fn resolve_by_identifier(
+pub(crate) fn resolve_by_identifier(
     identifier: &str,
     providers: &[ProviderConfig],
     requested_model: Option<&str>,

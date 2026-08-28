@@ -3760,9 +3760,29 @@ async fn custom_models_route_uses_custom_endpoint_routing() {
         .filter_map(|model| model.get("id").and_then(Value::as_str))
         .collect();
 
-    assert!(model_ids.contains(&"test-visible"));
-    assert!(model_ids.contains(&"provider-model"));
+    assert_eq!(model_ids, vec!["test-visible"]);
+    // The provider inventory and other endpoints' routes must not leak into
+    // an endpoint-scoped listing.
+    assert!(!model_ids.contains(&"provider-model"));
     assert!(!model_ids.contains(&"openai-visible"));
+
+    let response: Value = client
+        .get(format!("http://{gateway_addr}/openai/v1/models"))
+        .send()
+        .await
+        .expect("request openai models route")
+        .json()
+        .await
+        .expect("decode openai models response");
+    let model_ids: Vec<&str> = response
+        .get("data")
+        .and_then(Value::as_array)
+        .expect("models data")
+        .iter()
+        .filter_map(|model| model.get("id").and_then(Value::as_str))
+        .collect();
+
+    assert_eq!(model_ids, vec!["openai-visible"]);
 
     gateway_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
