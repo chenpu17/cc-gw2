@@ -59,7 +59,8 @@ use cc_gw_core::{
     storage::initialize_database,
     stream::{
         CrossProtocolStreamTransformer, SseStreamObserver, Utf8StreamDecoder,
-        materialize_stream_response, usage_stats_option_from_payload,
+        materialize_stream_response, observe_buffered_stream_usage,
+        usage_stats_option_from_payload,
     },
     ui::resolve_web_dist,
 };
@@ -93,6 +94,8 @@ struct AppState {
     active_client_sessions_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_requests_by_api_key: Arc<Mutex<HashMap<i64, u64>>>,
     active_requests_by_client_kind: Arc<Mutex<BTreeMap<String, u64>>>,
+    active_requests_by_client_kind_by_endpoint:
+        Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     network_ingress_bytes: Arc<AtomicU64>,
     network_egress_bytes: Arc<AtomicU64>,
     network_ingress_bytes_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
@@ -373,6 +376,7 @@ async fn main() -> Result<()> {
         active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
         active_requests_by_client_kind: Arc::new(Mutex::new(BTreeMap::new())),
+        active_requests_by_client_kind_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         network_ingress_bytes: Arc::new(AtomicU64::new(0)),
         network_egress_bytes: Arc::new(AtomicU64::new(0)),
         network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),

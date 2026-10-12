@@ -345,6 +345,8 @@ struct RequestActivityGuard {
     active_client_sessions_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_requests_by_api_key: Arc<Mutex<HashMap<i64, u64>>>,
     active_requests_by_client_kind: Arc<Mutex<BTreeMap<String, u64>>>,
+    active_requests_by_client_kind_by_endpoint:
+        Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     endpoint_id: String,
     source_ip: Option<String>,
     session_id: Option<String>,
@@ -383,6 +385,11 @@ impl RequestActivityGuard {
             increment_api_key_counter(&state.active_requests_by_api_key, api_key_id);
         }
         increment_client_kind_counter(&state.active_requests_by_client_kind, client_kind.as_str());
+        increment_active_entry_for_endpoint(
+            &state.active_requests_by_client_kind_by_endpoint,
+            &endpoint_id,
+            client_kind.as_str(),
+        );
         Self {
             active_requests: Arc::clone(&state.active_requests),
             active_client_addresses: Arc::clone(&state.active_client_addresses),
@@ -396,6 +403,9 @@ impl RequestActivityGuard {
             ),
             active_requests_by_api_key: Arc::clone(&state.active_requests_by_api_key),
             active_requests_by_client_kind: Arc::clone(&state.active_requests_by_client_kind),
+            active_requests_by_client_kind_by_endpoint: Arc::clone(
+                &state.active_requests_by_client_kind_by_endpoint,
+            ),
             endpoint_id,
             source_ip,
             session_id,
@@ -490,6 +500,11 @@ impl RequestActivityGuard {
         }
         // NOTE: api_key_id counter is NOT incremented here — already done by caller
         increment_client_kind_counter(&state.active_requests_by_client_kind, client_kind.as_str());
+        increment_active_entry_for_endpoint(
+            &state.active_requests_by_client_kind_by_endpoint,
+            &endpoint_id,
+            client_kind.as_str(),
+        );
         Self {
             active_requests: Arc::clone(&state.active_requests),
             active_client_addresses: Arc::clone(&state.active_client_addresses),
@@ -503,6 +518,9 @@ impl RequestActivityGuard {
             ),
             active_requests_by_api_key: Arc::clone(&state.active_requests_by_api_key),
             active_requests_by_client_kind: Arc::clone(&state.active_requests_by_client_kind),
+            active_requests_by_client_kind_by_endpoint: Arc::clone(
+                &state.active_requests_by_client_kind_by_endpoint,
+            ),
             endpoint_id,
             source_ip,
             session_id,
@@ -537,6 +555,11 @@ impl Drop for RequestActivityGuard {
         }
         decrement_client_kind_counter(
             &self.active_requests_by_client_kind,
+            self.client_kind.as_str(),
+        );
+        decrement_active_entry_for_endpoint(
+            &self.active_requests_by_client_kind_by_endpoint,
+            &self.endpoint_id,
             self.client_kind.as_str(),
         );
     }
@@ -2559,7 +2582,17 @@ async fn into_materialized_stream_response(
         if request_protocol == target_protocol {
             let (result, usage, response_payload) =
                 into_proxy_response(response, true, network_recorder).await;
-            return (result, usage, None, response_payload, status);
+            // Same protocol: the client payload IS the upstream body verbatim.
+            // Surface it as the upstream payload too so error_detail can embed
+            // the upstream error body even when response-payload storage is
+            // off (the payload-storage upsert dedupes identical views).
+            return (
+                result,
+                usage,
+                response_payload.clone(),
+                response_payload,
+                status,
+            );
         }
         let (result, usage, upstream_payload, response_payload) = into_converted_response(
             response,
@@ -2660,7 +2693,11 @@ async fn into_materialized_stream_response(
         }
     };
 
-    let usage = extract_usage_stats(&payload);
+    // The materialized envelope always carries a (zero-filled) usage object
+    // for client-shape compatibility; only trust it when the upstream stream
+    // actually reported usage — otherwise log NULL tokens, exactly like the
+    // passthrough-stream path does for the same upstream.
+    let usage = observe_buffered_stream_usage(target_protocol, &raw_stream);
     let mut converted = if status.is_success() {
         match (request_protocol, target_protocol) {
             (ProviderProtocol::AnthropicMessages, ProviderProtocol::OpenAiChatCompletions) => {
@@ -3901,6 +3938,7 @@ mod tests {
             active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
             active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
             active_requests_by_client_kind: Arc::new(Mutex::new(BTreeMap::new())),
+            active_requests_by_client_kind_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
             network_ingress_bytes: Arc::new(AtomicU64::new(0)),
             network_egress_bytes: Arc::new(AtomicU64::new(0)),
             network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
@@ -4192,6 +4230,60 @@ mod tests {
             entries.is_empty(),
             "client kind counters should drain to empty, got {entries:?}"
         );
+        let by_endpoint = state
+            .active_requests_by_client_kind_by_endpoint
+            .lock()
+            .unwrap();
+        assert!(
+            by_endpoint.is_empty(),
+            "per-endpoint client kind counters should drain to empty, got {by_endpoint:?}"
+        );
+    }
+
+    #[test]
+    fn client_kind_active_counts_honor_endpoint_filter() {
+        let state = make_test_state();
+        {
+            let _openai_codex = RequestActivityGuard::new(
+                &state,
+                "openai".to_string(),
+                None,
+                None,
+                None,
+                "codex".to_string(),
+            );
+            let _anthropic_codex = RequestActivityGuard::new(
+                &state,
+                "anthropic".to_string(),
+                None,
+                None,
+                None,
+                "codex".to_string(),
+            );
+
+            let unfiltered = crate::admin_routes::build_status_response(&state, None);
+            assert_eq!(
+                unfiltered.active_by_client_kind.get("codex"),
+                Some(&2),
+                "unfiltered view aggregates every endpoint"
+            );
+            let openai = crate::admin_routes::build_status_response(&state, Some("openai"));
+            assert_eq!(
+                openai.active_by_client_kind.get("codex"),
+                Some(&1),
+                "endpoint-filtered view counts only that endpoint's traffic"
+            );
+            let anthropic = crate::admin_routes::build_status_response(&state, Some("anthropic"));
+            assert_eq!(anthropic.active_by_client_kind.get("codex"), Some(&1));
+            let other = crate::admin_routes::build_status_response(&state, Some("other-endpoint"));
+            assert!(
+                other.active_by_client_kind.is_empty(),
+                "endpoint with no traffic reports an empty map, got {:?}",
+                other.active_by_client_kind
+            );
+        }
+        let drained = crate::admin_routes::build_status_response(&state, None);
+        assert!(drained.active_by_client_kind.is_empty());
     }
 
     #[test]

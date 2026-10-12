@@ -1,5 +1,6 @@
 use super::*;
 use semver::Version;
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 #[derive(Debug, Deserialize)]
@@ -198,11 +199,25 @@ pub(super) fn build_status_response(state: &AppState, endpoint: Option<&str>) ->
     } else {
         count_active_entries(&state.active_client_sessions)
     };
-    let active_by_client_kind = state
-        .active_requests_by_client_kind
-        .lock()
-        .map(|entries| entries.clone())
-        .unwrap_or_default();
+    // Per-client-kind active counts honor the endpoint filter, like every
+    // other active-* metric above — otherwise a dashboard scoped to one
+    // endpoint would mix in other endpoints' in-flight traffic.
+    let active_by_client_kind = if let Some(endpoint) = endpoint {
+        state
+            .active_requests_by_client_kind_by_endpoint
+            .lock()
+            .ok()
+            .and_then(|entries| entries.get(endpoint).cloned())
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<BTreeMap<String, u64>>()
+    } else {
+        state
+            .active_requests_by_client_kind
+            .lock()
+            .map(|entries| entries.clone())
+            .unwrap_or_default()
+    };
     let cpu_usage_percent = state.runtime_metrics.lock().ok().map(|mut metrics| {
         let key = endpoint.unwrap_or("__all__");
         let ingress_total = if let Some(endpoint) = endpoint {

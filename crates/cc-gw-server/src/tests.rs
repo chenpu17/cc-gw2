@@ -352,6 +352,7 @@ fn build_test_state(
         active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
         active_requests_by_client_kind: Arc::new(Mutex::new(BTreeMap::new())),
+        active_requests_by_client_kind_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         network_ingress_bytes: Arc::new(AtomicU64::new(0)),
         network_egress_bytes: Arc::new(AtomicU64::new(0)),
         network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
@@ -5293,6 +5294,181 @@ async fn upstream_stream_without_usage_records_null_tokens() {
     assert_eq!(item.get("input_tokens"), Some(&Value::Null));
     assert_eq!(item.get("output_tokens"), Some(&Value::Null));
     assert_eq!(item.get("cache_read_tokens"), Some(&Value::Null));
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn non_stream_via_stream_without_usage_records_null_tokens() {
+    let (upstream_addr, upstream_handle) = spawn_anthropic_upstream_without_usage().await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+            non_stream_via_stream: Some(true),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "non-stream-via-stream-without-usage").await;
+    let client = reqwest::Client::new();
+
+    // Non-stream client request; the model's non_stream_via_stream flag makes
+    // the gateway consume the upstream SSE and materialize a JSON response.
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hello"}]
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send materialized request");
+    assert_eq!(response.status(), StatusCode::OK);
+    let response_json: Value = response.json().await.expect("decode materialized response");
+    assert_eq!(
+        response_json["content"][0]["text"].as_str(),
+        Some("hello"),
+        "materialized client response keeps the streamed text"
+    );
+
+    sleep(Duration::from_millis(250)).await;
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs after usage-less materialized stream")
+        .json()
+        .await
+        .expect("decode logs");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("materialized log item");
+    assert_eq!(item.get("status_code").and_then(Value::as_i64), Some(200));
+    // The materialized envelope carries a zero-filled usage object for client
+    // compatibility, but the upstream stream never reported usage → the log
+    // must still record NULL tokens, matching the passthrough-stream path.
+    assert_eq!(item.get("input_tokens"), Some(&Value::Null));
+    assert_eq!(item.get("output_tokens"), Some(&Value::Null));
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn non_stream_via_stream_error_detail_keeps_upstream_body() {
+    let upstream = Router::new().route(
+        "/v1/messages",
+        post(|| async {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "type": "error",
+                    "error": {"type": "overloaded_error", "message": "upstream exploded with details"}
+                })),
+            )
+                .into_response()
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic-503".to_string(),
+        label: "Mock Anthropic 503".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+            non_stream_via_stream: Some(true),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "non-stream-via-stream-error-body").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hello"}]
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send materialized error request");
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let response_json: Value = response.json().await.expect("decode passthrough error body");
+    assert_eq!(
+        response_json["error"]["message"].as_str(),
+        Some("upstream exploded with details")
+    );
+
+    sleep(Duration::from_millis(250)).await;
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs after upstream 503")
+        .json()
+        .await
+        .expect("decode logs");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("error log item");
+    assert_eq!(item.get("status_code").and_then(Value::as_i64), Some(503));
+    let detail_raw = item
+        .get("error_detail")
+        .and_then(Value::as_str)
+        .expect("error_detail present on materialized error path");
+    let detail: Value = serde_json::from_str(detail_raw).expect("parse error_detail");
+    assert_eq!(detail.get("stage").and_then(Value::as_str), Some("upstream"));
+    assert_eq!(
+        detail.get("upstreamStatus").and_then(Value::as_i64),
+        Some(503)
+    );
+    let body = detail
+        .get("upstreamBody")
+        .and_then(Value::as_str)
+        .expect("upstreamBody embedded even without payload storage");
+    assert!(
+        body.contains("upstream exploded with details"),
+        "upstreamBody should carry the upstream error message, got: {body}"
+    );
 
     gateway_handle.abort();
     upstream_handle.abort();
