@@ -104,6 +104,8 @@ mod tests {
             "api_key_value",
             "error_source",
             "error_detail",
+            "client_kind",
+            "user_agent",
         ] {
             assert!(
                 request_log_columns.iter().any(|(name, _)| name == column),
@@ -273,6 +275,8 @@ pub fn initialize_database(path: &Path) -> Result<()> {
           timestamp INTEGER NOT NULL,
           session_id TEXT,
           source_ip TEXT,
+          client_kind TEXT,
+          user_agent TEXT,
           endpoint TEXT NOT NULL DEFAULT 'anthropic',
           provider TEXT NOT NULL,
           model TEXT NOT NULL,
@@ -393,6 +397,8 @@ pub fn initialize_database(path: &Path) -> Result<()> {
     maybe_add_column(&conn, "request_logs", "tpot_ms", "REAL")?;
     maybe_add_column(&conn, "request_logs", "error_source", "TEXT")?;
     maybe_add_column(&conn, "request_logs", "error_detail", "TEXT")?;
+    maybe_add_column(&conn, "request_logs", "client_kind", "TEXT")?;
+    maybe_add_column(&conn, "request_logs", "user_agent", "TEXT")?;
     maybe_add_column(&conn, "request_logs", "stream", "INTEGER")?;
     maybe_add_column(
         &conn,

@@ -53,6 +53,8 @@
 - `id`
 - `timestamp`
 - `session_id`
+- `client_kind`
+- `user_agent`
 - `endpoint`
 - `provider`
 - `model`
@@ -78,6 +80,7 @@
 
 - `endpoint` 用来区分 anthropic、openai 或自定义端点
 - `client_model` 保留客户端传入模型名，`model` 表示最终路由后的模型名
+- `client_kind` 为识别出的 agent 客户端类型（claude-code / codex / opencode / gemini-cli / …），无法识别时按协议回退（anthropic-compatible / openai-compatible）；`user_agent` 保留截断后的原始 UA，便于后续重新归类
 - `ttft_ms` 和 `tpot_ms` 主要用于流式请求观测
 - `error_detail` 为 JSON 格式的扩展错误上下文（失败阶段 / 完整错误链 / 截断的上游响应体 / aggregate failover 尝试链），成功请求或无额外信息时为 NULL；含未脱敏的上游 URL 等信息，仅限控制台展示
 

@@ -15,6 +15,12 @@ pub struct RequestLogInput {
     pub timestamp: i64,
     pub session_id: Option<String>,
     pub source_ip: Option<String>,
+    /// Identified agent client kind (claude-code / codex / opencode / ...),
+    /// or the protocol fallback when no known client signature matched.
+    pub client_kind: Option<String>,
+    /// Raw User-Agent, truncated by the caller; kept for future
+    /// re-classification of unknown clients.
+    pub user_agent: Option<String>,
     pub endpoint: String,
     pub provider: String,
     pub model: String,
@@ -55,6 +61,8 @@ pub struct LogRecord {
     pub id: i64,
     pub timestamp: i64,
     pub session_id: Option<String>,
+    pub client_kind: Option<String>,
+    pub user_agent: Option<String>,
     pub endpoint: String,
     pub provider: String,
     pub model: String,
@@ -321,6 +329,7 @@ pub struct LogQuery {
     pub from: Option<i64>,
     pub to: Option<i64>,
     pub api_key_ids: Option<Vec<i64>>,
+    pub client_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -421,13 +430,16 @@ pub fn insert_request_log(db_path: &Path, input: &RequestLogInput) -> Result<i64
     let conn = open_db(db_path)?;
     conn.execute(
         "INSERT INTO request_logs (
-          timestamp, session_id, source_ip, endpoint, provider, model, client_model, stream,
+          timestamp, session_id, source_ip, client_kind, user_agent,
+          endpoint, provider, model, client_model, stream,
           api_key_id, api_key_name, api_key_value
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             input.timestamp,
             input.session_id,
             input.source_ip,
+            input.client_kind,
+            input.user_agent,
             input.endpoint,
             input.provider,
             input.model,
@@ -584,6 +596,10 @@ fn build_log_filters(query: &LogQuery) -> (String, Vec<String>) {
         conditions.push("endpoint = ?".to_string());
         params.push(endpoint.clone());
     }
+    if let Some(client_kind) = &query.client_kind {
+        conditions.push("client_kind = ?".to_string());
+        params.push(client_kind.clone());
+    }
     if let Some(model) = &query.model {
         conditions.push("model = ?".to_string());
         params.push(model.clone());
@@ -671,6 +687,8 @@ fn bind_strings<'a>(
             api_key_id: row.get(20)?,
             api_key_name: row.get(21)?,
             api_key_value: row.get(22)?,
+            client_kind: row.get(23)?,
+            user_agent: row.get(24)?,
         })
     })?;
 
@@ -729,7 +747,8 @@ pub fn query_logs(db_path: &Path, query: &LogQuery) -> Result<LogListResult> {
         "SELECT id, timestamp, session_id, endpoint, provider, model, client_model,
                 stream, latency_ms, status_code, input_tokens, output_tokens,
                 cached_tokens, cache_read_tokens, cache_creation_tokens, ttft_ms, tpot_ms,
-                error, error_source, error_detail, api_key_id, api_key_name, api_key_value
+                error, error_source, error_detail, api_key_id, api_key_name, api_key_value,
+                client_kind, user_agent
          FROM request_logs
          {where_clause}
          ORDER BY timestamp DESC
@@ -747,7 +766,8 @@ pub fn get_log_detail(db_path: &Path, id: i64) -> Result<Option<LogDetail>> {
         "SELECT id, timestamp, session_id, endpoint, provider, model, client_model,
                 stream, latency_ms, status_code, input_tokens, output_tokens,
                 cached_tokens, cache_read_tokens, cache_creation_tokens, ttft_ms, tpot_ms,
-                error, error_source, error_detail, api_key_id, api_key_name, api_key_value
+                error, error_source, error_detail, api_key_id, api_key_name, api_key_value,
+                client_kind, user_agent
          FROM request_logs WHERE id = ?1",
     )?;
     let result: Option<LogRecord> = stmt
@@ -776,6 +796,8 @@ pub fn get_log_detail(db_path: &Path, id: i64) -> Result<Option<LogDetail>> {
                 api_key_id: row.get(20)?,
                 api_key_name: row.get(21)?,
                 api_key_value: row.get(22)?,
+                client_kind: row.get(23)?,
+                user_agent: row.get(24)?,
             })
         })
         .optional()?;
@@ -814,6 +836,7 @@ pub fn export_logs(db_path: &Path, query: &LogQuery) -> Result<Vec<ExportLogReco
                 l.stream, l.latency_ms, l.status_code, l.input_tokens, l.output_tokens,
                 l.cached_tokens, l.cache_read_tokens, l.cache_creation_tokens, l.ttft_ms, l.tpot_ms,
                 l.error, l.error_source, l.error_detail, l.api_key_id, l.api_key_name, l.api_key_value,
+                l.client_kind, l.user_agent,
                 p.prompt, p.response, p.client_request, p.upstream_request, p.upstream_response, p.client_response
          FROM request_logs l
          LEFT JOIN request_payloads p ON p.request_id = l.id
@@ -854,14 +877,16 @@ pub fn export_logs(db_path: &Path, query: &LogQuery) -> Result<Vec<ExportLogReco
                 api_key_id: row.get(20)?,
                 api_key_name: row.get(21)?,
                 api_key_value: row.get(22)?,
+                client_kind: row.get(23)?,
+                user_agent: row.get(24)?,
             },
             payload: build_log_payload(
-                row.get::<_, Option<Vec<u8>>>(23)?,
-                row.get::<_, Option<Vec<u8>>>(24)?,
                 row.get::<_, Option<Vec<u8>>>(25)?,
                 row.get::<_, Option<Vec<u8>>>(26)?,
                 row.get::<_, Option<Vec<u8>>>(27)?,
                 row.get::<_, Option<Vec<u8>>>(28)?,
+                row.get::<_, Option<Vec<u8>>>(29)?,
+                row.get::<_, Option<Vec<u8>>>(30)?,
             ),
         })
     })?;
@@ -1256,6 +1281,8 @@ mod tests {
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 session_id: None,
                 source_ip: None,
+                client_kind: Some("codex".to_string()),
+                user_agent: Some("codex_cli_rs/0.42.0".to_string()),
                 endpoint: "anthropic".to_string(),
                 provider: "mock".to_string(),
                 model: "mock-model".to_string(),
@@ -1295,11 +1322,50 @@ mod tests {
                 from: None,
                 to: None,
                 api_key_ids: None,
+                client_kind: None,
             },
         )
         .expect("query logs");
         let row = list.items.first().expect("log row");
         assert_eq!(row.error_detail.as_deref(), Some(detail));
+        assert_eq!(row.client_kind.as_deref(), Some("codex"));
+        assert_eq!(row.user_agent.as_deref(), Some("codex_cli_rs/0.42.0"));
+
+        // clientKind filter matches the stored kind.
+        let filtered = query_logs(
+            &db_path,
+            &LogQuery {
+                limit: 10,
+                offset: 0,
+                provider: None,
+                model: None,
+                endpoint: None,
+                status: None,
+                from: None,
+                to: None,
+                api_key_ids: None,
+                client_kind: Some("claude-code".to_string()),
+            },
+        )
+        .expect("query filtered logs");
+        assert_eq!(filtered.total, 0);
+        let filtered_codex = query_logs(
+            &db_path,
+            &LogQuery {
+                limit: 10,
+                offset: 0,
+                provider: None,
+                model: None,
+                endpoint: None,
+                status: None,
+                from: None,
+                to: None,
+                api_key_ids: None,
+                client_kind: Some("codex".to_string()),
+            },
+        )
+        .expect("query codex logs");
+        assert_eq!(filtered_codex.total, 1);
 
         let detail_record = get_log_detail(&db_path, log_id)
             .expect("log detail")
@@ -1318,6 +1384,7 @@ mod tests {
                 from: None,
                 to: None,
                 api_key_ids: None,
+                client_kind: None,
             },
         )
         .expect("export logs");
@@ -1347,6 +1414,8 @@ mod tests {
                     timestamp: now + offset,
                     session_id: None,
                     source_ip: None,
+                    client_kind: None,
+                    user_agent: None,
                     endpoint: endpoint.to_string(),
                     provider: "mock".to_string(),
                     model: "mock-model".to_string(),
@@ -1435,6 +1504,8 @@ mod tests {
                     timestamp,
                     session_id,
                     source_ip,
+                    client_kind: None,
+                    user_agent: None,
                     endpoint: "anthropic".to_string(),
                     provider: "mock".to_string(),
                     model: "mock-model".to_string(),
@@ -1486,6 +1557,8 @@ mod tests {
                 timestamp: now,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "anthropic".to_string(),
                 provider: "mock".to_string(),
                 model: "mock-model".to_string(),
@@ -1519,6 +1592,8 @@ mod tests {
                 timestamp: now,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "openai".to_string(),
                 provider: "mock".to_string(),
                 model: "mock-model".to_string(),
@@ -1552,6 +1627,8 @@ mod tests {
                 timestamp: now,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "openai".to_string(),
                 provider: "mock".to_string(),
                 model: "pending-model".to_string(),
@@ -1635,6 +1712,8 @@ mod tests {
                     timestamp,
                     session_id: None,
                     source_ip: None,
+                    client_kind: None,
+                    user_agent: None,
                     endpoint: endpoint.to_string(),
                     provider: "mock".to_string(),
                     model: "mock-model".to_string(),
@@ -1706,6 +1785,8 @@ mod tests {
                 timestamp: now,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "anthropic".to_string(),
                 provider: "mock".to_string(),
                 model: "mock-model".to_string(),
@@ -1737,6 +1818,8 @@ mod tests {
                 timestamp: now,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "anthropic".to_string(),
                 provider: "mock".to_string(),
                 model: "mock-model".to_string(),
@@ -1767,6 +1850,8 @@ mod tests {
                 timestamp: now,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "anthropic".to_string(),
                 provider: "mock".to_string(),
                 model: "pending-model".to_string(),
@@ -1813,6 +1898,8 @@ mod tests {
                     timestamp,
                     session_id: None,
                     source_ip: None,
+                    client_kind: None,
+                    user_agent: None,
                     endpoint: "anthropic".to_string(),
                     provider: "mock".to_string(),
                     model: model.to_string(),
@@ -1869,6 +1956,8 @@ mod tests {
                     timestamp,
                     session_id: None,
                     source_ip: None,
+                    client_kind: None,
+                    user_agent: None,
                     endpoint: endpoint.to_string(),
                     provider: "mock".to_string(),
                     model: "mock-model".to_string(),
@@ -1925,6 +2014,8 @@ mod tests {
                 timestamp: now,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "openai".to_string(),
                 provider: "mock".to_string(),
                 model: "pending-model".to_string(),
@@ -1943,6 +2034,8 @@ mod tests {
                 timestamp: now - 1,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "openai".to_string(),
                 provider: "mock".to_string(),
                 model: "success-model".to_string(),
@@ -1970,6 +2063,8 @@ mod tests {
                 timestamp: now - 2,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "openai".to_string(),
                 provider: "mock".to_string(),
                 model: "failure-model".to_string(),
@@ -2037,6 +2132,8 @@ mod tests {
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 session_id: Some("legacy-session".to_string()),
                 source_ip: Some("127.0.0.1".to_string()),
+                client_kind: None,
+                user_agent: None,
                 endpoint: "openai".to_string(),
                 provider: "mock".to_string(),
                 model: "mock-model".to_string(),
@@ -2095,6 +2192,8 @@ mod tests {
                 timestamp: now,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "openai".to_string(),
                 provider: "mock".to_string(),
                 model: "pending-model".to_string(),
@@ -2113,6 +2212,8 @@ mod tests {
                 timestamp: now - 1,
                 session_id: None,
                 source_ip: None,
+                client_kind: None,
+                user_agent: None,
                 endpoint: "openai".to_string(),
                 provider: "mock".to_string(),
                 model: "finished-model".to_string(),

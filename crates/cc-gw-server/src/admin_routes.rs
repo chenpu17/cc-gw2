@@ -1634,6 +1634,10 @@ pub(super) async fn api_logs(
                 .or_else(|| query.get("apiKey"))
                 .map(String::as_str),
         ),
+        client_kind: query
+            .get("clientKind")
+            .cloned()
+            .filter(|value| !value.is_empty()),
     };
 
     match query_logs(&state.paths.db_path, &log_query) {
@@ -1700,6 +1704,11 @@ pub(super) async fn api_logs_export(
             .and_then(value_to_api_key_ids)
             .or_else(|| raw.get("apiKeyIds").and_then(value_to_api_key_ids))
             .or_else(|| raw.get("apiKey").and_then(value_to_api_key_ids)),
+        client_kind: raw
+            .get("clientKind")
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .filter(|value| !value.is_empty()),
     };
 
     let result = match export_logs(&state.paths.db_path, &log_query) {

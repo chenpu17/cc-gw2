@@ -51,6 +51,7 @@ pub(super) async fn api_dashboard_summary(
                     from: None,
                     to: None,
                     api_key_ids: None,
+                    client_kind: None,
                 },
             )?;
             // Mask the encrypted api_key_value (decrypt → masked preview) so the
