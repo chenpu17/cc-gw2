@@ -353,7 +353,8 @@ impl SseStreamObserver {
                 self.usage.update_from_anthropic(
                     event
                         .get("usage")
-                        .or_else(|| event.get("delta").and_then(|value| value.get("usage"))),
+                        .or_else(|| event.get("delta").and_then(|value| value.get("usage")))
+                        .or_else(|| event.get("message").and_then(|value| value.get("usage"))),
                 );
             }
             ProviderProtocol::OpenAiChatCompletions => {
@@ -2472,6 +2473,45 @@ mod tests {
         assert_eq!(usage.cache_read_tokens, 2);
         assert_eq!(usage.cache_creation_tokens, 1);
         assert_eq!(usage.cached_tokens, 2);
+    }
+
+    #[test]
+    fn anthropic_observer_reads_message_start_usage() {
+        // Some Anthropic-compatible upstreams only report usage on the
+        // message_start event (nested inside `message`), never on
+        // message_delta. Regression test: that usage must not be lost.
+        let mut observer = SseStreamObserver::new(ProviderProtocol::AnthropicMessages);
+        observer.push(
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"usage\":{\"input_tokens\":9,\"output_tokens\":2,\"cache_read_input_tokens\":4,\"cache_creation_input_tokens\":1}}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n\
+             event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        );
+
+        let usage = observer.usage_stats();
+        assert_eq!(usage.input_tokens, 14);
+        assert_eq!(usage.output_tokens, 2);
+        assert_eq!(usage.cache_read_tokens, 4);
+        assert_eq!(usage.cache_creation_tokens, 1);
+    }
+
+    #[test]
+    fn anthropic_observer_message_delta_overrides_message_start_usage() {
+        // message_start usage lands first, message_delta carries the final
+        // cumulative totals — the later event must win field by field.
+        let mut observer = SseStreamObserver::new(ProviderProtocol::AnthropicMessages);
+        observer.push(
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":9,\"output_tokens\":2}}}\n\n\
+             event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{},\"usage\":{\"output_tokens\":7}}\n\n",
+        );
+
+        let usage = observer.usage_stats();
+        assert_eq!(usage.input_tokens, 9);
+        assert_eq!(usage.output_tokens, 7);
     }
 
     #[test]
