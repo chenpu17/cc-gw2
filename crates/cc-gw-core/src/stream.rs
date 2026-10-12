@@ -13,6 +13,10 @@ struct UsageState {
     cache_read_tokens: i64,
     cache_creation_tokens: i64,
     anthropic_input_tokens: i64,
+    /// Whether any usage object carrying at least one known token field was
+    /// seen. Distinguishes "upstream reported zero tokens" from "upstream
+    /// never reported usage" so the proxy can store NULL instead of 0.
+    usage_seen: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -91,6 +95,26 @@ fn normalize_usage(usage: &Value) -> NormalizedUsage {
     }
 }
 
+/// True when the value looks like a usage object with at least one known
+/// token field (either dialect). Guards the "no usage reported" distinction.
+fn usage_object_has_token_fields(usage: &Value) -> bool {
+    [
+        "input_tokens",
+        "prompt_tokens",
+        "output_tokens",
+        "completion_tokens",
+        "cache_read_input_tokens",
+        "cache_read_tokens",
+        "cached_tokens",
+        "cache_creation_input_tokens",
+        "cache_creation_tokens",
+        "prompt_tokens_details",
+        "input_tokens_details",
+    ]
+    .into_iter()
+    .any(|field| usage.get(field).is_some())
+}
+
 pub fn usage_stats_from_payload(payload: &Value) -> UsageStats {
     let normalized = normalize_usage(resolve_usage_payload(payload));
     UsageStats {
@@ -102,10 +126,22 @@ pub fn usage_stats_from_payload(payload: &Value) -> UsageStats {
     }
 }
 
+/// Like [`usage_stats_from_payload`], but returns `None` when the payload
+/// carries no recognizable usage fields — the caller can then persist NULL
+/// tokens instead of misleading zeros.
+pub fn usage_stats_option_from_payload(payload: &Value) -> Option<UsageStats> {
+    let resolved = resolve_usage_payload(payload);
+    if !usage_object_has_token_fields(resolved) {
+        return None;
+    }
+    Some(usage_stats_from_payload(payload))
+}
+
 impl UsageState {
     fn update_from_openai(&mut self, usage: Option<&Value>) {
         let Some(usage) = usage else { return };
         let normalized = normalize_usage(usage);
+        self.usage_seen = self.usage_seen || usage_object_has_token_fields(usage);
         self.input_tokens = normalized.input_tokens;
         self.output_tokens = normalized.output_tokens;
         self.cache_read_tokens = normalized.cache_read_tokens;
@@ -116,6 +152,7 @@ impl UsageState {
 
     fn update_from_anthropic(&mut self, usage: Option<&Value>) {
         let Some(usage) = usage else { return };
+        self.usage_seen = self.usage_seen || usage_object_has_token_fields(usage);
         if let Some(value) = usage.get("input_tokens").and_then(Value::as_i64) {
             self.anthropic_input_tokens = value;
         }
@@ -293,6 +330,17 @@ impl SseStreamObserver {
 
     pub fn usage_stats(&self) -> UsageStats {
         self.usage.to_usage_stats()
+    }
+
+    /// Whether any usage event was observed on the stream.
+    pub fn observed_usage(&self) -> bool {
+        self.usage.usage_seen
+    }
+
+    /// Observed usage, or `None` when the upstream never reported usage —
+    /// lets the proxy persist NULL tokens instead of misleading zeros.
+    pub fn observed_usage_stats(&self) -> Option<UsageStats> {
+        self.usage.usage_seen.then(|| self.usage.to_usage_stats())
     }
 
     pub fn is_complete(&self) -> bool {
@@ -2393,10 +2441,66 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
 mod tests {
     use super::{
         CrossProtocolStreamTransformer, SseStreamObserver, Utf8StreamDecoder,
-        materialize_stream_response,
+        materialize_stream_response, usage_stats_option_from_payload,
     };
     use crate::provider::ProviderProtocol;
     use serde_json::{Value, json};
+
+    #[test]
+    fn usage_stats_option_from_payload_distinguishes_missing_usage() {
+        // Anthropic non-stream response with usage → Some
+        let anthropic = usage_stats_option_from_payload(&json!({
+            "id": "msg_1",
+            "usage": {"input_tokens": 10, "output_tokens": 4}
+        }));
+        assert_eq!(
+            anthropic.map(|u| (u.input_tokens, u.output_tokens)),
+            Some((10, 4))
+        );
+
+        // OpenAI chat completion with usage → Some
+        let openai = usage_stats_option_from_payload(&json!({
+            "id": "chatcmpl-1",
+            "usage": {"prompt_tokens": 7, "completion_tokens": 2}
+        }));
+        assert_eq!(
+            openai.map(|u| (u.input_tokens, u.output_tokens)),
+            Some((7, 2))
+        );
+
+        // No usage anywhere → None (not zeros)
+        let missing = usage_stats_option_from_payload(&json!({
+            "id": "chatcmpl-1",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": "hi"}}]
+        }));
+        assert!(missing.is_none());
+
+        // Usage object without any known token field → still None
+        let empty_usage = usage_stats_option_from_payload(&json!({"usage": {}}));
+        assert!(empty_usage.is_none());
+    }
+
+    #[test]
+    fn sse_observer_reports_missing_usage() {
+        let mut observer = SseStreamObserver::new(ProviderProtocol::OpenAiChatCompletions);
+        observer.push(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n\
+             data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+             data: [DONE]\n\n",
+        );
+        assert!(!observer.observed_usage());
+        assert!(observer.observed_usage_stats().is_none());
+
+        let mut with_usage = SseStreamObserver::new(ProviderProtocol::OpenAiChatCompletions);
+        with_usage.push(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n\
+             data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":1}}\n\n\
+             data: [DONE]\n\n",
+        );
+        assert!(with_usage.observed_usage());
+        let usage = with_usage.observed_usage_stats().expect("usage observed");
+        assert_eq!((usage.input_tokens, usage.output_tokens), (5, 1));
+    }
 
     #[test]
     fn sse_observer_detects_error_events_by_protocol() {

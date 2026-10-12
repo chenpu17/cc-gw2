@@ -58,7 +58,7 @@ use cc_gw_core::{
     storage::initialize_database,
     stream::{
         CrossProtocolStreamTransformer, SseStreamObserver, Utf8StreamDecoder,
-        materialize_stream_response, usage_stats_from_payload,
+        materialize_stream_response, usage_stats_option_from_payload,
     },
     ui::resolve_web_dist,
 };

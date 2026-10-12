@@ -2121,11 +2121,11 @@ pub(super) async fn proxy_standard_request(
                     latency_ms: Some(latency_ms),
                     status_code: Some(status_code),
                     error_source: upstream_error_source_for_status(status_code),
-                    input_tokens: Some(usage.input_tokens),
-                    output_tokens: Some(usage.output_tokens),
-                    cached_tokens: Some(usage.cached_tokens),
-                    cache_read_tokens: Some(usage.cache_read_tokens),
-                    cache_creation_tokens: Some(usage.cache_creation_tokens),
+                    input_tokens: usage.as_ref().map(|stats| stats.input_tokens),
+                    output_tokens: usage.as_ref().map(|stats| stats.output_tokens),
+                    cached_tokens: usage.as_ref().map(|stats| stats.cached_tokens),
+                    cache_read_tokens: usage.as_ref().map(|stats| stats.cache_read_tokens),
+                    cache_creation_tokens: usage.as_ref().map(|stats| stats.cache_creation_tokens),
                     provider: Some(candidate.provider_id.clone()),
                     model: Some(candidate.model_id.clone()),
                     ..RequestLogUpdate::default()
@@ -2133,9 +2133,15 @@ pub(super) async fn proxy_standard_request(
                 if let Some(finalizer) = request_log_finalizer.as_mut() {
                     finalizer.finish(&update);
                 }
+                let usage_totals = usage.clone().unwrap_or_default();
+                let _ = increment_daily_metrics(
+                    &state.paths.db_path,
+                    &endpoint_id,
+                    latency_ms,
+                    &usage_totals,
+                );
                 let _ =
-                    increment_daily_metrics(&state.paths.db_path, &endpoint_id, latency_ms, &usage);
-                let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                    record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage_totals);
                 let store_response_payload = response_payload_storage_enabled(&config);
                 if store_response_payload {
                     let _ = upsert_request_payload(
@@ -2195,11 +2201,11 @@ pub(super) async fn proxy_standard_request(
                     latency_ms: Some(latency_ms),
                     status_code: Some(status_code),
                     error_source: upstream_error_source_for_status(status_code),
-                    input_tokens: Some(usage.input_tokens),
-                    output_tokens: Some(usage.output_tokens),
-                    cached_tokens: Some(usage.cached_tokens),
-                    cache_read_tokens: Some(usage.cache_read_tokens),
-                    cache_creation_tokens: Some(usage.cache_creation_tokens),
+                    input_tokens: usage.as_ref().map(|stats| stats.input_tokens),
+                    output_tokens: usage.as_ref().map(|stats| stats.output_tokens),
+                    cached_tokens: usage.as_ref().map(|stats| stats.cached_tokens),
+                    cache_read_tokens: usage.as_ref().map(|stats| stats.cache_read_tokens),
+                    cache_creation_tokens: usage.as_ref().map(|stats| stats.cache_creation_tokens),
                     provider: Some(candidate.provider_id.clone()),
                     model: Some(candidate.model_id.clone()),
                     ..RequestLogUpdate::default()
@@ -2207,9 +2213,15 @@ pub(super) async fn proxy_standard_request(
                 if let Some(finalizer) = request_log_finalizer.as_mut() {
                     finalizer.finish(&update);
                 }
+                let usage_totals = usage.clone().unwrap_or_default();
+                let _ = increment_daily_metrics(
+                    &state.paths.db_path,
+                    &endpoint_id,
+                    latency_ms,
+                    &usage_totals,
+                );
                 let _ =
-                    increment_daily_metrics(&state.paths.db_path, &endpoint_id, latency_ms, &usage);
-                let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                    record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage_totals);
                 let store_response_payload = response_payload_storage_enabled(&config);
                 if store_response_payload {
                     let _ = upsert_request_payload(
@@ -2236,11 +2248,11 @@ pub(super) async fn proxy_standard_request(
                     latency_ms: Some(latency_ms),
                     status_code: Some(status_code),
                     error_source: upstream_error_source_for_status(status_code),
-                    input_tokens: Some(usage.input_tokens),
-                    output_tokens: Some(usage.output_tokens),
-                    cached_tokens: Some(usage.cached_tokens),
-                    cache_read_tokens: Some(usage.cache_read_tokens),
-                    cache_creation_tokens: Some(usage.cache_creation_tokens),
+                    input_tokens: usage.as_ref().map(|stats| stats.input_tokens),
+                    output_tokens: usage.as_ref().map(|stats| stats.output_tokens),
+                    cached_tokens: usage.as_ref().map(|stats| stats.cached_tokens),
+                    cache_read_tokens: usage.as_ref().map(|stats| stats.cache_read_tokens),
+                    cache_creation_tokens: usage.as_ref().map(|stats| stats.cache_creation_tokens),
                     provider: Some(candidate.provider_id.clone()),
                     model: Some(candidate.model_id.clone()),
                     ..RequestLogUpdate::default()
@@ -2248,9 +2260,15 @@ pub(super) async fn proxy_standard_request(
                 if let Some(finalizer) = request_log_finalizer.as_mut() {
                     finalizer.finish(&update);
                 }
+                let usage_totals = usage.clone().unwrap_or_default();
+                let _ = increment_daily_metrics(
+                    &state.paths.db_path,
+                    &endpoint_id,
+                    latency_ms,
+                    &usage_totals,
+                );
                 let _ =
-                    increment_daily_metrics(&state.paths.db_path, &endpoint_id, latency_ms, &usage);
-                let _ = record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage);
+                    record_api_key_usage(&state.paths.db_path, api_key_context.id, &usage_totals);
                 let store_response_payload = response_payload_storage_enabled(&config);
                 if store_response_payload {
                     let _ = upsert_request_payload(
@@ -2277,7 +2295,7 @@ async fn into_converted_response(
     emit_anthropic_reasoning: bool,
     allow_anthropic_reasoning_fallback: bool,
     network_recorder: NetworkByteRecorder,
-) -> (Response, UsageStats, Option<String>, Option<String>) {
+) -> (Response, Option<UsageStats>, Option<String>, Option<String>) {
     let status = response.status();
     let headers = response.headers().clone();
     let body_bytes = match response.bytes().await {
@@ -2293,7 +2311,7 @@ async fn into_converted_response(
                 &payload,
                 &network_recorder,
             );
-            return (result, UsageStats::default(), None, client_payload);
+            return (result, None, None, client_payload);
         }
     };
     let upstream_payload = Some(String::from_utf8_lossy(&body_bytes).to_string());
@@ -2308,12 +2326,7 @@ async fn into_converted_response(
                 let converted = convert_error_payload(&payload, request_protocol, target_protocol);
                 let (result, client_payload) =
                     build_json_response(fallback_status, &headers, &converted, &network_recorder);
-                return (
-                    result,
-                    UsageStats::default(),
-                    upstream_payload,
-                    client_payload,
-                );
+                return (result, None, upstream_payload, client_payload);
             }
             if !status.is_success() {
                 let payload = non_json_upstream_error_payload(
@@ -2334,12 +2347,7 @@ async fn into_converted_response(
                 );
                 let (result, client_payload) =
                     build_json_response(status, &headers, &payload, &network_recorder);
-                return (
-                    result,
-                    UsageStats::default(),
-                    upstream_payload,
-                    client_payload,
-                );
+                return (result, None, upstream_payload, client_payload);
             }
             let payload = protocol_error_payload(
                 request_protocol,
@@ -2351,12 +2359,7 @@ async fn into_converted_response(
                 &payload,
                 &network_recorder,
             );
-            return (
-                result,
-                UsageStats::default(),
-                upstream_payload,
-                client_payload,
-            );
+            return (result, None, upstream_payload, client_payload);
         }
     };
 
@@ -2413,7 +2416,7 @@ async fn into_materialized_stream_response(
     network_recorder: NetworkByteRecorder,
 ) -> (
     Response,
-    UsageStats,
+    Option<UsageStats>,
     Option<String>,
     Option<String>,
     StatusCode,
@@ -2463,7 +2466,7 @@ async fn into_materialized_stream_response(
                 );
                 return (
                     result,
-                    UsageStats::default(),
+                    None,
                     Some(raw_stream),
                     client_payload,
                     StatusCode::BAD_GATEWAY,
@@ -2479,13 +2482,7 @@ async fn into_materialized_stream_response(
         let converted = convert_error_payload(&payload, request_protocol, target_protocol);
         let (result, client_payload) =
             build_json_response(error_status, &headers, &converted, &network_recorder);
-        return (
-            result,
-            UsageStats::default(),
-            Some(raw_stream),
-            client_payload,
-            error_status,
-        );
+        return (result, None, Some(raw_stream), client_payload, error_status);
     }
 
     let Some(materialized) = materialize_stream_response(target_protocol, &raw_stream) else {
@@ -2501,7 +2498,7 @@ async fn into_materialized_stream_response(
         );
         return (
             result,
-            UsageStats::default(),
+            None,
             Some(raw_stream),
             client_payload,
             StatusCode::BAD_GATEWAY,
@@ -2523,7 +2520,7 @@ async fn into_materialized_stream_response(
             );
             return (
                 result,
-                UsageStats::default(),
+                None,
                 Some(raw_stream),
                 client_payload,
                 StatusCode::BAD_GATEWAY,
@@ -2644,7 +2641,7 @@ async fn into_streaming_converted_response(
                     request_protocol,
                     StatusCode::BAD_GATEWAY.as_u16() as i64,
                     latency_ms,
-                    UsageStats::default(),
+                    None,
                     None,
                     Some(target_protocol),
                     None,
@@ -2685,7 +2682,7 @@ async fn into_streaming_converted_response(
                         idle_timeout.as_secs()
                     );
                     if observer.is_complete() {
-                        finalizer.record_usage(observer.usage_stats());
+                        finalizer.record_usage(observer.observed_usage_stats());
                         finalizer.finish();
                         tracing::warn!(error = %message, "ignoring idle timeout after terminal SSE event");
                         return;
@@ -2708,7 +2705,7 @@ async fn into_streaming_converted_response(
                         continue;
                     }
                     let observation = observer.push(&text);
-                    finalizer.record_usage(observer.usage_stats());
+                    finalizer.record_usage(observer.observed_usage_stats());
                     if observation.saw_first_token {
                         let seen_at = chrono::Utc::now().timestamp_millis();
                         finalizer.record_first_token_at(seen_at);
@@ -2748,7 +2745,7 @@ async fn into_streaming_converted_response(
                 Err(error) => {
                     let message = format!("upstream stream read failed: {error}");
                     if observer.is_complete() {
-                        finalizer.record_usage(observer.usage_stats());
+                        finalizer.record_usage(observer.observed_usage_stats());
                         finalizer.finish();
                         tracing::warn!(error = %message, "ignoring upstream stream read error after terminal SSE event");
                         return;
@@ -2797,7 +2794,7 @@ async fn into_streaming_converted_response(
                     )
                 });
             let status = upstream_error_status(code.as_deref(), &message);
-            finalizer.record_usage(observer.usage_stats());
+            finalizer.record_usage(observer.observed_usage_stats());
             finalizer.fail(
                 status.as_u16() as i64,
                 format!("upstream stream error event: {message}"),
@@ -2812,7 +2809,7 @@ async fn into_streaming_converted_response(
             yield Ok::<Bytes, std::io::Error>(Bytes::from(transformed));
         }
 
-        finalizer.record_usage(observer.usage_stats());
+        finalizer.record_usage(observer.observed_usage_stats());
         finalizer.finish();
     };
 
@@ -2836,7 +2833,7 @@ async fn into_proxy_response(
     response: reqwest::Response,
     inspect_body: bool,
     network_recorder: NetworkByteRecorder,
-) -> (Response, UsageStats, Option<String>) {
+) -> (Response, Option<UsageStats>, Option<String>) {
     let status = response.status();
     let headers = response.headers().clone();
     if inspect_body {
@@ -2845,7 +2842,7 @@ async fn into_proxy_response(
             Err(_) => {
                 return (
                     (StatusCode::BAD_GATEWAY, "failed to read upstream response").into_response(),
-                    UsageStats::default(),
+                    None,
                     None,
                 );
             }
@@ -2854,8 +2851,7 @@ async fn into_proxy_response(
         network_recorder.record_egress(body_bytes.len());
         let usage = serde_json::from_slice::<Value>(&body_bytes)
             .ok()
-            .map(|value| extract_usage_stats(&value))
-            .unwrap_or_default();
+            .and_then(|value| extract_usage_stats(&value));
         let mut builder = Response::builder().status(status);
         for (name, value) in headers.iter() {
             if !should_forward_upstream_response_header(name) {
@@ -2895,7 +2891,7 @@ async fn into_proxy_response(
             Ok(response) => response,
             Err(_) => (StatusCode::BAD_GATEWAY, "invalid upstream response").into_response(),
         },
-        UsageStats::default(),
+        None,
         None,
     )
 }
@@ -3233,7 +3229,7 @@ async fn into_streaming_proxy_response(
                         idle_timeout.as_secs()
                     );
                     if observer.is_complete() {
-                        finalizer.record_usage(observer.usage_stats());
+                        finalizer.record_usage(observer.observed_usage_stats());
                         finalizer.finish();
                         tracing::warn!(error = %message, "ignoring idle timeout after terminal SSE event");
                         return;
@@ -3255,7 +3251,7 @@ async fn into_streaming_proxy_response(
                     let text = utf8.push(&chunk);
                     if !text.is_empty() {
                         let observation = observer.push(&text);
-                        finalizer.record_usage(observer.usage_stats());
+                        finalizer.record_usage(observer.observed_usage_stats());
                         if observation.saw_first_token {
                             let seen_at = chrono::Utc::now().timestamp_millis();
                             finalizer.record_first_token_at(seen_at);
@@ -3269,7 +3265,7 @@ async fn into_streaming_proxy_response(
                 Err(error) => {
                     let message = format!("upstream stream read failed: {error}");
                     if observer.is_complete() {
-                        finalizer.record_usage(observer.usage_stats());
+                        finalizer.record_usage(observer.observed_usage_stats());
                         finalizer.finish();
                         tracing::warn!(error = %message, "ignoring upstream stream read error after terminal SSE event");
                         return;
@@ -3313,7 +3309,7 @@ async fn into_streaming_proxy_response(
                     )
                 });
             let status = upstream_error_status(code.as_deref(), &message);
-            finalizer.record_usage(observer.usage_stats());
+            finalizer.record_usage(observer.observed_usage_stats());
             finalizer.fail(
                 status.as_u16() as i64,
                 format!("upstream stream error event: {message}"),
@@ -3322,7 +3318,7 @@ async fn into_streaming_proxy_response(
             return;
         }
 
-        finalizer.record_usage(observer.usage_stats());
+        finalizer.record_usage(observer.observed_usage_stats());
         finalizer.finish();
     };
 
@@ -3363,8 +3359,8 @@ fn should_forward_upstream_observability_header(name: &header::HeaderName) -> bo
         || name.as_str().starts_with("x-ratelimit-")
 }
 
-fn extract_usage_stats(payload: &Value) -> UsageStats {
-    usage_stats_from_payload(payload)
+fn extract_usage_stats(payload: &Value) -> Option<UsageStats> {
+    usage_stats_option_from_payload(payload)
 }
 
 fn compute_tpot_ms(total_latency_ms: i64, output_tokens: i64, ttft_ms: Option<i64>) -> Option<f64> {
@@ -3439,7 +3435,7 @@ struct StreamingResponseFinalizer {
     log_context: Option<StreamingLogContext>,
     client_response_protocol: ProviderProtocol,
     status_code: i64,
-    usage: UsageStats,
+    usage: Option<UsageStats>,
     ttft_ms: Option<i64>,
     upstream_response_protocol: Option<ProviderProtocol>,
     upstream_response_payload: Option<String>,
@@ -3462,7 +3458,7 @@ impl StreamingResponseFinalizer {
             log_context,
             client_response_protocol,
             status_code,
-            usage: UsageStats::default(),
+            usage: None,
             ttft_ms: None,
             upstream_response_protocol: if capture_upstream_response {
                 upstream_response_protocol
@@ -3476,7 +3472,7 @@ impl StreamingResponseFinalizer {
         }
     }
 
-    fn record_usage(&mut self, usage: UsageStats) {
+    fn record_usage(&mut self, usage: Option<UsageStats>) {
         self.usage = usage;
     }
 
@@ -3578,7 +3574,7 @@ fn finalize_stream_logging(
     client_response_protocol: ProviderProtocol,
     status_code: i64,
     latency_ms: i64,
-    usage: UsageStats,
+    usage: Option<UsageStats>,
     ttft_ms: Option<i64>,
     upstream_response_protocol: Option<ProviderProtocol>,
     upstream_response_payload: Option<String>,
@@ -3593,13 +3589,17 @@ fn finalize_stream_logging(
     let update = RequestLogUpdate {
         latency_ms: Some(latency_ms),
         status_code: Some(status_code),
-        input_tokens: Some(usage.input_tokens),
-        output_tokens: Some(usage.output_tokens),
-        cached_tokens: Some(usage.cached_tokens),
-        cache_read_tokens: Some(usage.cache_read_tokens),
-        cache_creation_tokens: Some(usage.cache_creation_tokens),
+        input_tokens: usage.as_ref().map(|stats| stats.input_tokens),
+        output_tokens: usage.as_ref().map(|stats| stats.output_tokens),
+        cached_tokens: usage.as_ref().map(|stats| stats.cached_tokens),
+        cache_read_tokens: usage.as_ref().map(|stats| stats.cache_read_tokens),
+        cache_creation_tokens: usage.as_ref().map(|stats| stats.cache_creation_tokens),
         ttft_ms,
-        tpot_ms: compute_tpot_ms(latency_ms, usage.output_tokens, ttft_ms),
+        tpot_ms: compute_tpot_ms(
+            latency_ms,
+            usage.as_ref().map(|stats| stats.output_tokens).unwrap_or(0),
+            ttft_ms,
+        ),
         error: error.clone(),
         error_source,
         provider: context.backend_provider.clone(),
@@ -3607,8 +3607,16 @@ fn finalize_stream_logging(
         ..RequestLogUpdate::default()
     };
     let _ = finalize_request_log(&context.db_path, context.log_id, &update);
-    let _ = increment_daily_metrics(&context.db_path, &context.endpoint_id, latency_ms, &usage);
-    let _ = record_api_key_usage(&context.db_path, context.api_key_id, &usage);
+    // Aggregate counters keep their historical semantics: a request whose
+    // upstream reported no usage contributes zeros, exactly like before.
+    let usage_totals = usage.clone().unwrap_or_default();
+    let _ = increment_daily_metrics(
+        &context.db_path,
+        &context.endpoint_id,
+        latency_ms,
+        &usage_totals,
+    );
+    let _ = record_api_key_usage(&context.db_path, context.api_key_id, &usage_totals);
 
     if context.store_response_payload {
         let client_response_payload = client_response_payload.map(|payload| {
@@ -3905,7 +3913,8 @@ mod tests {
                 "cache_read_input_tokens": 3,
                 "cache_creation_input_tokens": 2
             }
-        }));
+        }))
+        .expect("usage expected");
 
         assert_eq!(usage.input_tokens, 16);
         assert_eq!(usage.output_tokens, 7);
@@ -3923,7 +3932,8 @@ mod tests {
                 "cache_read_input_tokens": 3,
                 "cache_creation_input_tokens": 2
             }
-        }));
+        }))
+        .expect("usage expected");
 
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 7);
@@ -3944,13 +3954,23 @@ mod tests {
                     }
                 }
             }
-        }));
+        }))
+        .expect("usage expected");
 
         assert_eq!(usage.input_tokens, 9);
         assert_eq!(usage.output_tokens, 4);
         assert_eq!(usage.cache_read_tokens, 6);
         assert_eq!(usage.cache_creation_tokens, 0);
         assert_eq!(usage.cached_tokens, 6);
+    }
+
+    #[test]
+    fn extract_usage_stats_returns_none_without_usage_fields() {
+        let usage = extract_usage_stats(&json!({
+            "id": "chatcmpl-1",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": "hi"}}]
+        }));
+        assert!(usage.is_none());
     }
 
     #[test]

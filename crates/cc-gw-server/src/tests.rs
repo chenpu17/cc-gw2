@@ -315,6 +315,50 @@ async fn spawn_bad_chunked_anthropic_upstream_after_terminal() -> (SocketAddr, J
     (addr, handle)
 }
 
+async fn spawn_anthropic_upstream_without_usage() -> (SocketAddr, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind no-usage listener");
+    let addr = listener.local_addr().expect("no-usage listener addr");
+    let handle = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept no-usage request");
+        let mut request_buf = [0_u8; 4096];
+        let _ = socket.read(&mut request_buf).await;
+        // A well-formed Anthropic SSE stream that never carries any usage
+        // object — the case the NULL-token persistence must distinguish
+        // from "upstream reported zero tokens".
+        let stream_payload = concat!(
+            "event: message_start\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_no_usage\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-test\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null}}\n\n",
+            "event: content_block_start\n",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n",
+            "event: message_delta\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
+            "event: message_stop\n",
+            "data: {\"type\":\"message_stop\"}\n\n"
+        );
+        let response_head = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "content-type: text/event-stream\r\n",
+            "transfer-encoding: chunked\r\n",
+            "connection: close\r\n",
+            "\r\n"
+        );
+        let response = format!(
+            "{response_head}{:x}\r\n{stream_payload}\r\n0\r\n\r\n",
+            stream_payload.len()
+        );
+        socket
+            .write_all(response.as_bytes())
+            .await
+            .expect("write no-usage response");
+        let _ = socket.shutdown().await;
+    });
+    (addr, handle)
+}
+
 async fn mock_openai_test(
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
@@ -4903,6 +4947,79 @@ async fn trailing_upstream_stream_errors_after_terminal_event_are_logged_as_succ
         .await
         .expect("decode success logs");
     assert_eq!(success_logs.get("total").and_then(Value::as_u64), Some(1));
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn upstream_stream_without_usage_records_null_tokens() {
+    let (upstream_addr, upstream_handle) = spawn_anthropic_upstream_without_usage().await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "upstream-stream-without-usage").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "stream": true,
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hello"}]
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send streaming request");
+
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        if chunk.is_err() {
+            break;
+        }
+    }
+
+    sleep(Duration::from_millis(250)).await;
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs after usage-less stream")
+        .json()
+        .await
+        .expect("decode logs after usage-less stream");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("stream log item");
+    assert_eq!(item.get("status_code").and_then(Value::as_i64), Some(200));
+    // No usage ever reported by the upstream → NULL, not misleading zeros.
+    assert_eq!(item.get("input_tokens"), Some(&Value::Null));
+    assert_eq!(item.get("output_tokens"), Some(&Value::Null));
+    assert_eq!(item.get("cache_read_tokens"), Some(&Value::Null));
 
     gateway_handle.abort();
     upstream_handle.abort();
