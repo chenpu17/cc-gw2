@@ -180,6 +180,8 @@ export function LogDetailsDrawer({
                   <DetailItem label={t('logs.detail.info.sessionId')} value={record.session_id ?? '-'} />
                   <DetailItem label={t('logs.detail.info.endpoint')} value={record.endpoint || '-'} />
                   <DetailItem label={t('logs.detail.info.provider')} value={providerLabel} />
+                  <DetailItem label={t('logs.detail.info.client')} value={record.client_kind ?? '-'} />
+                  <DetailItem label={t('logs.detail.info.userAgent')} value={record.user_agent ?? '-'} />
                   <DetailItem label={t('logs.detail.info.requestedModel')} value={record.client_model ?? t('logs.detail.info.noRequestedModel')} />
                   <DetailItem label={t('logs.detail.info.model')} value={record.model} />
                   <DetailItem label={t('logs.detail.info.stream')} value={formatStreamLabel(record.stream)} />

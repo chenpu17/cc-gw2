@@ -2,6 +2,8 @@ export interface LogRecord {
   id: number
   timestamp: number
   session_id: string | null
+  client_kind: string | null
+  user_agent: string | null
   endpoint: string
   provider: string
   model: string
@@ -18,6 +20,7 @@ export interface LogRecord {
   tpot_ms: number | null
   error: string | null
   error_source: 'client' | 'gateway' | 'upstream' | string | null
+  error_detail: string | null
   api_key_id: number | null
   api_key_name: string | null
   api_key_value_masked?: string | null

@@ -98,6 +98,13 @@ export function LogRow({
             <div className="max-w-[100px] truncate" title={providerLabel}>{providerLabel}</div>
           </td>
         )}
+        {visibleColumnSet.has('client') && (
+          <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
+            <div className="max-w-[110px] truncate" title={record.user_agent ?? record.client_kind ?? ''}>
+              {record.client_kind ?? '-'}
+            </div>
+          </td>
+        )}
         {visibleColumnSet.has('requestedModel') && (
           <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
             <div className="max-w-[120px] truncate" title={requestedModel}>{requestedModel}</div>

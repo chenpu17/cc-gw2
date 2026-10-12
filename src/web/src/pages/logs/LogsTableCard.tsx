@@ -142,6 +142,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
                   </th>
                   {visibleColumnSet.has('endpoint') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.endpoint')}</th>}
                   {visibleColumnSet.has('provider') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.provider')}</th>}
+                  {visibleColumnSet.has('client') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.client')}</th>}
                   {visibleColumnSet.has('requestedModel') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.requestedModel')}</th>}
                   {visibleColumnSet.has('routedModel') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.routedModel')}</th>}
                   {visibleColumnSet.has('apiKey') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.apiKey')}</th>}

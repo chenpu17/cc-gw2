@@ -8,6 +8,7 @@ export type QuickView = 'all' | 'errors' | 'today' | 'anthropic' | 'openai'
 export type LogColumnId =
   | 'endpoint'
   | 'provider'
+  | 'client'
   | 'requestedModel'
   | 'routedModel'
   | 'apiKey'
@@ -21,6 +22,7 @@ export type DateInput = string
 export const DEFAULT_VISIBLE_COLUMNS: LogColumnId[] = [
   'endpoint',
   'provider',
+  'client',
   'requestedModel',
   'routedModel',
   'apiKey',
@@ -33,6 +35,7 @@ export const DEFAULT_VISIBLE_COLUMNS: LogColumnId[] = [
 export const LOG_COLUMN_ORDER: LogColumnId[] = [
   'endpoint',
   'provider',
+  'client',
   'requestedModel',
   'routedModel',
   'apiKey',

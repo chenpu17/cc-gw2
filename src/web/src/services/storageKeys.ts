@@ -6,7 +6,7 @@ export const storageKeys = {
     usageDimension: 'cc-gw.dashboard.usage-dimension'
   },
   logs: {
-    visibleColumns: 'cc-gw.logs.visible-columns',
+    visibleColumns: 'cc-gw.logs.visible-columns-v2',
     density: 'cc-gw.logs.density',
     pageSize: 'cc-gw.logs.page-size',
     providerFilter: 'cc-gw.logs.provider-filter',

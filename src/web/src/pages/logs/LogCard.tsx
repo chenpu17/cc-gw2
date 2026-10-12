@@ -40,6 +40,11 @@ export function LogCard({ record, providerLabelMap, onSelect }: LogCardProps) {
           {record.model}
         </span>
       </div>
+      {record.client_kind ? (
+        <div className="text-[11px] text-muted-foreground/80" title={record.user_agent ?? undefined}>
+          {record.client_kind}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
         <span>{formatLatency(record.latency_ms, t('common.units.ms'))}</span>
         {record.ttft_ms != null ? (

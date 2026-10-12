@@ -174,6 +174,13 @@ test('logs table controls respect column toggles, pagination, and export payload
   await page.keyboard.press('Escape')
   await expect(page.locator('th').filter({ hasText: 'Tokens' }).first()).toBeVisible()
 
+  // 「客户端」列：默认可见（识别出的 client_kind，无则 '-'），可隐藏
+  await expect(page.locator('th').filter({ hasText: '客户端' }).first()).toBeVisible()
+  await page.getByRole('button', { name: '列设置' }).click()
+  await columnPanel.getByRole('checkbox', { name: '客户端' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('th').filter({ hasText: '客户端' }).first()).toHaveCount(0)
+
   const paginationResponse = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return response.request().method() === 'GET' && url.pathname.endsWith('/logs') && url.searchParams.get('limit') === '50'
