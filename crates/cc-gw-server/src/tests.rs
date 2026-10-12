@@ -4863,6 +4863,45 @@ async fn upstream_failures_do_not_leak_url_to_client() {
         "expected a generic upstream category, got: {message}"
     );
 
+    // error_detail keeps the diagnostic depth the sanitized client message
+    // drops: full transport chain (including the upstream address), staged
+    // as transport, with no failover chain on a single-candidate route.
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs after transport failure")
+        .json()
+        .await
+        .expect("decode logs after transport failure");
+    let row = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("transport failure log row");
+    let error_detail: Value = serde_json::from_str(
+        row.get("error_detail")
+            .and_then(Value::as_str)
+            .expect("error_detail present"),
+    )
+    .expect("error_detail is valid JSON");
+    assert_eq!(
+        error_detail.get("stage").and_then(Value::as_str),
+        Some("transport")
+    );
+    assert_eq!(
+        error_detail.get("upstreamStatus").and_then(Value::as_i64),
+        Some(502)
+    );
+    assert!(
+        error_detail
+            .get("message")
+            .and_then(Value::as_str)
+            .is_some_and(|message| message.contains(&closed_addr.to_string())),
+        "error_detail must retain the full chain with the upstream address"
+    );
+    assert!(error_detail.get("failoverAttempts").is_none());
+
     gateway_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
 }
@@ -8444,6 +8483,126 @@ async fn aggregate_single_backend_failure_passes_error_through() {
     assert!(
         !has_failover_event,
         "single-candidate routes must not emit provider_failover"
+    );
+
+    // The upstream error body is captured into error_detail even though no
+    // payload storage is involved — stage/upstreamStatus/upstreamBody, and no
+    // failover chain (single candidate).
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=5"))
+        .send()
+        .await
+        .expect("request logs after upstream 500")
+        .json()
+        .await
+        .expect("decode logs after upstream 500");
+    let row = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("upstream 500 log row");
+    let error_detail: Value = serde_json::from_str(
+        row.get("error_detail")
+            .and_then(Value::as_str)
+            .expect("error_detail present"),
+    )
+    .expect("error_detail is valid JSON");
+    assert_eq!(
+        error_detail.get("stage").and_then(Value::as_str),
+        Some("upstream")
+    );
+    assert_eq!(
+        error_detail.get("upstreamStatus").and_then(Value::as_i64),
+        Some(500)
+    );
+    assert!(
+        error_detail
+            .get("upstreamBody")
+            .and_then(Value::as_str)
+            .is_some_and(|body| body.contains("primary is dead")),
+        "error_detail must capture the upstream error body"
+    );
+    assert!(error_detail.get("failoverAttempts").is_none());
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn aggregate_all_candidates_fail_records_failover_chain_in_error_detail() {
+    let (upstream_addr, upstream_handle, hits) = spawn_failover_upstream().await;
+    let mut config = failover_gateway_config(upstream_addr, None);
+    // Both members resolve to the dead model: the final candidate's error is
+    // passed through AND the full attempt chain lands in error_detail.
+    config.providers[0] = aggregate_provider_config(
+        "team",
+        "team-claude",
+        &["primary:claude-primary", "backup:claude-primary"],
+        None,
+    );
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "agg-failover-all-dead").await;
+    let client = reqwest::Client::new();
+    let api_key = create_gateway_api_key(&client, gateway_addr).await;
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("x-api-key", &api_key)
+        .json(&json!({
+            "model": "team-claude",
+            "max_tokens": 64,
+            "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]
+        }))
+        .send()
+        .await
+        .expect("send aggregated request");
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(hits.lock().expect("lock hits").len(), 2);
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=5"))
+        .send()
+        .await
+        .expect("request logs after all-dead failover")
+        .json()
+        .await
+        .expect("decode logs after all-dead failover");
+    let row = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("all-dead failover log row");
+    let error_detail: Value = serde_json::from_str(
+        row.get("error_detail")
+            .and_then(Value::as_str)
+            .expect("error_detail present"),
+    )
+    .expect("error_detail is valid JSON");
+    assert_eq!(
+        error_detail.get("stage").and_then(Value::as_str),
+        Some("upstream")
+    );
+    assert_eq!(
+        error_detail.get("upstreamStatus").and_then(Value::as_i64),
+        Some(500)
+    );
+    let attempts = error_detail
+        .get("failoverAttempts")
+        .and_then(Value::as_array)
+        .expect("failoverAttempts array");
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(
+        attempts[0].get("provider").and_then(Value::as_str),
+        Some("primary")
+    );
+    assert_eq!(
+        attempts[0].get("outcome").and_then(Value::as_str),
+        Some("failed:status")
+    );
+    assert_eq!(
+        attempts[1].get("provider").and_then(Value::as_str),
+        Some("backup")
     );
 
     gateway_handle.abort();

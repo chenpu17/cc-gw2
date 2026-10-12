@@ -46,6 +46,53 @@ fn sanitize_upstream_error(error: &anyhow::Error) -> String {
     }
 }
 
+/// Cap for upstream bodies persisted in `request_logs.error_detail` — enough
+/// to diagnose, small enough to keep rows light.
+const ERROR_DETAIL_BODY_MAX_CHARS: usize = 2048;
+
+/// Serialize the failover attempt chain for `error_detail`. Only meaningful
+/// when more than one candidate was tried; single-candidate failures already
+/// carry their provider/status in the row itself.
+fn failover_attempts_value(attempts: &[FailoverAttempt]) -> Option<Value> {
+    (attempts.len() > 1).then(|| {
+        json!(
+            attempts
+                .iter()
+                .map(FailoverAttempt::to_json)
+                .collect::<Vec<_>>()
+        )
+    })
+}
+
+/// Build the JSON blob persisted in `request_logs.error_detail`: failure
+/// stage, the full (unsanitized) error chain, truncated upstream body, and
+/// the aggregate failover attempt chain. Returns None when serialization
+/// fails — the column stays NULL, never fatal.
+fn build_error_detail(
+    stage: &str,
+    message: Option<String>,
+    upstream_status: Option<i64>,
+    upstream_body: Option<&str>,
+    failover_attempts: Option<Value>,
+) -> Option<String> {
+    let mut detail = serde_json::Map::new();
+    detail.insert("stage".to_string(), json!(stage));
+    if let Some(message) = message {
+        detail.insert("message".to_string(), json!(message));
+    }
+    if let Some(status) = upstream_status {
+        detail.insert("upstreamStatus".to_string(), json!(status));
+    }
+    if let Some(body) = upstream_body {
+        let truncated: String = body.chars().take(ERROR_DETAIL_BODY_MAX_CHARS).collect();
+        detail.insert("upstreamBody".to_string(), json!(truncated));
+    }
+    if let Some(attempts) = failover_attempts {
+        detail.insert("failoverAttempts".to_string(), attempts);
+    }
+    serde_json::to_string(&Value::Object(detail)).ok()
+}
+
 #[derive(Clone)]
 struct NetworkByteRecorder {
     state: AppState,
@@ -1987,6 +2034,13 @@ pub(super) async fn proxy_standard_request(
                         status_code: Some(502),
                         error: Some(failure.error.to_string()),
                         error_source: Some(ERROR_SOURCE_UPSTREAM.to_string()),
+                        error_detail: build_error_detail(
+                            "transport",
+                            Some(format!("{:#}", failure.error)),
+                            Some(502),
+                            None,
+                            failover_attempts_value(&attempts),
+                        ),
                         provider: Some(failure.provider_id.clone()),
                         model: Some(failure.model_id.clone()),
                         ..RequestLogUpdate::default()
@@ -2076,6 +2130,7 @@ pub(super) async fn proxy_standard_request(
             store_response_payload: response_payload_storage_enabled(&config),
             backend_provider: Some(candidate.provider_id.clone()),
             backend_model: Some(candidate.model_id.clone()),
+            failover_attempts: failover_attempts_value(&attempts),
         });
         if stream {
             // Log ownership moves to the streaming finalizer inside the
@@ -2121,6 +2176,17 @@ pub(super) async fn proxy_standard_request(
                     latency_ms: Some(latency_ms),
                     status_code: Some(status_code),
                     error_source: upstream_error_source_for_status(status_code),
+                    error_detail: if status_code >= 400 {
+                        build_error_detail(
+                            "upstream",
+                            None,
+                            Some(status_code),
+                            upstream_response_payload.as_deref(),
+                            failover_attempts_value(&attempts),
+                        )
+                    } else {
+                        None
+                    },
                     input_tokens: usage.as_ref().map(|stats| stats.input_tokens),
                     output_tokens: usage.as_ref().map(|stats| stats.output_tokens),
                     cached_tokens: usage.as_ref().map(|stats| stats.cached_tokens),
@@ -2201,6 +2267,17 @@ pub(super) async fn proxy_standard_request(
                     latency_ms: Some(latency_ms),
                     status_code: Some(status_code),
                     error_source: upstream_error_source_for_status(status_code),
+                    error_detail: if status_code >= 400 {
+                        build_error_detail(
+                            "upstream",
+                            None,
+                            Some(status_code),
+                            upstream_response_payload.as_deref(),
+                            failover_attempts_value(&attempts),
+                        )
+                    } else {
+                        None
+                    },
                     input_tokens: usage.as_ref().map(|stats| stats.input_tokens),
                     output_tokens: usage.as_ref().map(|stats| stats.output_tokens),
                     cached_tokens: usage.as_ref().map(|stats| stats.cached_tokens),
@@ -2248,6 +2325,17 @@ pub(super) async fn proxy_standard_request(
                     latency_ms: Some(latency_ms),
                     status_code: Some(status_code),
                     error_source: upstream_error_source_for_status(status_code),
+                    error_detail: if status_code >= 400 {
+                        build_error_detail(
+                            "upstream",
+                            None,
+                            Some(status_code),
+                            response_payload.as_deref(),
+                            failover_attempts_value(&attempts),
+                        )
+                    } else {
+                        None
+                    },
                     input_tokens: usage.as_ref().map(|stats| stats.input_tokens),
                     output_tokens: usage.as_ref().map(|stats| stats.output_tokens),
                     cached_tokens: usage.as_ref().map(|stats| stats.cached_tokens),
@@ -2589,6 +2677,17 @@ async fn into_streaming_converted_response(
                 network_recorder,
             )
             .await;
+        let error_detail = if status.as_u16() >= 400 {
+            build_error_detail(
+                "upstream",
+                None,
+                Some(status.as_u16() as i64),
+                upstream_response_payload.as_deref(),
+                None,
+            )
+        } else {
+            None
+        };
         finalize_stream_logging(
             log_context,
             request_protocol,
@@ -2601,6 +2700,7 @@ async fn into_streaming_converted_response(
             client_response_payload,
             None,
             upstream_error_source_for_status(status.as_u16() as i64),
+            error_detail,
         );
         drop(activity_guard);
         return result;
@@ -2648,6 +2748,13 @@ async fn into_streaming_converted_response(
                     client_response_payload,
                     Some(error.to_string()),
                     Some(ERROR_SOURCE_GATEWAY.to_string()),
+                    build_error_detail(
+                        "gateway",
+                        Some(error.to_string()),
+                        Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
+                        None,
+                        None,
+                    ),
                 );
                 drop(activity_guard);
                 return result;
@@ -2687,6 +2794,13 @@ async fn into_streaming_converted_response(
                         tracing::warn!(error = %message, "ignoring idle timeout after terminal SSE event");
                         return;
                     }
+                    finalizer.record_error_detail(build_error_detail(
+                        "upstream",
+                        Some(message.clone()),
+                        Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
+                        None,
+                        None,
+                    ));
                     finalizer.fail(
                         StatusCode::BAD_GATEWAY.as_u16() as i64,
                         message.clone(),
@@ -2750,6 +2864,13 @@ async fn into_streaming_converted_response(
                         tracing::warn!(error = %message, "ignoring upstream stream read error after terminal SSE event");
                         return;
                     }
+                    finalizer.record_error_detail(build_error_detail(
+                        "upstream",
+                        Some(message.clone()),
+                        Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
+                        None,
+                        None,
+                    ));
                     finalizer.fail(
                         StatusCode::BAD_GATEWAY.as_u16() as i64,
                         message.clone(),
@@ -2795,6 +2916,13 @@ async fn into_streaming_converted_response(
                 });
             let status = upstream_error_status(code.as_deref(), &message);
             finalizer.record_usage(observer.observed_usage_stats());
+            finalizer.record_error_detail(build_error_detail(
+                "upstream",
+                Some(format!("upstream stream error event: {message}")),
+                Some(status.as_u16() as i64),
+                Some(&event.to_string()),
+                None,
+            ));
             finalizer.fail(
                 status.as_u16() as i64,
                 format!("upstream stream error event: {message}"),
@@ -3182,6 +3310,17 @@ async fn into_streaming_proxy_response(
             .unwrap_or_default();
         let (result, usage, response_payload) =
             into_proxy_response(response, true, network_recorder).await;
+        let error_detail = if status.as_u16() >= 400 {
+            build_error_detail(
+                "upstream",
+                None,
+                Some(status.as_u16() as i64),
+                response_payload.as_deref(),
+                None,
+            )
+        } else {
+            None
+        };
         finalize_stream_logging(
             log_context,
             protocol,
@@ -3194,6 +3333,7 @@ async fn into_streaming_proxy_response(
             response_payload,
             None,
             upstream_error_source_for_status(status.as_u16() as i64),
+            error_detail,
         );
         drop(activity_guard);
         return result;
@@ -3234,6 +3374,13 @@ async fn into_streaming_proxy_response(
                         tracing::warn!(error = %message, "ignoring idle timeout after terminal SSE event");
                         return;
                     }
+                    finalizer.record_error_detail(build_error_detail(
+                        "upstream",
+                        Some(message.clone()),
+                        Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
+                        None,
+                        None,
+                    ));
                     finalizer.fail(
                         StatusCode::BAD_GATEWAY.as_u16() as i64,
                         message.clone(),
@@ -3270,6 +3417,13 @@ async fn into_streaming_proxy_response(
                         tracing::warn!(error = %message, "ignoring upstream stream read error after terminal SSE event");
                         return;
                     }
+                    finalizer.record_error_detail(build_error_detail(
+                        "upstream",
+                        Some(message.clone()),
+                        Some(StatusCode::BAD_GATEWAY.as_u16() as i64),
+                        None,
+                        None,
+                    ));
                     finalizer.fail(
                         StatusCode::BAD_GATEWAY.as_u16() as i64,
                         message.clone(),
@@ -3310,6 +3464,13 @@ async fn into_streaming_proxy_response(
                 });
             let status = upstream_error_status(code.as_deref(), &message);
             finalizer.record_usage(observer.observed_usage_stats());
+            finalizer.record_error_detail(build_error_detail(
+                "upstream",
+                Some(format!("upstream stream error event: {message}")),
+                Some(status.as_u16() as i64),
+                Some(&event.to_string()),
+                None,
+            ));
             finalizer.fail(
                 status.as_u16() as i64,
                 format!("upstream stream error event: {message}"),
@@ -3441,6 +3602,7 @@ struct StreamingResponseFinalizer {
     upstream_response_payload: Option<String>,
     client_response_payload: Option<String>,
     error_source: Option<String>,
+    error_detail: Option<String>,
     completed: bool,
 }
 
@@ -3468,12 +3630,21 @@ impl StreamingResponseFinalizer {
             upstream_response_payload: capture_upstream_response.then(String::new),
             client_response_payload: capture_client_response.then(String::new),
             error_source,
+            error_detail: None,
             completed: false,
         }
     }
 
     fn record_usage(&mut self, usage: Option<UsageStats>) {
         self.usage = usage;
+    }
+
+    /// Attach extended error context (see `build_error_detail`) to the row
+    /// this finalizer will write. Call before `fail`/drop.
+    fn record_error_detail(&mut self, error_detail: Option<String>) {
+        if self.error_detail.is_none() {
+            self.error_detail = error_detail;
+        }
     }
 
     fn record_first_token_at(&mut self, first_token_at: i64) {
@@ -3516,6 +3687,7 @@ impl StreamingResponseFinalizer {
             self.client_response_payload.take(),
             None,
             self.error_source.take(),
+            self.error_detail.take(),
         );
     }
 
@@ -3538,6 +3710,7 @@ impl StreamingResponseFinalizer {
             self.client_response_payload.take(),
             Some(error),
             Some(error_source),
+            self.error_detail.take(),
         );
     }
 }
@@ -3565,6 +3738,7 @@ impl Drop for StreamingResponseFinalizer {
             self.client_response_payload.take(),
             Some("stream terminated before completion".to_string()),
             Some(ERROR_SOURCE_CLIENT.to_string()),
+            self.error_detail.take(),
         );
     }
 }
@@ -3581,10 +3755,27 @@ fn finalize_stream_logging(
     client_response_payload: Option<String>,
     error: Option<String>,
     error_source: Option<String>,
+    mut error_detail: Option<String>,
 ) {
     let Some(context) = log_context else {
         return;
     };
+
+    // On failures, fold the aggregate failover attempt chain into the
+    // persisted detail — the row itself only names the final backend.
+    if error.is_some() || status_code >= 400 {
+        if let Some(attempts) = context.failover_attempts.clone() {
+            let mut base = error_detail
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .and_then(|value| value.as_object().cloned())
+                .unwrap_or_default();
+            base.insert("failoverAttempts".to_string(), attempts);
+            if let Some(serialized) = serde_json::to_string(&Value::Object(base)).ok() {
+                error_detail = Some(serialized);
+            }
+        }
+    }
 
     let update = RequestLogUpdate {
         latency_ms: Some(latency_ms),
@@ -3602,6 +3793,7 @@ fn finalize_stream_logging(
         ),
         error: error.clone(),
         error_source,
+        error_detail,
         provider: context.backend_provider.clone(),
         model: context.backend_model.clone(),
         ..RequestLogUpdate::default()

@@ -220,6 +220,9 @@ struct StreamingLogContext {
     /// at finalize time when failover picked a later aggregate candidate.
     backend_provider: Option<String>,
     backend_model: Option<String>,
+    /// Serialized failover attempt chain for aggregate models (None for
+    /// single-candidate requests); folded into `error_detail` on failures.
+    failover_attempts: Option<Value>,
 }
 
 fn join_non_empty_texts(texts: Vec<String>) -> Option<String> {
