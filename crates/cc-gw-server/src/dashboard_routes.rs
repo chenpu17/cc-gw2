@@ -23,6 +23,21 @@ pub(super) async fn api_dashboard_summary(
         let overview = get_metrics_overview(db_path, endpoint)?;
         let daily = get_daily_metrics(db_path, 14, endpoint)?;
         let model_stats = get_model_usage_metrics(db_path, 7, 6, endpoint)?;
+        // Rolling 10-minute token throughput (input/output split). Raw sums
+        // over the window, divided here by the window length — deliberately
+        // separate from the 1-minute `requestsPerMinute` semantics in
+        // `/api/status`.
+        let recent_throughput = {
+            const WINDOW_MINUTES: i64 = 10;
+            let since = chrono::Utc::now().timestamp_millis() - WINDOW_MINUTES * 60 * 1000;
+            let totals = get_recent_token_throughput_totals(db_path, since, endpoint)?;
+            json!({
+                "windowMinutes": WINDOW_MINUTES,
+                "requests": totals.requests,
+                "inputTokensPerMinute": totals.input_tokens / WINDOW_MINUTES,
+                "outputTokensPerMinute": totals.output_tokens / WINDOW_MINUTES,
+            })
+        };
         let recent_requests = {
             let result = query_logs(
                 db_path,
@@ -63,6 +78,7 @@ pub(super) async fn api_dashboard_summary(
             "overview": overview,
             "daily": daily,
             "modelStats": model_stats,
+            "recentThroughput": recent_throughput,
             "recentRequests": recent_requests,
             "recentErrors": recent_errors,
             "dbInfo": db_info,

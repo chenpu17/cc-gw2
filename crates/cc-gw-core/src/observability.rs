@@ -299,6 +299,17 @@ pub struct RecentThroughputMetrics {
     pub output_tokens_per_minute: i64,
 }
 
+/// Raw request/token sums over an arbitrary window — the caller derives
+/// per-minute rates by dividing by the window length, so a 10-minute TPM is
+/// not conflated with the 1-minute `RecentThroughputMetrics` semantics.
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentTokenThroughputTotals {
+    pub requests: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+}
+
 #[derive(Debug, Default)]
 pub struct LogQuery {
     pub limit: i64,
@@ -1162,6 +1173,46 @@ pub fn get_recent_throughput_metrics(
     })
 }
 
+/// Raw sums over the window starting at `since` — input and output tokens
+/// separately. Rows whose upstream never reported usage contribute nothing
+/// (COALESCE NULL → 0), matching the aggregate counters' semantics.
+pub fn get_recent_token_throughput_totals(
+    db_path: &Path,
+    since: i64,
+    endpoint: Option<&str>,
+) -> Result<RecentTokenThroughputTotals> {
+    let conn = open_db(db_path)?;
+    let (requests, input_tokens, output_tokens): (i64, i64, i64) = if let Some(endpoint) = endpoint
+    {
+        conn.query_row(
+            "SELECT
+               COUNT(*),
+               COALESCE(SUM(COALESCE(input_tokens, 0)), 0),
+               COALESCE(SUM(COALESCE(output_tokens, 0)), 0)
+             FROM request_logs
+             WHERE timestamp >= ?1 AND endpoint = ?2",
+            params![since, endpoint],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?
+    } else {
+        conn.query_row(
+            "SELECT
+               COUNT(*),
+               COALESCE(SUM(COALESCE(input_tokens, 0)), 0),
+               COALESCE(SUM(COALESCE(output_tokens, 0)), 0)
+             FROM request_logs
+             WHERE timestamp >= ?1",
+            params![since],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?
+    };
+    Ok(RecentTokenThroughputTotals {
+        requests,
+        input_tokens,
+        output_tokens,
+    })
+}
+
 pub fn compact_database(db_path: &Path) -> Result<()> {
     let conn = open_db(db_path)?;
     conn.execute_batch("VACUUM;")?;
@@ -1274,6 +1325,72 @@ mod tests {
             exported.first().expect("exported row").record.error_detail,
             Some(detail.to_string())
         );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn token_throughput_totals_sum_window_and_split_endpoint() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut seed = |offset: i64, endpoint: &str, input: Option<i64>, output: Option<i64>| {
+            let log_id = insert_request_log(
+                &db_path,
+                &RequestLogInput {
+                    timestamp: now + offset,
+                    session_id: None,
+                    source_ip: None,
+                    endpoint: endpoint.to_string(),
+                    provider: "mock".to_string(),
+                    model: "mock-model".to_string(),
+                    client_model: None,
+                    stream: false,
+                    api_key_id: None,
+                    api_key_name: None,
+                    api_key_value: None,
+                },
+            )
+            .expect("insert request log");
+            finalize_request_log(
+                &db_path,
+                log_id,
+                &RequestLogUpdate {
+                    latency_ms: Some(10),
+                    status_code: Some(200),
+                    input_tokens: input,
+                    output_tokens: output,
+                    ..RequestLogUpdate::default()
+                },
+            )
+            .expect("finalize request log");
+        };
+        seed(0, "anthropic", Some(100), Some(40));
+        seed(-1000, "anthropic", Some(50), Some(10));
+        seed(-2000, "openai", Some(7), Some(3));
+        // NULL tokens (upstream never reported usage) contribute nothing.
+        seed(-3000, "anthropic", None, None);
+        // Outside the window entirely.
+        seed(-20 * 60 * 1000, "anthropic", Some(999), Some(999));
+
+        let totals = get_recent_token_throughput_totals(&db_path, now - 10 * 60 * 1000, None)
+            .expect("query totals");
+        assert_eq!(totals.requests, 4);
+        assert_eq!(totals.input_tokens, 157);
+        assert_eq!(totals.output_tokens, 53);
+
+        let anthropic =
+            get_recent_token_throughput_totals(&db_path, now - 10 * 60 * 1000, Some("anthropic"))
+                .expect("query anthropic totals");
+        assert_eq!(anthropic.requests, 3);
+        assert_eq!(anthropic.input_tokens, 150);
+        assert_eq!(anthropic.output_tokens, 50);
 
         let _ = std::fs::remove_dir_all(root);
     }

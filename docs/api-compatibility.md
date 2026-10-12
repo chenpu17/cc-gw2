@@ -84,6 +84,7 @@ Dashboard 与事件流接口补充说明：
   - `overview`：与 `GET /api/stats/overview?endpoint=` 返回一致
   - `daily`：与 `GET /api/stats/daily?days=14&endpoint=` 返回一致
   - `modelStats`：与 `GET /api/stats/model?days=7&limit=6&endpoint=` 返回一致
+  - `recentThroughput`：滚动 10 分钟吞吐 `{ windowMinutes, requests, inputTokensPerMinute, outputTokensPerMinute }`（输入/输出分开，窗口总和除以窗口分钟数；NULL tokens 的行不计入）
   - `recentRequests`：与 `GET /api/logs?limit=5` 返回一致（`{ total, items }`）
   - `recentErrors`：最近 10 条 `level=error|warn` 事件，项形状与 `GET /api/events` 一致
   - `dbInfo`：与 `GET /api/db/info` 返回一致

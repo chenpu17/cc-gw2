@@ -45,8 +45,8 @@ use cc_gw_core::{
         UsageStats, cleanup_logs_before, clear_all_logs, compact_database, export_logs,
         finalize_request_log, finalize_stale_request_logs, get_daily_metrics, get_database_info,
         get_log_detail, get_metrics_overview, get_model_usage_metrics, get_recent_client_activity,
-        get_recent_throughput_metrics, increment_daily_metrics, insert_request_log,
-        mask_log_record_api_key, query_logs, upsert_request_payload,
+        get_recent_throughput_metrics, get_recent_token_throughput_totals, increment_daily_metrics,
+        insert_request_log, mask_log_record_api_key, query_logs, upsert_request_payload,
     },
     provider::{
         ProviderModelsError, ProviderProtocol, ProxyRequest, fetch_provider_models,
