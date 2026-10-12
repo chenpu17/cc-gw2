@@ -45,8 +45,9 @@ use cc_gw_core::{
         UsageStats, cleanup_logs_before, clear_all_logs, compact_database, export_logs,
         finalize_request_log, finalize_stale_request_logs, get_daily_metrics, get_database_info,
         get_log_detail, get_metrics_overview, get_model_usage_metrics, get_recent_client_activity,
-        get_recent_throughput_metrics, get_recent_token_throughput_totals, increment_daily_metrics,
-        insert_request_log, mask_log_record_api_key, query_logs, upsert_request_payload,
+        get_recent_client_kind_metrics, get_recent_throughput_metrics,
+        get_recent_token_throughput_totals, increment_daily_metrics, insert_request_log,
+        mask_log_record_api_key, query_logs, upsert_request_payload,
     },
     provider::{
         ProviderModelsError, ProviderProtocol, ProxyRequest, fetch_provider_models,
@@ -65,7 +66,7 @@ use cc_gw_core::{
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use tokio::{fs, net::TcpListener, task::JoinSet};
 use tracing::{info, warn};
 use zip::write::SimpleFileOptions;
@@ -91,6 +92,7 @@ struct AppState {
     active_client_addresses_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_client_sessions_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_requests_by_api_key: Arc<Mutex<HashMap<i64, u64>>>,
+    active_requests_by_client_kind: Arc<Mutex<BTreeMap<String, u64>>>,
     network_ingress_bytes: Arc<AtomicU64>,
     network_egress_bytes: Arc<AtomicU64>,
     network_ingress_bytes_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
@@ -124,6 +126,8 @@ struct StatusResponse {
     active_client_addresses: u64,
     #[serde(rename = "activeClientSessions")]
     active_client_sessions: u64,
+    #[serde(rename = "activeByClientKind")]
+    active_by_client_kind: BTreeMap<String, u64>,
     #[serde(rename = "uniqueClientAddressesLastHour")]
     unique_client_addresses_last_hour: u64,
     #[serde(rename = "uniqueClientSessionsLastHour")]
@@ -368,6 +372,7 @@ async fn main() -> Result<()> {
         active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
+        active_requests_by_client_kind: Arc::new(Mutex::new(BTreeMap::new())),
         network_ingress_bytes: Arc::new(AtomicU64::new(0)),
         network_egress_bytes: Arc::new(AtomicU64::new(0)),
         network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),

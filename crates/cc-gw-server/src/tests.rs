@@ -2,6 +2,7 @@ use super::*;
 use axum::extract::{Json as AxumJson, Query};
 use axum::http::{HeaderName, HeaderValue};
 use futures_util::StreamExt;
+use std::collections::BTreeMap;
 use std::fs as stdfs;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -350,6 +351,7 @@ fn build_test_state(
         active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
         active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
+        active_requests_by_client_kind: Arc::new(Mutex::new(BTreeMap::new())),
         network_ingress_bytes: Arc::new(AtomicU64::new(0)),
         network_egress_bytes: Arc::new(AtomicU64::new(0)),
         network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
@@ -5188,6 +5190,36 @@ async fn codex_originator_headers_persist_client_kind_and_session() {
         .await
         .expect("decode miss logs");
     assert_eq!(miss.get("total").and_then(Value::as_i64), Some(0));
+
+    // Dashboard summary surfaces the per-client-kind 1h usage rollup.
+    let summary: Value = client
+        .get(format!("http://{gateway_addr}/api/dashboard/summary"))
+        .send()
+        .await
+        .expect("request summary")
+        .json()
+        .await
+        .expect("decode summary");
+    let activity = summary
+        .get("clientActivity")
+        .and_then(Value::as_array)
+        .expect("clientActivity array");
+    let codex_row = activity
+        .iter()
+        .find(|entry| entry.get("clientKind").and_then(Value::as_str) == Some("codex"))
+        .expect("codex row in clientActivity");
+    assert_eq!(codex_row.get("requests").and_then(Value::as_i64), Some(1));
+    assert_eq!(codex_row.get("sessions").and_then(Value::as_i64), Some(1));
+    // Guard-drained state: no in-flight requests at poll time.
+    let status = summary
+        .get("status")
+        .expect("status object")
+        .get("activeByClientKind")
+        .expect("activeByClientKind present");
+    assert!(
+        status.as_object().map(|map| map.is_empty()).unwrap_or(true),
+        "expected empty activeByClientKind, got {status}"
+    );
 
     gateway_handle.abort();
     upstream_handle.abort();

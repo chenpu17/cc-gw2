@@ -1,5 +1,5 @@
 use super::*;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 const ERROR_SOURCE_CLIENT: &str = "client";
@@ -344,10 +344,12 @@ struct RequestActivityGuard {
     active_client_addresses_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_client_sessions_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_requests_by_api_key: Arc<Mutex<HashMap<i64, u64>>>,
+    active_requests_by_client_kind: Arc<Mutex<BTreeMap<String, u64>>>,
     endpoint_id: String,
     source_ip: Option<String>,
     session_id: Option<String>,
     api_key_id: Option<i64>,
+    client_kind: String,
 }
 
 impl RequestActivityGuard {
@@ -357,6 +359,7 @@ impl RequestActivityGuard {
         source_ip: Option<String>,
         session_id: Option<String>,
         api_key_id: Option<i64>,
+        client_kind: String,
     ) -> Self {
         state.active_requests.fetch_add(1, Ordering::Relaxed);
         increment_endpoint_counter(&state.active_requests_by_endpoint, &endpoint_id);
@@ -379,6 +382,7 @@ impl RequestActivityGuard {
         if let Some(api_key_id) = api_key_id {
             increment_api_key_counter(&state.active_requests_by_api_key, api_key_id);
         }
+        increment_client_kind_counter(&state.active_requests_by_client_kind, client_kind.as_str());
         Self {
             active_requests: Arc::clone(&state.active_requests),
             active_client_addresses: Arc::clone(&state.active_client_addresses),
@@ -391,10 +395,12 @@ impl RequestActivityGuard {
                 &state.active_client_sessions_by_endpoint,
             ),
             active_requests_by_api_key: Arc::clone(&state.active_requests_by_api_key),
+            active_requests_by_client_kind: Arc::clone(&state.active_requests_by_client_kind),
             endpoint_id,
             source_ip,
             session_id,
             api_key_id,
+            client_kind,
         }
     }
 
@@ -407,6 +413,7 @@ impl RequestActivityGuard {
         session_id: Option<String>,
         api_key_id: Option<i64>,
         max_concurrency: Option<i64>,
+        client_kind: String,
     ) -> Result<Self, u64> {
         // Atomically check and increment the API key counter in one lock scope
         if let (Some(api_key_id), Some(max)) = (api_key_id, max_concurrency) {
@@ -429,6 +436,7 @@ impl RequestActivityGuard {
                         source_ip,
                         session_id,
                         Some(api_key_id),
+                        client_kind,
                     ));
                 }
                 // Counter already incremented; build the guard without re-incrementing
@@ -438,6 +446,7 @@ impl RequestActivityGuard {
                     source_ip,
                     session_id,
                     Some(api_key_id),
+                    client_kind,
                 ));
             }
         }
@@ -448,6 +457,7 @@ impl RequestActivityGuard {
             source_ip,
             session_id,
             api_key_id,
+            client_kind,
         ))
     }
 
@@ -458,6 +468,7 @@ impl RequestActivityGuard {
         source_ip: Option<String>,
         session_id: Option<String>,
         api_key_id: Option<i64>,
+        client_kind: String,
     ) -> Self {
         state.active_requests.fetch_add(1, Ordering::Relaxed);
         increment_endpoint_counter(&state.active_requests_by_endpoint, &endpoint_id);
@@ -478,6 +489,7 @@ impl RequestActivityGuard {
             );
         }
         // NOTE: api_key_id counter is NOT incremented here — already done by caller
+        increment_client_kind_counter(&state.active_requests_by_client_kind, client_kind.as_str());
         Self {
             active_requests: Arc::clone(&state.active_requests),
             active_client_addresses: Arc::clone(&state.active_client_addresses),
@@ -490,10 +502,12 @@ impl RequestActivityGuard {
                 &state.active_client_sessions_by_endpoint,
             ),
             active_requests_by_api_key: Arc::clone(&state.active_requests_by_api_key),
+            active_requests_by_client_kind: Arc::clone(&state.active_requests_by_client_kind),
             endpoint_id,
             source_ip,
             session_id,
             api_key_id,
+            client_kind,
         }
     }
 }
@@ -520,6 +534,28 @@ impl Drop for RequestActivityGuard {
         }
         if let Some(api_key_id) = self.api_key_id {
             decrement_api_key_counter(&self.active_requests_by_api_key, api_key_id);
+        }
+        decrement_client_kind_counter(
+            &self.active_requests_by_client_kind,
+            self.client_kind.as_str(),
+        );
+    }
+}
+
+fn increment_client_kind_counter(entries: &Mutex<BTreeMap<String, u64>>, kind: &str) {
+    if let Ok(mut entries) = entries.lock() {
+        let counter = entries.entry(kind.to_string()).or_insert(0);
+        *counter += 1;
+    }
+}
+
+fn decrement_client_kind_counter(entries: &Mutex<BTreeMap<String, u64>>, kind: &str) {
+    if let Ok(mut entries) = entries.lock() {
+        if let Some(counter) = entries.get_mut(kind) {
+            *counter = counter.saturating_sub(1);
+            if *counter == 0 {
+                entries.remove(kind);
+            }
         }
     }
 }
@@ -1451,6 +1487,7 @@ pub(super) async fn proxy_standard_request(
         session_id.clone(),
         Some(api_key_context.id),
         api_key_context.max_concurrency,
+        client_kind.clone(),
     ) {
         Ok(guard) => guard,
         Err(current) => {
@@ -3863,6 +3900,7 @@ mod tests {
             active_client_addresses_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
             active_client_sessions_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
             active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
+            active_requests_by_client_kind: Arc::new(Mutex::new(BTreeMap::new())),
             network_ingress_bytes: Arc::new(AtomicU64::new(0)),
             network_egress_bytes: Arc::new(AtomicU64::new(0)),
             network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
@@ -3994,6 +4032,7 @@ mod tests {
             None,
             Some(42),
             Some(3),
+            "claude-code".to_string(),
         );
         assert!(result.is_ok(), "should succeed when under limit");
     }
@@ -4012,6 +4051,7 @@ mod tests {
             None,
             Some(42),
             Some(3),
+            "claude-code".to_string(),
         );
         assert!(result.is_err(), "should reject when at limit");
         assert_eq!(result.unwrap_err(), 3);
@@ -4027,6 +4067,7 @@ mod tests {
             None,
             Some(42),
             None,
+            "claude-code".to_string(),
         );
         assert!(result.is_ok());
     }
@@ -4041,6 +4082,7 @@ mod tests {
             None,
             Some(42),
             Some(0),
+            "claude-code".to_string(),
         );
         assert!(result.is_ok());
     }
@@ -4056,6 +4098,7 @@ mod tests {
                 None,
                 Some(42),
                 Some(1),
+                "claude-code".to_string(),
             );
             assert!(guard.is_ok());
 
@@ -4066,6 +4109,7 @@ mod tests {
                 None,
                 Some(42),
                 Some(1),
+                "claude-code".to_string(),
             );
             assert!(second.is_err(), "should reject while slot is held");
         }
@@ -4078,6 +4122,7 @@ mod tests {
             None,
             Some(42),
             Some(1),
+            "claude-code".to_string(),
         );
         assert!(third.is_ok(), "should succeed after slot released");
     }
@@ -4096,6 +4141,7 @@ mod tests {
             None,
             Some(42),
             Some(1),
+            "claude-code".to_string(),
         );
         {
             let entries = state.active_requests_by_api_key.lock().unwrap();
@@ -4105,6 +4151,47 @@ mod tests {
                 "counter should be 1 after acquiring slot"
             );
         }
+    }
+
+    #[test]
+    fn client_kind_counter_maintained_symmetrically() {
+        let state = make_test_state();
+        {
+            let _first = RequestActivityGuard::try_new_with_concurrency_check(
+                &state,
+                "test-endpoint".to_string(),
+                None,
+                None,
+                Some(42),
+                None,
+                "codex".to_string(),
+            );
+            let _second = RequestActivityGuard::new(
+                &state,
+                "test-endpoint".to_string(),
+                None,
+                None,
+                None,
+                "codex".to_string(),
+            );
+            let _other = RequestActivityGuard::new(
+                &state,
+                "test-endpoint".to_string(),
+                None,
+                None,
+                None,
+                "claude-code".to_string(),
+            );
+            let entries = state.active_requests_by_client_kind.lock().unwrap();
+            assert_eq!(*entries.get("codex").unwrap(), 2);
+            assert_eq!(*entries.get("claude-code").unwrap(), 1);
+        }
+        // All guards dropped — the map empties again instead of leaking zeros.
+        let entries = state.active_requests_by_client_kind.lock().unwrap();
+        assert!(
+            entries.is_empty(),
+            "client kind counters should drain to empty, got {entries:?}"
+        );
     }
 
     #[test]

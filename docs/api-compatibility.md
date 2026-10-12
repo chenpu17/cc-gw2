@@ -33,7 +33,7 @@
 
 | 路径 | 方法 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| `/api/status` | `GET` | 已兼容 | 返回端口、主机、runtime、PID、活跃请求数等 |
+| `/api/status` | `GET` | 已兼容 | 返回端口、主机、runtime、PID、活跃请求数等；含 `activeByClientKind`（按 agent 客户端类型分组的在途请求数，map 形式，无在途时为 `{}`） |
 | `/api/config` | `GET` | 已兼容 | 读取主配置 |
 | `/api/config` | `PUT` | 已兼容 | 更新主配置 |
 | `/api/config/info` | `GET` | 已兼容 | 返回配置和配置文件路径 |
@@ -85,6 +85,7 @@ Dashboard 与事件流接口补充说明：
   - `daily`：与 `GET /api/stats/daily?days=14&endpoint=` 返回一致
   - `modelStats`：与 `GET /api/stats/model?days=7&limit=6&endpoint=` 返回一致
   - `recentThroughput`：滚动 10 分钟吞吐 `{ windowMinutes, requests, inputTokensPerMinute, outputTokensPerMinute }`（输入/输出分开，窗口总和除以窗口分钟数；NULL tokens 的行不计入）
+  - `clientActivity`：近 1 小时按客户端类型聚合的 `[{ clientKind, requests, sessions, inputTokens, outputTokens }]`，按 requests 降序；历史无 `client_kind` 的行归入 `unknown`
   - `recentRequests`：与 `GET /api/logs?limit=5` 返回一致（`{ total, items }`）
   - `recentErrors`：最近 10 条 `level=error|warn` 事件，项形状与 `GET /api/events` 一致
   - `dbInfo`：与 `GET /api/db/info` 返回一致

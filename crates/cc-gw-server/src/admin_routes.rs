@@ -198,6 +198,11 @@ pub(super) fn build_status_response(state: &AppState, endpoint: Option<&str>) ->
     } else {
         count_active_entries(&state.active_client_sessions)
     };
+    let active_by_client_kind = state
+        .active_requests_by_client_kind
+        .lock()
+        .map(|entries| entries.clone())
+        .unwrap_or_default();
     let cpu_usage_percent = state.runtime_metrics.lock().ok().map(|mut metrics| {
         let key = endpoint.unwrap_or("__all__");
         let ingress_total = if let Some(endpoint) = endpoint {
@@ -229,6 +234,7 @@ pub(super) fn build_status_response(state: &AppState, endpoint: Option<&str>) ->
         active_requests,
         active_client_addresses,
         active_client_sessions,
+        active_by_client_kind,
         unique_client_addresses_last_hour: recent_activity.unique_source_ips.max(0) as u64,
         unique_client_sessions_last_hour: recent_activity.unique_session_ids.max(0) as u64,
         requests_per_minute: recent_throughput.requests_per_minute.max(0) as u64,

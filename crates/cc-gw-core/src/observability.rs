@@ -1238,6 +1238,72 @@ pub fn get_recent_token_throughput_totals(
     })
 }
 
+/// Per-client-kind usage over the window starting at `since` — the data
+/// behind the dashboard's agent-client card. Rows recorded before the
+/// `client_kind` column existed group under `"unknown"`.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ClientKindUsageMetric {
+    pub client_kind: String,
+    pub requests: i64,
+    pub sessions: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+}
+
+pub fn get_recent_client_kind_metrics(
+    db_path: &Path,
+    since: i64,
+    endpoint: Option<&str>,
+) -> Result<Vec<ClientKindUsageMetric>> {
+    let conn = open_db(db_path)?;
+    let mut statement = if endpoint.is_some() {
+        conn.prepare(
+            "SELECT
+               COALESCE(NULLIF(TRIM(client_kind), ''), 'unknown') AS kind,
+               COUNT(*) AS requests,
+               COUNT(DISTINCT NULLIF(TRIM(session_id), '')) AS sessions,
+               COALESCE(SUM(COALESCE(input_tokens, 0)), 0),
+               COALESCE(SUM(COALESCE(output_tokens, 0)), 0)
+             FROM request_logs
+             WHERE timestamp >= ?1 AND endpoint = ?2
+             GROUP BY kind
+             ORDER BY requests DESC",
+        )?
+    } else {
+        conn.prepare(
+            "SELECT
+               COALESCE(NULLIF(TRIM(client_kind), ''), 'unknown') AS kind,
+               COUNT(*) AS requests,
+               COUNT(DISTINCT NULLIF(TRIM(session_id), '')) AS sessions,
+               COALESCE(SUM(COALESCE(input_tokens, 0)), 0),
+               COALESCE(SUM(COALESCE(output_tokens, 0)), 0)
+             FROM request_logs
+             WHERE timestamp >= ?1
+             GROUP BY kind
+             ORDER BY requests DESC",
+        )?
+    };
+    let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<ClientKindUsageMetric> {
+        Ok(ClientKindUsageMetric {
+            client_kind: row.get(0)?,
+            requests: row.get(1)?,
+            sessions: row.get(2)?,
+            input_tokens: row.get(3)?,
+            output_tokens: row.get(4)?,
+        })
+    };
+    let metrics = if let Some(endpoint) = endpoint {
+        statement
+            .query_map(params![since, endpoint], map_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    } else {
+        statement
+            .query_map(params![since], map_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    };
+    Ok(metrics)
+}
+
 pub fn compact_database(db_path: &Path) -> Result<()> {
     let conn = open_db(db_path)?;
     conn.execute_batch("VACUUM;")?;
@@ -1460,6 +1526,90 @@ mod tests {
         assert_eq!(anthropic.requests, 3);
         assert_eq!(anthropic.input_tokens, 150);
         assert_eq!(anthropic.output_tokens, 50);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn recent_client_kind_metrics_groups_and_counts_sessions() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut seed = |offset: i64,
+                        client_kind: Option<&str>,
+                        session_id: Option<&str>,
+                        endpoint: &str,
+                        input: Option<i64>| {
+            let log_id = insert_request_log(
+                &db_path,
+                &RequestLogInput {
+                    timestamp: now + offset,
+                    session_id: session_id.map(ToString::to_string),
+                    source_ip: None,
+                    client_kind: client_kind.map(ToString::to_string),
+                    user_agent: None,
+                    endpoint: endpoint.to_string(),
+                    provider: "mock".to_string(),
+                    model: "mock-model".to_string(),
+                    client_model: None,
+                    stream: false,
+                    api_key_id: None,
+                    api_key_name: None,
+                    api_key_value: None,
+                },
+            )
+            .expect("insert request log");
+            finalize_request_log(
+                &db_path,
+                log_id,
+                &RequestLogUpdate {
+                    latency_ms: Some(10),
+                    status_code: Some(200),
+                    input_tokens: input,
+                    output_tokens: None,
+                    ..RequestLogUpdate::default()
+                },
+            )
+            .expect("finalize request log");
+        };
+        seed(0, Some("codex"), Some("s1"), "anthropic", Some(10));
+        seed(-1000, Some("codex"), Some("s2"), "anthropic", Some(20));
+        seed(-1500, Some("codex"), Some("s1"), "anthropic", Some(1));
+        // Blank kind groups under "unknown" together with pre-column NULL rows.
+        seed(-2000, Some(""), Some("s3"), "openai", Some(5));
+        seed(-3000, None, None, "openai", None);
+        // Outside the 1h window.
+        seed(
+            -2 * 60 * 60 * 1000,
+            Some("codex"),
+            Some("s1"),
+            "anthropic",
+            Some(999),
+        );
+
+        let metrics = get_recent_client_kind_metrics(&db_path, now - 60 * 60 * 1000, None)
+            .expect("query client kind metrics");
+        assert_eq!(metrics.len(), 2);
+        assert_eq!(metrics[0].client_kind, "codex");
+        assert_eq!(metrics[0].requests, 3);
+        assert_eq!(metrics[0].sessions, 2);
+        assert_eq!(metrics[0].input_tokens, 31);
+        assert_eq!(metrics[1].client_kind, "unknown");
+        assert_eq!(metrics[1].requests, 2);
+        assert_eq!(metrics[1].sessions, 1);
+
+        let anthropic_only =
+            get_recent_client_kind_metrics(&db_path, now - 60 * 60 * 1000, Some("anthropic"))
+                .expect("query anthropic client kind metrics");
+        assert_eq!(anthropic_only.len(), 1);
+        assert_eq!(anthropic_only[0].client_kind, "codex");
+        assert_eq!(anthropic_only[0].requests, 3);
 
         let _ = std::fs::remove_dir_all(root);
     }

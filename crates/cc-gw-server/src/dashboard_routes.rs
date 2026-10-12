@@ -38,6 +38,22 @@ pub(super) async fn api_dashboard_summary(
                 "outputTokensPerMinute": totals.output_tokens / WINDOW_MINUTES,
             })
         };
+        // Rolling 1-hour per-client-kind usage for the agent-client card.
+        let client_activity = {
+            let since = chrono::Utc::now().timestamp_millis() - 60 * 60 * 1000;
+            get_recent_client_kind_metrics(db_path, since, endpoint)?
+                .into_iter()
+                .map(|metric| {
+                    json!({
+                        "clientKind": metric.client_kind,
+                        "requests": metric.requests,
+                        "sessions": metric.sessions,
+                        "inputTokens": metric.input_tokens,
+                        "outputTokens": metric.output_tokens,
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
         let recent_requests = {
             let result = query_logs(
                 db_path,
@@ -80,6 +96,7 @@ pub(super) async fn api_dashboard_summary(
             "daily": daily,
             "modelStats": model_stats,
             "recentThroughput": recent_throughput,
+            "clientActivity": client_activity,
             "recentRequests": recent_requests,
             "recentErrors": recent_errors,
             "dbInfo": db_info,
