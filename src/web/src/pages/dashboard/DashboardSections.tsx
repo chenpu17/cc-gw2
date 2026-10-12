@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/table'
 import type { GatewayEvent } from '@/types/events'
 import type { LogRecord } from '@/types/logs'
+import type { ClientActivityEntry } from '@/services/dashboard'
 import type { DimensionUsageMetric } from '@/services/stats'
 import { getLogStatusMeta } from '@/pages/logs/utils'
 import { type UsageDistributionTab, USAGE_WINDOW_DAYS } from './useDashboardPageState'
@@ -237,6 +238,76 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
         hint={errorCount > 0 ? t('dashboard.cards.errorCountHint', { value: errorCount }) : undefined}
         valueTestId="dashboard-today-value-error-rate"
       />
+    </div>
+  )
+}
+
+/** Layer 1c — per-agent-client activity: in-flight count + 1h usage rollup.
+ *  Hidden entirely while no client traffic exists in the window. */
+export function ClientActivityBand({
+  status,
+  entries
+}: {
+  status?: ServiceStatus
+  entries: ClientActivityEntry[]
+}) {
+  const { t } = useTranslation()
+
+  if (entries.length === 0) return null
+
+  const kindLabel = (kind: string) =>
+    kind === 'unknown'
+      ? t('dashboard.usage.clientKinds.unknown')
+      : t(`dashboard.usage.clientKinds.${kind}`, { defaultValue: kind })
+
+  return (
+    <div data-testid="dashboard-client-activity" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {entries.map((entry) => {
+        const active = status?.activeByClientKind?.[entry.clientKind] ?? 0
+        return (
+          <div
+            key={entry.clientKind}
+            data-testid="dashboard-client-activity-card"
+            className="rounded-lg border border-border bg-card px-4 py-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-foreground">
+                  {kindLabel(entry.clientKind)}
+                </div>
+                <div className="font-mono text-[10.5px] text-muted-foreground">{entry.clientKind}</div>
+              </div>
+              <span
+                className={
+                  active > 0
+                    ? 'inline-flex shrink-0 items-center gap-1 rounded-md bg-success-bg px-1.5 py-0.5 text-[11px] font-medium text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success before:animate-live-pulse'
+                    : 'shrink-0 rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground'
+                }
+              >
+                {t('dashboard.clientActivity.active', { value: active })}
+              </span>
+            </div>
+            <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] tabular-nums text-muted-foreground">
+              <div className="flex items-baseline justify-between gap-2">
+                <dt>{t('dashboard.clientActivity.requests')}</dt>
+                <dd className="font-medium text-foreground">{entry.requests.toLocaleString()}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-2">
+                <dt>{t('dashboard.clientActivity.sessions')}</dt>
+                <dd className="font-medium text-foreground">{entry.sessions.toLocaleString()}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-2">
+                <dt>{t('dashboard.clientActivity.input')}</dt>
+                <dd>{entry.inputTokens.toLocaleString()}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-2">
+                <dt>{t('dashboard.clientActivity.output')}</dt>
+                <dd>{entry.outputTokens.toLocaleString()}</dd>
+              </div>
+            </dl>
+          </div>
+        )
+      })}
     </div>
   )
 }

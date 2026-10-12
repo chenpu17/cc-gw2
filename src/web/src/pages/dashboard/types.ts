@@ -65,6 +65,8 @@ export interface ServiceStatus {
   networkEgressBytesPerSecond?: number
   activeClientAddresses?: number
   activeClientSessions?: number
+  /** In-flight request count per identified agent client kind. */
+  activeByClientKind?: Record<string, number>
   uniqueClientAddressesLastHour?: number
   uniqueClientSessionsLastHour?: number
 }

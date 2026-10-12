@@ -131,6 +131,13 @@ export default {
       'openai-compatible': 'OpenAI 兼容客户端'
     }
   },
+  clientActivity: {
+    active: '活跃 {{value}}',
+    requests: '近1小时请求',
+    sessions: '近1小时会话',
+    input: '输入 Tokens',
+    output: '输出 Tokens'
+  },
   recent: {
     title: '最新请求',
     subtitle: '仅展示最近 {{count}} 条记录',

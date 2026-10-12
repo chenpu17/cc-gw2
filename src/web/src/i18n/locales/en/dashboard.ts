@@ -131,6 +131,13 @@ export default {
       'openai-compatible': 'OpenAI-compatible client'
     }
   },
+  clientActivity: {
+    active: '{{value}} active',
+    requests: 'Requests (1h)',
+    sessions: 'Sessions (1h)',
+    input: 'Input tokens',
+    output: 'Output tokens'
+  },
   recent: {
     title: 'Recent Requests',
     subtitle: 'Showing the latest {{count}} records',

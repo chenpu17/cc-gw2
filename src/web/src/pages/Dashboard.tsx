@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import {
   AttentionAllClear,
   AttentionFeed,
+  ClientActivityBand,
   DashboardGettingStarted,
   DashboardLoading,
   InfraDisclosure,
@@ -92,6 +93,8 @@ export default function DashboardPage() {
           <StatusBand status={state.status} recentThroughput={state.recentThroughput} />
 
           <TodaySummaryBand overview={state.overview} />
+
+          <ClientActivityBand status={state.status} entries={state.clientActivity} />
 
           {!state.setupComplete ? (
             <SetupProgressStrip doneCount={state.setupDoneCount} total={SETUP_TOTAL_STEPS} />

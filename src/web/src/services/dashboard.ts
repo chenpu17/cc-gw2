@@ -17,9 +17,19 @@ export interface DashboardSummary {
   daily: DailyMetric[]
   modelStats: ModelUsageMetric[]
   recentThroughput?: RecentThroughput
+  /** Rolling 1-hour per-agent-client usage rollup (v0.14). */
+  clientActivity?: ClientActivityEntry[]
   recentRequests: LogListResponse
   recentErrors: GatewayEvent[]
   dbInfo: DatabaseInfo
+}
+
+export interface ClientActivityEntry {
+  clientKind: string
+  requests: number
+  sessions: number
+  inputTokens: number
+  outputTokens: number
 }
 
 export const dashboardApi = {

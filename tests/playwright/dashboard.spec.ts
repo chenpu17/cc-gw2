@@ -127,6 +127,12 @@ test('dashboard supports refresh, endpoint filters, compaction, and recent reque
   await expect(page.getByTestId('dashboard-usage-row').filter({ hasText: 'anthropic-compatible' })).toHaveCount(1)
   await expect(page.getByTestId('dashboard-usage-row').filter({ hasText: 'openai-compatible' })).toHaveCount(1)
 
+  // Agent 客户端卡：种子流量后出现两个协议兜底 kind，含 1h 会话/请求统计
+  const clientActivity = page.getByTestId('dashboard-client-activity')
+  await expect(clientActivity).toBeVisible()
+  await expect(clientActivity.getByTestId('dashboard-client-activity-card')).toHaveCount(2)
+  await expect(clientActivity.getByText('近1小时请求')).toHaveCount(2)
+
   const endpointSelect = page.getByRole('combobox').first()
   // 仪表盘数据改走聚合接口 /api/dashboard/summary
   const filterResponse = page.waitForResponse((response) => {

@@ -131,6 +131,7 @@ export function useDashboardPageState() {
   const models = useMemo(() => summary?.modelStats ?? [], [summary])
   const status = summary?.status
   const recentThroughput = summary?.recentThroughput
+  const clientActivity = useMemo(() => summary?.clientActivity ?? [], [summary])
   const dbInfo = summary?.dbInfo
   const recentLogs = summary?.recentRequests.items ?? []
 
@@ -362,6 +363,7 @@ export function useDashboardPageState() {
     customEndpoints: customEndpointsQuery.data?.endpoints ?? [],
     daily,
     dbInfo,
+    clientActivity,
     endpointFilter,
     fastestTtftModel,
     handleRefresh,
