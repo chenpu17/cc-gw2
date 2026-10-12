@@ -147,6 +147,21 @@ export default {
       upstream: 'Backend provider error',
       unknown: 'Unknown'
     },
+    errorDetail: {
+      title: 'Error details',
+      attemptsCount_one: '{{count}} failover attempt',
+      attemptsCount_other: '{{count}} failover attempts',
+      upstreamBody: 'Upstream response body (truncated)',
+      attemptBackend: 'Backend',
+      attemptOutcome: 'Outcome',
+      attemptStatus: 'Status',
+      attemptLatency: 'Latency',
+      stages: {
+        transport: 'Transport failure',
+        upstream: 'Upstream error',
+        gateway: 'Gateway error'
+      }
+    },
     summary: {
       route: '{{from}} → {{to}}',
       latency: 'Latency: {{value}}',

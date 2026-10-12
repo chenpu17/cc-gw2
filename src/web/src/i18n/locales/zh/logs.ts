@@ -147,6 +147,20 @@ filters: {
       upstream: '后端服务错误',
       unknown: '未分类'
     },
+    errorDetail: {
+      title: '详细信息',
+      attemptsCount: '{{count}} 次故障转移尝试',
+      upstreamBody: '上游响应体（截断）',
+      attemptBackend: '后端',
+      attemptOutcome: '结果',
+      attemptStatus: '状态码',
+      attemptLatency: '耗时',
+      stages: {
+        transport: '传输失败',
+        upstream: '上游错误',
+        gateway: '网关错误'
+      }
+    },
     summary: {
       route: '{{from}} → {{to}}',
       latency: '耗时：{{value}}',

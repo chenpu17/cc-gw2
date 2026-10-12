@@ -8,12 +8,14 @@ import { PageState } from '@/components/PageState'
 import { Skeleton } from '@/components/Skeleton'
 import { cn } from '@/lib/utils'
 import { useLogDetailState } from './useLogDetailState'
+import { ErrorDetailBlock } from './ErrorDetailBlock'
 import {
   buildLogTrace,
   buildPayloadDisplay,
   formatLatency,
   formatNumber,
   hasMissingUsage,
+  parseErrorDetail,
   type LogTraceTone
 } from './utils'
 
@@ -181,6 +183,15 @@ export function LogInlineDetail({ logId, providerLabelMap, apiKeyMap }: LogInlin
         {!hasTtft ? (
           <p className="mt-1 text-[10.5px] text-muted-foreground/70">{t('logs.detail.trace.degraded')}</p>
         ) : null}
+        {(() => {
+          const parsed = parseErrorDetail(record)
+          if (!parsed || 'raw' in parsed) return null
+          return (
+            <div className="mt-2 border-t border-border pt-2">
+              <ErrorDetailBlock detail={parsed} compact />
+            </div>
+          )
+        })()}
       </div>
 
       {/* Right — metrics, tabbed payload, actions */}

@@ -173,3 +173,93 @@ test('aggregate provider can be configured via the drawer and serves traffic', a
   const responseBody = await response.json()
   expect(JSON.stringify(responseBody.content)).toContain('Stub response')
 })
+
+// ---------------------------------------------------------------------------
+// 全链失败的聚合请求：error_detail 落库后，日志详情抽屉展开「详细信息」
+// 可见失败阶段 / 上游状态码 / failover 尝试链 / 截断的上游响应体。
+// 成员使用两个全新 provider id 指向同一 stub 端口，避免与前序用例的
+// backend cooldown（key = providerId:modelId）互相干扰。
+// ---------------------------------------------------------------------------
+test('failed aggregate request surfaces error detail in the log drawer', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+
+  const configResponse = await request.get(`${baseUrl}/api/config`)
+  expect(configResponse.ok()).toBeTruthy()
+  const config = await configResponse.json()
+  const stubBaseUrl = (config.providers ?? []).find(
+    (provider: any) => provider.id === 'stub'
+  )?.baseUrl
+  expect(stubBaseUrl).toBeTruthy()
+
+  const deadProvider = (modelId: string) => ({
+    id: modelId,
+    label: modelId,
+    type: 'openai',
+    baseUrl: stubBaseUrl,
+    apiKey: 'stub-key',
+    defaultModel: 'stub-model-failing',
+    models: [{ id: 'stub-model-failing', label: 'Stub Failing Model' }],
+  })
+  const next = {
+    ...config,
+    providers: [
+      ...(config.providers ?? []).filter((provider: any) => provider.id !== 'agg'),
+      deadProvider('deadpool-a'),
+      deadProvider('deadpool-b'),
+      {
+        id: 'agg',
+        label: '聚合测试',
+        type: 'aggregate',
+        models: [
+          ...((config.providers ?? []).find((provider: any) => provider.id === 'agg')?.models ?? []),
+          {
+            id: 'dead-model',
+            members: [
+              { target: 'deadpool-a:stub-model-failing' },
+              { target: 'deadpool-b:stub-model-failing' },
+            ],
+            failover: { consecutiveFailures: 1, cooldownSeconds: 60 },
+          },
+        ],
+      },
+    ],
+  }
+  const putResponse = await request.put(`${baseUrl}/api/config`, { data: next })
+  expect(putResponse.ok(), 'PUT /api/config should succeed').toBeTruthy()
+
+  const failed = await request.post(`${baseUrl}/v1/messages`, {
+    data: anthropicPayload('dead-model'),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(failed.status()).toBe(500)
+
+  // 日志行带 error_detail：上游 500 + 两条失败尝试
+  const logsResponse = await request.get(`${baseUrl}/api/logs?limit=10`)
+  expect(logsResponse.ok()).toBeTruthy()
+  const logs = await logsResponse.json()
+  const row = (logs.items ?? []).find((item: any) => item.client_model === 'dead-model')
+  expect(row).toBeTruthy()
+  const detail = JSON.parse(row.error_detail)
+  expect(detail.stage).toBe('upstream')
+  expect(detail.upstreamStatus).toBe(500)
+  expect(detail.failoverAttempts).toHaveLength(2)
+  expect(detail.upstreamBody).toBeTruthy()
+
+  // 抽屉：错误块后展开「详细信息」，可见 HTTP 500 徽标与尝试链
+  await page.goto(`${baseUrl}/ui/logs`)
+  await page.getByRole('button', { name: '仅看失败' }).click()
+  const detailButton = page.getByRole('button', { name: '详情' }).first()
+  await expect(detailButton).toBeVisible()
+  await detailButton.click()
+
+  const drawer = page.getByRole('dialog', { name: '日志详情' })
+  await expect(drawer).toBeVisible()
+  const errorDetail = drawer.getByTestId('log-error-detail')
+  await expect(errorDetail).toBeVisible()
+  await expect(errorDetail.getByText('上游错误')).toBeVisible()
+  await expect(errorDetail.getByText('HTTP 500')).toBeVisible()
+  await expect(errorDetail).toContainText('deadpool-a')
+  await expect(errorDetail).toContainText('deadpool-b')
+  await expect(errorDetail).toContainText('failed:status')
+  await expect(errorDetail).toContainText('上游响应体')
+})

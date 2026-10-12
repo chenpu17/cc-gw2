@@ -37,6 +37,44 @@ export function hasMissingUsage(
   )
 }
 
+export interface ErrorDetailAttempt {
+  provider?: string
+  model?: string
+  outcome?: string
+  status?: number
+  latencyMs?: number
+  error?: string
+}
+
+export interface ErrorDetail {
+  stage?: string
+  message?: string
+  upstreamStatus?: number
+  upstreamBody?: string
+  failoverAttempts?: ErrorDetailAttempt[]
+}
+
+/**
+ * Parsed `error_detail` blob — the extended error context persisted by the
+ * gateway (failure stage, full error chain, truncated upstream body, aggregate
+ * failover attempts). Returns `null` when absent, or `{ raw }` when the column
+ * holds something that is not valid JSON (older/manual rows) so the UI can
+ * fall back to showing the raw text.
+ */
+export function parseErrorDetail(
+  record: Pick<LogRecord, 'error_detail'>
+): ErrorDetail | { raw: string } | null {
+  const raw = record.error_detail
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as ErrorDetail
+    if (parsed && typeof parsed === 'object') return parsed
+  } catch {
+    // fall through to raw display
+  }
+  return { raw }
+}
+
 export function formatLatency(value: number | null | undefined, suffix: string): string {
   const formatted = formatNumber(value)
   return formatted === '-' ? '-' : `${formatted} ${suffix}`

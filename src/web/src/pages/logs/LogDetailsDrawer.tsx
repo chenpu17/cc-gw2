@@ -13,7 +13,8 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLogDetailState } from './useLogDetailState'
-import { buildPayloadDisplay, formatDateTime, formatLatency, formatNumber, formatStreamLabel, hasMissingUsage } from './utils'
+import { ErrorDetailBlock } from './ErrorDetailBlock'
+import { buildPayloadDisplay, formatDateTime, formatLatency, formatNumber, formatStreamLabel, hasMissingUsage, parseErrorDetail } from './utils'
 import type { PayloadDisplay } from './utils'
 
 interface LogDetailsDrawerProps {
@@ -207,6 +208,22 @@ export function LogDetailsDrawer({
                     </p>
                   </div>
                 ) : null}
+
+                {(() => {
+                  const parsed = parseErrorDetail(record)
+                  if (!parsed) return null
+                  if ('raw' in parsed) {
+                    return (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">{t('logs.detail.errorDetail.title')}</p>
+                        <pre className="m-0 max-h-[180px] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-secondary/50 p-3 font-mono text-[11px] leading-[1.6] text-muted-foreground">
+                          {parsed.raw}
+                        </pre>
+                      </div>
+                    )
+                  }
+                  return <ErrorDetailBlock detail={parsed} />
+                })()}
               </section>
 
               <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
