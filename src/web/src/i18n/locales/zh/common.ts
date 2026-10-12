@@ -14,6 +14,7 @@ export default {
     loading: '处理中...',
     refresh: '刷新',
     refreshing: '刷新中...',
+    retry: '重试',
     manualRefresh: '手动刷新',
     reset: '重置',
     previous: '上一步',

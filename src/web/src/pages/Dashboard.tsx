@@ -114,6 +114,8 @@ export default function DashboardPage() {
             onDimensionChange={state.setUsageDimension}
             rows={state.usageRows}
             loading={state.usageDimensionLoading}
+            error={state.usageDimensionError}
+            onRetry={state.refetchUsageDimension}
             customEndpoints={state.customEndpoints}
           />
 

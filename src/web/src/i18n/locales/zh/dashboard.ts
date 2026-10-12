@@ -98,6 +98,7 @@ export default {
     title: '用量分布',
     description: '近 {{value}} 天各维度的请求与 Token 消耗',
     empty: '该维度暂无用量数据',
+    error: '用量统计获取失败',
     tabs: {
       providers: 'Provider',
       endpoints: '端点',

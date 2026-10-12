@@ -122,8 +122,12 @@ export function useDashboardPageState() {
   }, [summaryQuery.error, pushToast, t])
 
   const handleRefresh = useCallback(async () => {
-    await Promise.all([summaryQuery.refetch(), customEndpointsQuery.refetch()])
-  }, [summaryQuery, customEndpointsQuery])
+    await Promise.all([
+      summaryQuery.refetch(),
+      customEndpointsQuery.refetch(),
+      usageDimensionQuery.refetch()
+    ])
+  }, [summaryQuery, customEndpointsQuery, usageDimensionQuery])
 
   const summary = summaryQuery.data
   const overview = summary?.overview
@@ -388,6 +392,8 @@ export function useDashboardPageState() {
     tpotOption,
     usageDimension,
     usageDimensionLoading: usageDimensionQuery.isPending,
+    usageDimensionError: usageDimensionQuery.error?.message ?? null,
+    refetchUsageDimension: () => void usageDimensionQuery.refetch(),
     usageRows,
     setUsageDimension
   }

@@ -14,6 +14,7 @@ export default {
     loading: 'Working...',
     refresh: 'Refresh',
     refreshing: 'Refreshing...',
+    retry: 'Retry',
     manualRefresh: 'Manual refresh',
     reset: 'Reset',
     previous: 'Previous',

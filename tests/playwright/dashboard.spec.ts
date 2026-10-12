@@ -232,6 +232,35 @@ test('dashboard today cards render delta pills vs yesterday', async ({ page }) =
   await expect(todayGrid).toContainText('昨日同期 100')
 })
 
+test('dashboard usage distribution surfaces query failure with retry', async ({ page }) => {
+  const baseUrl = harness.baseUrl()
+  // Force the dimension-stats endpoints to fail — the section must show a
+  // failure state (not the "no data" empty state) and offer a retry entry.
+  await page.route('**/api/stats/**', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' })
+  })
+  await page.goto(`${baseUrl}/ui/`)
+  await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
+  await expect(page.getByText('用量统计获取失败')).toBeVisible()
+  await expect(page.getByTestId('dashboard-usage-row')).toHaveCount(0)
+
+  // Retry while still failing: the request re-fires and the failure stays visible.
+  let retried = page.waitForRequest((request) =>
+    new URL(request.url()).pathname.endsWith('/api/stats/providers'))
+  await page.getByRole('button', { name: '重试' }).click()
+  await retried
+  await expect(page.getByText('用量统计获取失败')).toBeVisible()
+
+  // Recover: unmock, retry again — real stats load and rows render.
+  await page.unroute('**/api/stats/**')
+  retried = page.waitForRequest((request) =>
+    new URL(request.url()).pathname.endsWith('/api/stats/providers'))
+  await page.getByRole('button', { name: '重试' }).click()
+  await retried
+  await expect(page.getByTestId('dashboard-usage-row').filter({ hasText: 'stub' })).toHaveCount(1)
+  await expect(page.getByText('用量统计获取失败')).toHaveCount(0)
+})
+
 test('dashboard today cards hide delta pills when there is no yesterday baseline', async ({ page }) => {
   const baseUrl = harness.baseUrl()
   // today has traffic but yesterday is explicitly stripped (fresh-install shape)

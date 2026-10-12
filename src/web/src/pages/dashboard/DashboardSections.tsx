@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Activity, BarChart3, CheckCircle2 } from 'lucide-react'
+import { Activity, AlertTriangle, BarChart3, CheckCircle2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { EChart, echarts, type EChartOption } from '@/components/EChart'
@@ -517,12 +517,16 @@ export function UsageDistributionSection({
   onDimensionChange,
   rows,
   loading,
+  error,
+  onRetry,
   customEndpoints
 }: {
   dimension: UsageDistributionTab
   onDimensionChange: (dimension: UsageDistributionTab) => void
   rows: DimensionUsageMetric[]
   loading?: boolean
+  error?: string | null
+  onRetry?: () => void
   customEndpoints: { id: string; label?: string }[]
 }) {
   const { t } = useTranslation()
@@ -584,6 +588,21 @@ export function UsageDistributionSection({
     >
       {loading ? (
         <PageLoadingState compact label={t('common.loadingShort')} />
+      ) : error && rows.length === 0 ? (
+        // A failed stats query must not masquerade as "no traffic" — show the
+        // failure with a retry entry instead (stale cached rows still render).
+        <PageState
+          compact
+          tone="danger"
+          icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
+          title={t('dashboard.usage.error')}
+          description={error}
+          action={onRetry ? (
+            <Button variant="outline" size="sm" onClick={onRetry}>
+              {t('common.actions.retry')}
+            </Button>
+          ) : undefined}
+        />
       ) : rows.length === 0 ? (
         <PageState
           compact

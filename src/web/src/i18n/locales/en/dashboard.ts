@@ -98,6 +98,7 @@ export default {
     title: 'Usage Distribution',
     description: 'Requests and token spend per dimension over the last {{value}} days',
     empty: 'No usage data for this dimension yet',
+    error: 'Failed to load usage stats',
     tabs: {
       providers: 'Providers',
       endpoints: 'Endpoints',
