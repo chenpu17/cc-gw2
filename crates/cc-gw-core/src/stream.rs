@@ -979,12 +979,15 @@ impl CrossProtocolStreamTransformer {
         let mut out = Vec::new();
         match event.get("type").and_then(Value::as_str).unwrap_or("") {
             "message_start" => {
-                if let Some(id) = event
-                    .get("message")
-                    .and_then(|value| value.get("id"))
-                    .and_then(Value::as_str)
-                {
-                    self.message_id = id.replace("msg_", "chatcmpl_");
+                if let Some(message) = event.get("message") {
+                    if let Some(id) = message.get("id").and_then(Value::as_str) {
+                        self.message_id = id.replace("msg_", "chatcmpl_");
+                    }
+                    // Anthropic reports input usage on message_start; the
+                    // trailing message_delta usually only carries output
+                    // tokens. Without this read the client would see
+                    // prompt_tokens = 0 even though the log recorded input.
+                    self.usage.update_from_anthropic(message.get("usage"));
                 }
             }
             "content_block_start" => {
@@ -1433,6 +1436,13 @@ impl CrossProtocolStreamTransformer {
         let mut out = Vec::new();
         match event.get("type").and_then(Value::as_str).unwrap_or("") {
             "message_start" => {
+                // Anthropic reports input usage on message_start; the trailing
+                // message_delta usually only carries output tokens.
+                self.usage.update_from_anthropic(
+                    event
+                        .get("message")
+                        .and_then(|message| message.get("usage")),
+                );
                 if !self.message_started {
                     self.message_started = true;
                     if let Some(id) = event
@@ -1987,6 +1997,29 @@ pub fn materialize_stream_response(protocol: ProviderProtocol, sse_stream: &str)
     }
 }
 
+/// Replay a fully-buffered SSE stream through [`SseStreamObserver`] and return
+/// the usage the upstream actually reported — `None` when no recognizable
+/// usage object ever appeared. The materialized (non-stream-via-stream) path
+/// needs this because [`materialize_stream_response`] always embeds a
+/// zero-filled usage envelope for client-shape compatibility, and that
+/// synthesized envelope must not be mistaken for real reported usage when
+/// logging tokens (NULL-tokens semantics, same as the passthrough-stream path).
+pub fn observe_buffered_stream_usage(
+    protocol: ProviderProtocol,
+    sse_stream: &str,
+) -> Option<UsageStats> {
+    let mut observer = SseStreamObserver::new(protocol);
+    let normalized = sse_stream.replace("\r\n", "\n");
+    for block in normalized.split("\n\n") {
+        if block.trim().is_empty() {
+            continue;
+        }
+        let mut observation = StreamObservation::default();
+        observer.observe_event_block(block, &mut observation);
+    }
+    observer.observed_usage_stats()
+}
+
 fn sse_data_events(sse_stream: &str) -> Vec<Value> {
     let mut events = Vec::new();
     for block in sse_stream.split("\n\n") {
@@ -2441,7 +2474,8 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
 mod tests {
     use super::{
         CrossProtocolStreamTransformer, SseStreamObserver, Utf8StreamDecoder,
-        materialize_stream_response, usage_stats_option_from_payload,
+        materialize_stream_response, observe_buffered_stream_usage,
+        usage_stats_option_from_payload,
     };
     use crate::provider::ProviderProtocol;
     use serde_json::{Value, json};
@@ -2818,6 +2852,53 @@ mod tests {
         assert!(joined.contains("\"stop_reason\":\"max_tokens\""));
         assert!(joined.contains("\"input_tokens\":6"));
         assert!(joined.contains("\"output_tokens\":3"));
+    }
+
+    #[test]
+    fn observe_buffered_stream_usage_distinguishes_missing_usage() {
+        let with_usage = "\
+             event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_u\",\"usage\":{\"input_tokens\":14,\"output_tokens\":1}}}\n\n\
+             event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":7}}\n\n";
+        let stats = observe_buffered_stream_usage(ProviderProtocol::AnthropicMessages, with_usage)
+            .expect("usage observed");
+        assert_eq!(stats.input_tokens, 14);
+        assert_eq!(stats.output_tokens, 7);
+
+        let without_usage = "\
+             event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_n\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n";
+        assert!(
+            observe_buffered_stream_usage(ProviderProtocol::AnthropicMessages, without_usage)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn anthropic_to_openai_chat_stream_reads_message_start_usage() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::OpenAiChatCompletions,
+            ProviderProtocol::AnthropicMessages,
+            "test-model",
+        )
+        .expect("supported transformer");
+        // Anthropic carries input tokens on message_start; the final
+        // message_delta usually only repeats output tokens. The client-facing
+        // OpenAI chunks must still report the full prompt_tokens.
+        let chunks = transformer.push(
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_u\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test-model\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":14,\"output_tokens\":1}}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n\
+             event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":7}}\n\n",
+        );
+        let joined = chunks.join("");
+        assert!(joined.contains("\"prompt_tokens\":14"));
+        assert!(joined.contains("\"completion_tokens\":7"));
     }
 
     #[test]
