@@ -2,7 +2,8 @@ export const storageKeys = {
   themeMode: 'cc-gw-theme',
   language: 'cc-gw-language',
   dashboard: {
-    endpointFilter: 'cc-gw.dashboard.endpoint-filter'
+    endpointFilter: 'cc-gw.dashboard.endpoint-filter',
+    usageDimension: 'cc-gw.dashboard.usage-dimension'
   },
   logs: {
     visibleColumns: 'cc-gw.logs.visible-columns',

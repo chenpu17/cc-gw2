@@ -35,5 +35,9 @@ export interface ApiKeyUsageMetric {
   requests: number
   inputTokens: number
   outputTokens: number
+  /** Additive columns (v0.14) aligning the api-key tab with the other usage-distribution tabs. */
+  cacheReadTokens?: number
+  cacheCreationTokens?: number
+  avgLatencyMs?: number
   lastUsedAt: string | null
 }

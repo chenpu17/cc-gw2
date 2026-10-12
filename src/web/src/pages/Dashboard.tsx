@@ -23,7 +23,8 @@ import {
   SetupProgressStrip,
   StatusBand,
   TodaySummaryBand,
-  TrendChart
+  TrendChart,
+  UsageDistributionSection
 } from './dashboard/DashboardSections'
 import { useDashboardPageState, SETUP_TOTAL_STEPS } from './dashboard/useDashboardPageState'
 import { formatBytes } from './dashboard/types'
@@ -104,6 +105,14 @@ export default function DashboardPage() {
           />
 
           <InsightsGrid daily={state.daily} models={state.models} />
+
+          <UsageDistributionSection
+            dimension={state.usageDimension}
+            onDimensionChange={state.setUsageDimension}
+            rows={state.usageRows}
+            loading={state.usageDimensionLoading}
+            customEndpoints={state.customEndpoints}
+          />
 
           <PerformanceDisclosure
             modelRequestsOption={state.modelRequestsOption}

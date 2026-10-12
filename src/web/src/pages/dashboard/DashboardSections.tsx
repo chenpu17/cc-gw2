@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Disclosure } from '@/components/ui/disclosure'
 import { MetricCard } from '@/components/ui/metric-card'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
   Table,
   TableBody,
@@ -21,7 +22,9 @@ import {
 } from '@/components/ui/table'
 import type { GatewayEvent } from '@/types/events'
 import type { LogRecord } from '@/types/logs'
+import type { DimensionUsageMetric } from '@/services/stats'
 import { getLogStatusMeta } from '@/pages/logs/utils'
+import { type UsageDistributionTab, USAGE_WINDOW_DAYS } from './useDashboardPageState'
 import {
   formatByteRate,
   formatLatencyValue,
@@ -434,6 +437,119 @@ export function InsightsGrid({
         </div>
       ))}
     </div>
+  )
+}
+
+/** Layer 3a-2 — usage distribution across provider / endpoint / client / api-key tabs */
+export function UsageDistributionSection({
+  dimension,
+  onDimensionChange,
+  rows,
+  loading,
+  customEndpoints
+}: {
+  dimension: UsageDistributionTab
+  onDimensionChange: (dimension: UsageDistributionTab) => void
+  rows: DimensionUsageMetric[]
+  loading?: boolean
+  customEndpoints: { id: string; label?: string }[]
+}) {
+  const { t } = useTranslation()
+
+  const tabs: { value: UsageDistributionTab; label: string }[] = [
+    { value: 'providers', label: t('dashboard.usage.tabs.providers') },
+    { value: 'endpoints', label: t('dashboard.usage.tabs.endpoints') },
+    { value: 'clients', label: t('dashboard.usage.tabs.clients') },
+    { value: 'apiKeys', label: t('dashboard.usage.tabs.apiKeys') }
+  ]
+
+  const endpointLabel = (key: string): string => {
+    if (key === 'anthropic') return t('dashboard.filters.endpointAnthropic')
+    if (key === 'openai') return t('dashboard.filters.endpointOpenAI')
+    return customEndpoints.find((endpoint) => endpoint.id === key)?.label || key
+  }
+  const clientKindLabel = (key: string): string =>
+    key === 'unknown'
+      ? t('dashboard.usage.clientKinds.unknown')
+      : t(`dashboard.usage.clientKinds.${key}`, { defaultValue: key })
+
+  const keyCell = (row: DimensionUsageMetric) => {
+    switch (dimension) {
+      case 'endpoints':
+        return <Badge variant="outline" className="text-[11px]">{endpointLabel(row.key)}</Badge>
+      case 'clients':
+        return (
+          <div className="flex flex-col">
+            <span className="font-medium">{clientKindLabel(row.key)}</span>
+            <span className="font-mono text-[11px] text-muted-foreground">{row.key}</span>
+          </div>
+        )
+      case 'apiKeys':
+        return <span className="font-medium">{row.key}</span>
+      default:
+        return <span className="font-mono text-[13px] font-medium">{row.key}</span>
+    }
+  }
+
+  return (
+    <PageSection
+      title={t('dashboard.usage.title')}
+      description={t('dashboard.usage.description', { value: USAGE_WINDOW_DAYS })}
+      actions={
+        <SegmentedControl
+          value={dimension}
+          onChange={onDimensionChange}
+          aria-label={t('dashboard.usage.title')}
+          options={tabs.map((tab) => ({
+            value: tab.value,
+            label: (
+              <span data-testid={`dashboard-usage-tab-${tab.value}`}>
+                {tab.label}
+              </span>
+            )
+          }))}
+        />
+      }
+    >
+      {loading ? (
+        <PageLoadingState compact label={t('common.loadingShort')} />
+      ) : rows.length === 0 ? (
+        <PageState
+          compact
+          icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
+          title={t('dashboard.usage.empty')}
+        />
+      ) : (
+        <div className="overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('dashboard.usage.columns.dimension')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.usage.columns.requests')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.usage.columns.input')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.usage.columns.output')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.usage.columns.cacheRead')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.usage.columns.cacheCreation')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.usage.columns.latency')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={`${dimension}:${row.key}`} data-testid="dashboard-usage-row">
+                  <TableCell>{keyCell(row)}</TableCell>
+                  <TableCell className="text-right font-medium">{row.requests.toLocaleString()}</TableCell>
+                  <TableCell className="text-right">{row.inputTokens.toLocaleString()}</TableCell>
+                  <TableCell className="text-right">{row.outputTokens.toLocaleString()}</TableCell>
+                  <TableCell className="text-right">{row.cacheReadTokens.toLocaleString()}</TableCell>
+                  <TableCell className="text-right">{row.cacheCreationTokens.toLocaleString()}</TableCell>
+                  <TableCell className="text-right">{formatLatencyValue(row.avgLatencyMs, t('common.units.ms'))}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </PageSection>
   )
 }
 

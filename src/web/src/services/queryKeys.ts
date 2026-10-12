@@ -18,7 +18,9 @@ export const queryKeys = {
   stats: {
     overview: (endpoint = 'all') => ['stats', 'overview', endpoint] as const,
     daily: (days: number, endpoint = 'all') => ['stats', 'daily', days, endpoint] as const,
-    model: (days: number, limit: number, endpoint = 'all') => ['stats', 'model', days, limit, endpoint] as const
+    model: (days: number, limit: number, endpoint = 'all') => ['stats', 'model', days, limit, endpoint] as const,
+    usageDimension: (dimension: string, days: number, limit: number, endpoint = 'all') =>
+      ['stats', 'usage', dimension, days, limit, endpoint] as const
   },
   status: {
     byEndpoint: (endpoint = 'all') => ['status', endpoint] as const,
@@ -42,6 +44,6 @@ export const queryKeys = {
   apiKeys: {
     all: () => ['api-keys'] as const,
     overview: (days: number) => ['api-keys', 'overview', days] as const,
-    usage: (days: number) => ['api-keys', 'usage', days] as const
+    usage: (days: number, endpoint = 'all') => ['api-keys', 'usage', days, endpoint] as const
   }
 }

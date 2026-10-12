@@ -11,8 +11,9 @@ import { apiKeysApi } from '@/services/apiKeys'
 import type { DashboardSummary } from '@/services/dashboard'
 import { gatewayApi } from '@/services/gateway'
 import { queryKeys } from '@/services/queryKeys'
+import { statsApi, type DimensionUsageMetric, type UsageDimensionId } from '@/services/stats'
 import { storageKeys } from '@/services/storageKeys'
-import type { ApiKeySummary } from '@/types/apiKeys'
+import type { ApiKeySummary, ApiKeyUsageMetric } from '@/types/apiKeys'
 import type { CustomEndpointsResponse } from '@/types/endpoints'
 import type { GatewayConfig } from '@/types/providers'
 import {
@@ -23,6 +24,11 @@ import {
 } from './types'
 
 export const SETUP_TOTAL_STEPS = 4
+
+/** Usage-distribution tabs: three server dimensions + the api-key rollup. */
+export type UsageDistributionTab = UsageDimensionId | 'apiKeys'
+export const USAGE_WINDOW_DAYS = 7
+const USAGE_ROW_LIMIT = 10
 
 /** Route rules across system endpoints, custom endpoints and the legacy top-level map */
 function countConfiguredRouteRules(config: GatewayConfig | undefined): number {
@@ -62,6 +68,36 @@ export function useDashboardPageState() {
     { url: '/api/custom-endpoints', method: 'GET' },
     { refetchInterval: TREND_REFRESH_MS }
   )
+
+  // Usage distribution across provider / endpoint / client / api-key dimensions,
+  // scoped to the dashboard's endpoint filter like every other card.
+  const [usageDimension, setUsageDimension] = usePersistentState<UsageDistributionTab>(
+    storageKeys.dashboard.usageDimension,
+    'providers'
+  )
+  const usageDimensionQuery = useApiQuery<DimensionUsageMetric[] | ApiKeyUsageMetric[], ApiError>(
+    usageDimension === 'apiKeys'
+      ? queryKeys.apiKeys.usage(USAGE_WINDOW_DAYS, endpointFilter)
+      : queryKeys.stats.usageDimension(usageDimension, USAGE_WINDOW_DAYS, USAGE_ROW_LIMIT, endpointFilter),
+    usageDimension === 'apiKeys'
+      ? apiKeysApi.usageRequest(USAGE_WINDOW_DAYS, USAGE_ROW_LIMIT, endpointParam)
+      : statsApi.dimensionRequest(usageDimension, USAGE_WINDOW_DAYS, USAGE_ROW_LIMIT, endpointParam),
+    { refetchInterval: TREND_REFRESH_MS }
+  )
+  const usageRows = useMemo<DimensionUsageMetric[]>(() => {
+    const rows = usageDimensionQuery.data ?? []
+    if (usageDimension !== 'apiKeys') return rows as DimensionUsageMetric[]
+    // Normalize the api-key rollup into the shared row shape (name or #id as key).
+    return (rows as ApiKeyUsageMetric[]).map((row) => ({
+      key: row.apiKeyName ?? (row.apiKeyId != null ? `#${row.apiKeyId}` : '—'),
+      requests: row.requests,
+      inputTokens: row.inputTokens,
+      outputTokens: row.outputTokens,
+      cacheReadTokens: row.cacheReadTokens ?? 0,
+      cacheCreationTokens: row.cacheCreationTokens ?? 0,
+      avgLatencyMs: row.avgLatencyMs ?? 0
+    }))
+  }, [usageDimensionQuery.data, usageDimension])
 
   // Live warn/error event feed via SSE; prepended onto the snapshot from summary
   const liveEvents = useEventStream({ level: 'warn,error', maxEvents: 20 })
@@ -347,7 +383,11 @@ export function useDashboardPageState() {
     summaryPending: summaryQuery.isPending,
     trendOption,
     ttftOption,
-    tpotOption
+    tpotOption,
+    usageDimension,
+    usageDimensionLoading: usageDimensionQuery.isPending,
+    usageRows,
+    setUsageDimension
   }
 }
 

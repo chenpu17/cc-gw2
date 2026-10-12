@@ -114,6 +114,19 @@ test('dashboard supports refresh, endpoint filters, compaction, and recent reque
   await expect(insights).toContainText('最快 TTFT 模型')
   await expect(insights).toContainText('stub-model')
 
+  // 用量分布：默认 provider tab 出现 stub 行；client tab 出现协议兜底 kind
+  await expect(page.getByTestId('dashboard-usage-tab-providers')).toBeVisible()
+  await expect(page.getByTestId('dashboard-usage-row').filter({ hasText: 'stub' })).toHaveCount(1)
+  const clientsStatsResponse = page.waitForResponse((response) =>
+    response.request().method() === 'GET'
+    && new URL(response.url()).pathname.endsWith('/api/stats/clients'))
+  await page.getByTestId('dashboard-usage-tab-clients').click()
+  await clientsStatsResponse
+  // 两条请求分别走 anthropic / openai 端点，无已知 UA → 两个协议兜底 kind
+  await expect(page.getByTestId('dashboard-usage-row')).toHaveCount(2)
+  await expect(page.getByTestId('dashboard-usage-row').filter({ hasText: 'anthropic-compatible' })).toHaveCount(1)
+  await expect(page.getByTestId('dashboard-usage-row').filter({ hasText: 'openai-compatible' })).toHaveCount(1)
+
   const endpointSelect = page.getByRole('combobox').first()
   // 仪表盘数据改走聚合接口 /api/dashboard/summary
   const filterResponse = page.waitForResponse((response) => {

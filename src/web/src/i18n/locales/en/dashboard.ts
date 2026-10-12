@@ -94,6 +94,43 @@ export default {
     fastestTtft: 'Fastest TTFT model',
     fastestTtftHint: '{{value}} ms first token'
   },
+  usage: {
+    title: 'Usage Distribution',
+    description: 'Requests and token spend per dimension over the last {{value}} days',
+    empty: 'No usage data for this dimension yet',
+    tabs: {
+      providers: 'Providers',
+      endpoints: 'Endpoints',
+      clients: 'Clients',
+      apiKeys: 'API Keys'
+    },
+    columns: {
+      dimension: 'Dimension',
+      requests: 'Requests',
+      input: 'Input tokens',
+      output: 'Output tokens',
+      cacheRead: 'Cache read',
+      cacheCreation: 'Cache creation',
+      latency: 'Avg latency'
+    },
+    clientKinds: {
+      unknown: 'Unidentified',
+      'claude-code': 'Claude Code',
+      codex: 'Codex',
+      opencode: 'OpenCode',
+      'gemini-cli': 'Gemini CLI',
+      cline: 'Cline',
+      'roo-code': 'Roo Code',
+      cursor: 'Cursor',
+      crush: 'Crush',
+      aider: 'Aider',
+      'kilo-code': 'Kilo Code',
+      droid: 'Droid',
+      copilot: 'Copilot',
+      'anthropic-compatible': 'Anthropic-compatible client',
+      'openai-compatible': 'OpenAI-compatible client'
+    }
+  },
   recent: {
     title: 'Recent Requests',
     subtitle: 'Showing the latest {{count}} records',

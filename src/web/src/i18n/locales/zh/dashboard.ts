@@ -94,6 +94,43 @@ export default {
     fastestTtft: '最快 TTFT 模型',
     fastestTtftHint: '{{value}} ms 首 Token'
   },
+  usage: {
+    title: '用量分布',
+    description: '近 {{value}} 天各维度的请求与 Token 消耗',
+    empty: '该维度暂无用量数据',
+    tabs: {
+      providers: 'Provider',
+      endpoints: '端点',
+      clients: '客户端',
+      apiKeys: 'API Key'
+    },
+    columns: {
+      dimension: '维度',
+      requests: '请求数',
+      input: '输入 Tokens',
+      output: '输出 Tokens',
+      cacheRead: '缓存读取',
+      cacheCreation: '缓存写入',
+      latency: '平均耗时'
+    },
+    clientKinds: {
+      unknown: '未识别',
+      'claude-code': 'Claude Code',
+      codex: 'Codex',
+      opencode: 'OpenCode',
+      'gemini-cli': 'Gemini CLI',
+      cline: 'Cline',
+      'roo-code': 'Roo Code',
+      cursor: 'Cursor',
+      crush: 'Crush',
+      aider: 'Aider',
+      'kilo-code': 'Kilo Code',
+      droid: 'Droid',
+      copilot: 'Copilot',
+      'anthropic-compatible': 'Anthropic 兼容客户端',
+      'openai-compatible': 'OpenAI 兼容客户端'
+    }
+  },
   recent: {
     title: '最新请求',
     subtitle: '仅展示最近 {{count}} 条记录',

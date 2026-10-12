@@ -39,11 +39,15 @@ export const apiKeysApi = {
     }
   },
 
-  usageRequest(days: number, limit = 10) {
+  usageRequest(days: number, limit = 10, endpoint?: string) {
     return {
       url: '/api/stats/api-keys/usage',
       method: 'GET' as const,
-      params: { days, limit }
+      params: {
+        days,
+        limit,
+        ...(endpoint ? { endpoint } : {})
+      }
     }
   },
 
