@@ -2008,3 +2008,63 @@ pub(super) async fn api_stats_model(
             .into_response(),
     }
 }
+
+/// Shared query-param parsing for the three dimension stats routes.
+fn dimension_stats_params(query: &HashMap<String, String>) -> (i64, i64, Option<&str>) {
+    let endpoint = query
+        .get("endpoint")
+        .map(String::as_str)
+        .filter(|value| !value.is_empty());
+    let days = query
+        .get("days")
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(7)
+        .clamp(1, 90);
+    let limit = query
+        .get("limit")
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(10)
+        .clamp(1, 50);
+    (days, limit, endpoint)
+}
+
+fn dimension_stats_response(
+    state: &AppState,
+    dimension: UsageDimension,
+    days: i64,
+    limit: i64,
+    endpoint: Option<&str>,
+) -> Response {
+    match get_dimension_usage_metrics(&state.paths.db_path, dimension, days, limit, endpoint) {
+        Ok(result) => Json(json!(result)).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+pub(super) async fn api_stats_providers(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let (days, limit, endpoint) = dimension_stats_params(&query);
+    dimension_stats_response(&state, UsageDimension::Provider, days, limit, endpoint)
+}
+
+pub(super) async fn api_stats_endpoints(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let (days, limit, endpoint) = dimension_stats_params(&query);
+    dimension_stats_response(&state, UsageDimension::Endpoint, days, limit, endpoint)
+}
+
+pub(super) async fn api_stats_clients(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let (days, limit, endpoint) = dimension_stats_params(&query);
+    dimension_stats_response(&state, UsageDimension::ClientKind, days, limit, endpoint)
+}

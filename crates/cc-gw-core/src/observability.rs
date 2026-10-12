@@ -1102,6 +1102,100 @@ pub fn get_model_usage_metrics(
     Ok(items)
 }
 
+/// Aggregation axis for [`get_dimension_usage_metrics`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsageDimension {
+    Provider,
+    Endpoint,
+    ClientKind,
+}
+
+impl UsageDimension {
+    fn group_expression(&self) -> &'static str {
+        match self {
+            UsageDimension::Provider => "provider",
+            UsageDimension::Endpoint => "endpoint",
+            // Rows recorded before the column existed group under "unknown".
+            UsageDimension::ClientKind => "COALESCE(NULLIF(TRIM(client_kind), ''), 'unknown')",
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DimensionUsageMetric {
+    pub key: String,
+    pub requests: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub avg_latency_ms: i64,
+}
+
+/// Usage grouped by provider / endpoint / client kind over the last `days`
+/// days — the data behind the dashboard's usage-distribution tabs. Same shape
+/// as the model metrics table so the frontend renders one component per tab.
+pub fn get_dimension_usage_metrics(
+    db_path: &Path,
+    dimension: UsageDimension,
+    days: i64,
+    limit: i64,
+    endpoint: Option<&str>,
+) -> Result<Vec<DimensionUsageMetric>> {
+    let conn = open_db(db_path)?;
+    let since = chrono::Utc::now().timestamp_millis() - days.clamp(1, 90) * 24 * 60 * 60 * 1000;
+    let group = dimension.group_expression();
+    let sql = if endpoint.is_some() {
+        format!(
+            "SELECT {group}, COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+                    COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_creation_tokens), 0),
+                    COALESCE(SUM(latency_ms), 0)
+             FROM request_logs
+             WHERE timestamp >= ?1 AND endpoint = ?2
+             GROUP BY {group}
+             ORDER BY COUNT(*) DESC
+             LIMIT ?3"
+        )
+    } else {
+        format!(
+            "SELECT {group}, COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+                    COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_creation_tokens), 0),
+                    COALESCE(SUM(latency_ms), 0)
+             FROM request_logs
+             WHERE timestamp >= ?1
+             GROUP BY {group}
+             ORDER BY COUNT(*) DESC
+             LIMIT ?2"
+        )
+    };
+    let mut stmt = conn.prepare(sql.as_str())?;
+    let mut rows = if let Some(endpoint) = endpoint {
+        stmt.query(params![since, endpoint, limit.clamp(1, 50)])?
+    } else {
+        stmt.query(params![since, limit.clamp(1, 50)])?
+    };
+    let mut items = Vec::new();
+    while let Some(row) = rows.next()? {
+        let requests: i64 = row.get(1)?;
+        let total_latency: i64 = row.get(6)?;
+        items.push(DimensionUsageMetric {
+            key: row.get(0)?,
+            requests,
+            input_tokens: row.get(2)?,
+            output_tokens: row.get(3)?,
+            cache_read_tokens: row.get(4)?,
+            cache_creation_tokens: row.get(5)?,
+            avg_latency_ms: if requests > 0 {
+                total_latency / requests
+            } else {
+                0
+            },
+        });
+    }
+    Ok(items)
+}
+
 pub fn get_database_info(db_path: &Path) -> Result<DatabaseInfo> {
     let conn = open_db(db_path)?;
     let (page_count, page_size, freelist_pages): (i64, i64, i64) = conn.query_row(
@@ -1610,6 +1704,100 @@ mod tests {
         assert_eq!(anthropic_only.len(), 1);
         assert_eq!(anthropic_only[0].client_kind, "codex");
         assert_eq!(anthropic_only[0].requests, 3);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dimension_usage_metrics_group_each_axis() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut seed = |provider: &str,
+                        endpoint: &str,
+                        client_kind: Option<&str>,
+                        input: i64,
+                        cache_read: i64,
+                        latency: i64| {
+            let log_id = insert_request_log(
+                &db_path,
+                &RequestLogInput {
+                    timestamp: now,
+                    session_id: None,
+                    source_ip: None,
+                    client_kind: client_kind.map(ToString::to_string),
+                    user_agent: None,
+                    endpoint: endpoint.to_string(),
+                    provider: provider.to_string(),
+                    model: "m".to_string(),
+                    client_model: None,
+                    stream: false,
+                    api_key_id: None,
+                    api_key_name: None,
+                    api_key_value: None,
+                },
+            )
+            .expect("insert request log");
+            finalize_request_log(
+                &db_path,
+                log_id,
+                &RequestLogUpdate {
+                    latency_ms: Some(latency),
+                    status_code: Some(200),
+                    input_tokens: Some(input),
+                    output_tokens: None,
+                    cache_read_tokens: Some(cache_read),
+                    ..RequestLogUpdate::default()
+                },
+            )
+            .expect("finalize request log");
+        };
+        seed("alpha", "anthropic", Some("codex"), 100, 30, 100);
+        seed("alpha", "anthropic", Some("codex"), 50, 10, 300);
+        seed("beta", "openai", None, 7, 0, 60);
+
+        let providers =
+            get_dimension_usage_metrics(&db_path, UsageDimension::Provider, 7, 10, None)
+                .expect("provider metrics");
+        assert_eq!(providers.len(), 2);
+        assert_eq!(providers[0].key, "alpha");
+        assert_eq!(providers[0].requests, 2);
+        assert_eq!(providers[0].input_tokens, 150);
+        assert_eq!(providers[0].cache_read_tokens, 40);
+        assert_eq!(providers[0].avg_latency_ms, 200);
+        assert_eq!(providers[1].key, "beta");
+
+        let endpoints =
+            get_dimension_usage_metrics(&db_path, UsageDimension::Endpoint, 7, 10, None)
+                .expect("endpoint metrics");
+        assert_eq!(endpoints.len(), 2);
+        assert_eq!(endpoints[0].key, "anthropic");
+
+        // NULL client_kind groups under "unknown"; endpoint filter narrows.
+        let clients =
+            get_dimension_usage_metrics(&db_path, UsageDimension::ClientKind, 7, 10, None)
+                .expect("client metrics");
+        assert_eq!(clients.len(), 2);
+        assert_eq!(clients[0].key, "codex");
+        assert_eq!(clients[0].requests, 2);
+        assert_eq!(clients[1].key, "unknown");
+
+        let anthropic_clients = get_dimension_usage_metrics(
+            &db_path,
+            UsageDimension::ClientKind,
+            7,
+            10,
+            Some("anthropic"),
+        )
+        .expect("client metrics for endpoint");
+        assert_eq!(anthropic_clients.len(), 1);
+        assert_eq!(anthropic_clients[0].key, "codex");
 
         let _ = std::fs::remove_dir_all(root);
     }

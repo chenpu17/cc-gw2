@@ -42,12 +42,12 @@ use cc_gw_core::{
     models::{build_models_response, build_models_response_for_endpoint},
     observability::{
         LogPayloadUpdate, LogQuery, RequestLogInput, RequestLogUpdate, RuntimeMetricsSampler,
-        UsageStats, cleanup_logs_before, clear_all_logs, compact_database, export_logs,
-        finalize_request_log, finalize_stale_request_logs, get_daily_metrics, get_database_info,
-        get_log_detail, get_metrics_overview, get_model_usage_metrics, get_recent_client_activity,
-        get_recent_client_kind_metrics, get_recent_throughput_metrics,
-        get_recent_token_throughput_totals, increment_daily_metrics, insert_request_log,
-        mask_log_record_api_key, query_logs, upsert_request_payload,
+        UsageDimension, UsageStats, cleanup_logs_before, clear_all_logs, compact_database,
+        export_logs, finalize_request_log, finalize_stale_request_logs, get_daily_metrics,
+        get_database_info, get_dimension_usage_metrics, get_log_detail, get_metrics_overview,
+        get_model_usage_metrics, get_recent_client_activity, get_recent_client_kind_metrics,
+        get_recent_throughput_metrics, get_recent_token_throughput_totals, increment_daily_metrics,
+        insert_request_log, mask_log_record_api_key, query_logs, upsert_request_payload,
     },
     provider::{
         ProviderModelsError, ProviderProtocol, ProxyRequest, fetch_provider_models,
@@ -523,6 +523,15 @@ fn build_router(state: AppState) -> Router {
         .route("/api/stats/overview", get(admin_routes::api_stats_overview))
         .route("/api/stats/daily", get(admin_routes::api_stats_daily))
         .route("/api/stats/model", get(admin_routes::api_stats_model))
+        .route(
+            "/api/stats/providers",
+            get(admin_routes::api_stats_providers),
+        )
+        .route(
+            "/api/stats/endpoints",
+            get(admin_routes::api_stats_endpoints),
+        )
+        .route("/api/stats/clients", get(admin_routes::api_stats_clients))
         .route(
             "/api/stats/api-keys/overview",
             get(admin_routes::api_stats_api_keys_overview),

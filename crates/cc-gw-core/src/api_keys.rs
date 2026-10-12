@@ -94,6 +94,11 @@ pub struct ApiKeyUsageMetric {
     pub requests: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
+    // Additive columns aligning the api-key tab with the other
+    // usage-distribution tabs; older consumers ignore the extra keys.
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub avg_latency_ms: i64,
     pub last_used_at: Option<String>,
 }
 
@@ -952,7 +957,9 @@ pub fn get_api_key_usage_metrics(
     let since = chrono::Utc::now().timestamp_millis() - days.clamp(1, 90) * 24 * 60 * 60 * 1000;
     let sql = if endpoint.is_some() {
         "SELECT api_key_id, api_key_name, COUNT(*), COALESCE(SUM(input_tokens), 0),
-                COALESCE(SUM(output_tokens), 0), MAX(timestamp)
+                COALESCE(SUM(output_tokens), 0), COALESCE(SUM(cache_read_tokens), 0),
+                COALESCE(SUM(cache_creation_tokens), 0), COALESCE(SUM(latency_ms), 0),
+                MAX(timestamp)
          FROM request_logs
          WHERE timestamp >= ?1 AND endpoint = ?2
          GROUP BY api_key_id, api_key_name
@@ -960,7 +967,9 @@ pub fn get_api_key_usage_metrics(
          LIMIT ?3"
     } else {
         "SELECT api_key_id, api_key_name, COUNT(*), COALESCE(SUM(input_tokens), 0),
-                COALESCE(SUM(output_tokens), 0), MAX(timestamp)
+                COALESCE(SUM(output_tokens), 0), COALESCE(SUM(cache_read_tokens), 0),
+                COALESCE(SUM(cache_creation_tokens), 0), COALESCE(SUM(latency_ms), 0),
+                MAX(timestamp)
          FROM request_logs
          WHERE timestamp >= ?1
          GROUP BY api_key_id, api_key_name
@@ -975,13 +984,22 @@ pub fn get_api_key_usage_metrics(
     };
     let mut items = Vec::new();
     while let Some(row) = rows.next()? {
+        let requests: i64 = row.get(2)?;
+        let total_latency: i64 = row.get(7)?;
         items.push(ApiKeyUsageMetric {
             api_key_id: row.get(0)?,
             api_key_name: row.get(1)?,
-            requests: row.get(2)?,
+            requests,
             input_tokens: row.get(3)?,
             output_tokens: row.get(4)?,
-            last_used_at: row_timestamp_to_iso(row, 5)?,
+            cache_read_tokens: row.get(5)?,
+            cache_creation_tokens: row.get(6)?,
+            avg_latency_ms: if requests > 0 {
+                total_latency / requests
+            } else {
+                0
+            },
+            last_used_at: row_timestamp_to_iso(row, 8)?,
         });
     }
     Ok(items)

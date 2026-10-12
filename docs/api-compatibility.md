@@ -60,7 +60,12 @@
 | `/api/stats/daily` | `GET` | 已兼容 | 每日统计 |
 | `/api/stats/model` | `GET` | 已兼容 | 模型维度统计 |
 | `/api/stats/api-keys/overview` | `GET` | 已兼容 | API Key 总览统计 |
-| `/api/stats/api-keys/usage` | `GET` | 已兼容 | API Key 使用排名 |
+| `/api/stats/api-keys/usage` | `GET` | 已兼容 | API Key 使用排名（additive：项内新增 `cacheReadTokens` / `cacheCreationTokens` / `avgLatencyMs`） |
+| `/api/stats/providers` | `GET` | 新增 | 按 provider 聚合用量（`?days=1-90&limit=1-50&endpoint=`） |
+| `/api/stats/endpoints` | `GET` | 新增 | 按端点聚合用量（参数同上） |
+| `/api/stats/clients` | `GET` | 新增 | 按 agent 客户端类型聚合用量（参数同上；历史无 `client_kind` 的行归入 `unknown`） |
+
+三条维度统计路由返回相同形状的数组：`[{ key, requests, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, avgLatencyMs }]`，按 requests 降序。
 
 日志接口补充说明：
 
