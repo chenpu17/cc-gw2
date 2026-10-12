@@ -11,6 +11,8 @@ export default {
     throughput: 'Throughput',
     requestsPerMinute: 'RPM',
     outputTokensPerMinute: 'TPM',
+    inputTpm10m: 'Input TPM ({{value}}m avg)',
+    outputTpm10m: 'Output TPM ({{value}}m avg)',
     cpu: 'CPU usage',
     bandwidth: 'Bandwidth',
     networkIngress: 'Ingress bandwidth',

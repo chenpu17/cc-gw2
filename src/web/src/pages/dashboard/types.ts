@@ -69,6 +69,15 @@ export interface ServiceStatus {
   uniqueClientSessionsLastHour?: number
 }
 
+/** Rolling token throughput over a fixed window (see /api/dashboard/summary
+ * `recentThroughput`): raw window sums already divided by windowMinutes. */
+export interface RecentThroughput {
+  windowMinutes: number
+  requests: number
+  inputTokensPerMinute: number
+  outputTokensPerMinute: number
+}
+
 export interface DatabaseInfo {
   pageCount: number
   pageSize: number

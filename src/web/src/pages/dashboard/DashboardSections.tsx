@@ -30,14 +30,15 @@ import {
   type DatabaseInfo,
   type ModelUsageMetric,
   type OverviewStats,
+  type RecentThroughput,
   type ServiceStatus
 } from './types'
 
 export function DashboardLoading() {
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, index) => (
           <StatCardSkeleton key={index} />
         ))}
       </div>
@@ -56,7 +57,13 @@ export function DashboardLoading() {
 }
 
 /** Layer 1 — gateway status + live traffic, typography-first, no decorative icons */
-export function StatusBand({ status }: { status?: ServiceStatus }) {
+export function StatusBand({
+  status,
+  recentThroughput
+}: {
+  status?: ServiceStatus
+  recentThroughput?: RecentThroughput
+}) {
   const { t } = useTranslation()
 
   return (
@@ -79,7 +86,7 @@ export function StatusBand({ status }: { status?: ServiceStatus }) {
         </span>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <MetricCard
           size="md"
           label={t('dashboard.labels.activeRequests')}
@@ -93,6 +100,20 @@ export function StatusBand({ status }: { status?: ServiceStatus }) {
           value={(status?.requestsPerMinute ?? 0).toLocaleString()}
           rawValue={status?.requestsPerMinute ?? 0}
           valueTestId="dashboard-spotlight-value-rpm"
+        />
+        <MetricCard
+          size="md"
+          label={t('dashboard.labels.inputTpm10m', { value: recentThroughput?.windowMinutes ?? 10 })}
+          value={(recentThroughput?.inputTokensPerMinute ?? 0).toLocaleString()}
+          rawValue={recentThroughput?.inputTokensPerMinute ?? 0}
+          valueTestId="dashboard-spotlight-value-tpm-in"
+        />
+        <MetricCard
+          size="md"
+          label={t('dashboard.labels.outputTpm10m', { value: recentThroughput?.windowMinutes ?? 10 })}
+          value={(recentThroughput?.outputTokensPerMinute ?? 0).toLocaleString()}
+          rawValue={recentThroughput?.outputTokensPerMinute ?? 0}
+          valueTestId="dashboard-spotlight-value-tpm-out"
         />
         <MetricCard
           size="md"

@@ -102,8 +102,8 @@ test('dashboard supports refresh, endpoint filters, compaction, and recent reque
   await expect(page.getByTestId('dashboard-overview-panel')).toBeVisible()
   await expect(page.getByTestId('dashboard-runtime-address')).toContainText('127.0.0.1:')
   await expect(page.getByTestId('dashboard-spotlight-grid')).toBeVisible()
-  // 状态带 3 个指标 + 基础设施 Disclosure 内 4 个指标（折叠但仍挂载）
-  await expect(page.locator('[data-testid^="dashboard-spotlight-value-"]')).toHaveCount(7)
+  // 状态带 5 个指标（含输入/输出 TPM 两卡） + 基础设施 Disclosure 内 4 个指标（折叠但仍挂载）
+  await expect(page.locator('[data-testid^="dashboard-spotlight-value-"]')).toHaveCount(9)
 
   // 趋势期洞察 4 卡：有数据时常驻；最高频模型 = stub-model（两条请求都打到它）
   const insights = page.getByTestId('dashboard-insights-grid')

@@ -6,6 +6,7 @@ import type {
   DatabaseInfo,
   ModelUsageMetric,
   OverviewStats,
+  RecentThroughput,
   ServiceStatus
 } from '@/pages/dashboard/types'
 
@@ -15,6 +16,7 @@ export interface DashboardSummary {
   overview: OverviewStats
   daily: DailyMetric[]
   modelStats: ModelUsageMetric[]
+  recentThroughput?: RecentThroughput
   recentRequests: LogListResponse
   recentErrors: GatewayEvent[]
   dbInfo: DatabaseInfo

@@ -94,6 +94,7 @@ export function useDashboardPageState() {
   const daily = useMemo(() => summary?.daily ?? [], [summary])
   const models = useMemo(() => summary?.modelStats ?? [], [summary])
   const status = summary?.status
+  const recentThroughput = summary?.recentThroughput
   const dbInfo = summary?.dbInfo
   const recentLogs = summary?.recentRequests.items ?? []
 
@@ -337,6 +338,7 @@ export function useDashboardPageState() {
     models,
     overview,
     recentLogs,
+    recentThroughput,
     selectedEndpointLabel,
     setEndpointFilter,
     setupComplete,

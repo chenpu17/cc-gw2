@@ -11,6 +11,8 @@ export default {
     throughput: '实时吞吐',
     requestsPerMinute: 'RPM',
     outputTokensPerMinute: 'TPM',
+    inputTpm10m: '输入 TPM（近{{value}}分钟）',
+    outputTpm10m: '输出 TPM（近{{value}}分钟）',
     cpu: 'CPU 占用率',
     bandwidth: '网络带宽',
     networkIngress: '入口带宽',

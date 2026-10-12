@@ -88,7 +88,7 @@ export default function DashboardPage() {
           ) : null}
 
           {/* Layer 1 — live status */}
-          <StatusBand status={state.status} />
+          <StatusBand status={state.status} recentThroughput={state.recentThroughput} />
 
           <TodaySummaryBand overview={state.overview} />
 
