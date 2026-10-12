@@ -22,6 +22,21 @@ export function formatNumber(value: number | null | undefined): string {
   return value.toLocaleString()
 }
 
+/**
+ * True when a successful request recorded no token counts because the
+ * upstream never reported usage — distinct from a real zero. Rendered as
+ * "-" plus a hint instead of a misleading "0".
+ */
+export function hasMissingUsage(
+  record: Pick<LogRecord, 'input_tokens' | 'output_tokens' | 'status_code'>
+): boolean {
+  return (
+    record.input_tokens == null &&
+    record.output_tokens == null &&
+    (record.status_code ?? 0) < 400
+  )
+}
+
 export function formatLatency(value: number | null | undefined, suffix: string): string {
   const formatted = formatNumber(value)
   return formatted === '-' ? '-' : `${formatted} ${suffix}`

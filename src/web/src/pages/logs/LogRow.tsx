@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { LogColumnId, RowDensity } from './shared'
-import { formatDateTime, formatLatency, formatNumber, getLogStatusMeta, getSessionRowTone } from './utils'
+import { formatDateTime, formatLatency, formatNumber, getLogStatusMeta, getSessionRowTone, hasMissingUsage } from './utils'
 import { LogInlineDetail } from './LogInlineDetail'
 
 interface LogRowProps {
@@ -122,6 +122,13 @@ export function LogRow({
                 {t('logs.table.columns.tokenOut')} {formatNumber(record.output_tokens)}
               </span>
               {(() => {
+                if (hasMissingUsage(record)) {
+                  return (
+                    <span className="whitespace-nowrap text-[11px] text-muted-foreground/70">
+                      {t('logs.table.tokensNoUsage')}
+                    </span>
+                  )
+                }
                 const cacheTotal = (record.cache_read_tokens ?? 0) + (record.cache_creation_tokens ?? 0)
                 return cacheTotal > 0 ? (
                   <span className="whitespace-nowrap text-[11px] text-muted-foreground/70">

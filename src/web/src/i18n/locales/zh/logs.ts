@@ -52,6 +52,7 @@ filters: {
     },
     requestedModelFallback: '未指定',
     apiKeyUnknown: '未知密钥',
+    tokensNoUsage: '上游未返回 usage',
     columns: {
       time: '时间',
       endpoint: '端点',
@@ -202,6 +203,7 @@ filters: {
       expand: '展开行内预览',
       collapse: '收起行内预览'
     },
-    loadError: '无法加载日志详情。'
+    loadError: '无法加载日志详情。',
+    tokensNoUsageHint: '上游未返回 usage，token 数未知（非 0）。'
   }
 }

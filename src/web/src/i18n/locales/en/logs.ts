@@ -52,6 +52,7 @@ export default {
     },
     requestedModelFallback: 'Not specified',
     apiKeyUnknown: 'Unknown key',
+    tokensNoUsage: 'no usage from upstream',
     columns: {
       time: 'Time',
       endpoint: 'Endpoint',
@@ -202,6 +203,7 @@ export default {
       expand: 'Expand inline preview',
       collapse: 'Collapse inline preview'
     },
-    loadError: 'Unable to load log detail.'
+    loadError: 'Unable to load log detail.',
+    tokensNoUsageHint: 'Upstream returned no usage; token counts are unknown (not zero).'
   }
 }

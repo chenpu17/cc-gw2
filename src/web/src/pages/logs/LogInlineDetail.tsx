@@ -13,6 +13,7 @@ import {
   buildPayloadDisplay,
   formatLatency,
   formatNumber,
+  hasMissingUsage,
   type LogTraceTone
 } from './utils'
 
@@ -192,6 +193,9 @@ export function LogInlineDetail({ logId, providerLabelMap, apiKeyMap }: LogInlin
             </div>
           ))}
         </div>
+        {hasMissingUsage(record) ? (
+          <p className="text-[11px] text-muted-foreground/70">{t('logs.detail.tokensNoUsageHint')}</p>
+        ) : null}
 
         <div className="border border-border bg-card">
           <div className="flex gap-0.5 border-b border-border bg-secondary/50 p-1.5" role="tablist">

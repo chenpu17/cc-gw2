@@ -134,23 +134,29 @@ async function startStubProvider(
         // Streaming requests get an OpenAI-style SSE stream. The trailing
         // prompt marker switches between the two usage chunk shapes real
         // upstreams use: top-level `usage` vs GLM-style nested in
-        // choices[0].delta.usage — e2e asserts both reach the client.
+        // choices[0].delta.usage — e2e asserts both reach the client. The
+        // `no-usage` marker omits usage entirely: e2e asserts the gateway
+        // then records NULL tokens instead of zeros.
         if (body.stream === true) {
           // Marker detection over the raw body: the converted content shape
           // varies (string vs content-part array), so match anywhere.
-          const nestUsageInDelta = JSON.stringify(body.messages ?? '').includes('delta-usage')
+          const rawBody = JSON.stringify(body.messages ?? '')
+          const nestUsageInDelta = rawBody.includes('delta-usage')
+          const omitUsage = rawBody.includes('no-usage')
           const usageChunk = nestUsageInDelta
             ? { id: 'chatcmpl_stub', object: 'chat.completion.chunk', model: body.model ?? 'stub-model', choices: [{ index: 0, delta: { usage: { prompt_tokens: 41, completion_tokens: 7, total_tokens: 48 } } }] }
             : { id: 'chatcmpl_stub', object: 'chat.completion.chunk', model: body.model ?? 'stub-model', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 } }
           res.writeHead(200, { 'content-type': 'text/event-stream' })
           res.write(`data: ${JSON.stringify({ id: 'chatcmpl_stub', object: 'chat.completion.chunk', model: body.model ?? 'stub-model', choices: [{ index: 0, delta: { role: 'assistant', content: `${marker} stream` } }] })}\n\n`)
-          res.write(`data: ${JSON.stringify(usageChunk)}\n\n`)
+          if (!omitUsage) {
+            res.write(`data: ${JSON.stringify(usageChunk)}\n\n`)
+          }
           res.end('data: [DONE]\n\n')
           return
         }
 
-        res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({
+        const omitUsage = JSON.stringify(body.messages ?? '').includes('no-usage')
+        const completion: Record<string, unknown> = {
           id: 'chatcmpl_stub',
           object: 'chat.completion',
           model: body.model ?? 'stub-model',
@@ -159,12 +165,16 @@ async function startStubProvider(
             message: { role: 'assistant', content: `${marker} response:${messageText}` },
             finish_reason: 'stop',
           }],
-          usage: {
+        }
+        if (!omitUsage) {
+          completion.usage = {
             prompt_tokens: 12,
             completion_tokens: 4,
             total_tokens: 16,
-          },
-        }))
+          }
+        }
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify(completion))
         return
       }
 

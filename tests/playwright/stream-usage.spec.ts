@@ -175,3 +175,31 @@ test('streamUsage opt-in injects stream_options.include_usage upstream', async (
     if (recent) expect(recent.status_code ?? recent.statusCode).toBe(200)
   }
 })
+
+// ---------------------------------------------------------------------------
+// 上游完全不返回 usage：日志 tokens 必须记为 null（未知）而非误导性的 0，
+// 且 logs 页该行渲染「上游未返回 usage」提示。
+// ---------------------------------------------------------------------------
+test('upstream without usage records null tokens and renders hint', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+  await deployStreamTarget(request, baseUrl, false)
+
+  const events = await streamViaGateway(request, baseUrl, 'no-usage style please')
+  const messageDelta = events.find((event: any) => event?.type === 'message_delta')
+  expect(messageDelta, 'client stream must contain message_delta').toBeTruthy()
+
+  // 请求日志：最新流式行的 tokens 为 JSON null 而非 0
+  const logsResponse = await request.get(`${baseUrl}/api/logs?limit=5`)
+  expect(logsResponse.ok()).toBeTruthy()
+  const payload = await logsResponse.json()
+  const items = payload.items ?? payload.logs ?? payload.data ?? []
+  const row = items.find((item: any) => item.stream === 1 || item.stream === true)
+  expect(row, 'stream log row expected').toBeTruthy()
+  expect(row.input_tokens).toBeNull()
+  expect(row.output_tokens).toBeNull()
+
+  // UI：logs 页该行的 tokens 单元格渲染「上游未返回 usage」
+  await page.goto(`${baseUrl}/ui/logs`)
+  await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
+  await expect(page.getByText('上游未返回 usage').first()).toBeVisible()
+})

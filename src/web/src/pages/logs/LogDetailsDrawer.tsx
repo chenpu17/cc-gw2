@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLogDetailState } from './useLogDetailState'
-import { buildPayloadDisplay, formatDateTime, formatLatency, formatNumber, formatStreamLabel } from './utils'
+import { buildPayloadDisplay, formatDateTime, formatLatency, formatNumber, formatStreamLabel, hasMissingUsage } from './utils'
 import type { PayloadDisplay } from './utils'
 
 interface LogDetailsDrawerProps {
@@ -193,6 +193,9 @@ export function LogDetailsDrawer({
                   <DetailStatCard label={t('logs.detail.info.cacheCreationTokens')} value={formatNumber(record.cache_creation_tokens)} />
                   <DetailStatCard label={t('logs.detail.info.outputTokens')} value={formatNumber(record.output_tokens)} />
                 </div>
+                {hasMissingUsage(record) ? (
+                  <p className="text-xs text-muted-foreground/70">{t('logs.detail.tokensNoUsageHint')}</p>
+                ) : null}
 
                 {record.error ? (
                   <div className="space-y-1">
