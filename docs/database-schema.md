@@ -68,6 +68,8 @@
 - `ttft_ms`
 - `tpot_ms`
 - `error`
+- `error_source`
+- `error_detail`
 - `api_key_id`
 - `api_key_name`
 - `api_key_value`
@@ -77,6 +79,7 @@
 - `endpoint` 用来区分 anthropic、openai 或自定义端点
 - `client_model` 保留客户端传入模型名，`model` 表示最终路由后的模型名
 - `ttft_ms` 和 `tpot_ms` 主要用于流式请求观测
+- `error_detail` 为 JSON 格式的扩展错误上下文（失败阶段 / 完整错误链 / 截断的上游响应体 / aggregate failover 尝试链），成功请求或无额外信息时为 NULL；含未脱敏的上游 URL 等信息，仅限控制台展示
 
 ## 3.2 `request_payloads`
 

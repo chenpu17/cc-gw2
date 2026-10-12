@@ -102,6 +102,8 @@ mod tests {
             "api_key_id",
             "api_key_name",
             "api_key_value",
+            "error_source",
+            "error_detail",
         ] {
             assert!(
                 request_log_columns.iter().any(|(name, _)| name == column),
@@ -285,6 +287,7 @@ pub fn initialize_database(path: &Path) -> Result<()> {
           tpot_ms REAL,
           error TEXT,
           error_source TEXT,
+          error_detail TEXT,
           api_key_id INTEGER,
           api_key_name TEXT,
           api_key_value TEXT
@@ -389,6 +392,7 @@ pub fn initialize_database(path: &Path) -> Result<()> {
     maybe_add_column(&conn, "request_logs", "ttft_ms", "INTEGER")?;
     maybe_add_column(&conn, "request_logs", "tpot_ms", "REAL")?;
     maybe_add_column(&conn, "request_logs", "error_source", "TEXT")?;
+    maybe_add_column(&conn, "request_logs", "error_detail", "TEXT")?;
     maybe_add_column(&conn, "request_logs", "stream", "INTEGER")?;
     maybe_add_column(
         &conn,

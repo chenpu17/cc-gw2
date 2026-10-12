@@ -38,6 +38,10 @@ pub struct RequestLogUpdate {
     pub tpot_ms: Option<f64>,
     pub error: Option<String>,
     pub error_source: Option<String>,
+    /// Extended error context as JSON: failure stage, the full (unsanitized)
+    /// error chain, truncated upstream body, and the aggregate failover
+    /// attempt chain. Null on success or when nothing extra was captured.
+    pub error_detail: Option<String>,
     /// Rewrite the row's provider/model to the backend that actually served
     /// the request. Set when aggregated-model failover picked a later
     /// candidate than the one the row was inserted with; `client_model`
@@ -67,6 +71,7 @@ pub struct LogRecord {
     pub tpot_ms: Option<f64>,
     pub error: Option<String>,
     pub error_source: Option<String>,
+    pub error_detail: Option<String>,
     pub api_key_id: Option<i64>,
     pub api_key_name: Option<String>,
     pub api_key_value: Option<String>,
@@ -441,7 +446,8 @@ pub fn finalize_request_log(db_path: &Path, id: i64, update: &RequestLogUpdate) 
              error = ?11,
              error_source = ?12,
              provider = COALESCE(?13, provider),
-             model = COALESCE(?14, model)
+             model = COALESCE(?14, model),
+             error_detail = ?15
          WHERE id = ?1",
         params![
             id,
@@ -457,7 +463,8 @@ pub fn finalize_request_log(db_path: &Path, id: i64, update: &RequestLogUpdate) 
             update.error,
             update.error_source,
             update.provider,
-            update.model
+            update.model,
+            update.error_detail
         ],
     )?;
     Ok(())
@@ -649,9 +656,10 @@ fn bind_strings<'a>(
             tpot_ms: row.get(16)?,
             error: row.get(17)?,
             error_source: row.get(18)?,
-            api_key_id: row.get(19)?,
-            api_key_name: row.get(20)?,
-            api_key_value: row.get(21)?,
+            error_detail: row.get(19)?,
+            api_key_id: row.get(20)?,
+            api_key_name: row.get(21)?,
+            api_key_value: row.get(22)?,
         })
     })?;
 
@@ -710,7 +718,7 @@ pub fn query_logs(db_path: &Path, query: &LogQuery) -> Result<LogListResult> {
         "SELECT id, timestamp, session_id, endpoint, provider, model, client_model,
                 stream, latency_ms, status_code, input_tokens, output_tokens,
                 cached_tokens, cache_read_tokens, cache_creation_tokens, ttft_ms, tpot_ms,
-                error, error_source, api_key_id, api_key_name, api_key_value
+                error, error_source, error_detail, api_key_id, api_key_name, api_key_value
          FROM request_logs
          {where_clause}
          ORDER BY timestamp DESC
@@ -728,7 +736,7 @@ pub fn get_log_detail(db_path: &Path, id: i64) -> Result<Option<LogDetail>> {
         "SELECT id, timestamp, session_id, endpoint, provider, model, client_model,
                 stream, latency_ms, status_code, input_tokens, output_tokens,
                 cached_tokens, cache_read_tokens, cache_creation_tokens, ttft_ms, tpot_ms,
-                error, error_source, api_key_id, api_key_name, api_key_value
+                error, error_source, error_detail, api_key_id, api_key_name, api_key_value
          FROM request_logs WHERE id = ?1",
     )?;
     let result: Option<LogRecord> = stmt
@@ -753,9 +761,10 @@ pub fn get_log_detail(db_path: &Path, id: i64) -> Result<Option<LogDetail>> {
                 tpot_ms: row.get(16)?,
                 error: row.get(17)?,
                 error_source: row.get(18)?,
-                api_key_id: row.get(19)?,
-                api_key_name: row.get(20)?,
-                api_key_value: row.get(21)?,
+                error_detail: row.get(19)?,
+                api_key_id: row.get(20)?,
+                api_key_name: row.get(21)?,
+                api_key_value: row.get(22)?,
             })
         })
         .optional()?;
@@ -793,7 +802,7 @@ pub fn export_logs(db_path: &Path, query: &LogQuery) -> Result<Vec<ExportLogReco
         "SELECT l.id, l.timestamp, l.session_id, l.endpoint, l.provider, l.model, l.client_model,
                 l.stream, l.latency_ms, l.status_code, l.input_tokens, l.output_tokens,
                 l.cached_tokens, l.cache_read_tokens, l.cache_creation_tokens, l.ttft_ms, l.tpot_ms,
-                l.error, l.error_source, l.api_key_id, l.api_key_name, l.api_key_value,
+                l.error, l.error_source, l.error_detail, l.api_key_id, l.api_key_name, l.api_key_value,
                 p.prompt, p.response, p.client_request, p.upstream_request, p.upstream_response, p.client_response
          FROM request_logs l
          LEFT JOIN request_payloads p ON p.request_id = l.id
@@ -830,17 +839,18 @@ pub fn export_logs(db_path: &Path, query: &LogQuery) -> Result<Vec<ExportLogReco
                 tpot_ms: row.get(16)?,
                 error: row.get(17)?,
                 error_source: row.get(18)?,
-                api_key_id: row.get(19)?,
-                api_key_name: row.get(20)?,
-                api_key_value: row.get(21)?,
+                error_detail: row.get(19)?,
+                api_key_id: row.get(20)?,
+                api_key_name: row.get(21)?,
+                api_key_value: row.get(22)?,
             },
             payload: build_log_payload(
-                row.get::<_, Option<Vec<u8>>>(22)?,
                 row.get::<_, Option<Vec<u8>>>(23)?,
                 row.get::<_, Option<Vec<u8>>>(24)?,
                 row.get::<_, Option<Vec<u8>>>(25)?,
                 row.get::<_, Option<Vec<u8>>>(26)?,
                 row.get::<_, Option<Vec<u8>>>(27)?,
+                row.get::<_, Option<Vec<u8>>>(28)?,
             ),
         })
     })?;
@@ -1178,6 +1188,95 @@ pub fn clear_all_logs(db_path: &Path) -> Result<(i64, i64)> {
 mod tests {
     use super::*;
     use crate::storage::initialize_database;
+
+    #[test]
+    fn error_detail_round_trips_through_finalize_and_queries() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let log_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                session_id: None,
+                source_ip: None,
+                endpoint: "anthropic".to_string(),
+                provider: "mock".to_string(),
+                model: "mock-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert request log");
+
+        let detail = r#"{"stage":"upstream","upstreamStatus":500,"upstreamBody":"boom"}"#;
+        finalize_request_log(
+            &db_path,
+            log_id,
+            &RequestLogUpdate {
+                latency_ms: Some(42),
+                status_code: Some(502),
+                error: Some("upstream request failed".to_string()),
+                error_source: Some("upstream".to_string()),
+                error_detail: Some(detail.to_string()),
+                ..RequestLogUpdate::default()
+            },
+        )
+        .expect("finalize request log");
+
+        let list = query_logs(
+            &db_path,
+            &LogQuery {
+                limit: 10,
+                offset: 0,
+                provider: None,
+                model: None,
+                endpoint: None,
+                status: None,
+                from: None,
+                to: None,
+                api_key_ids: None,
+            },
+        )
+        .expect("query logs");
+        let row = list.items.first().expect("log row");
+        assert_eq!(row.error_detail.as_deref(), Some(detail));
+
+        let detail_record = get_log_detail(&db_path, log_id)
+            .expect("log detail")
+            .expect("row exists");
+        assert_eq!(detail_record.record.error_detail.as_deref(), Some(detail));
+
+        let exported = export_logs(
+            &db_path,
+            &LogQuery {
+                limit: 10,
+                offset: 0,
+                provider: None,
+                model: None,
+                endpoint: None,
+                status: None,
+                from: None,
+                to: None,
+                api_key_ids: None,
+            },
+        )
+        .expect("export logs");
+        assert_eq!(
+            exported.first().expect("exported row").record.error_detail,
+            Some(detail.to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn recent_client_activity_counts_distinct_ips_and_sessions() {
