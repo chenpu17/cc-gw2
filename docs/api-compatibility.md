@@ -49,7 +49,7 @@
 | `/api/events` | `GET` | 已兼容 | 查询事件列表 |
 | `/api/events/stream` | `GET` | 已兼容 | SSE 实时推送新事件，支持 `?level=error,warn&type=xxx` 服务端过滤，15s 心跳 |
 | `/api/dashboard/summary` | `GET` | 已兼容 | Dashboard 首屏聚合接口，可选 `?endpoint=` 过滤 |
-| `/api/logs` | `GET` | 已兼容 | 查询请求日志 |
+| `/api/logs` | `GET` | 已兼容 | 查询请求日志；支持 `?clientKind=` 过滤（additive） |
 | `/api/logs/{id}` | `GET` | 已兼容 | 查询单条日志详情 |
 | `/api/logs/export` | `POST` | 已兼容 | 导出日志 |
 | `/api/logs/cleanup` | `POST` | 已兼容 | 清理旧日志 |
@@ -69,6 +69,7 @@
 
 日志接口补充说明：
 
+- 日志项（列表与详情一致）additive 新增三个字段：`client_kind`（识别出的 agent 客户端类型，协议兜底为 `anthropic-compatible` / `openai-compatible`）、`user_agent`（截断后的原始 UA）、`error_detail`（失败请求的扩展错误上下文 JSON：失败阶段 / 完整错误链 / 上游状态码 / 截断的上游响应体 / aggregate failover 尝试链；成功请求为 null）。字段形状详见 `docs/database-schema.md`
 - `GET /api/logs/{id}` 返回单条日志详情，`payload` 采用四字段结构：
   - `client_request`
   - `upstream_request`
