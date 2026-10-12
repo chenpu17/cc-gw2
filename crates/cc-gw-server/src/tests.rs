@@ -164,6 +164,113 @@ fn extract_header_session_id_supports_cc_gw_standard_header() {
 }
 
 #[test]
+fn extract_header_session_id_supports_bare_codex_session_header() {
+    // Codex CLI sends a bare `session_id` header (no x- prefix).
+    let payload = json!({});
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("session_id"),
+        HeaderValue::from_static("0197b32e-codex-live-session"),
+    );
+
+    assert_eq!(
+        extract_request_session_id(&payload, &headers),
+        Some("0197b32e-codex-live-session".to_string())
+    );
+}
+
+#[test]
+fn claude_code_user_id_embeds_session_suffix() {
+    let headers = HeaderMap::new();
+    // Claude Code metadata.user_id = "user_<hash>_session_<uuid>": the
+    // session suffix must be extracted so sessions of one user stay distinct.
+    let payload = json!({
+        "metadata": {
+            "user_id": "user_a1b2c3_session_11111111-2222-3333-4444-555555555555"
+        }
+    });
+    assert_eq!(
+        extract_request_session_id(&payload, &headers),
+        Some("11111111-2222-3333-4444-555555555555".to_string())
+    );
+
+    // Two sessions of the same user resolve to different session ids.
+    let other = json!({
+        "metadata": {
+            "user_id": "user_a1b2c3_session_99999999-8888-7777-6666-555555555555"
+        }
+    });
+    assert_eq!(
+        extract_request_session_id(&other, &headers),
+        Some("99999999-8888-7777-6666-555555555555".to_string())
+    );
+
+    // Non Claude Code user ids keep the raw value as before.
+    let plain = json!({ "metadata": { "user_id": "plain-user" } });
+    assert_eq!(
+        extract_request_session_id(&plain, &headers),
+        Some("plain-user".to_string())
+    );
+}
+
+#[test]
+fn infer_client_kind_sniffs_common_agent_user_agents() {
+    let headers = HeaderMap::new();
+    for (user_agent, expected) in [
+        ("GeminiCLI/0.8.1 (Mac OS X; arm64)", "gemini-cli"),
+        ("cline/3.4.5 (VS Code)", "cline"),
+        ("RooCode/2.1.0", "roo-code"),
+        ("cursor/0.48.0", "cursor"),
+        ("crush/0.6.0 (darwin)", "crush"),
+        ("aider/0.74.2", "aider"),
+        ("KiloCode/1.9.0", "kilo-code"),
+        ("factory-droid/1.2.3", "droid"),
+        ("GitHub Copilot/1.0", "copilot"),
+    ] {
+        assert_eq!(
+            infer_client_kind(
+                &headers,
+                Some(user_agent),
+                ProviderProtocol::OpenAiChatCompletions
+            ),
+            expected,
+            "user agent {user_agent} must classify as {expected}"
+        );
+    }
+
+    // Unknown UA falls back to the protocol-derived kind.
+    assert_eq!(
+        infer_client_kind(
+            &headers,
+            Some("curl/8.4.0"),
+            ProviderProtocol::AnthropicMessages
+        ),
+        "anthropic-compatible"
+    );
+    assert_eq!(
+        infer_client_kind(
+            &headers,
+            Some("curl/8.4.0"),
+            ProviderProtocol::OpenAiChatCompletions
+        ),
+        "openai-compatible"
+    );
+}
+
+#[test]
+fn infer_client_kind_reads_codex_originator_header() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("originator"),
+        HeaderValue::from_static("codex_cli_rs"),
+    );
+    assert_eq!(
+        infer_client_kind(&headers, None, ProviderProtocol::OpenAiResponses),
+        "codex"
+    );
+}
+
+#[test]
 fn infer_client_kind_prefers_known_cli_markers() {
     let mut claude_headers = HeaderMap::new();
     claude_headers.insert(
@@ -4986,6 +5093,101 @@ async fn trailing_upstream_stream_errors_after_terminal_event_are_logged_as_succ
         .await
         .expect("decode success logs");
     assert_eq!(success_logs.get("total").and_then(Value::as_u64), Some(1));
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn codex_originator_headers_persist_client_kind_and_session() {
+    let (upstream_addr, upstream_handle, _hits) = spawn_failover_upstream().await;
+    let mut config = GatewayConfig::default();
+    let backend = anthropic_backend_config(
+        "codex-target",
+        "claude-backup",
+        format!("http://{upstream_addr}"),
+    );
+    config.providers = vec![backend];
+    config.defaults.completion = Some("claude-backup".to_string());
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "codex-client-kind").await;
+    let client = reqwest::Client::new();
+    let api_key = create_gateway_api_key(&client, gateway_addr).await;
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header("x-api-key", &api_key)
+        .header("originator", "codex_cli_rs")
+        .header("session_id", "0197-live-codex-session")
+        .header("user-agent", "codex_cli_rs/0.42.0")
+        .json(&json!({
+            "model": "claude-backup",
+            "max_tokens": 64,
+            "messages": [{ "role": "user", "content": [{ "type": "text", "text": "hello" }] }]
+        }))
+        .send()
+        .await
+        .expect("send codex-style request")
+        .json()
+        .await
+        .expect("decode response");
+    assert!(
+        response.get("content").is_some(),
+        "expected a successful anthropic message response"
+    );
+
+    sleep(Duration::from_millis(250)).await;
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs");
+    let row = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("log row");
+    assert_eq!(
+        row.get("client_kind").and_then(Value::as_str),
+        Some("codex")
+    );
+    assert_eq!(
+        row.get("session_id").and_then(Value::as_str),
+        Some("0197-live-codex-session")
+    );
+    assert_eq!(
+        row.get("user_agent").and_then(Value::as_str),
+        Some("codex_cli_rs/0.42.0")
+    );
+
+    // clientKind query filter narrows to the codex rows only.
+    let filtered: Value = client
+        .get(format!(
+            "http://{gateway_addr}/api/logs?clientKind=codex&limit=10"
+        ))
+        .send()
+        .await
+        .expect("request filtered logs")
+        .json()
+        .await
+        .expect("decode filtered logs");
+    assert_eq!(filtered.get("total").and_then(Value::as_i64), Some(1));
+    let miss: Value = client
+        .get(format!(
+            "http://{gateway_addr}/api/logs?clientKind=claude-code&limit=10"
+        ))
+        .send()
+        .await
+        .expect("request miss logs")
+        .json()
+        .await
+        .expect("decode miss logs");
+    assert_eq!(miss.get("total").and_then(Value::as_i64), Some(0));
 
     gateway_handle.abort();
     upstream_handle.abort();

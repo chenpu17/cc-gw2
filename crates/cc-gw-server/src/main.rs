@@ -1092,8 +1092,19 @@ fn extract_body_session_id(body: &Value) -> Option<String> {
 
 fn extract_body_user_session_id(body: &Value) -> Option<String> {
     let metadata = body.get("metadata");
-    extract_string(metadata.and_then(|value| value.get("user_id")))
-        .or_else(|| extract_string(body.get("user")))
+    let raw = extract_string(metadata.and_then(|value| value.get("user_id")))
+        .or_else(|| extract_string(body.get("user")));
+    // Claude Code's `metadata.user_id` embeds the live session as
+    // "user_<hash>_session_<uuid>". Extract the session suffix so different
+    // sessions of the same user get distinct session ids (row colors, active
+    // counts); anything else keeps the raw value as before.
+    raw.map(|value| match value.strip_prefix("user_") {
+        Some(rest) => rest
+            .rsplit_once("_session_")
+            .map(|(_, session)| session.to_string())
+            .unwrap_or(value),
+        None => value,
+    })
 }
 
 fn extract_header_session_id(headers: &HeaderMap) -> Option<String> {
@@ -1107,6 +1118,10 @@ fn extract_header_session_id(headers: &HeaderMap) -> Option<String> {
         "x-claude-code-session-id",
         "x-codex-session-id",
         "x-opencode-session-id",
+        // Bare `session_id` is what OpenAI's Codex CLI actually sends (no
+        // x- prefix); kept last so clients sending both flavors still resolve
+        // to the explicit header names above.
+        "session_id",
     ]
     .into_iter()
     .find_map(|name| header_value(headers, name))
@@ -1136,11 +1151,41 @@ fn infer_client_kind(
     {
         return "claude-code".to_string();
     }
-    if headers.contains_key("x-codex-session-id") || user_agent.contains("codex") {
+    // Codex CLI identifies itself via the `originator` header
+    // (codex_cli_rs / codex_vscode / ...), not only through its UA.
+    let originator = header_value(headers, "originator")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if headers.contains_key("x-codex-session-id")
+        || originator.starts_with("codex")
+        || user_agent.contains("codex")
+    {
         return "codex".to_string();
     }
     if headers.contains_key("x-opencode-session-id") || user_agent.contains("opencode") {
         return "opencode".to_string();
+    }
+    // User-agent sniffing for the remaining common agent clients. Markers are
+    // chosen to avoid generic words ("continue" would match prose in curl
+    // UAs, so Continue.dev is deliberately not listed).
+    for (marker, kind) in [
+        ("gemini-cli", "gemini-cli"),
+        ("geminicli", "gemini-cli"),
+        ("cline", "cline"),
+        ("roocode", "roo-code"),
+        ("roo-code", "roo-code"),
+        ("roo code", "roo-code"),
+        ("cursor", "cursor"),
+        ("crush", "crush"),
+        ("aider", "aider"),
+        ("kilo-code", "kilo-code"),
+        ("kilocode", "kilo-code"),
+        ("droid", "droid"),
+        ("copilot", "copilot"),
+    ] {
+        if user_agent.contains(marker) {
+            return kind.to_string();
+        }
     }
 
     match protocol {

@@ -35,6 +35,11 @@ fn upstream_error_source_for_status(status_code: i64) -> Option<String> {
 /// embeds the full upstream URL. Surface only a generic category so the gateway
 /// doesn't leak routing topology (upstream host / path) to callers that only
 /// hold a gateway key. The full error stays in tracing.
+/// Cap stored User-Agent strings — longer UAs add row weight for no value.
+fn truncate_user_agent(user_agent: &str) -> String {
+    user_agent.chars().take(256).collect()
+}
+
 fn sanitize_upstream_error(error: &anyhow::Error) -> String {
     let reqwest_error = error
         .chain()
@@ -1435,7 +1440,7 @@ pub(super) async fn proxy_standard_request(
     let endpoint_id = endpoint_name(endpoint, protocol);
     let network_recorder = NetworkByteRecorder::new(&state, &endpoint_id);
     let user_agent = header_value(&headers, header::USER_AGENT.as_str());
-    let _client_kind = infer_client_kind(&headers, user_agent.as_deref(), protocol);
+    let client_kind = infer_client_kind(&headers, user_agent.as_deref(), protocol);
     let session_id = extract_request_session_id(&body, &headers);
 
     // Atomically check per-key concurrency limit and create the activity guard
@@ -1643,8 +1648,8 @@ pub(super) async fn proxy_standard_request(
                     timestamp: started_at,
                     session_id: session_id.clone(),
                     source_ip: source_ip.clone(),
-                    client_kind: None,
-                    user_agent: None,
+                    client_kind: Some(client_kind.clone()),
+                    user_agent: user_agent.as_deref().map(truncate_user_agent),
                     endpoint: endpoint_id.clone(),
                     provider: target.provider_id.clone(),
                     model: target.model_id.clone(),
