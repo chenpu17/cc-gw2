@@ -987,8 +987,11 @@ fn request_log_metrics_section_cost(
 ) -> Result<(Option<f64>, i64)> {
     // GROUP BY 不可省：空范围下无分组的聚合会吐出一行裸 NULL model，
     // 而分组查询空集返回零行 → cost None / unpriced 0，语义正确。
+    // unknown_usage 列独立统计 input_tokens IS NULL 的请求数：SUM 忽略
+    // NULL，混合用量组的 input 非空会掩盖同组无 usage 的请求。
     let select = "SELECT model, provider, COUNT(*),
-       SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens)
+       SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens),
+       SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END)
      FROM request_logs";
     let group_by = " GROUP BY model, provider";
     let (sql, param_values): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (range, endpoint) {
@@ -1027,7 +1030,12 @@ fn request_log_metrics_section_cost(
             cache_read: row.get(5)?,
             cache_creation: row.get(6)?,
         };
-        fold.add(pricing.compute(&model, Some(&provider), &usage), requests);
+        let unknown_usage: i64 = row.get(7)?;
+        fold.add(
+            pricing.compute(&model, Some(&provider), &usage),
+            requests,
+            unknown_usage,
+        );
     }
     Ok(fold.finish())
 }
@@ -1154,7 +1162,8 @@ fn daily_cost_by_date(
 ) -> Result<HashMap<String, (Option<f64>, i64)>> {
     let select = "SELECT strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime') AS date,
            model, provider, COUNT(*),
-           SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens)
+           SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens),
+           SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END)
      FROM request_logs";
     let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match endpoint {
         Some(endpoint) => (
@@ -1184,10 +1193,12 @@ fn daily_cost_by_date(
             cache_read: row.get(6)?,
             cache_creation: row.get(7)?,
         };
-        folds
-            .entry(date)
-            .or_default()
-            .add(pricing.compute(&model, Some(&provider), &usage), requests);
+        let unknown_usage: i64 = row.get(8)?;
+        folds.entry(date).or_default().add(
+            pricing.compute(&model, Some(&provider), &usage),
+            requests,
+            unknown_usage,
+        );
     }
     Ok(folds
         .into_iter()
@@ -1209,7 +1220,8 @@ pub fn get_model_usage_metrics(
     let sql = if endpoint.is_some() {
         "SELECT model, provider, COUNT(*), SUM(input_tokens), SUM(output_tokens),
                 SUM(cache_read_tokens), SUM(cache_creation_tokens),
-                COALESCE(SUM(latency_ms), 0), AVG(ttft_ms), AVG(tpot_ms)
+                COALESCE(SUM(latency_ms), 0), AVG(ttft_ms), AVG(tpot_ms),
+                SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END)
          FROM request_logs
          WHERE timestamp >= ?1 AND endpoint = ?2
          GROUP BY provider, model
@@ -1218,7 +1230,8 @@ pub fn get_model_usage_metrics(
     } else {
         "SELECT model, provider, COUNT(*), SUM(input_tokens), SUM(output_tokens),
                 SUM(cache_read_tokens), SUM(cache_creation_tokens),
-                COALESCE(SUM(latency_ms), 0), AVG(ttft_ms), AVG(tpot_ms)
+                COALESCE(SUM(latency_ms), 0), AVG(ttft_ms), AVG(tpot_ms),
+                SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END)
          FROM request_logs
          WHERE timestamp >= ?1
          GROUP BY provider, model
@@ -1243,9 +1256,11 @@ pub fn get_model_usage_metrics(
         };
         let model: String = row.get(0)?;
         let provider: String = row.get(1)?;
+        let unknown_usage: i64 = row.get(10)?;
         let breakdown = pricing.compute(&model, Some(&provider), &usage);
         let (cost, unpriced_requests) = match breakdown {
-            Some(breakdown) => (Some(breakdown.total), 0),
+            // 已计价行仍可能有缺 usage 的请求（SQL SUM 忽略 NULL）
+            Some(breakdown) => (Some(breakdown.total), unknown_usage),
             None => (None, requests),
         };
         items.push(ModelUsageMetric {
@@ -1383,7 +1398,8 @@ fn dimension_cost_by_key(
 ) -> Result<HashMap<String, (Option<f64>, i64)>> {
     let select = format!(
         "SELECT {group}, model, provider, COUNT(*),
-                SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens)
+                SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens),
+                SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END)
          FROM request_logs"
     );
     let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match endpoint {
@@ -1412,10 +1428,12 @@ fn dimension_cost_by_key(
             cache_read: row.get(6)?,
             cache_creation: row.get(7)?,
         };
-        folds
-            .entry(key)
-            .or_default()
-            .add(pricing.compute(&model, Some(&provider), &usage), requests);
+        let unknown_usage: i64 = row.get(8)?;
+        folds.entry(key).or_default().add(
+            pricing.compute(&model, Some(&provider), &usage),
+            requests,
+            unknown_usage,
+        );
     }
     Ok(folds
         .into_iter()
@@ -1849,6 +1867,111 @@ mod tests {
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].api_key_name.as_deref(), Some("team-a"));
         assert_eq!(keys[0].cost, Some(5.9));
+        assert_eq!(keys[0].unpriced_requests, 1);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn usage_metrics_cost_mixed_null_usage_counts_unpriced() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-cost-mixed-null-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+        let now = chrono::Utc::now().timestamp_millis();
+        let insert = || {
+            insert_request_log(
+                &db_path,
+                &RequestLogInput {
+                    timestamp: now,
+                    session_id: None,
+                    source_ip: None,
+                    client_kind: None,
+                    user_agent: None,
+                    endpoint: "openai".to_string(),
+                    provider: "mock".to_string(),
+                    model: "stub-model".to_string(),
+                    client_model: None,
+                    stream: false,
+                    api_key_id: Some(1),
+                    api_key_name: Some("team-a".to_string()),
+                    api_key_value: None,
+                },
+            )
+            .expect("insert request log")
+        };
+        let finalize = |log_id: i64, input: Option<i64>, output: Option<i64>| {
+            finalize_request_log(
+                &db_path,
+                log_id,
+                &RequestLogUpdate {
+                    latency_ms: Some(10),
+                    status_code: Some(200),
+                    input_tokens: input,
+                    output_tokens: output,
+                    cache_read_tokens: Some(0),
+                    cache_creation_tokens: Some(0),
+                    ..RequestLogUpdate::default()
+                },
+            )
+            .expect("finalize request log")
+        };
+        // 同一 (provider, model) 组内混合：一条有 usage（¥1/1M input → 1.0），
+        // 一条成功但上游未报 usage（input NULL）。SQL SUM 忽略 NULL 曾把整组
+        // 当成已计价，unpricedRequests 漏报为 0。
+        finalize(insert(), Some(1_000_000), Some(0));
+        finalize(insert(), None, None);
+
+        let mut billing = crate::config::BillingConfig::default();
+        billing.model_prices.insert(
+            "stub-model".to_string(),
+            crate::config::ModelPriceOverride {
+                currency: "CNY".to_string(),
+                input: 1.0,
+                output: 1.0,
+                cache_read: 0.0,
+                cache_creation: 0.0,
+                label: None,
+            },
+        );
+        let pricing = crate::billing::PricingEngine::from_config(&billing);
+
+        let overview = get_metrics_overview(&db_path, None, &pricing).expect("query overview");
+        assert_eq!(overview.today.requests, 2);
+        assert_eq!(overview.today.cost, Some(1.0));
+        assert_eq!(overview.today.unpriced_requests, 1);
+        assert_eq!(overview.totals.cost, Some(1.0));
+        assert_eq!(overview.totals.unpriced_requests, 1);
+
+        let daily = get_daily_metrics(&db_path, 14, None, &pricing).expect("query daily");
+        assert_eq!(daily.len(), 1);
+        assert_eq!(daily[0].request_count, 2);
+        assert_eq!(daily[0].cost, Some(1.0));
+        assert_eq!(daily[0].unpriced_requests, 1);
+
+        let providers =
+            get_dimension_usage_metrics(&db_path, UsageDimension::Provider, 7, 10, None, &pricing)
+                .expect("query provider metrics");
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].requests, 2);
+        assert_eq!(providers[0].cost, Some(1.0));
+        assert_eq!(providers[0].unpriced_requests, 1);
+
+        let models =
+            get_model_usage_metrics(&db_path, 7, 10, None, &pricing).expect("query model metrics");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].requests, 2);
+        assert_eq!(models[0].cost, Some(1.0));
+        assert_eq!(models[0].unpriced_requests, 1);
+
+        let keys = crate::api_keys::get_api_key_usage_metrics(&db_path, 7, 10, None, &pricing)
+            .expect("query api key metrics");
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].requests, 2);
+        assert_eq!(keys[0].cost, Some(1.0));
         assert_eq!(keys[0].unpriced_requests, 1);
 
         let _ = std::fs::remove_dir_all(root);

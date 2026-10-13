@@ -341,12 +341,21 @@ pub struct CostFold {
 }
 
 impl CostFold {
-    pub fn add(&mut self, breakdown: Option<CostBreakdown>, requests: i64) {
+    /// 累计一个 (模型, provider) 子行。
+    ///
+    /// `unknown_usage` 是该子行里 usage 缺失（`input_tokens IS NULL`）的请求数，
+    /// 由 SQL 侧 `SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END)` 单独
+    /// 统计 —— `SUM` 会忽略 NULL，混合用量组的 input 非空会把同组无 usage 的
+    /// 请求一并折算成已计价，导致 unpricedRequests 漏报。
+    pub fn add(&mut self, breakdown: Option<CostBreakdown>, requests: i64, unknown_usage: i64) {
         match breakdown {
             Some(breakdown) => {
                 self.cost += breakdown.total;
                 self.priced = true;
+                self.unpriced_requests += unknown_usage;
             }
+            // 整个子行不可计价（无价，或 SUM(input) 为 NULL 即全部缺 usage）：
+            // 子行内每条请求都未计价。
             None => self.unpriced_requests += requests,
         }
     }
