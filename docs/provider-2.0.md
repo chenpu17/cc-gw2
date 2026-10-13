@@ -46,7 +46,7 @@ fn effective_target(target: RouteTarget, request_protocol: ProviderProtocol) -> 
 
 ## 3. 模型探测（端点级）
 
-`fetch_provider_models`（provider.rs）：主端点 + 各 endpoint 逐个探测后合并去重；单面失败容忍（不阻塞其他端点）。预设模板的 `noModelProbe` 标记由 WebUI 消费（隐藏探测入口），Rust 不感知。
+`fetch_provider_models`（provider.rs）：主端点 + 各 endpoint 逐个探测后合并去重；单面失败容忍（不阻塞其他端面）。预设模板的 `noModelProbe` 标记由创建对话框消费（提示该服务无模型列表端点、需手动添加模型），不写入 config；面板探测入口不据此隐藏（后端对不可推导 URL 会返回干净的 UnsupportedEndpoint）。
 
 ## 4. 余额 adapter（手动刷新）
 
