@@ -64,13 +64,22 @@ test('provider RPM limit fields render and persist via provider panel', async ({
   await panel.getByTestId('provider-save').click()
   await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
 
-  const clearedResponse = await request.get(`${baseUrl}/api/config`)
-  expect(clearedResponse.status()).toBe(200)
-  const clearedConfig = await clearedResponse.json()
-  const clearedProvider = clearedConfig.providers.find((item: any) => item.id === providerId)
+  // 用 poll 而非立即 GET：同文案的残留 toast 可能让断言先行满足，而 PUT
+  // 尚未落库（双保存竞态）。
+  await expect
+    .poll(async () => {
+      const clearedResponse = await request.get(`${baseUrl}/api/config`)
+      const clearedConfig = await clearedResponse.json()
+      const clearedProvider = clearedConfig.providers.find((item: any) => item.id === providerId)
+      // 注意不能用 ?? —— 清空后的值本身就是 null
+      return clearedProvider ? clearedProvider.rpmLimit : 'pending'
+    })
+    .toBeNull()
+  const finalResponse = await request.get(`${baseUrl}/api/config`)
+  const finalConfig = await finalResponse.json()
+  const finalProvider = finalConfig.providers.find((item: any) => item.id === providerId)
   // Rust 序列化未设置的 Option 字段为 null，而非键缺失
-  expect(clearedProvider.rpmLimit).toBeNull()
-  expect(clearedProvider.rpmMaxWaitSeconds).toBeNull()
+  expect(finalProvider.rpmMaxWaitSeconds).toBeNull()
 })
 
 // ---------------------------------------------------------------------------
