@@ -358,6 +358,43 @@ export default {
     noModelsHint: '当前未配置模型列表。该 Provider 将以"透传"模式使用，可在模型路由中映射，或在请求中直接指定模型。',
     routeExample: '路由映射示例：'
   },
+  endpoints: {
+    title: '多协议端点',
+    hint: '为同一上游添加其他协议端点（与主端点共享密钥）。请求协议与某端点匹配时按该端点原生转发，否则经主端点跨协议转换。',
+    add: '添加端点',
+    id: '端点 ID',
+    idPlaceholder: '如 openai-surface',
+    protocol: '协议',
+    baseUrl: '端点 Base URL',
+    baseUrlPlaceholder: 'https://api.example.com/v1',
+    label: '备注',
+    labelPlaceholder: '备注（可选）',
+    empty: '仅使用主端点。如需同协议多端点或补充其他协议面，请添加。',
+    errors: {
+      idRequired: '端点 ID 不可为空',
+      idDuplicate: '端点 ID 不可重复',
+      baseUrlInvalid: '端点 Base URL 必须为有效的 http(s) 地址'
+    }
+  },
+  keys: {
+    title: '命名密钥',
+    hint: '为同一 Provider 配置多把密钥，选中「生效」的一把用于全部上游请求；命名密钥优先于上方的基础 API Key。',
+    add: '添加密钥',
+    active: '生效',
+    id: '密钥 ID',
+    idPlaceholder: '如 main',
+    label: '备注',
+    labelPlaceholder: '备注（可选）',
+    value: '密钥值',
+    valuePlaceholder: 'sk-...',
+    reveal: '显示密钥',
+    hide: '隐藏密钥',
+    empty: '未配置命名密钥，使用上方基础 API Key。',
+    errors: {
+      idRequired: '密钥 ID 不可为空',
+      idDuplicate: '密钥 ID 不可重复'
+    }
+  },
   masterDetail: {
     emptyDetailTitle: '选择一个 Provider',
     emptyDetailHint: '从左侧列表选择 Provider 查看与编辑，或点击上方「新增提供商」创建。',

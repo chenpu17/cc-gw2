@@ -14,8 +14,10 @@ import {
 import { Switch } from '@/components/ui/switch'
 import type {
   AggregateMemberConfig,
+  BalanceAdapterId,
   FailoverPolicyConfig,
   ProviderConfig,
+  ProviderEndpointProtocol,
   ProviderModelConfig
 } from '@/types/providers'
 import { cn } from '@/lib/utils'
@@ -33,6 +35,24 @@ export interface FormModel extends Omit<ProviderModelConfig, 'members' | 'failov
 
 export interface FormMember extends AggregateMemberConfig {
   _key: string
+}
+
+/** Draft row of the provider's additional protocol endpoints. */
+export interface FormEndpoint {
+  _key: string
+  id: string
+  label: string
+  protocol: ProviderEndpointProtocol
+  baseUrl: string
+}
+
+/** Draft row of the provider's named keys; `active` is radio-exclusive. */
+export interface FormKey {
+  _key: string
+  id: string
+  label: string
+  value: string
+  active: boolean
 }
 
 export interface FormFailover {
@@ -58,6 +78,8 @@ export interface FormErrors {
   rpmMaxWaitSeconds?: string
   members?: Record<string, string>
   failover?: Record<string, string>
+  endpoints?: Record<string, string>
+  keys?: Record<string, string>
 }
 
 export interface FormState {
@@ -75,15 +97,10 @@ export interface FormState {
   rpmLimit: string
   rpmMaxWaitSeconds: string
   extraHeaders: FormHeader[]
-}
-
-export interface FormErrors {
-  id?: string
-  baseUrl?: string
-  models?: string
-  extraHeaders?: string
-  rpmLimit?: string
-  rpmMaxWaitSeconds?: string
+  endpoints: FormEndpoint[]
+  keys: FormKey[]
+  /** '' = none; select value shim for the optional balance adapter. */
+  balanceAdapter: '' | BalanceAdapterId
 }
 
 export type ProviderStepId = 'basics' | 'models'
@@ -190,6 +207,26 @@ export function createEmptyHeader(): FormHeader {
   }
 }
 
+export function createEmptyEndpoint(): FormEndpoint {
+  return {
+    _key: createKey(),
+    id: '',
+    label: '',
+    protocol: 'anthropic',
+    baseUrl: ''
+  }
+}
+
+export function createEmptyKey(active = false): FormKey {
+  return {
+    _key: createKey(),
+    id: '',
+    label: '',
+    value: '',
+    active
+  }
+}
+
 export const PROVIDER_TYPE_PRESETS: Record<Exclude<ProviderConfig['type'], undefined> | 'openai', {
   baseUrl?: string
   models?: Array<Omit<FormModel, '_key'>>
@@ -213,6 +250,15 @@ export const PROVIDER_TYPE_PRESETS: Record<Exclude<ProviderConfig['type'], undef
   custom: {},
   aggregate: {}
 }
+
+export const PROVIDER_ENDPOINT_PROTOCOL_OPTIONS: Array<{
+  value: ProviderEndpointProtocol
+  label: string
+}> = [
+  { value: 'anthropic', label: 'Anthropic Messages' },
+  { value: 'openai', label: 'OpenAI Chat Completions' },
+  { value: 'openai-responses', label: 'OpenAI Responses' }
+]
 
 export const PROVIDER_TYPE_OPTIONS: Array<{ value: ProviderConfig['type']; label: string }> = [
   { value: 'openai', label: 'OpenAI' },
@@ -271,7 +317,10 @@ export function buildInitialState(provider?: ProviderConfig): FormState {
       streamUsage: false,
       rpmLimit: '',
       rpmMaxWaitSeconds: '',
-      extraHeaders: []
+      extraHeaders: [],
+      endpoints: [],
+      keys: [],
+      balanceAdapter: ''
     }
   }
 
@@ -304,7 +353,22 @@ export function buildInitialState(provider?: ProviderConfig): FormState {
       name,
       value,
       _key: createKey()
-    }))
+    })),
+    endpoints: (provider.endpoints ?? []).map((endpoint) => ({
+      _key: createKey(),
+      id: endpoint.id,
+      label: endpoint.label ?? '',
+      protocol: endpoint.protocol,
+      baseUrl: endpoint.baseUrl
+    })),
+    keys: (provider.keys ?? []).map((key) => ({
+      _key: createKey(),
+      id: key.id,
+      label: key.label ?? '',
+      value: key.value,
+      active: key.active === true
+    })),
+    balanceAdapter: provider.balanceAdapter ?? ''
   }
 }
 

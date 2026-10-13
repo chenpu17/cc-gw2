@@ -364,6 +364,43 @@ export default {
     noModelsHint: 'No models are defined. This provider will run in pass-through mode—map routes in model routing or specify models directly in requests.',
     routeExample: 'Route Mapping Example:'
   },
+  endpoints: {
+    title: 'Protocol endpoints',
+    hint: 'Add extra protocol surfaces for the same upstream (they share the keys below). Requests whose protocol matches an endpoint are forwarded natively via it; others go through the primary endpoint with cross-protocol conversion.',
+    add: 'Add endpoint',
+    id: 'Endpoint ID',
+    idPlaceholder: 'e.g. openai-surface',
+    protocol: 'Protocol',
+    baseUrl: 'Endpoint Base URL',
+    baseUrlPlaceholder: 'https://api.example.com/v1',
+    label: 'Note',
+    labelPlaceholder: 'Note (optional)',
+    empty: 'Only the primary endpoint is used. Add one to expose more protocol surfaces.',
+    errors: {
+      idRequired: 'Endpoint ID is required',
+      idDuplicate: 'Endpoint IDs must be unique',
+      baseUrlInvalid: 'Endpoint Base URL must be a valid http(s) URL'
+    }
+  },
+  keys: {
+    title: 'Named keys',
+    hint: 'Keep several keys for the same provider; the “active” one authenticates every upstream request. Named keys take precedence over the basic API key above.',
+    add: 'Add key',
+    active: 'Active',
+    id: 'Key ID',
+    idPlaceholder: 'e.g. main',
+    label: 'Note',
+    labelPlaceholder: 'Note (optional)',
+    value: 'Key value',
+    valuePlaceholder: 'sk-...',
+    reveal: 'Show key',
+    hide: 'Hide key',
+    empty: 'No named keys — the basic API key above is used.',
+    errors: {
+      idRequired: 'Key ID is required',
+      idDuplicate: 'Key IDs must be unique'
+    }
+  },
   masterDetail: {
     emptyDetailTitle: 'Select a provider',
     emptyDetailHint: 'Pick a provider from the rail to view and edit it, or click "Add provider" above.',

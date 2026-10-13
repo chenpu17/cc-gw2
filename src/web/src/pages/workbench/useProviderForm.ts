@@ -3,15 +3,19 @@ import { useTranslation } from 'react-i18next'
 import type { FailoverPolicyConfig, ProviderConfig } from '@/types/providers'
 import {
   buildInitialState,
+  createEmptyEndpoint,
   createEmptyHeader,
+  createEmptyKey,
   createEmptyMember,
   createEmptyModel,
   defaultAuthModeForType,
   mapPresetModel,
   PROVIDER_TYPE_PRESETS,
+  type FormEndpoint,
   type FormErrors,
   type FormFailover,
   type FormHeader,
+  type FormKey,
   type FormModel,
   type FormState
 } from './ProviderDrawerSteps'
@@ -312,6 +316,62 @@ export function useProviderForm({ mode, provider, existingProviderIds, providers
     }))
   }
 
+  /** Additional protocol endpoints — keyed by _key so row edits stay stable. */
+  const handleEndpointChange = (index: number, patch: Partial<FormEndpoint>) => {
+    setForm((prev) => {
+      const next = [...prev.endpoints]
+      next[index] = { ...next[index], ...patch }
+      return { ...prev, endpoints: next }
+    })
+  }
+
+  const handleAddEndpoint = () => {
+    setForm((prev) => ({ ...prev, endpoints: [...prev.endpoints, createEmptyEndpoint()] }))
+  }
+
+  const handleRemoveEndpoint = (index: number) => {
+    setForm((prev) => {
+      if (index < 0 || index >= prev.endpoints.length) return prev
+      return { ...prev, endpoints: prev.endpoints.filter((_, idx) => idx !== index) }
+    })
+  }
+
+  /** Named keys — `active` is radio-exclusive: activating one clears the rest. */
+  const handleKeyChange = (index: number, patch: Partial<FormKey>) => {
+    setForm((prev) => {
+      const next = prev.keys.map((key, idx) => {
+        if (idx === index) return { ...key, ...patch }
+        // Activating one key deactivates the others (radio semantics).
+        return patch.active ? { ...key, active: false } : key
+      })
+      return { ...prev, keys: next }
+    })
+  }
+
+  const handleAddKey = () => {
+    setForm((prev) => ({
+      ...prev,
+      // First key becomes the active one by default (radio needs a pick).
+      keys: [...prev.keys, createEmptyKey(prev.keys.length === 0)]
+    }))
+  }
+
+  const handleRemoveKey = (index: number) => {
+    setForm((prev) => {
+      if (index < 0 || index >= prev.keys.length) return prev
+      const keys = prev.keys.filter((_, idx) => idx !== index)
+      // Never leave zero active keys while keys exist — promote the first.
+      if (keys.length > 0 && !keys.some((key) => key.active)) {
+        keys[0] = { ...keys[0], active: true }
+      }
+      return { ...prev, keys }
+    })
+  }
+
+  const handleBalanceAdapterChange = (value: FormState['balanceAdapter']) => {
+    setForm((prev) => ({ ...prev, balanceAdapter: value }))
+  }
+
   const validateErrors = (): FormErrors => {
     const nextErrors: FormErrors = {}
     const trimmedId = form.id.trim()
@@ -475,6 +535,64 @@ export function useProviderForm({ mode, provider, existingProviderIds, providers
       }
     }
 
+    // Additional protocol endpoints — mirrors the backend's surface
+    // validation (non-empty unique ids, http(s) base URLs).
+    if (form.type !== 'aggregate' && form.endpoints.length > 0) {
+      const endpointErrors: Record<string, string> = {}
+      const seenEndpointIds = new Set<string>()
+      for (const endpoint of form.endpoints) {
+        const id = endpoint.id.trim()
+        if (!id) {
+          endpointErrors[endpoint._key] = t('providers.endpoints.errors.idRequired')
+          continue
+        }
+        if (seenEndpointIds.has(id)) {
+          endpointErrors[endpoint._key] = t('providers.endpoints.errors.idDuplicate')
+          continue
+        }
+        seenEndpointIds.add(id)
+        const url = endpoint.baseUrl.trim()
+        if (!url) {
+          endpointErrors[endpoint._key] = t('providers.endpoints.errors.baseUrlInvalid')
+          continue
+        }
+        try {
+          // eslint-disable-next-line no-new
+          const parsed = new URL(url)
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            throw new Error('unsupported protocol')
+          }
+        } catch {
+          endpointErrors[endpoint._key] = t('providers.endpoints.errors.baseUrlInvalid')
+        }
+      }
+      if (Object.keys(endpointErrors).length > 0) {
+        nextErrors.endpoints = endpointErrors
+      }
+    }
+
+    // Named keys — non-empty unique ids (values are checked for whitespace
+    // only; the backend stores whatever is given).
+    if (form.type !== 'aggregate' && form.keys.length > 0) {
+      const keyErrors: Record<string, string> = {}
+      const seenKeyIds = new Set<string>()
+      for (const key of form.keys) {
+        const id = key.id.trim()
+        if (!id) {
+          keyErrors[key._key] = t('providers.keys.errors.idRequired')
+          continue
+        }
+        if (seenKeyIds.has(id)) {
+          keyErrors[key._key] = t('providers.keys.errors.idDuplicate')
+          continue
+        }
+        seenKeyIds.add(id)
+      }
+      if (Object.keys(keyErrors).length > 0) {
+        nextErrors.keys = keyErrors
+      }
+    }
+
     setErrors(nextErrors)
     return nextErrors
   }
@@ -524,6 +642,33 @@ export function useProviderForm({ mode, provider, existingProviderIds, providers
       models: trimmedModels.length > 0 ? trimmedModels : undefined,
       extraHeaders: isAggregate ? undefined : hasExtraHeaders ? extraHeaders : undefined,
       authMode: isAggregate ? undefined : authMode
+    }
+    if (!isAggregate) {
+      const endpoints = form.endpoints
+        .map((endpoint) => ({
+          id: endpoint.id.trim(),
+          label: endpoint.label.trim() || undefined,
+          protocol: endpoint.protocol,
+          baseUrl: endpoint.baseUrl.trim()
+        }))
+        .filter((endpoint) => endpoint.id.length > 0 && endpoint.baseUrl.length > 0)
+      if (endpoints.length > 0) {
+        payload.endpoints = endpoints
+      }
+      const keys = form.keys
+        .map((key) => ({
+          id: key.id.trim(),
+          label: key.label.trim() || undefined,
+          value: key.value,
+          active: key.active ? true : undefined
+        }))
+        .filter((key) => key.id.length > 0)
+      if (keys.length > 0) {
+        payload.keys = keys
+      }
+      if (form.balanceAdapter) {
+        payload.balanceAdapter = form.balanceAdapter
+      }
     }
     if (form.nonStreamViaStream) {
       payload.nonStreamViaStream = true
@@ -585,7 +730,14 @@ export function useProviderForm({ mode, provider, existingProviderIds, providers
     handleRemoveMember,
     handleMemberTargetChange,
     handleReorderMembers,
-    handleModelFailoverChange
+    handleModelFailoverChange,
+    handleEndpointChange,
+    handleAddEndpoint,
+    handleRemoveEndpoint,
+    handleKeyChange,
+    handleAddKey,
+    handleRemoveKey,
+    handleBalanceAdapterChange
   }
 }
 
