@@ -30,13 +30,29 @@ export function useProviderDetailState({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // Initial serialized snapshot — set on first render only.
+  // Initial serialized snapshot — set on first render only; nulled to force a
+  // re-baseline after `discard` or after a clean re-sync below.
   const initialJsonRef = useRef<string | null>(null)
   if (initialJsonRef.current === null) {
     initialJsonRef.current = JSON.stringify(providerForm.serialize())
   }
   const currentJson = JSON.stringify(providerForm.serialize())
   const dirty = currentJson !== initialJsonRef.current
+
+  // The saved provider can change underneath the panel (config refetch after
+  // another tab/CLI/endpoint dialog saved). A dirty draft always wins —
+  // protecting unsaved edits is the point — but a clean panel must not keep
+  // showing the mount-time snapshot, or the next small edit + save would
+  // silently roll the external change back. Render-phase reset with a
+  // re-baseline: the null initialJson re-initializes on the follow-up render.
+  const savedProviderRef = useRef(provider)
+  if (savedProviderRef.current !== provider) {
+    savedProviderRef.current = provider
+    if (!dirty) {
+      providerForm.resetForm()
+      initialJsonRef.current = null
+    }
+  }
 
   const save = async (): Promise<boolean> => {
     if (!providerForm.validate()) return false
@@ -57,6 +73,7 @@ export function useProviderDetailState({
 
   const discard = () => {
     providerForm.resetForm()
+    initialJsonRef.current = null
     setSaveError(null)
   }
 
