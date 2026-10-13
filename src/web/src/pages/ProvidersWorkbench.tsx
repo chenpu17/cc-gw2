@@ -52,6 +52,10 @@ export default function ProvidersWorkbenchPage() {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const [confirmingAction, setConfirmingAction] = useState(false)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  // Unsaved inline-draft flag from the providers detail panel, guarding the
+  // view switch (the panel unmounts when the view changes).
+  const [providersPanelDirty, setProvidersPanelDirty] = useState(false)
+  const [pendingViewSwitch, setPendingViewSwitch] = useState<WorkbenchView | null>(null)
 
   // Providers-view selection is deep-linkable via session state only — the
   // chosen detail panel persists across reloads via localStorage.
@@ -122,6 +126,16 @@ export default function ProvidersWorkbenchPage() {
     setEndpointDialogOpen(true)
   }
   const handleViewChange = (nextView: WorkbenchView) => {
+    // Leaving the providers view unmounts the inline detail panel — guard the
+    // unsaved draft the same way the rail does.
+    if (view === 'providers' && nextView !== 'providers' && providersPanelDirty) {
+      setPendingViewSwitch(nextView)
+      return
+    }
+    applyViewChange(nextView)
+  }
+
+  const applyViewChange = (nextView: WorkbenchView) => {
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous)
       if (nextView === 'providers') {
@@ -270,12 +284,12 @@ export default function ProvidersWorkbenchPage() {
       {view === 'providers' ? (
         <ProvidersMasterDetail
           providers={providers}
-          config={base.config}
           configPending={base.configQuery.isPending || (!base.config && base.configQuery.isFetching)}
           selectedProviderId={selectedProviderId}
           onSelectProvider={setSelectedProviderId}
           onTest={(provider) => providers.initiateTestConnection(provider)}
           onRequestDelete={(provider) => setConfirmAction({ kind: 'provider', provider })}
+          onDirtyChange={setProvidersPanelDirty}
         />
       ) : (
         <RoutingWorkspace
@@ -377,6 +391,21 @@ export default function ProvidersWorkbenchPage() {
           </div>
         ) : null}
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!pendingViewSwitch}
+        onOpenChange={(open) => {
+          if (!open) setPendingViewSwitch(null)
+        }}
+        title={t('providers.masterDetail.unsavedTitle')}
+        description={t('providers.masterDetail.unsavedBody')}
+        confirmLabel={t('providers.masterDetail.unsavedConfirm')}
+        cancelLabel={t('common.actions.cancel')}
+        onConfirm={() => {
+          if (pendingViewSwitch) applyViewChange(pendingViewSwitch)
+          setPendingViewSwitch(null)
+        }}
+      />
     </div>
   )
 }

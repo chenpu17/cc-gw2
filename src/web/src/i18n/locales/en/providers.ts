@@ -429,7 +429,10 @@ export default {
     noKeysMeta: 'no keys',
     dirtyHint: 'Unsaved changes',
     save: 'Save changes',
-    discard: 'Discard changes'
+    discard: 'Discard changes',
+    unsavedTitle: 'Discard unsaved changes?',
+    unsavedBody: 'The detail panel has unsaved changes that will be lost when you switch away.',
+    unsavedConfirm: 'Discard and leave'
   },
   presets: {
     title: 'Add provider',

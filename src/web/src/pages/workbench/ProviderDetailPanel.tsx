@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,8 @@ interface ProviderDetailPanelProps {
   onTest: (draft: ProviderConfig) => void
   onRequestDelete: (provider: ProviderConfig) => void
   onSubmit: (payload: ProviderConfig) => Promise<void>
+  /** Reports draft dirtiness upward so navigation away can guard against loss. */
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 /**
@@ -38,7 +40,8 @@ export function ProviderDetailPanel({
   testing,
   onTest,
   onRequestDelete,
-  onSubmit
+  onSubmit,
+  onDirtyChange
 }: ProviderDetailPanelProps) {
   const { t } = useTranslation()
   const [probeOpen, setProbeOpen] = useState(false)
@@ -49,6 +52,12 @@ export function ProviderDetailPanel({
   })
   const { form, errors, advancedOpen, providerIdRef } = providerForm
   const isAggregate = form.type === 'aggregate'
+
+  // Unmount (provider switch/delete) must not leave a stale dirty flag behind.
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+    return () => onDirtyChange?.(false)
+  }, [dirty, onDirtyChange])
 
   /** Member-backends for aggregate models: every concrete provider model,
    * excluding aggregate providers themselves (no nested aggregation in v1). */

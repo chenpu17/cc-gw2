@@ -421,7 +421,10 @@ export default {
     noKeysMeta: '未配置密钥',
     dirtyHint: '有未保存的修改',
     save: '保存修改',
-    discard: '放弃修改'
+    discard: '放弃修改',
+    unsavedTitle: '放弃未保存的修改？',
+    unsavedBody: '详情面板有未保存的修改，切换后将丢失。',
+    unsavedConfirm: '放弃修改并离开'
   },
   presets: {
     title: '新增 Provider',

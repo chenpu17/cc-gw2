@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -12,19 +13,20 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import type { GatewayConfig, ProviderConfig } from '@/types/providers'
+import type { ProviderConfig } from '@/types/providers'
 import { PROVIDER_TYPE_OPTIONS, providerTypeLabel } from './ProviderDrawerSteps'
 import { ProviderDetailPanel } from './ProviderDetailPanel'
 import type { ProvidersState } from './useProvidersState'
 
 interface ProvidersMasterDetailProps {
   providers: ProvidersState
-  config: GatewayConfig | null
   configPending: boolean
   selectedProviderId: string | null
   onSelectProvider: (providerId: string) => void
   onTest: (provider: ProviderConfig) => void
   onRequestDelete: (provider: ProviderConfig) => void
+  /** Draft dirtiness of the mounted detail panel (guarded navigation). */
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 /**
@@ -34,12 +36,12 @@ interface ProvidersMasterDetailProps {
  */
 export function ProvidersMasterDetail({
   providers,
-  config,
   configPending,
   selectedProviderId,
   onSelectProvider,
   onTest,
-  onRequestDelete
+  onRequestDelete,
+  onDirtyChange
 }: ProvidersMasterDetailProps) {
   const { t } = useTranslation()
   const {
@@ -51,10 +53,42 @@ export function ProvidersMasterDetail({
   } = providers
   const providersLength = providers.providers.length
 
-  const selectedProvider = useMemo(
-    () => providers.providers.find((item) => item.id === selectedProviderId) ?? null,
-    [providers.providers, selectedProviderId]
+  // Switching providers discards the inline draft — confirm first when dirty.
+  const [panelDirty, setPanelDirty] = useState(false)
+  const [pendingSelect, setPendingSelect] = useState<string | null>(null)
+  // The panel reports dirtiness here; the workbench taps the same signal to
+  // guard its view switch.
+  const handleDirtyChange = useCallback(
+    (dirty: boolean) => {
+      setPanelDirty(dirty)
+      onDirtyChange?.(dirty)
+    },
+    [onDirtyChange]
   )
+
+  // Closing the tab / reloading with an unsaved draft deserves the browser's
+  // own leave-confirmation prompt.
+  useEffect(() => {
+    if (!panelDirty) return
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [panelDirty])
+
+  const handleRailSelect = (providerId: string) => {
+    if (panelDirty && providerId !== selectedProviderId) {
+      setPendingSelect(providerId)
+      return
+    }
+    onSelectProvider(providerId)
+  }
+
+  const selectedProvider = providers.providers.find(
+    (item) => item.id === selectedProviderId
+  ) ?? null
 
   const renderRailRowMeta = (provider: ProviderConfig) => {
     const parts: string[] = []
@@ -132,7 +166,7 @@ export function ProvidersMasterDetail({
                     <button
                       type="button"
                       data-testid="provider-rail-row"
-                      onClick={() => onSelectProvider(provider.id)}
+                      onClick={() => handleRailSelect(provider.id)}
                       aria-current={active ? 'true' : undefined}
                       className={cn(
                         'motion-surface w-full border border-transparent px-3 py-2.5 text-left',
@@ -177,6 +211,7 @@ export function ProvidersMasterDetail({
           onTest={onTest}
           onRequestDelete={onRequestDelete}
           onSubmit={providers.handleUpdateProvider}
+          onDirtyChange={handleDirtyChange}
         />
       ) : (
         <Card>
@@ -188,6 +223,21 @@ export function ProvidersMasterDetail({
           </CardContent>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={!!pendingSelect}
+        onOpenChange={(open) => {
+          if (!open) setPendingSelect(null)
+        }}
+        title={t('providers.masterDetail.unsavedTitle')}
+        description={t('providers.masterDetail.unsavedBody')}
+        confirmLabel={t('providers.masterDetail.unsavedConfirm')}
+        cancelLabel={t('common.actions.cancel')}
+        onConfirm={() => {
+          if (pendingSelect) onSelectProvider(pendingSelect)
+          setPendingSelect(null)
+        }}
+      />
     </div>
   )
 }
