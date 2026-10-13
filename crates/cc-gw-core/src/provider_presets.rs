@@ -42,7 +42,7 @@ static PRESETS: &[ProviderPreset] = &[
         label: "OpenCode Zen",
         description: "Anthropic 兼容端点，面向编码代理的精选模型（常含免费档）",
         provider_type: "anthropic",
-        base_url: "https://opencode.ai/api/anthropic",
+        base_url: "https://opencode.ai/zen",
         balance_adapter: None,
         no_model_probe: false,
         default_models: &[],

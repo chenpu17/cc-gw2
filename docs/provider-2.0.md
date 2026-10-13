@@ -72,7 +72,7 @@ fn effective_target(target: RouteTarget, request_protocol: ProviderProtocol) -> 
 
 | id | 协议 | baseUrl | 余额 | 备注 |
 |---|---|---|---|---|
-| opencode-zen | anthropic | `https://opencode.ai/api/anthropic` | — | |
+| opencode-zen | anthropic | `https://opencode.ai/zen` | — | |
 | volcano-coding | anthropic | `https://ark.cn-beijing.volces.com/api/coding` | — | 火山方舟 Coding Plan |
 | zhipu | anthropic | `https://open.bigmodel.cn/api/anthropic` | — | 智谱 GLM |
 | aliyun-bailian | anthropic | `https://dashscope.aliyuncs.com/apps/anthropic` | — | `noModelProbe: true`（无模型列表端点） |
