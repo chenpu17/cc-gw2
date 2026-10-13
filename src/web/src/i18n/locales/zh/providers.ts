@@ -395,6 +395,23 @@ export default {
       idDuplicate: '密钥 ID 不可重复'
     }
   },
+  balance: {
+    title: '余额',
+    hint: '部分服务商支持余额查询。选择适配器（随配置保存）后可手动刷新；快照保存在网关运行态，重启后需重新刷新。',
+    adapter: '余额适配器',
+    adapterNone: '不查询',
+    refresh: '刷新余额',
+    refreshing: '刷新中…',
+    refreshSuccess: '余额已刷新',
+    refreshFailure: '余额刷新失败：{{message}}',
+    unsavedAdapter: '适配器修改需保存后生效',
+    noAdapter: '未配置余额适配器',
+    neverRefreshed: '尚未刷新过余额',
+    snapshotLabel: '最新快照',
+    fetchedAt: '刷新于 {{time}}',
+    rawTitle: '原始返回数据',
+    displayEmpty: '未能解析余额（可查看原始数据）'
+  },
   masterDetail: {
     emptyDetailTitle: '选择一个 Provider',
     emptyDetailHint: '从左侧列表选择 Provider 查看与编辑，或点击上方「新增提供商」创建。',

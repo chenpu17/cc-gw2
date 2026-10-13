@@ -27,7 +27,6 @@ export interface SurfacesSectionProps {
   onKeyChange: (index: number, patch: Partial<FormKey>) => void
   onAddKey: () => void
   onRemoveKey: (index: number) => void
-  onBalanceAdapterChange: (value: '' | BalanceAdapterId) => void
 }
 
 const BALANCE_ADAPTER_OPTIONS: Array<{ value: BalanceAdapterId; label: string }> = [
@@ -50,8 +49,7 @@ export function ProviderSurfacesSection({
   onRemoveEndpoint,
   onKeyChange,
   onAddKey,
-  onRemoveKey,
-  onBalanceAdapterChange
+  onRemoveKey
 }: SurfacesSectionProps) {
   const { t } = useTranslation()
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set())

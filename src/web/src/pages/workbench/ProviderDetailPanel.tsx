@@ -9,6 +9,7 @@ import { providerTypeLabel } from './ProviderDrawerSteps'
 import { BasicsStep, ModelsStep } from './ProviderDrawerSteps'
 import { AggregateModelsStep } from './AggregateModelsStep'
 import { ProbeModelsDialog } from './ProbeModelsDialog'
+import { ProviderBalanceSection } from './ProviderBalanceSection'
 import { ProviderSurfacesSection } from './ProviderSurfacesSection'
 import { TestResultInline } from './TestResultInline'
 import type { ProviderTestResult } from './shared'
@@ -169,17 +170,24 @@ export function ProviderDetailPanel({
         <div className="space-y-8">
           <BasicsStep {...stepProps} />
           {isAggregate ? null : (
-            <ProviderSurfacesSection
-              form={form}
-              errors={errors}
-              onEndpointChange={providerForm.handleEndpointChange}
-              onAddEndpoint={providerForm.handleAddEndpoint}
-              onRemoveEndpoint={providerForm.handleRemoveEndpoint}
-              onKeyChange={providerForm.handleKeyChange}
-              onAddKey={providerForm.handleAddKey}
-              onRemoveKey={providerForm.handleRemoveKey}
-              onBalanceAdapterChange={providerForm.handleBalanceAdapterChange}
-            />
+            <>
+              <ProviderSurfacesSection
+                form={form}
+                errors={errors}
+                onEndpointChange={providerForm.handleEndpointChange}
+                onAddEndpoint={providerForm.handleAddEndpoint}
+                onRemoveEndpoint={providerForm.handleRemoveEndpoint}
+                onKeyChange={providerForm.handleKeyChange}
+                onAddKey={providerForm.handleAddKey}
+                onRemoveKey={providerForm.handleRemoveKey}
+              />
+              <ProviderBalanceSection
+                providerId={provider.id}
+                adapter={form.balanceAdapter}
+                savedAdapter={provider.balanceAdapter}
+                onAdapterChange={providerForm.handleBalanceAdapterChange}
+              />
+            </>
           )}
           {testResult ? <TestResultInline result={testResult} /> : null}
           {isAggregate ? <AggregateModelsStep {...stepProps} /> : <ModelsStep {...stepProps} />}

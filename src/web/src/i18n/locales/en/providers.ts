@@ -401,6 +401,23 @@ export default {
       idDuplicate: 'Key IDs must be unique'
     }
   },
+  balance: {
+    title: 'Balance',
+    hint: 'Some providers expose a balance endpoint. Pick an adapter (saved with the config) and refresh manually; snapshots live in gateway runtime state and are lost on restart.',
+    adapter: 'Balance adapter',
+    adapterNone: 'Do not query',
+    refresh: 'Refresh balance',
+    refreshing: 'Refreshing…',
+    refreshSuccess: 'Balance refreshed',
+    refreshFailure: 'Balance refresh failed: {{message}}',
+    unsavedAdapter: 'Save the adapter change before refreshing',
+    noAdapter: 'No balance adapter configured',
+    neverRefreshed: 'Never refreshed',
+    snapshotLabel: 'Latest snapshot',
+    fetchedAt: 'Fetched {{time}}',
+    rawTitle: 'Raw response',
+    displayEmpty: 'Could not parse the balance (see raw data)'
+  },
   masterDetail: {
     emptyDetailTitle: 'Select a provider',
     emptyDetailHint: 'Pick a provider from the rail to view and edit it, or click "Add provider" above.',
