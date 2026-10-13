@@ -72,6 +72,50 @@ pub struct RoutingPreset {
 
 pub type ModelRouteMap = IndexMap<String, String>;
 
+/// One protocol surface of a provider. A provider may expose several (e.g. an
+/// Anthropic-compatible surface and an OpenAI-compatible one) at different
+/// base URLs sharing the same key set; requests prefer the surface whose
+/// protocol matches the incoming endpoint protocol, avoiding cross-protocol
+/// conversion. Empty array = only the primary surface (`base_url` + `type`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ProviderEndpointConfig {
+    pub id: String,
+    pub label: Option<String>,
+    /// "anthropic" | "openai" | "openai-responses" — the same marker space as
+    /// `ProviderConfig::provider_type` protocol hints.
+    pub protocol: String,
+    pub base_url: String,
+}
+
+/// One named upstream API key. The effective key for a request is the first
+/// entry marked `active: true`; when no entry is marked the first entry wins.
+/// Empty array = the provider's legacy `api_key` field.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ProviderKeyConfig {
+    pub id: String,
+    pub label: Option<String>,
+    pub value: String,
+    pub active: Option<bool>,
+}
+
+/// The named key that should authenticate requests: the first entry marked
+/// `active`, else the first entry. `None` when no named keys are configured.
+pub fn effective_provider_key(keys: &[ProviderKeyConfig]) -> Option<&ProviderKeyConfig> {
+    keys.iter()
+        .find(|key| key.active.unwrap_or(false))
+        .or_else(|| keys.first())
+}
+
+fn protocol_marker(protocol: crate::provider::ProviderProtocol) -> &'static str {
+    match protocol {
+        crate::provider::ProviderProtocol::AnthropicMessages => "anthropic",
+        crate::provider::ProviderProtocol::OpenAiChatCompletions => "openai",
+        crate::provider::ProviderProtocol::OpenAiResponses => "openai-responses",
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct EndpointPathConfig {
@@ -120,6 +164,13 @@ pub struct ProviderConfig {
     pub extra_headers: HashMap<String, String>,
     #[serde(rename = "type")]
     pub provider_type: Option<String>,
+    /// Additional protocol surfaces beyond the primary (`base_url` + `type`).
+    pub endpoints: Vec<ProviderEndpointConfig>,
+    /// Named upstream keys; the active one overrides `api_key` at request time.
+    pub keys: Vec<ProviderKeyConfig>,
+    /// Balance/quota adapter id ("deepseek" | "moonshot" | "siliconflow" |
+    /// "openrouter"); None = no balance support for this provider.
+    pub balance_adapter: Option<String>,
 }
 
 impl ProviderConfig {
@@ -127,6 +178,38 @@ impl ProviderConfig {
     /// expand to real backends during routing and never forward requests.
     pub fn is_aggregate(&self) -> bool {
         self.provider_type.as_deref() == Some(AGGREGATE_PROVIDER_TYPE)
+    }
+
+    /// Request-scoped view of this provider for `request_protocol`:
+    /// - Endpoint selection: a surface whose protocol matches the request
+    ///   overrides `base_url`/`provider_type` (native path, no conversion);
+    ///   otherwise the primary surface stays and the proxy converts.
+    /// - Key selection: the effective named key overrides `api_key`.
+    /// Downstream consumers (forward_request, build_headers, converters) keep
+    /// reading the same `base_url`/`api_key`/`provider_type` fields untouched.
+    pub fn effective_for_protocol(
+        &self,
+        request_protocol: crate::provider::ProviderProtocol,
+    ) -> ProviderConfig {
+        let mut view = self.clone();
+        if let Some(endpoint) = self
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.protocol == protocol_marker(request_protocol))
+        {
+            view.base_url = endpoint.base_url.clone();
+            view.provider_type = Some(endpoint.protocol.clone());
+            // The endpoint's protocol is authoritative — don't let a stale
+            // anthropic-version header re-trigger the Anthropic heuristic.
+            if endpoint.protocol != "anthropic" {
+                view.extra_headers
+                    .retain(|key, _| !key.eq_ignore_ascii_case("anthropic-version"));
+            }
+        }
+        if let Some(key) = effective_provider_key(&self.keys) {
+            view.api_key = Some(key.value.clone());
+        }
+        view
     }
 }
 
@@ -147,6 +230,9 @@ impl Default for ProviderConfig {
             models: Vec::new(),
             extra_headers: HashMap::new(),
             provider_type: None,
+            endpoints: Vec::new(),
+            keys: Vec::new(),
+            balance_adapter: None,
         }
     }
 }
@@ -392,9 +478,68 @@ impl GatewayConfig {
         self.validate()?;
         self.validate_route_provider_references()?;
         self.validate_aggregate_providers()?;
+        self.validate_provider_surfaces()?;
         if let Some(seconds) = self.upstream_stream_idle_timeout_seconds {
             if !(1..=86_400).contains(&seconds) {
                 bail!("上游流式空闲超时秒数必须在 1-86400 之间: {seconds}");
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates the additive Provider 2.0 surfaces: multi-protocol endpoints
+    /// (unique non-empty ids, known protocol, http(s) baseUrl) and named keys
+    /// (unique non-empty ids). Exactly-one-active is NOT enforced here — the
+    /// read path normalizes (first marked active, else first entry).
+    fn validate_provider_surfaces(&self) -> Result<()> {
+        const KNOWN_PROTOCOLS: [&str; 3] = ["anthropic", "openai", "openai-responses"];
+        const KNOWN_BALANCE_ADAPTERS: [&str; 4] =
+            ["deepseek", "moonshot", "siliconflow", "openrouter"];
+        for provider in &self.providers {
+            let mut endpoint_ids = HashSet::new();
+            for endpoint in &provider.endpoints {
+                if endpoint.id.trim().is_empty() {
+                    bail!("Provider {} 存在 id 为空的多协议端点", provider.id);
+                }
+                if !endpoint_ids.insert(endpoint.id.clone()) {
+                    bail!(
+                        "Provider {} 的多协议端点 id 重复: {}",
+                        provider.id,
+                        endpoint.id
+                    );
+                }
+                if !KNOWN_PROTOCOLS.contains(&endpoint.protocol.as_str()) {
+                    bail!(
+                        "Provider {} 端点 {} 的协议无效: {}（可选 anthropic / openai / openai-responses）",
+                        provider.id, endpoint.id, endpoint.protocol
+                    );
+                }
+                let base = endpoint.base_url.trim();
+                if base.is_empty() || !(base.starts_with("http://") || base.starts_with("https://"))
+                {
+                    bail!(
+                        "Provider {} 端点 {} 的 baseUrl 必须是 http(s) 地址",
+                        provider.id,
+                        endpoint.id
+                    );
+                }
+            }
+            let mut key_ids = HashSet::new();
+            for key in &provider.keys {
+                if key.id.trim().is_empty() {
+                    bail!("Provider {} 存在 id 为空的命名密钥", provider.id);
+                }
+                if !key_ids.insert(key.id.clone()) {
+                    bail!("Provider {} 的命名密钥 id 重复: {}", provider.id, key.id);
+                }
+            }
+            if let Some(adapter) = provider.balance_adapter.as_deref() {
+                if !KNOWN_BALANCE_ADAPTERS.contains(&adapter) {
+                    bail!(
+                        "Provider {} 的余额适配器无效: {}（可选 deepseek / moonshot / siliconflow / openrouter）",
+                        provider.id, adapter
+                    );
+                }
             }
         }
         Ok(())
@@ -1163,5 +1308,241 @@ mod tests {
         config
             .validate()
             .expect("startup tolerates dangling member");
+    }
+
+    fn multi_surface_provider() -> ProviderConfig {
+        ProviderConfig {
+            id: "dual".to_string(),
+            label: "Dual".to_string(),
+            base_url: "https://primary.example.com/v1".to_string(),
+            api_key: Some("legacy-key".to_string()),
+            provider_type: Some("openai".to_string()),
+            endpoints: vec![
+                ProviderEndpointConfig {
+                    id: "anthropic-surface".to_string(),
+                    label: Some("Anthropic surface".to_string()),
+                    protocol: "anthropic".to_string(),
+                    base_url: "https://anthropic.example.com/api".to_string(),
+                },
+                ProviderEndpointConfig {
+                    id: "openai-surface".to_string(),
+                    label: None,
+                    protocol: "openai".to_string(),
+                    base_url: "https://openai.example.com/v1".to_string(),
+                },
+            ],
+            keys: vec![
+                ProviderKeyConfig {
+                    id: "primary".to_string(),
+                    label: Some("主力".to_string()),
+                    value: "key-a".to_string(),
+                    active: Some(false),
+                },
+                ProviderKeyConfig {
+                    id: "backup".to_string(),
+                    label: None,
+                    value: "key-b".to_string(),
+                    active: Some(true),
+                },
+            ],
+            ..ProviderConfig::default()
+        }
+    }
+
+    #[test]
+    fn effective_for_protocol_prefers_matching_endpoint() {
+        let provider = multi_surface_provider();
+
+        // Anthropic request → native anthropic surface, no conversion.
+        let anthropic_view =
+            provider.effective_for_protocol(crate::provider::ProviderProtocol::AnthropicMessages);
+        assert_eq!(anthropic_view.base_url, "https://anthropic.example.com/api");
+        assert_eq!(anthropic_view.provider_type.as_deref(), Some("anthropic"));
+
+        // OpenAI chat request → native openai surface.
+        let openai_view = provider
+            .effective_for_protocol(crate::provider::ProviderProtocol::OpenAiChatCompletions);
+        assert_eq!(openai_view.base_url, "https://openai.example.com/v1");
+        assert_eq!(openai_view.provider_type.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn effective_for_protocol_falls_back_to_primary_surface() {
+        let provider = multi_surface_provider();
+        // No openai-responses endpoint exists → primary surface stays and the
+        // proxy will convert.
+        let view = provider.effective_for_protocol(crate::provider::ProviderProtocol::OpenAiResponses);
+        assert_eq!(view.base_url, "https://primary.example.com/v1");
+        assert_eq!(view.provider_type.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn effective_for_protocol_strips_anthropic_version_hint_for_openai_surface() {
+        let mut provider = multi_surface_provider();
+        provider
+            .extra_headers
+            .insert("anthropic-version".to_string(), "2023-06-01".to_string());
+        let view = provider
+            .effective_for_protocol(crate::provider::ProviderProtocol::OpenAiChatCompletions);
+        // The endpoint's protocol wins over the header heuristic.
+        assert!(
+            !view
+                .extra_headers
+                .keys()
+                .any(|key| key.eq_ignore_ascii_case("anthropic-version")),
+            "anthropic-version must not leak into an openai-surface view"
+        );
+        // …but an anthropic surface keeps it.
+        let anthropic_view =
+            provider.effective_for_protocol(crate::provider::ProviderProtocol::AnthropicMessages);
+        assert!(anthropic_view.extra_headers.contains_key("anthropic-version"));
+    }
+
+    #[test]
+    fn effective_for_protocol_applies_active_named_key() {
+        let provider = multi_surface_provider();
+        let view = provider.effective_for_protocol(crate::provider::ProviderProtocol::OpenAiChatCompletions);
+        assert_eq!(view.api_key.as_deref(), Some("key-b"));
+    }
+
+    #[test]
+    fn effective_provider_key_selection_rules() {
+        let first_active = vec![
+            ProviderKeyConfig {
+                id: "a".to_string(),
+                value: "va".to_string(),
+                active: Some(false),
+                ..Default::default()
+            },
+            ProviderKeyConfig {
+                id: "b".to_string(),
+                value: "vb".to_string(),
+                active: Some(true),
+                ..Default::default()
+            },
+        ];
+        assert_eq!(effective_provider_key(&first_active).map(|k| k.id.as_str()), Some("b"));
+
+        // Several marked active → the first marked one wins.
+        let multi_active = vec![
+            ProviderKeyConfig {
+                id: "a".to_string(),
+                value: "va".to_string(),
+                active: Some(true),
+                ..Default::default()
+            },
+            ProviderKeyConfig {
+                id: "b".to_string(),
+                value: "vb".to_string(),
+                active: Some(true),
+                ..Default::default()
+            },
+        ];
+        assert_eq!(effective_provider_key(&multi_active).map(|k| k.id.as_str()), Some("a"));
+
+        // None marked → the first entry wins.
+        let unmarked = vec![
+            ProviderKeyConfig {
+                id: "a".to_string(),
+                value: "va".to_string(),
+                ..Default::default()
+            },
+            ProviderKeyConfig {
+                id: "b".to_string(),
+                value: "vb".to_string(),
+                ..Default::default()
+            },
+        ];
+        assert_eq!(effective_provider_key(&unmarked).map(|k| k.id.as_str()), Some("a"));
+
+        // Empty array → no named key; legacy api_key stays authoritative.
+        assert!(effective_provider_key(&[]).is_none());
+    }
+
+    #[test]
+    fn effective_for_protocol_leaves_legacy_provider_untouched() {
+        let provider = ProviderConfig {
+            id: "legacy".to_string(),
+            label: "Legacy".to_string(),
+            base_url: "https://legacy.example.com/v1".to_string(),
+            api_key: Some("legacy-key".to_string()),
+            provider_type: Some("anthropic".to_string()),
+            ..ProviderConfig::default()
+        };
+        let view = provider.effective_for_protocol(crate::provider::ProviderProtocol::OpenAiChatCompletions);
+        assert_eq!(view.base_url, provider.base_url);
+        assert_eq!(view.provider_type, provider.provider_type);
+        assert_eq!(view.api_key, provider.api_key);
+    }
+
+    #[test]
+    fn provider_config_deserializes_legacy_json_without_new_fields() {
+        let json = r#"{
+            "id": "legacy",
+            "label": "Legacy",
+            "baseUrl": "https://legacy.example.com/v1",
+            "apiKey": "sk-legacy",
+            "type": "openai"
+        }"#;
+        let provider: ProviderConfig = serde_json::from_str(json).expect("parse legacy provider");
+        assert!(provider.endpoints.is_empty());
+        assert!(provider.keys.is_empty());
+        assert_eq!(provider.balance_adapter, None);
+    }
+
+    #[test]
+    fn provider_config_roundtrips_new_surfaces() {
+        let provider = multi_surface_provider();
+        let json = serde_json::to_string(&provider).expect("serialize provider");
+        let parsed: ProviderConfig = serde_json::from_str(&json).expect("parse provider");
+        assert_eq!(parsed.endpoints, provider.endpoints);
+        assert_eq!(parsed.keys, provider.keys);
+        assert_eq!(parsed.balance_adapter, provider.balance_adapter);
+    }
+
+    #[test]
+    fn validate_for_save_rejects_broken_surfaces() {
+        let base = || GatewayConfig {
+            providers: vec![multi_surface_provider()],
+            ..GatewayConfig::default()
+        };
+
+        // Happy path validates.
+        base().validate_for_save().expect("valid multi-surface provider");
+
+        // Duplicate endpoint ids.
+        let mut config = base();
+        config.providers[0].endpoints[1].id = "anthropic-surface".to_string();
+        assert!(config
+            .validate_for_save()
+            .is_err_and(|error| error.to_string().contains("端点 id 重复")));
+
+        // Unknown protocol marker.
+        let mut config = base();
+        config.providers[0].endpoints[0].protocol = "grpc".to_string();
+        assert!(config
+            .validate_for_save()
+            .is_err_and(|error| error.to_string().contains("协议无效")));
+
+        // Non-http endpoint baseUrl.
+        let mut config = base();
+        config.providers[0].endpoints[0].base_url = "ftp://nope".to_string();
+        assert!(config
+            .validate_for_save()
+            .is_err_and(|error| error.to_string().contains("baseUrl")));
+
+        // Duplicate key ids.
+        let mut config = base();
+        config.providers[0].keys[1].id = "primary".to_string();
+        assert!(config
+            .validate_for_save()
+            .is_err_and(|error| error.to_string().contains("密钥 id 重复")));
+
+        // Unknown balance adapter.
+        let mut config = base();
+        config.providers[0].balance_adapter = Some("acme".to_string());
+        assert!(config
+            .validate_for_save()
+            .is_err_and(|error| error.to_string().contains("余额适配器无效")));
     }
 }
