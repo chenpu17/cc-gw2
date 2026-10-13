@@ -25,6 +25,36 @@ export interface ProviderModelConfig {
   failover?: FailoverPolicyConfig
 }
 
+/** Protocol an endpoint speaks natively; also the route-time protocol marker. */
+export type ProviderEndpointProtocol = 'anthropic' | 'openai' | 'openai-responses'
+
+/**
+ * One protocol surface of a provider. When the request protocol matches an
+ * endpoint, routing rewrites baseUrl/type to it so the request is forwarded
+ * natively (no cross-protocol conversion).
+ */
+export interface ProviderEndpointConfig {
+  id: string
+  label?: string
+  protocol: ProviderEndpointProtocol
+  baseUrl: string
+}
+
+/**
+ * One named API key of a provider. The effective key is the first entry with
+ * `active: true` (else the first entry); when `keys` is empty the provider's
+ * legacy `apiKey` applies.
+ */
+export interface ProviderKeyConfig {
+  id: string
+  label?: string
+  value: string
+  active?: boolean
+}
+
+/** Balance dashboard adapters; absent = balance not queryable. */
+export type BalanceAdapterId = 'deepseek' | 'moonshot' | 'siliconflow' | 'openrouter'
+
 export interface ProviderConfig {
   id: string
   label: string
@@ -43,6 +73,43 @@ export interface ProviderConfig {
   models?: ProviderModelConfig[]
   extraHeaders?: Record<string, string>
   type?: 'openai' | 'deepseek' | 'kimi' | 'anthropic' | 'huawei' | 'custom' | 'aggregate'
+  /** Additional protocol surfaces sharing the provider's key set. */
+  endpoints?: ProviderEndpointConfig[]
+  /** Named keys; the active one overrides `apiKey` at request time. */
+  keys?: ProviderKeyConfig[]
+  balanceAdapter?: BalanceAdapterId
+}
+
+/** One entry of the built-in preset catalog (`GET /api/provider-presets`). */
+export interface ProviderPreset {
+  id: string
+  label: string
+  description: string
+  type: 'anthropic' | 'openai'
+  baseUrl: string
+  balanceAdapter?: BalanceAdapterId
+  /** True = the upstream has no model-list endpoint; skip the probe step. */
+  noModelProbe?: boolean
+  defaultModels: string[]
+}
+
+export interface ProviderPresetsResponse {
+  presets: ProviderPreset[]
+}
+
+/** Runtime balance snapshot from a manual refresh (not persisted across restarts). */
+export interface BalanceSnapshot {
+  adapter: BalanceAdapterId
+  providerId: string
+  fetchedAt: number
+  /** Normalized display string, e.g. "110.00 CNY"; absent when parsing failed. */
+  display?: string
+  /** Raw upstream JSON for the disclosure detail view. */
+  raw: unknown
+}
+
+export interface BalanceSnapshotsResponse {
+  balances: BalanceSnapshot[]
 }
 
 /** Backend health entry from `GET /api/providers/backends/health`; keyed by `providerId:modelId`. */
