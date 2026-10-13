@@ -398,7 +398,8 @@ export default {
     empty: 'No named keys — the basic API key above is used.',
     errors: {
       idRequired: 'Key ID is required',
-      idDuplicate: 'Key IDs must be unique'
+      idDuplicate: 'Key IDs must be unique',
+      valueRequired: 'Key value is required'
     }
   },
   balance: {

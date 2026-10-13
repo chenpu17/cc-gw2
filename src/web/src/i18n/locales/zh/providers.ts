@@ -392,7 +392,8 @@ export default {
     empty: '未配置命名密钥，使用上方基础 API Key。',
     errors: {
       idRequired: '密钥 ID 不可为空',
-      idDuplicate: '密钥 ID 不可重复'
+      idDuplicate: '密钥 ID 不可重复',
+      valueRequired: '请填写密钥值'
     }
   },
   balance: {

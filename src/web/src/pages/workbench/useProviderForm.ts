@@ -571,8 +571,8 @@ export function useProviderForm({ mode, provider, existingProviderIds, providers
       }
     }
 
-    // Named keys — non-empty unique ids (values are checked for whitespace
-    // only; the backend stores whatever is given).
+    // Named keys — non-empty unique ids with a filled value (mirrors the
+    // backend: an empty-valued key would authenticate with `Bearer `).
     if (form.type !== 'aggregate' && form.keys.length > 0) {
       const keyErrors: Record<string, string> = {}
       const seenKeyIds = new Set<string>()
@@ -587,6 +587,9 @@ export function useProviderForm({ mode, provider, existingProviderIds, providers
           continue
         }
         seenKeyIds.add(id)
+        if (!key.value.trim()) {
+          keyErrors[key._key] = t('providers.keys.errors.valueRequired')
+        }
       }
       if (Object.keys(keyErrors).length > 0) {
         nextErrors.keys = keyErrors
