@@ -53,6 +53,7 @@ export default {
     requestedModelFallback: 'Not specified',
     apiKeyUnknown: 'Unknown key',
     tokensNoUsage: 'no usage from upstream',
+    costUnpricedHint: 'Unpriced: no price matched this model',
     columns: {
       time: 'Time',
       endpoint: 'Endpoint',
@@ -62,6 +63,7 @@ export default {
       routedModel: 'Routed model',
       apiKey: 'API Key',
       tokens: 'Tokens',
+      cost: 'Cost',
       duration: 'Latency',
       tokenIn: 'In',
       tokenOut: 'Out',
@@ -138,7 +140,8 @@ export default {
       ttft: 'TTFT (first token latency)',
       tpot: 'TPOT (avg ms/token)',
       error: 'Error',
-      errorSource: 'Error source'
+      errorSource: 'Error source',
+      cost: 'Cost'
     },
     errorSource: {
       none: 'None',
@@ -222,6 +225,14 @@ export default {
       collapse: 'Collapse inline preview'
     },
     loadError: 'Unable to load log detail.',
-    tokensNoUsageHint: 'Upstream returned no usage; token counts are unknown (not zero).'
+    tokensNoUsageHint: 'Upstream returned no usage; token counts are unknown (not zero).',
+    cost: {
+      title: 'Cost',
+      input: 'Cost · input',
+      output: 'Cost · output',
+      cacheRead: 'Cost · cache read',
+      cacheCreation: 'Cost · cache write',
+      unpricedHint: 'No price matched this model (shown as —). Add a price override under Settings → Billing.'
+    }
   }
 }

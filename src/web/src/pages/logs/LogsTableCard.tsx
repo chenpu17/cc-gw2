@@ -21,6 +21,8 @@ interface LogsTableCardProps {
   logsError?: string | null
   logsPending: boolean
   items: LogRecord[]
+  /** Display currency for the cost column (billing, v0.16). */
+  costCurrency?: string
   activeFiltersCount: number
   total: number
   handleResetFilters: () => void
@@ -48,6 +50,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
     logsError,
     logsPending,
     items,
+    costCurrency,
     activeFiltersCount,
     total,
     handleResetFilters,
@@ -147,6 +150,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
                   {visibleColumnSet.has('routedModel') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.routedModel')}</th>}
                   {visibleColumnSet.has('apiKey') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.apiKey')}</th>}
                   {visibleColumnSet.has('tokens') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.tokens')}</th>}
+                  {visibleColumnSet.has('cost') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.cost')}</th>}
                   {visibleColumnSet.has('duration') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.duration')}</th>}
                   {visibleColumnSet.has('status') && <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.status')}</th>}
                   {visibleColumnSet.has('error') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.error')}</th>}
@@ -185,6 +189,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
                       isEven={index % 2 === 0}
                       density={rowDensity}
                       visibleColumnSet={visibleColumnSet}
+                      costCurrency={costCurrency}
                     />
                   ))
                 )}
@@ -211,6 +216,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
                 record={item}
                 providerLabelMap={providerLabelMap}
                 onSelect={handleOpenDetail}
+                costCurrency={costCurrency}
               />
             ))
           )}

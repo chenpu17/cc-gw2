@@ -13,6 +13,7 @@ export type LogColumnId =
   | 'routedModel'
   | 'apiKey'
   | 'tokens'
+  | 'cost'
   | 'duration'
   | 'status'
   | 'error'
@@ -27,6 +28,7 @@ export const DEFAULT_VISIBLE_COLUMNS: LogColumnId[] = [
   'routedModel',
   'apiKey',
   'tokens',
+  'cost',
   'duration',
   'status',
   'error'
@@ -40,6 +42,7 @@ export const LOG_COLUMN_ORDER: LogColumnId[] = [
   'routedModel',
   'apiKey',
   'tokens',
+  'cost',
   'duration',
   'status',
   'error'

@@ -2,15 +2,18 @@ import type { CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { LogRecord } from '@/types/logs'
 import { Badge } from '@/components/ui/badge'
+import { formatCost } from '@/utils/currency'
 import { formatDateTime, formatLatency, formatNumber, getLogStatusMeta, getSessionRowTone } from './utils'
 
 interface LogCardProps {
   record: LogRecord
   providerLabelMap: Map<string, string>
   onSelect: (id: number) => void
+  /** Display currency for the cost line (billing, v0.16). */
+  costCurrency?: string
 }
 
-export function LogCard({ record, providerLabelMap, onSelect }: LogCardProps) {
+export function LogCard({ record, providerLabelMap, onSelect, costCurrency }: LogCardProps) {
   const { t } = useTranslation()
   const statusMeta = getLogStatusMeta(record, t)
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
@@ -52,6 +55,7 @@ export function LogCard({ record, providerLabelMap, onSelect }: LogCardProps) {
             {t('logs.table.columns.latencyTtft')} {formatNumber(record.ttft_ms)}
           </span>
         ) : null}
+        {record.cost != null ? <span>{formatCost(record.cost, costCurrency)}</span> : null}
       </div>
     </button>
   )

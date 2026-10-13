@@ -49,6 +49,8 @@ export interface LogPayload {
 
 export interface LogDetail extends LogRecord {
   payload: LogPayload | null
+  /** Display currency of cost fields on the detail response. */
+  cost_currency?: string
 }
 
 export interface LogListResponse {

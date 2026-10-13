@@ -7,7 +7,8 @@ export const storageKeys = {
     trendMode: 'cc-gw.dashboard.trend-mode'
   },
   logs: {
-    visibleColumns: 'cc-gw.logs.visible-columns-v2',
+    // v3 = v2 + `cost` column (billing, v0.16); v2 value migrates on first read.
+    visibleColumns: 'cc-gw.logs.visible-columns-v3',
     density: 'cc-gw.logs.density',
     pageSize: 'cc-gw.logs.page-size',
     providerFilter: 'cc-gw.logs.provider-filter',

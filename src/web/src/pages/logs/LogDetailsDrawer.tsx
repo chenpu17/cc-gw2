@@ -14,6 +14,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLogDetailState } from './useLogDetailState'
 import { ErrorDetailBlock } from './ErrorDetailBlock'
+import { formatCost } from '@/utils/currency'
 import { buildPayloadDisplay, formatDateTime, formatLatency, formatNumber, formatStreamLabel, hasMissingUsage, parseErrorDetail } from './utils'
 import type { PayloadDisplay } from './utils'
 
@@ -196,6 +197,34 @@ export function LogDetailsDrawer({
                   <DetailStatCard label={t('logs.detail.info.cacheCreationTokens')} value={formatNumber(record.cache_creation_tokens)} />
                   <DetailStatCard label={t('logs.detail.info.outputTokens')} value={formatNumber(record.output_tokens)} />
                 </div>
+
+                {/* Cost breakdown (billing, v0.16): total + four components in
+                    the display currency; fully unpriced → all dashes. */}
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" data-testid="log-cost-breakdown">
+                  <DetailStatCard
+                    label={t('logs.detail.cost.title')}
+                    value={formatCost(record.cost, record.cost_currency)}
+                  />
+                  <DetailStatCard
+                    label={t('logs.detail.cost.input')}
+                    value={formatCost(record.cost_breakdown?.input ?? null, record.cost_currency)}
+                  />
+                  <DetailStatCard
+                    label={t('logs.detail.cost.output')}
+                    value={formatCost(record.cost_breakdown?.output ?? null, record.cost_currency)}
+                  />
+                  <DetailStatCard
+                    label={t('logs.detail.cost.cacheRead')}
+                    value={formatCost(record.cost_breakdown?.cacheRead ?? null, record.cost_currency)}
+                  />
+                  <DetailStatCard
+                    label={t('logs.detail.cost.cacheCreation')}
+                    value={formatCost(record.cost_breakdown?.cacheCreation ?? null, record.cost_currency)}
+                  />
+                </div>
+                {record.cost == null && !hasMissingUsage(record) ? (
+                  <p className="text-xs text-muted-foreground/70">{t('logs.detail.cost.unpricedHint')}</p>
+                ) : null}
                 {hasMissingUsage(record) ? (
                   <p className="text-xs text-muted-foreground/70">{t('logs.detail.tokensNoUsageHint')}</p>
                 ) : null}

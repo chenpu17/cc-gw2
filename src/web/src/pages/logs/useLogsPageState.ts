@@ -206,6 +206,8 @@ export function useLogsPageState() {
   const total = logsQuery.data?.total ?? 0
   const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0
   const items = logsQuery.data?.items ?? []
+  /** Display currency of per-record cost fields (billing, v0.16). */
+  const costCurrency = logsQuery.data?.cost_currency
   const exportTimeoutMs = useMemo(() => {
     const timeoutSeconds = exportConfigQuery.data?.logExportTimeoutSeconds
     if (typeof timeoutSeconds === 'number' && Number.isFinite(timeoutSeconds)) {
@@ -467,6 +469,7 @@ export function useLogsPageState() {
     handleToggleExpand,
     isDetailOpen,
     items,
+    costCurrency,
     logsQuery,
     modelFilter,
     page,

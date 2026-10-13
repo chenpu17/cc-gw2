@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { LogColumnId, RowDensity } from './shared'
+import { formatCost } from '@/utils/currency'
 import { formatDateTime, formatLatency, formatNumber, getLogStatusMeta, getSessionRowTone, hasMissingUsage } from './utils'
 import { LogInlineDetail } from './LogInlineDetail'
 
@@ -20,6 +21,8 @@ interface LogRowProps {
   isEven: boolean
   density: RowDensity
   visibleColumnSet: ReadonlySet<LogColumnId>
+  /** Display currency for the cost cell (billing, v0.16). */
+  costCurrency?: string
 }
 
 export function LogRow({
@@ -31,7 +34,8 @@ export function LogRow({
   onToggleExpand,
   isEven,
   density,
-  visibleColumnSet
+  visibleColumnSet,
+  costCurrency
 }: LogRowProps) {
   const { t } = useTranslation()
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
@@ -143,6 +147,17 @@ export function LogRow({
                   </span>
                 ) : null
               })()}
+            </span>
+          </td>
+        )}
+        {visibleColumnSet.has('cost') && (
+          <td className={cn(cellPadding, 'text-right text-xs tabular-nums align-top')}>
+            <span
+              className="whitespace-nowrap"
+              title={record.cost == null ? t('logs.table.costUnpricedHint') : undefined}
+              data-testid={`log-cost-${record.id}`}
+            >
+              {formatCost(record.cost, costCurrency)}
             </span>
           </td>
         )}

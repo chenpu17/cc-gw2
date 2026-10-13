@@ -53,6 +53,7 @@ filters: {
     requestedModelFallback: '未指定',
     apiKeyUnknown: '未知密钥',
     tokensNoUsage: '上游未返回 usage',
+    costUnpricedHint: '未计价：该模型未匹配到价格',
     columns: {
       time: '时间',
       endpoint: '端点',
@@ -62,6 +63,7 @@ filters: {
       routedModel: '路由模型',
       apiKey: 'API Key',
       tokens: 'Tokens',
+      cost: '成本',
       duration: '耗时',
       tokenIn: '输入',
       tokenOut: '输出',
@@ -138,7 +140,8 @@ filters: {
       ttft: 'TTFT (首 Token 耗时)',
       tpot: 'TPOT (平均 ms/Token)',
       error: '错误信息',
-      errorSource: '错误来源'
+      errorSource: '错误来源',
+      cost: '成本'
     },
     errorSource: {
       none: '无',
@@ -221,6 +224,14 @@ filters: {
       collapse: '收起行内预览'
     },
     loadError: '无法加载日志详情。',
-    tokensNoUsageHint: '上游未返回 usage，token 数未知（非 0）。'
+    tokensNoUsageHint: '上游未返回 usage，token 数未知（非 0）。',
+    cost: {
+      title: '成本',
+      input: '成本·输入',
+      output: '成本·输出',
+      cacheRead: '成本·缓存读',
+      cacheCreation: '成本·缓存写',
+      unpricedHint: '该请求的模型未匹配到价格（显示 —）。可在 设置 → 计费 中添加价格覆盖。'
+    }
   }
 }

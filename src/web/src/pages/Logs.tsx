@@ -64,6 +64,7 @@ export default function LogsPage() {
         logsError={state.logsQuery.isError ? state.logsQuery.error?.message ?? null : null}
         logsPending={state.logsQuery.isPending}
         items={state.items}
+        costCurrency={state.costCurrency}
         activeFiltersCount={state.activeFilters.length}
         total={state.total}
         handleResetFilters={state.handleResetFilters}
