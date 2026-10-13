@@ -55,7 +55,7 @@ fn effective_target(target: RouteTarget, request_protocol: ProviderProtocol) -> 
 | adapter | 上游端点 | display 归一化 |
 |---|---|---|
 | deepseek | `GET {base}/user/balance` | `balance_infos` 各币种合计，如 `110.00 CNY` |
-| moonshot | `GET {base}/users/me/balance` | `available_balance`，如 `-0.76 CNY` |
+| moonshot | `GET {base}/users/me/balance` | `data.available_balance`（数字，`code=0`），如 `49.59 CNY` |
 | siliconflow | `GET {base}/user/info` | `data.balance`，如 `9.76 CNY` |
 | openrouter | `GET {base}/key` | `data.usage / data.limit`（limit null = 无上限） |
 

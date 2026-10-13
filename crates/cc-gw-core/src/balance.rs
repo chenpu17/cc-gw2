@@ -135,17 +135,17 @@ pub fn normalize_deepseek(raw: &Value) -> Option<String> {
     Some(parts.join(" / "))
 }
 
-/// Moonshot `/v1/users/me/balance` → `available_balance`, e.g. "-0.76 CNY".
+/// Moonshot `/v1/users/me/balance` → `data.available_balance`，e.g. "49.59 CNY"。
+/// 官方结构：`code=0` + `data.{available_balance, voucher_balance, cash_balance}`
+/// （数字类型，platform.moonshot.cn/docs/api/balance）；`code != 0` 或结构
+/// 不符 → None。
 pub fn normalize_moonshot(raw: &Value) -> Option<String> {
-    let amount = raw.get("available_balance")?.as_str()?;
-    let currency = raw
-        .get("balance_infos")
-        .and_then(Value::as_array)
-        .and_then(|infos| infos.first())
-        .and_then(|info| info.get("currency"))
-        .and_then(Value::as_str)
-        .unwrap_or("CNY");
-    Some(format!("{amount} {currency}"))
+    let code = raw.get("code").and_then(Value::as_i64);
+    if code.is_some_and(|code| code != 0) {
+        return None;
+    }
+    let amount = raw.get("data")?.get("available_balance")?.as_f64()?;
+    Some(format!("{amount:.2} CNY"))
 }
 
 /// SiliconFlow `/v1/user/info` → `data.balance`, e.g. "9.76 CNY".
@@ -186,13 +186,19 @@ mod tests {
             Some("110.00 CNY")
         );
 
+        // Moonshot 官方结构：code=0 + data.available_balance 数字
+        // （platform.moonshot.cn/docs/api/balance 示例）
         let moonshot = serde_json::json!({
-            "available_balance": "-0.76",
-            "balance_infos": [{"total_balance": "0.00", "currency": "CNY"}]
+            "code": 0,
+            "data": {
+                "available_balance": 49.58894,
+                "voucher_balance": 46.58893,
+                "cash_balance": 3.00001
+            }
         });
         assert_eq!(
             normalize_moonshot(&moonshot).as_deref(),
-            Some("-0.76 CNY")
+            Some("49.59 CNY")
         );
 
         let siliconflow = serde_json::json!({
@@ -226,8 +232,31 @@ mod tests {
     fn normalizers_return_none_on_unrecognized_shapes() {
         assert_eq!(normalize_deepseek(&serde_json::json!({})), None);
         assert_eq!(normalize_moonshot(&serde_json::json!({})), None);
+        assert_eq!(normalize_moonshot(&serde_json::json!({"code": 0})), None);
+        // 业务失败：code != 0 视为不可用，即使带数据
+        assert_eq!(
+            normalize_moonshot(&serde_json::json!({
+                "code": 1001,
+                "data": {"available_balance": 49.58894}
+            })),
+            None
+        );
         assert_eq!(normalize_siliconflow(&serde_json::json!({})), None);
         assert_eq!(normalize_openrouter(&serde_json::json!({})), None);
+    }
+
+    #[test]
+    fn moonshot_official_shape_covers_zero_and_negative() {
+        let zero = serde_json::json!({
+            "code": 0,
+            "data": {"available_balance": 0.0, "voucher_balance": 0.0, "cash_balance": 0.0}
+        });
+        assert_eq!(normalize_moonshot(&zero).as_deref(), Some("0.00 CNY"));
+        let negative = serde_json::json!({
+            "code": 0,
+            "data": {"available_balance": -0.76}
+        });
+        assert_eq!(normalize_moonshot(&negative).as_deref(), Some("-0.76 CNY"));
     }
 
     #[test]
