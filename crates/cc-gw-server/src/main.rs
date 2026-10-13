@@ -481,6 +481,10 @@ fn build_router(state: AppState) -> Router {
             get(admin_routes::api_provider_balances),
         )
         .route(
+            "/api/provider-presets",
+            get(admin_routes::api_provider_presets),
+        )
+        .route(
             "/api/providers/backends/health",
             get(admin_routes::api_backends_health),
         )

@@ -716,6 +716,11 @@ pub(super) async fn api_provider_balances(State(state): State<AppState>) -> Resp
     Json(json!({ "balances": snapshots })).into_response()
 }
 
+/// Built-in provider preset catalog — single source of truth, static data.
+pub(super) async fn api_provider_presets() -> Response {
+    Json(json!({ "presets": cc_gw_core::provider_presets::provider_presets() })).into_response()
+}
+
 pub(super) async fn api_provider_models_probe(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,

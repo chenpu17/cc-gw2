@@ -9749,3 +9749,61 @@ async fn provider_balance_refresh_stores_snapshot_and_records_failures() {
     upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);
 }
+
+#[tokio::test]
+async fn provider_presets_route_serves_complete_catalog() {
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(GatewayConfig::default(), "provider-presets").await;
+    let client = reqwest::Client::new();
+
+    let payload: Value = client
+        .get(format!("http://{gateway_addr}/api/provider-presets"))
+        .send()
+        .await
+        .expect("request presets")
+        .json()
+        .await
+        .expect("decode presets");
+
+    let presets = payload["presets"].as_array().cloned().unwrap_or_default();
+    assert_eq!(presets.len(), 8, "catalog size pinned: {payload:?}");
+    for preset in &presets {
+        for field in ["id", "label", "description", "type", "baseUrl"] {
+            assert!(
+                preset[field].as_str().is_some_and(|value| !value.is_empty()),
+                "preset {:?} missing {field}",
+                preset["id"]
+            );
+        }
+        assert!(
+            preset["baseUrl"]
+                .as_str()
+                .is_some_and(|url| url.starts_with("https://")),
+            "preset {:?} baseUrl must be https",
+            preset["id"]
+        );
+    }
+    let by_id = |id: &str| {
+        presets
+            .iter()
+            .find(|preset| preset["id"].as_str() == Some(id))
+            .unwrap_or_else(|| panic!("preset {id} missing"))
+            .clone()
+    };
+    // Template metadata the create dialog depends on.
+    assert_eq!(
+        by_id("aliyun-bailian")["noModelProbe"].as_bool(),
+        Some(true),
+        "bailian is the known no-probe preset"
+    );
+    assert_eq!(
+        by_id("openrouter")["balanceAdapter"].as_str(),
+        Some("openrouter")
+    );
+    // Optional metadata is omitted, not null, when absent.
+    assert!(by_id("zhipu").get("balanceAdapter").is_none());
+    assert!(by_id("zhipu").get("noModelProbe").is_none());
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}

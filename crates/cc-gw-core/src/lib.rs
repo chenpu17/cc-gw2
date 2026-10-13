@@ -7,6 +7,7 @@ pub mod health;
 pub mod models;
 pub mod observability;
 pub mod provider;
+pub mod provider_presets;
 pub mod ratelimit;
 pub mod routing;
 pub mod storage;
