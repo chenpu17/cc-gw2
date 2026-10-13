@@ -335,6 +335,9 @@ export function buildInitialState(provider?: ProviderConfig): FormState {
     models: (provider.models ?? []).map((model) => ({
       ...model,
       _key: createKey(),
+      // Rust serializes unset Options as null — normalize so the tri-state
+      // select reads unset as "inherit" (not "disabled").
+      nonStreamViaStream: model.nonStreamViaStream ?? undefined,
       members: (model.members ?? []).map((member) => ({
         ...member,
         _key: createKey()
