@@ -8,7 +8,7 @@
  *    specs. A serial `setup` test seeds provider + endpoint + preset + log so
  *    subsequent tests can open each overlay against stable data.
  *  - Sampled overlays (no tag → all four projects): CommandPalette,
- *    ProviderDrawer edit, LogDetailsDrawer — locale-agnostic selectors
+ *    Provider detail panel, LogDetailsDrawer — locale-agnostic selectors
  *    (testid / structural / role-without-name) so they run under en too.
  */
 import { visualTest as test, expect, waitForVisualReady, expectPageSnapshot, hideVolatileVisualValues } from './visual-helpers'
