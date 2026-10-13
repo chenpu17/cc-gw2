@@ -442,11 +442,13 @@ export function useSettingsPageState() {
       })
       // Billing changes re-price dashboards/logs/logs-export at query time —
       // bust every stats-bearing cache so new numbers show immediately.
+      // api-keys usage carries costs too and lives in its own namespace.
       if (isBillingDirty) {
         void queryClient.invalidateQueries({ queryKey: ['stats'] })
         void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
         void queryClient.invalidateQueries({ queryKey: ['logs'] })
         void queryClient.invalidateQueries({ queryKey: ['billing'] })
+        void queryClient.invalidateQueries({ queryKey: ['api-keys'] })
       }
       void configQuery.refetch()
     } catch (error) {

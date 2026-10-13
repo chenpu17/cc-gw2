@@ -261,3 +261,48 @@ test('settings billing section edits overrides through the UI and saves', async 
     costText(12.55 * overview.today.requests)
   )
 })
+
+test('currency switch re-prices the api-key usage table without a reload', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+  await putBillingConfig(request, baseUrl, {
+    displayCurrency: 'CNY',
+    rates: { USD: 7.2 },
+    modelPrices: { 'stub-model': USD_OVERRIDE },
+  })
+  await seedTrackedRequest(request, baseUrl)
+
+  // Load the dashboard in CNY and open the API Key dimension so the
+  // api-keys usage query gets cached warm.
+  await page.goto(`${baseUrl}/ui/`)
+  const usageResponse = page.waitForResponse((response) =>
+    response.request().method() === 'GET'
+    && new URL(response.url()).pathname.endsWith('/api/stats/api-keys/usage'))
+  await page.getByTestId('dashboard-usage-tab-apiKeys').click()
+  await usageResponse
+  await expect(page.getByTestId('dashboard-usage-row')).toHaveCount(1)
+  await expect(page.getByTestId('dashboard-usage-row').first()
+    .getByTestId('dashboard-usage-cost')).toContainText('¥')
+
+  // Switch the display currency through the settings page (SPA navigation).
+  await page.getByRole('link', { name: '设置', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '设置', level: 1 })).toBeVisible()
+  await page.getByRole('combobox', { name: '展示货币' }).click()
+  await page.getByRole('option', { name: 'USD（$）' }).click()
+  await page.getByRole('button', { name: '保存设置' }).first().click()
+  await expect(page.getByText(/系统配置已更新|配置已保存/)).toBeVisible()
+
+  // Back via the sidebar — a pure SPA move, no page reload: the dashboard
+  // remounts against warm caches. The api-keys usage cache lives in its own
+  // ['api-keys'] namespace and must have been invalidated with the rest,
+  // otherwise the row keeps its CNY amount under the new currency symbol.
+  await page.getByRole('link', { name: '仪表盘', exact: true }).click()
+  await expect(page.getByTestId('dashboard-today-value-cost')).toContainText('$')
+  const keyRowCost = page.getByTestId('dashboard-usage-row').first()
+    .getByTestId('dashboard-usage-cost')
+  await expect(keyRowCost).toContainText('$')
+  await expect(keyRowCost).not.toContainText('¥')
+
+  // The re-priced row matches the API's post-switch value ($12.55/request).
+  const usageApi = await (await request.get(`${baseUrl}/api/stats/api-keys/usage`)).json()
+  expect(usageApi[0].cost).toBeCloseTo(12.55 * usageApi[0].requests, 4)
+})
