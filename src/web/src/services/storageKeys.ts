@@ -28,5 +28,8 @@ export const storageKeys = {
   },
   modelManagement: {
     recentRouteTargets: 'cc-gw.model-management.recent-route-targets'
+  },
+  workbench: {
+    providerSelection: 'cc-gw.workbench.provider-selection'
   }
 } as const

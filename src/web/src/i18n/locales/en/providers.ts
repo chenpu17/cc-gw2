@@ -364,6 +364,41 @@ export default {
     noModelsHint: 'No models are defined. This provider will run in pass-through mode—map routes in model routing or specify models directly in requests.',
     routeExample: 'Route Mapping Example:'
   },
+  masterDetail: {
+    emptyDetailTitle: 'Select a provider',
+    emptyDetailHint: 'Pick a provider from the rail to view and edit it, or click "Add provider" above.',
+    modelsMeta_one: '{{count}} model',
+    modelsMeta_other: '{{count}} models',
+    keysMeta_one: '{{count}} key',
+    keysMeta_other: '{{count}} keys',
+    noKeysMeta: 'no keys',
+    dirtyHint: 'Unsaved changes',
+    save: 'Save changes',
+    discard: 'Discard changes'
+  },
+  presets: {
+    title: 'Add provider',
+    description: 'Start from a preset template, or configure manually.',
+    template: 'Template',
+    templatePlaceholder: 'Pick a template or configure manually',
+    groupPresets: 'Preset templates',
+    groupManual: 'Manual setup',
+    noModelProbeNote: 'This service has no model-list endpoint; fill in models manually after creation.',
+    createAction: 'Create',
+    errors: {
+      missingConfig: 'Config not loaded yet — try again in a moment.'
+    },
+    catalog: {
+      'opencode-zen': 'Anthropic-compatible endpoint with curated models for coding agents (often includes a free tier).',
+      'volcano-coding': 'Volcano Ark Coding plan, Anthropic-compatible endpoint.',
+      'zhipu': 'Zhipu open platform, Anthropic-compatible endpoint.',
+      'aliyun-bailian': 'Alibaba Cloud Bailian, Anthropic-compatible endpoint; no model-list API, fill models manually.',
+      'kimi': 'Moonshot AI open platform, OpenAI-compatible endpoint with balance query.',
+      'deepseek': 'DeepSeek open platform, OpenAI-compatible endpoint with balance query.',
+      'siliconflow': 'SiliconFlow aggregation platform, OpenAI-compatible endpoint with balance query.',
+      'openrouter': 'OpenRouter aggregation platform, OpenAI-compatible endpoint with quota query.'
+    }
+  },
   confirm: {
     delete: 'Remove provider “{{name}}”?',
     deleteImpact: 'This will also clean up {{count}} routing rule(s) that reference this provider.'

@@ -358,6 +358,29 @@ export default {
     noModelsHint: '当前未配置模型列表。该 Provider 将以"透传"模式使用，可在模型路由中映射，或在请求中直接指定模型。',
     routeExample: '路由映射示例：'
   },
+  masterDetail: {
+    emptyDetailTitle: '选择一个 Provider',
+    emptyDetailHint: '从左侧列表选择 Provider 查看与编辑，或点击上方「新增提供商」创建。',
+    modelsMeta: '{{count}} 个模型',
+    keysMeta: '{{count}} 个密钥',
+    noKeysMeta: '未配置密钥',
+    dirtyHint: '有未保存的修改',
+    save: '保存修改',
+    discard: '放弃修改'
+  },
+  presets: {
+    title: '新增 Provider',
+    description: '从预设模板一键创建，或选择手动配置。',
+    template: '模板',
+    templatePlaceholder: '选择模板或手动配置',
+    groupPresets: '预设模板',
+    groupManual: '手动配置',
+    noModelProbeNote: '该服务无模型列表接口，创建后请手动填写模型。',
+    createAction: '创建',
+    errors: {
+      missingConfig: '配置尚未加载，请稍后重试'
+    }
+  },
   confirm: {
     delete: '确认删除 Provider「{{name}}」？',
     deleteImpact: '将同时清理 {{count}} 条引用该 Provider 的路由规则。'

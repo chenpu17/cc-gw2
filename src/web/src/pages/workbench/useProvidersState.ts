@@ -11,9 +11,9 @@ import {
 } from './shared'
 
 /**
- * Provider state for the providers workbench: list filtering, drawer
- * create/edit flow, deletion (including route cleanup) and connection
- * testing with the latest result kept per provider.
+ * Provider state for the providers workbench: list filtering, create/update
+ * saves, deletion (including route cleanup) and connection testing with the
+ * latest result kept per provider.
  */
 export function useProvidersState(
   base: WorkbenchConfigState,
@@ -24,9 +24,6 @@ export function useProvidersState(
 
   const [providerSearch, setProviderSearch] = useState('')
   const [providerTypeFilter, setProviderTypeFilter] = useState<string>('all')
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
-  const [editingProvider, setEditingProvider] = useState<ProviderConfig | undefined>(undefined)
   const [testingProviderId, setTestingProviderId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, ProviderTestResult>>({})
   const [testDialogOpen, setTestDialogOpen] = useState(false)
@@ -84,48 +81,36 @@ export function useProvidersState(
     [t]
   )
 
-  const handleOpenCreate = () => {
-    if (!ensureConfig()) return
-    setDrawerMode('create')
-    setEditingProvider(undefined)
-    setDrawerOpen(true)
-  }
-
-  const handleOpenEdit = (provider: ProviderConfig) => {
-    if (!ensureConfig()) return
-    setDrawerMode('edit')
-    setEditingProvider(provider)
-    setDrawerOpen(true)
-  }
-
-  const handleProviderSubmit = async (payload: ProviderConfig) => {
+  const handleCreateProvider = async (payload: ProviderConfig) => {
     if (!config) {
       throw new Error(t('settings.toast.missingConfig'))
     }
-
-    const nextProviders =
-      drawerMode === 'create'
-        ? [...providers, payload]
-        : providers.map((item) =>
-            editingProvider && item.id === editingProvider.id
-              ? { ...payload, id: editingProvider.id }
-              : item
-          )
-
     const nextConfig: GatewayConfig = {
       ...config,
-      providers: nextProviders
+      providers: [...providers, payload]
     }
-
     await gatewayApi.saveConfig(nextConfig)
     setConfig(nextConfig)
     void configQuery.refetch()
-
     pushToast({
-      title:
-        drawerMode === 'create'
-          ? t('providers.toast.createSuccess', { name: payload.label || payload.id })
-          : t('providers.toast.updateSuccess', { name: payload.label || payload.id }),
+      title: t('providers.toast.createSuccess', { name: payload.label || payload.id }),
+      variant: 'success'
+    })
+  }
+
+  const handleUpdateProvider = async (payload: ProviderConfig) => {
+    if (!config) {
+      throw new Error(t('settings.toast.missingConfig'))
+    }
+    const nextConfig: GatewayConfig = {
+      ...config,
+      providers: providers.map((item) => (item.id === payload.id ? payload : item))
+    }
+    await gatewayApi.saveConfig(nextConfig)
+    setConfig(nextConfig)
+    void configQuery.refetch()
+    pushToast({
+      title: t('providers.toast.updateSuccess', { name: payload.label || payload.id }),
       variant: 'success'
     })
   }
@@ -369,13 +354,6 @@ export function useProvidersState(
       // would otherwise keep them (they are dirty) and a later save could
       // persist a dangling route. Saved routes were sanitized in nextConfig.
       sanitizeDraftsForProvider?.(provider.id)
-      // If the deleted provider was open in the edit drawer, close it so the
-      // drawer doesn't keep showing a now-removed provider (ghost edit).
-      if (editingProvider?.id === provider.id) {
-        setDrawerOpen(false)
-        setEditingProvider(undefined)
-        setDrawerMode('create')
-      }
       pushToast({
         title: t('providers.toast.deleteSuccess', { name: provider.label || provider.id }),
         variant: 'success'
@@ -400,12 +378,6 @@ export function useProvidersState(
     providerTypeFilter,
     setProviderTypeFilter,
     defaultLabels,
-    drawerOpen,
-    setDrawerOpen,
-    drawerMode,
-    setDrawerMode,
-    editingProvider,
-    setEditingProvider,
     testingProviderId,
     testResults,
     testDialogOpen,
@@ -416,9 +388,8 @@ export function useProvidersState(
     noModelDialogProvider,
     setNoModelDialogProvider,
     anthropicTestHeaderOptions,
-    handleOpenCreate,
-    handleOpenEdit,
-    handleProviderSubmit,
+    handleCreateProvider,
+    handleUpdateProvider,
     handleDeleteProvider,
     handleTestConnection,
     initiateTestConnection,

@@ -7,17 +7,18 @@ import { PageToolbar } from '@/components/PageToolbar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { storageKeys } from '@/services/storageKeys'
 import type { CustomEndpoint } from '@/types/endpoints'
 import type { ConfirmAction } from './workbench/shared'
 import { countProviderRouteReferences } from './workbench/shared'
 import { useWorkbenchConfig } from './workbench/useWorkbenchConfig'
 import { useRoutingState } from './workbench/useRoutingState'
 import { useProvidersState } from './workbench/useProvidersState'
+import { CreateProviderDialog } from './workbench/CreateProviderDialog'
 import { EndpointDialog } from './workbench/EndpointDialog'
 import { NoModelConfiguredDialog } from './workbench/NoModelConfiguredDialog'
 import { PresetDiffDialog } from './workbench/PresetDiffDialog'
-import { ProviderDrawer } from './workbench/ProviderDrawer'
-import { ProvidersCardGrid } from './workbench/ProvidersCardGrid'
+import { ProvidersMasterDetail } from './workbench/ProvidersMasterDetail'
 import { RoutingWorkspace } from './workbench/RoutingWorkspace'
 import { TestConnectionDialog } from './workbench/TestConnectionDialog'
 
@@ -50,6 +51,31 @@ export default function ProvidersWorkbenchPage() {
   const [editingEndpoint, setEditingEndpoint] = useState<CustomEndpoint | undefined>(undefined)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const [confirmingAction, setConfirmingAction] = useState(false)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+
+  // Providers-view selection is deep-linkable via session state only — the
+  // chosen detail panel persists across reloads via localStorage.
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return window.localStorage.getItem(storageKeys.workbench.providerSelection)
+  })
+
+  useEffect(() => {
+    if (!selectedProviderId) {
+      window.localStorage.removeItem(storageKeys.workbench.providerSelection)
+      return
+    }
+    window.localStorage.setItem(storageKeys.workbench.providerSelection, selectedProviderId)
+  }, [selectedProviderId])
+
+  // Clear a stale selection once the config has loaded (deleted provider or
+  // a hand-edited config that no longer contains it).
+  useEffect(() => {
+    if (!selectedProviderId) return
+    if (base.configQuery.isPending) return
+    if (providers.providers.some((item) => item.id === selectedProviderId)) return
+    setSelectedProviderId(null)
+  }, [selectedProviderId, providers.providers, base.configQuery.isPending])
 
   // The selected routing endpoint is deep-linkable via `?tab=routing&endpoint=<id>`.
   // (Was the route editor dialog; now selects the endpoint in the col-1 rail.)
@@ -186,7 +212,7 @@ export default function ProvidersWorkbenchPage() {
     <div className="flex flex-col gap-6">
       <PageToolbar
         actions={view === 'providers' ? (
-          <Button size="sm" onClick={providers.handleOpenCreate}>
+          <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
             {t('providers.actions.add')}
           </Button>
         ) : (
@@ -241,24 +267,14 @@ export default function ProvidersWorkbenchPage() {
       </div>
 
       {view === 'providers' ? (
-        <ProvidersCardGrid
-          configPending={base.configQuery.isPending || (!base.config && base.configQuery.isFetching)}
-          testResults={providers.testResults}
-          filteredProviders={providers.filteredProviders}
-          providerSearch={providers.providerSearch}
-          providerTypeFilter={providers.providerTypeFilter}
-          providersLength={providers.providers.length}
-          defaultLabels={providers.defaultLabels}
+        <ProvidersMasterDetail
+          providers={providers}
           config={base.config}
-          customEndpoints={base.customEndpoints}
+          configPending={base.configQuery.isPending || (!base.config && base.configQuery.isFetching)}
+          selectedProviderId={selectedProviderId}
+          onSelectProvider={setSelectedProviderId}
           onTest={(provider) => providers.initiateTestConnection(provider)}
-          onEdit={(provider) => providers.handleOpenEdit(provider)}
-          onProviderSearchChange={providers.setProviderSearch}
-          onProviderTypeChange={providers.setProviderTypeFilter}
-          onResetFilters={() => {
-            providers.setProviderSearch('')
-            providers.setProviderTypeFilter('all')
-          }}
+          onRequestDelete={(provider) => setConfirmAction({ kind: 'provider', provider })}
         />
       ) : (
         <RoutingWorkspace
@@ -275,32 +291,15 @@ export default function ProvidersWorkbenchPage() {
         />
       )}
 
-      <ProviderDrawer
-        open={providers.drawerOpen}
-        mode={providers.drawerMode}
-        provider={providers.drawerMode === 'edit' ? providers.editingProvider : undefined}
-        existingProviderIds={providers.providers
-          .map((item) => item.id)
-          .filter((id) => (providers.drawerMode === 'edit' && providers.editingProvider ? id !== providers.editingProvider.id : true))}
-        allProviders={providers.providers}
-        testResult={providers.editingProvider ? providers.testResults[providers.editingProvider.id] ?? null : null}
-        testing={providers.editingProvider ? providers.testingProviderId === providers.editingProvider.id : false}
-        onTest={() => {
-          if (providers.editingProvider) {
-            void providers.handleTestConnection(providers.editingProvider)
-          }
+      <CreateProviderDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        config={base.config}
+        existingProviderIds={providers.providers.map((item) => item.id)}
+        onCreated={(providerId) => {
+          setSelectedProviderId(providerId)
+          void base.configQuery.refetch()
         }}
-        onDelete={() => {
-          if (providers.drawerMode === 'edit' && providers.editingProvider) {
-            setConfirmAction({ kind: 'provider', provider: providers.editingProvider })
-          }
-        }}
-        onClose={() => {
-          providers.setDrawerOpen(false)
-          providers.setEditingProvider(undefined)
-          providers.setDrawerMode('create')
-        }}
-        onSubmit={providers.handleProviderSubmit}
       />
 
       <TestConnectionDialog
@@ -320,7 +319,8 @@ export default function ProvidersWorkbenchPage() {
         onClose={() => providers.setNoModelDialogProvider(null)}
         onEdit={(provider) => {
           providers.setNoModelDialogProvider(null)
-          providers.handleOpenEdit(provider)
+          // The panel is where models are edited now — select the provider.
+          setSelectedProviderId(provider.id)
         }}
       />
 
