@@ -60,7 +60,9 @@ export function CreateProviderDialog({
   const [providerId, setProviderId] = useState('')
   const [label, setLabel] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ field: 'id' | 'baseUrl' | null; message: string } | null>(
+    null
+  )
   const [saving, setSaving] = useState(false)
 
   const presetsQuery = useApiQuery<ProviderPresetsResponse>(
@@ -132,23 +134,23 @@ export function CreateProviderDialog({
     const trimmedId = providerId.trim()
     const trimmedUrl = baseUrl.trim()
     if (!trimmedId) {
-      setError(t('providers.drawer.errors.idRequired'))
+      setError({ field: 'id', message: t('providers.drawer.errors.idRequired') })
       return
     }
     if (existingProviderIds.includes(trimmedId)) {
-      setError(t('providers.drawer.errors.idDuplicate'))
+      setError({ field: 'id', message: t('providers.drawer.errors.idDuplicate') })
       return
     }
     if (!isAggregate) {
       if (!trimmedUrl) {
-        setError(t('providers.drawer.errors.baseUrlInvalid'))
+        setError({ field: 'baseUrl', message: t('providers.drawer.errors.baseUrlInvalid') })
         return
       }
       try {
         // eslint-disable-next-line no-new
         new URL(trimmedUrl)
       } catch {
-        setError(t('providers.drawer.errors.baseUrlInvalid'))
+        setError({ field: 'baseUrl', message: t('providers.drawer.errors.baseUrlInvalid') })
         return
       }
     }
@@ -156,12 +158,15 @@ export function CreateProviderDialog({
     const type: ProviderConfig['type'] = selectedPreset
       ? selectedPreset.type
       : manualType ?? 'custom'
+    const defaultAuthMode = defaultAuthModeForType(type)
     const payload: ProviderConfig = {
       id: trimmedId,
       label: label.trim() || trimmedId,
       type,
       baseUrl: isAggregate ? undefined : trimmedUrl,
-      authMode: defaultAuthModeForType(type),
+      // Mirror the edit path's serialize(): a default apiKey-mode for
+      // non-anthropic types stays unset instead of being persisted.
+      authMode: defaultAuthMode === 'apiKey' && type !== 'anthropic' ? undefined : defaultAuthMode,
       ...(selectedPreset?.balanceAdapter ? { balanceAdapter: selectedPreset.balanceAdapter } : null)
     }
     if (selectedPreset && selectedPreset.defaultModels.length > 0) {
@@ -174,7 +179,10 @@ export function CreateProviderDialog({
       await onSubmit(payload)
     } catch (saveError) {
       setSaving(false)
-      setError(t('providers.drawer.toast.saveFailure', { message: toApiError(saveError).message }))
+      setError({
+        field: null,
+        message: t('providers.drawer.toast.saveFailure', { message: toApiError(saveError).message })
+      })
       return
     }
     onCreated(trimmedId)
@@ -239,7 +247,8 @@ export function CreateProviderDialog({
                 value={providerId}
                 onChange={(event) => handleProviderIdChange(event.target.value)}
                 placeholder={t('providers.drawer.fields.idPlaceholder')}
-                aria-invalid={Boolean(error)}
+                aria-invalid={error?.field === 'id'}
+                aria-describedby={error ? 'create-provider-error' : undefined}
               />
             </Label>
             <Label className="flex flex-col gap-2 text-sm">
@@ -263,14 +272,15 @@ export function CreateProviderDialog({
                 value={baseUrl}
                 onChange={(event) => setBaseUrl(event.target.value)}
                 placeholder={t('providers.drawer.fields.baseUrlPlaceholder')}
-                aria-invalid={Boolean(error)}
+                aria-invalid={error?.field === 'baseUrl'}
+                aria-describedby={error ? 'create-provider-error' : undefined}
               />
             </Label>
           )}
 
           {error ? (
-            <p className="text-xs text-destructive" aria-live="polite">
-              {error}
+            <p id="create-provider-error" className="text-xs text-destructive" aria-live="polite">
+              {error.message}
             </p>
           ) : null}
         </AppDialogBody>
