@@ -51,6 +51,8 @@ export default {
     todayOutput: '今日输出 Tokens',
     todayCached: '今日缓存 Tokens',
     todayErrorRate: '今日错误率',
+    todayCost: '今日成本',
+    unpricedHint: '{{count}} 条请求未计价',
     cacheHitHint: '命中率 {{value}}%',
     errorCountHint: '{{value}} 次错误',
     yesterdayHint: '昨日同期 {{value}}',
@@ -60,6 +62,11 @@ export default {
   charts: {
     trendTitle: '请求趋势',
     trendDesc: '最近 14 天请求量与平均延迟走势',
+    trendCostDesc: '最近 14 天成本走势（估算，未计价日断线）',
+    trendModeLabel: '趋势模式',
+    trendModeTraffic: '流量',
+    trendModeCost: '成本',
+    costLabel: '成本',
     latencyLabel: '平均延迟 (ms)',
     requestsTitle: '请求趋势',
     requestsDesc: '最近 14 天请求与 Token 走势',
@@ -112,8 +119,10 @@ export default {
       output: '输出 Tokens',
       cacheRead: '缓存读取',
       cacheCreation: '缓存写入',
+      cost: '成本',
       latency: '平均耗时'
     },
+    unpricedHint: '{{count}} 条请求未计价，成本仅为已计价部分',
     clientKinds: {
       unknown: '未识别',
       'claude-code': 'Claude Code',

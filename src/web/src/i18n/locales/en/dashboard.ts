@@ -51,6 +51,9 @@ export default {
     todayOutput: 'Output Tokens Today',
     todayCached: 'Cached Tokens Today',
     todayErrorRate: 'Error Rate Today',
+    todayCost: 'Cost Today',
+    unpricedHint_one: '{{count}} request unpriced',
+    unpricedHint_other: '{{count}} requests unpriced',
     cacheHitHint: 'Hit rate {{value}}%',
     errorCountHint: '{{value}} errors',
     yesterdayHint: 'Same time yesterday: {{value}}',
@@ -60,6 +63,11 @@ export default {
   charts: {
     trendTitle: 'Request trend',
     trendDesc: 'Requests and average latency over the last 14 days',
+    trendCostDesc: 'Estimated cost over the last 14 days (unpriced days break the line)',
+    trendModeLabel: 'Trend mode',
+    trendModeTraffic: 'Traffic',
+    trendModeCost: 'Cost',
+    costLabel: 'Cost',
     latencyLabel: 'Avg latency (ms)',
     requestsTitle: 'Request Trends',
     requestsDesc: 'Requests and token usage over the last 14 days',
@@ -112,8 +120,11 @@ export default {
       output: 'Output tokens',
       cacheRead: 'Cache read',
       cacheCreation: 'Cache creation',
+      cost: 'Cost',
       latency: 'Avg latency'
     },
+    unpricedHint_one: '{{count}} request unpriced; cost covers priced requests only',
+    unpricedHint_other: '{{count}} requests unpriced; cost covers priced requests only',
     clientKinds: {
       unknown: 'Unidentified',
       'claude-code': 'Claude Code',

@@ -105,6 +105,8 @@ export default function DashboardPage() {
             empty={!state.daily.length}
             loading={state.summaryPending}
             option={state.trendOption}
+            mode={state.trendMode}
+            onModeChange={state.setTrendMode}
           />
 
           <InsightsGrid daily={state.daily} models={state.models} />
@@ -117,6 +119,7 @@ export default function DashboardPage() {
             error={state.usageDimensionError}
             onRetry={state.refetchUsageDimension}
             customEndpoints={state.customEndpoints}
+            costCurrency={state.overview?.costCurrency}
           />
 
           <PerformanceDisclosure

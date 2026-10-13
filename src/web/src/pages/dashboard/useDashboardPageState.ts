@@ -199,7 +199,11 @@ export function useDashboardPageState() {
   const isBootstrapping = summaryQuery.isPending
   const bootstrapError = summaryQuery.error?.message ?? null
 
-  const trendOption = useMemo<EChartOption>(() => {
+  const [trendMode, setTrendMode] = usePersistentState<'traffic' | 'cost'>(
+    storageKeys.dashboard.trendMode,
+    'traffic'
+  )
+  const trafficTrendOption = useMemo<EChartOption>(() => {
     const requestLabel = t('dashboard.charts.barRequests')
     const latencyLabel = t('dashboard.charts.latencyLabel')
 
@@ -252,6 +256,64 @@ export function useDashboardPageState() {
       ]
     }
   }, [daily, chart, t])
+
+  // 成本模式：请求量淡化为背景柱，成本折线走第二轴。未计价日为 null，
+  // 折线自然断开 —— 与「null 表示未计价而非 0」的口径一致。
+  const costTrendOption = useMemo<EChartOption>(() => {
+    const requestLabel = t('dashboard.charts.barRequests')
+    const costLabel = t('dashboard.charts.costLabel')
+
+    return {
+      ...chart.base,
+      color: chart.palette,
+      tooltip: { trigger: 'axis', ...chart.base.tooltip },
+      legend: { data: [requestLabel, costLabel], ...chart.base.legend },
+      grid: chart.base.grid,
+      xAxis: {
+        type: 'category',
+        data: daily.map((item) => item.date.slice(5)),
+        axisLabel: { color: chart.axis },
+        axisLine: { lineStyle: { color: chart.splitLine } }
+      },
+      yAxis: [
+        {
+          type: 'value',
+          name: requestLabel,
+          nameTextStyle: { color: chart.axis },
+          axisLabel: { color: chart.axis },
+          splitLine: { lineStyle: { color: chart.splitLine } }
+        },
+        {
+          type: 'value',
+          name: costLabel,
+          nameTextStyle: { color: chart.axis },
+          axisLabel: { color: chart.axis },
+          splitLine: { show: false }
+        }
+      ],
+      series: [
+        {
+          name: requestLabel,
+          type: 'bar',
+          data: daily.map((item) => item.requestCount),
+          itemStyle: { color: chart.palette[0], opacity: 0.35, borderRadius: [4, 4, 0, 0] },
+          barMaxWidth: 24
+        },
+        {
+          name: costLabel,
+          type: 'line',
+          yAxisIndex: 1,
+          smooth: true,
+          showSymbol: false,
+          data: daily.map((item) => item.cost),
+          itemStyle: { color: chart.palette[1] },
+          lineStyle: { width: 2 }
+        }
+      ]
+    }
+  }, [daily, chart, t])
+
+  const trendOption = trendMode === 'cost' ? costTrendOption : trafficTrendOption
 
   const buildModelBarOption = useCallback(
     (
@@ -389,6 +451,8 @@ export function useDashboardPageState() {
     setupDoneCount,
     status,
     summaryPending: summaryQuery.isPending,
+    trendMode,
+    setTrendMode,
     trendOption,
     ttftOption,
     tpotOption,

@@ -25,6 +25,7 @@ import type { LogRecord } from '@/types/logs'
 import type { ClientActivityEntry } from '@/services/dashboard'
 import type { DimensionUsageMetric } from '@/services/stats'
 import { getLogStatusMeta } from '@/pages/logs/utils'
+import { formatCost } from '@/utils/currency'
 import { type UsageDistributionTab, USAGE_WINDOW_DAYS } from './useDashboardPageState'
 import {
   formatByteRate,
@@ -147,7 +148,7 @@ function eventLevelBadge(level: GatewayEvent['level']) {
   }
 }
 
-/** Layer 1b — today's consumption + health: requests, tokens, cache hit, error rate */
+/** Layer 1b — today's consumption + health: requests, tokens, cache hit, cost, error rate */
 export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
   const { t } = useTranslation()
   const today = overview?.today
@@ -157,6 +158,8 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
   const outputTokens = today?.outputTokens ?? 0
   const cacheRead = today?.cacheReadTokens ?? 0
   const errorCount = today?.errorCount ?? 0
+  const costCurrency = overview?.costCurrency ?? 'CNY'
+  const unpriced = today?.unpricedRequests ?? 0
 
   const errorRate = requests > 0 ? (errorCount / requests) * 100 : 0
   const yesterdayErrorRate =
@@ -183,7 +186,7 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
   const errorRateDelta = requests > 0 ? relDelta(errorRate, yesterdayErrorRate) : undefined
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" data-testid="dashboard-today-grid">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" data-testid="dashboard-today-grid">
       <MetricCard
         size="md"
         label={t('dashboard.cards.todayRequests')}
@@ -223,6 +226,18 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
         suffix={t('common.units.token')}
         hint={hitBase > 0 ? t('dashboard.cards.cacheHitHint', { value: hitRate.toFixed(1) }) : undefined}
         valueTestId="dashboard-today-value-cache-read"
+      />
+      <MetricCard
+        size="md"
+        label={t('dashboard.cards.todayCost')}
+        value={formatCost(today?.cost, costCurrency)}
+        delta={deltaChip(relDelta(today?.cost ?? undefined, yesterday?.cost ?? undefined))}
+        hint={
+          unpriced > 0
+            ? t('dashboard.cards.unpricedHint', { count: unpriced })
+            : undefined
+        }
+        valueTestId="dashboard-today-value-cost"
       />
       <MetricCard
         size="md"
@@ -420,25 +435,51 @@ export function AttentionAllClear({ connected, failed }: { connected: boolean; f
   )
 }
 
-/** Layer 3a — single aggregated 14-day trend chart (requests + avg latency) */
+/** Layer 3a — aggregated 14-day trend (traffic: requests + latency; cost:
+ *  cost line + faded request bars), switchable via segmented control. */
 export function TrendChart({
   empty,
   loading,
-  option
+  option,
+  mode,
+  onModeChange
 }: {
   empty: boolean
   loading?: boolean
   option: EChartOption
+  mode: 'traffic' | 'cost'
+  onModeChange: (mode: 'traffic' | 'cost') => void
 }) {
   const { t } = useTranslation()
   return (
     <ChartCard
       title={t('dashboard.charts.trendTitle')}
-      description={t('dashboard.charts.trendDesc')}
+      description={
+        mode === 'cost'
+          ? t('dashboard.charts.trendCostDesc')
+          : t('dashboard.charts.trendDesc')
+      }
       loading={loading}
       option={option}
       empty={empty}
       emptyText={t('dashboard.charts.empty')}
+      actions={
+        <SegmentedControl
+          value={mode}
+          onChange={onModeChange}
+          aria-label={t('dashboard.charts.trendModeLabel')}
+          options={[
+            {
+              value: 'traffic' as const,
+              label: <span data-testid="dashboard-trend-mode-traffic">{t('dashboard.charts.trendModeTraffic')}</span>
+            },
+            {
+              value: 'cost' as const,
+              label: <span data-testid="dashboard-trend-mode-cost">{t('dashboard.charts.trendModeCost')}</span>
+            }
+          ]}
+        />
+      }
     />
   )
 }
@@ -519,7 +560,8 @@ export function UsageDistributionSection({
   loading,
   error,
   onRetry,
-  customEndpoints
+  customEndpoints,
+  costCurrency
 }: {
   dimension: UsageDistributionTab
   onDimensionChange: (dimension: UsageDistributionTab) => void
@@ -528,6 +570,7 @@ export function UsageDistributionSection({
   error?: string | null
   onRetry?: () => void
   customEndpoints: { id: string; label?: string }[]
+  costCurrency?: string
 }) {
   const { t } = useTranslation()
 
@@ -620,6 +663,7 @@ export function UsageDistributionSection({
                 <TableHead className="text-right">{t('dashboard.usage.columns.output')}</TableHead>
                 <TableHead className="text-right">{t('dashboard.usage.columns.cacheRead')}</TableHead>
                 <TableHead className="text-right">{t('dashboard.usage.columns.cacheCreation')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.usage.columns.cost')}</TableHead>
                 <TableHead className="text-right">{t('dashboard.usage.columns.latency')}</TableHead>
               </TableRow>
             </TableHeader>
@@ -632,6 +676,21 @@ export function UsageDistributionSection({
                   <TableCell className="text-right">{row.outputTokens.toLocaleString()}</TableCell>
                   <TableCell className="text-right">{row.cacheReadTokens.toLocaleString()}</TableCell>
                   <TableCell className="text-right">{row.cacheCreationTokens.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums" data-testid="dashboard-usage-cost">
+                    {/* `*` marks partial pricing: the row sums priced requests
+                        only, unpriced ones are counted separately. */}
+                    {row.unpricedRequests > 0 ? (
+                      <span
+                        className="inline-flex items-baseline gap-0.5"
+                        title={t('dashboard.usage.unpricedHint', { count: row.unpricedRequests })}
+                      >
+                        {formatCost(row.cost, costCurrency)}
+                        <span aria-hidden="true">*</span>
+                      </span>
+                    ) : (
+                      formatCost(row.cost, costCurrency)
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">{formatLatencyValue(row.avgLatencyMs, t('common.units.ms'))}</TableCell>
                 </TableRow>
               ))}
@@ -1026,7 +1085,8 @@ function ChartCard({
   emptyText,
   loading,
   option,
-  title
+  title,
+  actions
 }: {
   description: string
   empty?: boolean
@@ -1034,15 +1094,19 @@ function ChartCard({
   loading?: boolean
   option: EChartOption
   title: string
+  actions?: React.ReactNode
 }) {
   const { t } = useTranslation()
 
   return (
     <Card>
       <CardContent className="space-y-4 pt-5">
-        <div>
-          <p className="text-sm font-semibold">{title}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground/70">{description}</p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">{title}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground/70">{description}</p>
+          </div>
+          {actions}
         </div>
         {loading ? (
           <PageLoadingState compact className="min-h-[220px]" label={t('common.loadingShort')} />

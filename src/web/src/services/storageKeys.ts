@@ -3,7 +3,8 @@ export const storageKeys = {
   language: 'cc-gw-language',
   dashboard: {
     endpointFilter: 'cc-gw.dashboard.endpoint-filter',
-    usageDimension: 'cc-gw.dashboard.usage-dimension'
+    usageDimension: 'cc-gw.dashboard.usage-dimension',
+    trendMode: 'cc-gw.dashboard.trend-mode'
   },
   logs: {
     visibleColumns: 'cc-gw.logs.visible-columns-v2',
