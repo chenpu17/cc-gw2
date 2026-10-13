@@ -193,31 +193,32 @@ pub fn price_lookup_candidates(model_id: &str) -> Vec<String> {
     candidates
 }
 
+/// 剥尾部日期（`-YYYYMMDD` 或 `-YYYY-MM-DD`）。
+///
+/// 模型名可能是任意 UTF-8（中文、emoji），因此**只在字节层判定**、不按
+/// 字节数裸切 `str`：日期模式里连字符与数字都是 ASCII，而 `bytes[n]` 为
+/// ASCII 时 `n` 必然落在字符边界上，切片天然安全（见 Unicode 模型名回归）。
 fn strip_date_suffix(model: &str) -> &str {
     let bytes = model.as_bytes();
+    let len = bytes.len();
+    let digits = |mut range: std::ops::Range<usize>| {
+        range.all(|index| bytes[index].is_ascii_digit())
+    };
+
     // 形如 `-20241120`：连字符 + 8 位数字结尾
-    if bytes.len() >= 9 {
-        let tail = &model[model.len() - 8..];
-        if model[..model.len() - 8].ends_with('-') && tail.bytes().all(|b| b.is_ascii_digit()) {
-            return &model[..model.len() - 9];
-        }
+    if len >= 9 && bytes[len - 9] == b'-' && digits(len - 8..len) {
+        return &model[..len - 9];
     }
     // 形如 `-2025-03-25`：连字符 + ISO 日期结尾
-    if bytes.len() >= 11 {
-        let tail = &model[model.len() - 10..];
-        let is_iso = tail.len() == 10
-            && tail.as_bytes()[4] == b'-'
-            && tail.as_bytes()[7] == b'-'
-            && tail.bytes().enumerate().all(|(i, b)| {
-                if i == 4 || i == 7 {
-                    true
-                } else {
-                    b.is_ascii_digit()
-                }
-            });
-        if is_iso && model[..model.len() - 10].ends_with('-') {
-            return &model[..model.len() - 11];
-        }
+    if len >= 11
+        && bytes[len - 11] == b'-'
+        && digits(len - 10..len - 6)
+        && bytes[len - 6] == b'-'
+        && digits(len - 5..len - 3)
+        && bytes[len - 3] == b'-'
+        && digits(len - 2..len)
+    {
+        return &model[..len - 11];
     }
     model
 }
@@ -682,6 +683,47 @@ mod tests {
         assert!(price_lookup_candidates("model.v2")
             .iter()
             .all(|c| !c.contains('-')));
+    }
+
+    #[test]
+    fn unicode_model_names_never_panic() {
+        // 多字节模型名曾按字节数裸切 str 触发 char boundary panic，
+        // 使含该模型记录的 /api/logs、/api/stats/* 全部断连。
+        for model in [
+            "中文模型",
+            "中文模型-模型",
+            "🤖智能体",
+            "模型名—测试",
+            "café-noir",
+            "юрий-модель",
+        ] {
+            let candidates = price_lookup_candidates(model);
+            assert!(!candidates.is_empty());
+            assert!(builtin_price(model).is_none());
+        }
+        // 带合法日期后缀的 Unicode 名仍要正常剥后缀（切点在 ASCII 字节上）
+        assert!(price_lookup_candidates("中文模型-20241120").contains(&"中文模型".to_string()));
+        assert!(price_lookup_candidates("🤖-2025-03-25").contains(&"🤖".to_string()));
+        // 非 ASCII「日期样」尾巴不是日期，原样保留
+        let candidates = price_lookup_candidates("中文模型-二〇二四");
+        assert!(candidates[0].starts_with("中文模型-"));
+    }
+
+    #[test]
+    fn compute_on_unicode_model_is_unpriced_not_panic() {
+        let engine = engine(None, &[]);
+        let breakdown = engine.compute("中文模型", Some("stub"), &usage(100, 20, 0, 0));
+        assert!(breakdown.is_none());
+        // 日志成本注入路径同样不得崩溃，且保持 null（不以 0 冒充）
+        let mut record = serde_json::json!({
+            "model": "中文模型",
+            "provider": "stub",
+            "input_tokens": 100,
+            "output_tokens": 20,
+        });
+        attach_log_costs(&mut record, &engine);
+        assert!(record.get("cost").unwrap().is_null());
+        assert!(record.get("cost_breakdown").unwrap().is_null());
     }
 
     #[test]
