@@ -203,9 +203,8 @@ pub fn price_lookup_candidates(model_id: &str) -> Vec<String> {
 fn strip_date_suffix(model: &str) -> &str {
     let bytes = model.as_bytes();
     let len = bytes.len();
-    let digits = |mut range: std::ops::Range<usize>| {
-        range.all(|index| bytes[index].is_ascii_digit())
-    };
+    let digits =
+        |mut range: std::ops::Range<usize>| range.all(|index| bytes[index].is_ascii_digit());
 
     // 形如 `-20241120`：连字符 + 8 位数字结尾
     if len >= 9 && bytes[len - 9] == b'-' && digits(len - 8..len) {
@@ -672,17 +671,21 @@ mod tests {
 
     #[test]
     fn candidates_strip_modifier_suffix_and_dates() {
-        assert!(price_lookup_candidates("claude-3-7-sonnet:beta")
-            .contains(&"claude-3-7-sonnet".to_string()));
+        assert!(
+            price_lookup_candidates("claude-3-7-sonnet:beta")
+                .contains(&"claude-3-7-sonnet".to_string())
+        );
         assert!(price_lookup_candidates("o3-2025-04-16").contains(&"o3".to_string()));
         assert!(price_lookup_candidates("gpt-4o-20241120").contains(&"gpt-4o".to_string()));
         // 4 位数字不是日期，不得误剥（kimi-k2-0905-preview 不得变成 kimi-k2）
         let candidates = price_lookup_candidates("kimi-k2-0905-preview");
         assert!(candidates.contains(&"kimi-k2-0905-preview".to_string()));
         assert!(!candidates.iter().any(|c| c == "kimi-k2"));
-        assert!(!candidates
-            .iter()
-            .any(|c| c == "kimi-k2-0905-preview-preview"));
+        assert!(
+            !candidates
+                .iter()
+                .any(|c| c == "kimi-k2-0905-preview-preview")
+        );
     }
 
     #[test]
@@ -691,9 +694,11 @@ mod tests {
             price_lookup_candidates("claude-sonnet-4.5").contains(&"claude-sonnet-4-5".to_string())
         );
         // 非数字两侧的点不动（版本点之外的句点）
-        assert!(price_lookup_candidates("model.v2")
-            .iter()
-            .all(|c| !c.contains('-')));
+        assert!(
+            price_lookup_candidates("model.v2")
+                .iter()
+                .all(|c| !c.contains('-'))
+        );
     }
 
     #[test]
@@ -897,21 +902,25 @@ mod tests {
     #[test]
     fn compute_returns_none_for_unknown_input_or_model() {
         let engine = engine(None, &[]);
-        assert!(engine
-            .compute(
-                "gpt-4o",
-                None,
-                &UsageTotals {
-                    input: None,
-                    output: Some(100),
-                    cache_read: None,
-                    cache_creation: None,
-                }
-            )
-            .is_none());
-        assert!(engine
-            .compute("mystery-model", None, &usage(1, 1, 0, 0))
-            .is_none());
+        assert!(
+            engine
+                .compute(
+                    "gpt-4o",
+                    None,
+                    &UsageTotals {
+                        input: None,
+                        output: Some(100),
+                        cache_read: None,
+                        cache_creation: None,
+                    }
+                )
+                .is_none()
+        );
+        assert!(
+            engine
+                .compute("mystery-model", None, &usage(1, 1, 0, 0))
+                .is_none()
+        );
     }
 
     #[test]

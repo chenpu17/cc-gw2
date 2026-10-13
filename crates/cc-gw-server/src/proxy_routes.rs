@@ -345,8 +345,7 @@ struct RequestActivityGuard {
     active_client_sessions_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_requests_by_api_key: Arc<Mutex<HashMap<i64, u64>>>,
     active_requests_by_client_kind: Arc<Mutex<BTreeMap<String, u64>>>,
-    active_requests_by_client_kind_by_endpoint:
-        Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
+    active_requests_by_client_kind_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     endpoint_id: String,
     source_ip: Option<String>,
     session_id: Option<String>,

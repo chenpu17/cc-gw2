@@ -3,17 +3,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use aes_gcm::{
-    aead::{AeadInPlace, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{AeadInPlace, KeyInit},
 };
-use anyhow::{anyhow, bail, Context, Result};
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use anyhow::{Context, Result, anyhow, bail};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use rand::RngCore;
-use rusqlite::{params, types::ValueRef, Connection, OptionalExtension, Row};
+use rusqlite::{Connection, OptionalExtension, Row, params, types::ValueRef};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::events::{record_event, RecordEventInput};
+use crate::events::{RecordEventInput, record_event};
 use crate::observability::UsageStats;
 
 const KEY_PREFIX: &str = "sk-ccgw-";

@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use brotli::{CompressorWriter, Decompressor};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 
@@ -1404,7 +1404,9 @@ fn dimension_cost_by_key(
     );
     let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match endpoint {
         Some(endpoint) => (
-            format!("{select} WHERE timestamp >= ?1 AND endpoint = ?2 GROUP BY {group}, model, provider"),
+            format!(
+                "{select} WHERE timestamp >= ?1 AND endpoint = ?2 GROUP BY {group}, model, provider"
+            ),
             vec![Box::new(since), Box::new(endpoint.to_string())],
         ),
         None => (

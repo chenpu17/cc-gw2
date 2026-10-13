@@ -35,9 +35,10 @@ pub async fn fetch_balance(
     client: &reqwest::Client,
     provider: &ProviderConfig,
 ) -> Result<BalanceSnapshot, String> {
-    let adapter = provider.balance_adapter.as_deref().ok_or_else(|| {
-        format!("Provider {} 未配置余额适配器，无法查询余额", provider.id)
-    })?;
+    let adapter = provider
+        .balance_adapter
+        .as_deref()
+        .ok_or_else(|| format!("Provider {} 未配置余额适配器，无法查询余额", provider.id))?;
     if !BALANCE_ADAPTERS.contains(&adapter) {
         return Err(format!("未知余额适配器: {adapter}"));
     }
@@ -76,8 +77,8 @@ pub async fn fetch_balance(
         let body: String = text.chars().take(300).collect();
         return Err(format!("余额查询失败 (HTTP {}): {body}", status.as_u16()));
     }
-    let raw: Value = serde_json::from_str(&text)
-        .map_err(|error| format!("余额响应解析失败: {error}"))?;
+    let raw: Value =
+        serde_json::from_str(&text).map_err(|error| format!("余额响应解析失败: {error}"))?;
 
     Ok(BalanceSnapshot {
         adapter: adapter.to_string(),
@@ -181,10 +182,7 @@ mod tests {
                 {"total_balance": "110.00", "currency": "CNY"}
             ]
         });
-        assert_eq!(
-            normalize_deepseek(&deepseek).as_deref(),
-            Some("110.00 CNY")
-        );
+        assert_eq!(normalize_deepseek(&deepseek).as_deref(), Some("110.00 CNY"));
 
         // Moonshot 官方结构：code=0 + data.available_balance 数字
         // （platform.moonshot.cn/docs/api/balance 示例）
@@ -196,10 +194,7 @@ mod tests {
                 "cash_balance": 3.00001
             }
         });
-        assert_eq!(
-            normalize_moonshot(&moonshot).as_deref(),
-            Some("49.59 CNY")
-        );
+        assert_eq!(normalize_moonshot(&moonshot).as_deref(), Some("49.59 CNY"));
 
         let siliconflow = serde_json::json!({
             "code": 20000,

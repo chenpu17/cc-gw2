@@ -630,8 +630,14 @@ mod tests {
         )
         .expect("resolve anthropic plan");
         let anthropic = anthropic_plan.primary();
-        assert_eq!(anthropic.provider.base_url, "https://dual-anthropic.example.com/api");
-        assert_eq!(anthropic.provider.provider_type.as_deref(), Some("anthropic"));
+        assert_eq!(
+            anthropic.provider.base_url,
+            "https://dual-anthropic.example.com/api"
+        );
+        assert_eq!(
+            anthropic.provider.provider_type.as_deref(),
+            Some("anthropic")
+        );
         assert_eq!(anthropic.provider.api_key.as_deref(), Some("active-key"));
 
         // OpenAI-protocol request resolves to the native openai surface.
