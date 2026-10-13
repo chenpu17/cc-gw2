@@ -354,6 +354,7 @@ fn build_test_state(
         active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
         active_requests_by_client_kind: Arc::new(Mutex::new(BTreeMap::new())),
         active_requests_by_client_kind_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        provider_balances: Arc::new(Mutex::new(HashMap::new())),
         network_ingress_bytes: Arc::new(AtomicU64::new(0)),
         network_egress_bytes: Arc::new(AtomicU64::new(0)),
         network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
@@ -9603,6 +9604,145 @@ async fn aggregate_failover_rpm_rejection_moves_to_next_candidate_without_health
     assert_eq!(
         attempts[1].get("outcome").and_then(Value::as_str),
         Some("selected")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn provider_balance_refresh_stores_snapshot_and_records_failures() {
+    // Stub dashboard endpoints: deepseek balance OK on one path; the second
+    // provider's upstream rejects the key with 401.
+    let upstream = Router::new()
+        .route(
+            "/ok/v1/user/balance",
+            get(|headers: HeaderMap| async move {
+                if headers.get(header::AUTHORIZATION).and_then(|value| value.to_str().ok())
+                    != Some("Bearer sk-live")
+                {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({"error": {"message": "Invalid API key"}})),
+                    )
+                        .into_response();
+                }
+                Json(json!({
+                    "is_available": true,
+                    "balance_infos": [{"total_balance": "110.00", "currency": "CNY"}]
+                }))
+                .into_response()
+            }),
+        )
+        .route(
+            "/broken/v1/user/balance",
+            get(|| async {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": {"message": "Invalid API key"}})),
+                )
+                    .into_response()
+            }),
+        );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let balance_provider = |id: &str, base_path: &str| cc_gw_core::config::ProviderConfig {
+        id: id.to_string(),
+        label: id.to_string(),
+        base_url: format!("http://{upstream_addr}/{base_path}/v1"),
+        provider_type: Some("openai".to_string()),
+        balance_adapter: Some("deepseek".to_string()),
+        default_model: Some("m".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "m".to_string(),
+            label: None,
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    };
+    let mut config = GatewayConfig::default();
+    // Named keys: the active one authenticates the balance call.
+    let mut provider = balance_provider("funded", "ok");
+    provider.api_key = Some("sk-wrong".to_string());
+    provider.keys = vec![cc_gw_core::config::ProviderKeyConfig {
+        id: "k1".to_string(),
+        label: None,
+        value: "sk-live".to_string(),
+        active: Some(true),
+        ..Default::default()
+    }];
+    config.providers = vec![
+        provider,
+        balance_provider("broken", "broken"),
+    ];
+    config
+        .endpoint_routing
+        .get_mut("openai")
+        .unwrap()
+        .defaults
+        .completion = Some("funded:m".to_string());
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "provider-balance-refresh").await;
+    let client = reqwest::Client::new();
+
+    // Successful refresh stores the snapshot (active named key used).
+    let response = client
+        .post(format!("http://{gateway_addr}/api/providers/funded/balance/refresh"))
+        .send()
+        .await
+        .expect("refresh funded balance");
+    assert_eq!(response.status(), StatusCode::OK);
+    let snapshot: Value = response.json().await.expect("decode snapshot");
+    assert_eq!(snapshot["adapter"].as_str(), Some("deepseek"));
+    assert_eq!(snapshot["providerId"].as_str(), Some("funded"));
+    assert_eq!(snapshot["display"].as_str(), Some("110.00 CNY"));
+
+    // Snapshot is served by the listing route.
+    let balances: Value = client
+        .get(format!("http://{gateway_addr}/api/providers/balances"))
+        .send()
+        .await
+        .expect("list balances")
+        .json()
+        .await
+        .expect("decode balances");
+    assert_eq!(balances["balances"].as_array().map(Vec::len), Some(1));
+
+    // Failed refresh → 502 + gateway event, no snapshot stored.
+    let response = client
+        .post(format!("http://{gateway_addr}/api/providers/broken/balance/refresh"))
+        .send()
+        .await
+        .expect("refresh broken balance");
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let balances: Value = client
+        .get(format!("http://{gateway_addr}/api/providers/balances"))
+        .send()
+        .await
+        .expect("list balances after failure")
+        .json()
+        .await
+        .expect("decode balances");
+    assert_eq!(balances["balances"].as_array().map(Vec::len), Some(1));
+
+    let events: Value = client
+        .get(format!(
+            "http://{gateway_addr}/api/events?level=warn&limit=5"
+        ))
+        .send()
+        .await
+        .expect("request events")
+        .json()
+        .await
+        .expect("decode events");
+    let listed = events["events"].as_array().cloned().unwrap_or_default();
+    assert!(
+        listed
+            .iter()
+            .any(|event| event["type"].as_str() == Some("provider_balance_refresh_failed")),
+        "expected balance refresh failure event, got {listed:?}"
     );
 
     gateway_handle.abort();

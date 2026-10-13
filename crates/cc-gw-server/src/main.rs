@@ -25,6 +25,7 @@ use cc_gw_core::{
         mask_revealed_key, normalize_allowed_endpoints, record_api_key_usage, resolve_api_key,
         reveal_api_key, update_api_key_settings,
     },
+    balance::{BalanceSnapshot, fetch_balance},
     config::{
         CustomEndpointConfig, DEFAULT_BODY_LIMIT, EndpointPathConfig, EndpointRoutingConfig,
         GatewayConfig, GatewayPaths, ProviderConfig, RoutingPreset, load_or_init_config,
@@ -96,6 +97,8 @@ struct AppState {
     active_requests_by_client_kind: Arc<Mutex<BTreeMap<String, u64>>>,
     active_requests_by_client_kind_by_endpoint:
         Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
+    /// Latest manual balance refresh per provider id (runtime state only).
+    provider_balances: Arc<Mutex<HashMap<String, BalanceSnapshot>>>,
     network_ingress_bytes: Arc<AtomicU64>,
     network_egress_bytes: Arc<AtomicU64>,
     network_ingress_bytes_by_endpoint: Arc<Mutex<HashMap<String, u64>>>,
@@ -377,6 +380,7 @@ async fn main() -> Result<()> {
         active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
         active_requests_by_client_kind: Arc::new(Mutex::new(BTreeMap::new())),
         active_requests_by_client_kind_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+        provider_balances: Arc::new(Mutex::new(HashMap::new())),
         network_ingress_bytes: Arc::new(AtomicU64::new(0)),
         network_egress_bytes: Arc::new(AtomicU64::new(0)),
         network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
@@ -467,6 +471,14 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/api/providers/{id}/models/probe",
             post(admin_routes::api_provider_models_probe),
+        )
+        .route(
+            "/api/providers/{id}/balance/refresh",
+            post(admin_routes::api_provider_balance_refresh),
+        )
+        .route(
+            "/api/providers/balances",
+            get(admin_routes::api_provider_balances),
         )
         .route(
             "/api/providers/backends/health",

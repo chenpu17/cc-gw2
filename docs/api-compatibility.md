@@ -39,6 +39,9 @@
 | `/api/config/info` | `GET` | 已兼容 | 返回配置和配置文件路径 |
 | `/api/providers` | `GET` | 已兼容 | 列出 Provider |
 | `/api/providers/{id}/test` | `POST` | 已兼容 | 测试 Provider 连通性 |
+| `/api/providers/{id}/models/probe` | `POST` | 已兼容 | 探测上游模型列表；多协议端点的 Provider 依次探测主端点与各端点后合并去重，单面失败容忍 |
+| `/api/providers/{id}/balance/refresh` | `POST` | 新增 | 手动刷新余额：按 Provider 的 `balanceAdapter`（deepseek/moonshot/siliconflow/openrouter）调用上游仪表盘端点，生效命名密钥认证；成功返回 `BalanceSnapshot`（camelCase：`adapter/providerId/fetchedAt/display?/raw`）并暂存运行时态，失败 502 + `provider_balance_refresh_failed` warn 事件 |
+| `/api/providers/balances` | `GET` | 新增 | 全部 Provider 的最新余额快照 `{ balances: BalanceSnapshot[] }`（按 providerId 排序；未刷新过的 Provider 不出现） |
 | `/api/custom-endpoints` | `GET` | 已兼容 | 获取自定义端点列表 |
 | `/api/custom-endpoints` | `POST` | 已兼容 | 创建自定义端点 |
 | `/api/custom-endpoints/{id}` | `PUT` | 已兼容 | 更新自定义端点 |

@@ -655,6 +655,67 @@ pub(super) async fn api_provider_test(
     }
 }
 
+/// Manual balance refresh: fetch now via the provider's balance adapter and
+/// keep the latest snapshot in runtime state. Failures surface as 502 with
+/// the human-readable reason and land in the gateway event log.
+pub(super) async fn api_provider_balance_refresh(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> Response {
+    let provider = {
+        let config = config_snapshot(&state);
+        match config.providers.iter().find(|item| item.id == id).cloned() {
+            Some(provider) => provider,
+            None => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({ "error": "Provider not found" })),
+                )
+                    .into_response()
+            }
+        }
+    };
+    match fetch_balance(&state.http_client, &provider).await {
+        Ok(snapshot) => {
+            if let Ok(mut entries) = state.provider_balances.lock() {
+                entries.insert(id.clone(), snapshot.clone());
+            }
+            Json(snapshot).into_response()
+        }
+        Err(message) => {
+            record_and_broadcast_event(
+                &state,
+                RecordEventInput {
+                    event_type: "provider_balance_refresh_failed".to_string(),
+                    level: Some("warn".to_string()),
+                    source: Some("provider".to_string()),
+                    title: Some(format!("Provider {id} 余额刷新失败")),
+                    message: Some(message.clone()),
+                    ..RecordEventInput::default()
+                },
+            );
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "providerId": id, "error": message })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// All latest balance snapshots (providers never refreshed are absent).
+pub(super) async fn api_provider_balances(State(state): State<AppState>) -> Response {
+    let snapshots: Vec<BalanceSnapshot> = state
+        .provider_balances
+        .lock()
+        .map(|entries| entries.values().cloned().collect())
+        .unwrap_or_default();
+    // Stable order for the console rail/detail view.
+    let mut snapshots = snapshots;
+    snapshots.sort_by(|a, b| a.provider_id.cmp(&b.provider_id));
+    Json(json!({ "balances": snapshots })).into_response()
+}
+
 pub(super) async fn api_provider_models_probe(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,

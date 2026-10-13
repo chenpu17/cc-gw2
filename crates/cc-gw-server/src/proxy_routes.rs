@@ -3939,6 +3939,7 @@ mod tests {
             active_requests_by_api_key: Arc::new(Mutex::new(HashMap::new())),
             active_requests_by_client_kind: Arc::new(Mutex::new(BTreeMap::new())),
             active_requests_by_client_kind_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
+            provider_balances: Arc::new(Mutex::new(HashMap::new())),
             network_ingress_bytes: Arc::new(AtomicU64::new(0)),
             network_egress_bytes: Arc::new(AtomicU64::new(0)),
             network_ingress_bytes_by_endpoint: Arc::new(Mutex::new(HashMap::new())),
