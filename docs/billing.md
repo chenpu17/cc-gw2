@@ -83,6 +83,7 @@ v0.14 之前的历史行只有 `cached_tokens`（无 cache_read/cache_creation �
 ## 8. 内置价格快照（每 1M tokens，原币）
 
 > 编写时的官方标价快照，估算用途非账单；以 `GET /api/billing/prices` 输出为准。
+> OpenAI 家族按 developers.openai.com/api/docs/pricing 于 2026-10-13 核对修正（gpt-5.2 与 gpt-5.1/5 单价不同档）。
 
 | 家族 | 模型 | 币种 | 输入 | 输出 | 缓存读 | 缓存写 |
 |---|---|---|---|---|---|---|
@@ -91,7 +92,8 @@ v0.14 之前的历史行只有 `cached_tokens`（无 cache_read/cache_creation �
 | | claude-sonnet-4-5 / 4-1 / claude-3-7-sonnet | USD | 3.0 | 15.0 | 0.3 | 3.75 |
 | | claude-haiku-4-5 | USD | 1.0 | 5.0 | 0.1 | 1.25 |
 | | claude-3-5-haiku | USD | 0.8 | 4.0 | 0.08 | 1.0 |
-| OpenAI | gpt-5.2 / 5.1 / 5 | USD | 1.25 | 10.0 | 0.125 | — |
+| OpenAI | gpt-5.2 | USD | 1.75 | 14.0 | 0.175 | — |
+| | gpt-5.1 / gpt-5 | USD | 1.25 | 10.0 | 0.125 | — |
 | | gpt-5-mini / gpt-5-nano | USD | 0.25 / 0.05 | 2.0 / 0.4 | 0.025 / 0.005 | — |
 | | gpt-4.1 / gpt-4.1-mini | USD | 2.0 / 0.4 | 8.0 / 1.6 | 0.5 / 0.1 | — |
 | | gpt-4o / gpt-4o-mini | USD | 2.5 / 0.15 | 10.0 / 0.6 | 1.25 / 0.075 | — |

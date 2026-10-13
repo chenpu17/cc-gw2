@@ -97,7 +97,9 @@ static BUILTIN_PRICES: &[BuiltinPriceEntry] = &[
     entry("claude-haiku-4-5", usd(1.0, 5.0, 0.1, 1.25)),
     entry("claude-3-5-haiku", usd(0.8, 4.0, 0.08, 1.0)),
     // OpenAI — USD；无单独 cache 写计价
-    entry("gpt-5.2", usd(1.25, 10.0, 0.125, 0.0)),
+    // 快照核对：developers.openai.com/api/docs/pricing，2026-10-13；
+    // gpt-5.2 为 $1.75/$14（gpt-5.1/5 才是 $1.25/$10），曾误沿用后者。
+    entry("gpt-5.2", usd(1.75, 14.0, 0.175, 0.0)),
     entry("gpt-5.1", usd(1.25, 10.0, 0.125, 0.0)),
     entry("gpt-5", usd(1.25, 10.0, 0.125, 0.0)),
     entry("gpt-5-mini", usd(0.25, 2.0, 0.025, 0.0)),
@@ -778,6 +780,16 @@ mod tests {
     fn builtin_unknown_model_is_unpriced() {
         assert!(builtin_price("totally-unknown-model").is_none());
         assert!(builtin_price("").is_none());
+    }
+
+    #[test]
+    fn builtin_gpt_5_2_is_priced_above_gpt_5_1() {
+        // gpt-5.2 与 gpt-5.1/5 不同档（官方 $1.75/$14），曾误沿用 1.25/10
+        let price = builtin_price("gpt-5.2").unwrap();
+        assert_eq!(price.input, 1.75);
+        assert_eq!(price.output, 14.0);
+        assert_eq!(price.cache_read, 0.175);
+        assert_ne!(price.input, builtin_price("gpt-5.1").unwrap().input);
     }
 
     #[test]
