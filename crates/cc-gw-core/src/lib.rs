@@ -1,5 +1,6 @@
 pub mod api_keys;
 pub mod balance;
+pub mod billing;
 pub mod config;
 pub mod convert;
 pub mod events;

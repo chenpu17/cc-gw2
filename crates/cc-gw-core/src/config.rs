@@ -363,6 +363,35 @@ impl Default for WebAuthConfig {
     }
 }
 
+/// 计费配置 — 查询期定价（`billing.rs` 引擎的消费方），热加载生效。
+/// 价格与汇率均为估算口径：改价/改汇率后历史成本随之重算。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct BillingConfig {
+    /// 展示货币："CNY"（默认）| "USD"。价格条目保留原币，展示时按 rates 换算。
+    pub display_currency: Option<String>,
+    /// 源币大写码 → 1 单位源币折多少展示货币；内置默认 1 USD = 7.20 CNY，
+    /// 可按需覆盖（如 1 USD = 0.125 CNY 不合理时用户自填）。
+    pub rates: HashMap<String, f64>,
+    /// 模型价覆盖：键为 `model-id`（全局）或 `providerId:modelId`（限定
+    /// provider）。只做键的精确匹配，优先级 高于内置价格表。
+    pub model_prices: HashMap<String, ModelPriceOverride>,
+}
+
+/// 单模型价覆盖（每 1M tokens，原币计；0.0 合法）。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ModelPriceOverride {
+    /// "USD" | "CNY"（大小写不敏感）。
+    pub currency: String,
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_creation: f64,
+    /// 展示用备注（如"企业协议价"），可空。
+    pub label: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct GatewayConfig {
@@ -392,6 +421,7 @@ pub struct GatewayConfig {
     pub response_logging: Option<bool>,
     pub body_limit: Option<u64>,
     pub web_auth: Option<WebAuthConfig>,
+    pub billing: BillingConfig,
 }
 
 impl Default for GatewayConfig {
@@ -438,6 +468,7 @@ impl Default for GatewayConfig {
             response_logging: None,
             body_limit: Some(DEFAULT_BODY_LIMIT),
             web_auth: Some(WebAuthConfig::default()),
+            billing: BillingConfig::default(),
         }
     }
 }
@@ -493,6 +524,7 @@ impl GatewayConfig {
         self.validate_route_provider_references()?;
         self.validate_aggregate_providers()?;
         self.validate_provider_surfaces()?;
+        self.validate_billing()?;
         if let Some(seconds) = self.upstream_stream_idle_timeout_seconds {
             if !(1..=86_400).contains(&seconds) {
                 bail!("上游流式空闲超时秒数必须在 1-86400 之间: {seconds}");
@@ -537,7 +569,9 @@ impl GatewayConfig {
                 if !KNOWN_PROTOCOLS.contains(&endpoint.protocol.as_str()) {
                     bail!(
                         "Provider {} 端点 {} 的协议无效: {}（可选 anthropic / openai / openai-responses）",
-                        provider.id, endpoint.id, endpoint.protocol
+                        provider.id,
+                        endpoint.id,
+                        endpoint.protocol
                     );
                 }
                 let base = endpoint.base_url.trim();
@@ -559,15 +593,63 @@ impl GatewayConfig {
                     bail!("Provider {} 的命名密钥 id 重复: {}", provider.id, key.id);
                 }
                 if key.value.trim().is_empty() {
-                    bail!("Provider {} 的命名密钥 {} 未填写密钥值", provider.id, key.id);
+                    bail!(
+                        "Provider {} 的命名密钥 {} 未填写密钥值",
+                        provider.id,
+                        key.id
+                    );
                 }
             }
             if let Some(adapter) = provider.balance_adapter.as_deref() {
                 if !KNOWN_BALANCE_ADAPTERS.contains(&adapter) {
                     bail!(
                         "Provider {} 的余额适配器无效: {}（可选 deepseek / moonshot / siliconflow / openrouter）",
-                        provider.id, adapter
+                        provider.id,
+                        adapter
                     );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// 校验计费配置：展示货币枚举、汇率键值域、覆盖键/币种/四价范围。
+    /// 手改 config.json 的非法值在保存时被拦下；引擎侧对无法解析的条目
+    /// 也会跳过（宁可未计价不可错算）。
+    fn validate_billing(&self) -> Result<()> {
+        const MAX_PRICE: f64 = 1_000_000.0;
+        const MAX_RATE: f64 = 10_000.0;
+        if let Some(currency) = self.billing.display_currency.as_deref() {
+            if crate::billing::Currency::parse(currency).is_none() {
+                bail!("展示货币无效: {currency}（可选 CNY / USD）");
+            }
+        }
+        for (code, rate) in &self.billing.rates {
+            if code.trim().is_empty() {
+                bail!("计费汇率表存在空源币代码");
+            }
+            if !rate.is_finite() || *rate <= 0.0 || *rate > MAX_RATE {
+                bail!("计费汇率 {code} 必须在 (0, {MAX_RATE}] 区间内: {rate}");
+            }
+        }
+        for (key, price) in &self.billing.model_prices {
+            if key.trim().is_empty() {
+                bail!("模型价格覆盖存在空键（model-id 或 providerId:modelId）");
+            }
+            if crate::billing::Currency::parse(&price.currency).is_none() {
+                bail!(
+                    "价格覆盖 {key} 的币种无效: {}（可选 USD / CNY）",
+                    price.currency
+                );
+            }
+            for (field, value) in [
+                ("输入价", price.input),
+                ("输出价", price.output),
+                ("缓存读价", price.cache_read),
+                ("缓存写价", price.cache_creation),
+            ] {
+                if !value.is_finite() || value < 0.0 || value > MAX_PRICE {
+                    bail!("价格覆盖 {key} 的{field}必须在 [0, {MAX_PRICE}] 区间内: {value}");
                 }
             }
         }
@@ -1025,6 +1107,131 @@ mod tests {
     }
 
     #[test]
+    fn validate_for_save_accepts_well_formed_billing() {
+        let mut config = GatewayConfig::default();
+        config.billing.display_currency = Some("CNY".to_string());
+        config.billing.rates.insert("USD".to_string(), 7.15);
+        config.billing.model_prices.insert(
+            "acme:stub-model".to_string(),
+            ModelPriceOverride {
+                currency: "usd".to_string(),
+                input: 1.5,
+                output: 0.0,
+                cache_read: 0.2,
+                cache_creation: 0.0,
+                label: None,
+            },
+        );
+        config.validate_for_save().expect("billing config valid");
+    }
+
+    #[test]
+    fn validate_for_save_rejects_bad_billing_display_currency() {
+        let mut config = GatewayConfig::default();
+        config.billing.display_currency = Some("EUR".to_string());
+        let error = config
+            .validate_for_save()
+            .expect_err("bad display currency");
+        assert!(error.to_string().contains("展示货币无效"));
+    }
+
+    #[test]
+    fn validate_for_save_rejects_bad_billing_rates() {
+        let mut config = GatewayConfig::default();
+        config.billing.rates.insert("".to_string(), 7.0);
+        assert!(
+            config
+                .validate_for_save()
+                .expect_err("empty rate code")
+                .to_string()
+                .contains("空源币代码")
+        );
+
+        let mut config = GatewayConfig::default();
+        config.billing.rates.insert("USD".to_string(), 0.0);
+        assert!(
+            config
+                .validate_for_save()
+                .expect_err("zero rate")
+                .to_string()
+                .contains("汇率")
+        );
+
+        let mut config = GatewayConfig::default();
+        config.billing.rates.insert("USD".to_string(), f64::NAN);
+        assert!(
+            config
+                .validate_for_save()
+                .expect_err("NaN rate")
+                .to_string()
+                .contains("汇率")
+        );
+    }
+
+    #[test]
+    fn validate_for_save_rejects_bad_billing_price_overrides() {
+        let mut config = GatewayConfig::default();
+        config.billing.model_prices.insert(
+            "  ".to_string(),
+            ModelPriceOverride {
+                currency: "USD".to_string(),
+                input: 1.0,
+                output: 1.0,
+                cache_read: 0.0,
+                cache_creation: 0.0,
+                label: None,
+            },
+        );
+        assert!(
+            config
+                .validate_for_save()
+                .expect_err("blank override key")
+                .to_string()
+                .contains("空键")
+        );
+
+        let mut config = GatewayConfig::default();
+        config.billing.model_prices.insert(
+            "stub-model".to_string(),
+            ModelPriceOverride {
+                currency: "EUR".to_string(),
+                input: 1.0,
+                output: 1.0,
+                cache_read: 0.0,
+                cache_creation: 0.0,
+                label: None,
+            },
+        );
+        assert!(
+            config
+                .validate_for_save()
+                .expect_err("bad override currency")
+                .to_string()
+                .contains("币种无效")
+        );
+
+        let mut config = GatewayConfig::default();
+        config.billing.model_prices.insert(
+            "stub-model".to_string(),
+            ModelPriceOverride {
+                currency: "USD".to_string(),
+                input: -1.0,
+                output: 1.0,
+                cache_read: 0.0,
+                cache_creation: 0.0,
+                label: None,
+            },
+        );
+        assert!(
+            config
+                .validate_for_save()
+                .expect_err("negative price")
+                .to_string()
+                .contains("输入价")
+        );
+    }
+
+    #[test]
     fn validate_rejects_duplicate_provider_ids() {
         let config = GatewayConfig {
             providers: vec![
@@ -1400,7 +1607,8 @@ mod tests {
         let provider = multi_surface_provider();
         // No openai-responses endpoint exists → primary surface stays and the
         // proxy will convert.
-        let view = provider.effective_for_protocol(crate::provider::ProviderProtocol::OpenAiResponses);
+        let view =
+            provider.effective_for_protocol(crate::provider::ProviderProtocol::OpenAiResponses);
         assert_eq!(view.base_url, "https://primary.example.com/v1");
         assert_eq!(view.provider_type.as_deref(), Some("openai"));
     }
@@ -1424,13 +1632,18 @@ mod tests {
         // …but an anthropic surface keeps it.
         let anthropic_view =
             provider.effective_for_protocol(crate::provider::ProviderProtocol::AnthropicMessages);
-        assert!(anthropic_view.extra_headers.contains_key("anthropic-version"));
+        assert!(
+            anthropic_view
+                .extra_headers
+                .contains_key("anthropic-version")
+        );
     }
 
     #[test]
     fn effective_for_protocol_applies_active_named_key() {
         let provider = multi_surface_provider();
-        let view = provider.effective_for_protocol(crate::provider::ProviderProtocol::OpenAiChatCompletions);
+        let view = provider
+            .effective_for_protocol(crate::provider::ProviderProtocol::OpenAiChatCompletions);
         assert_eq!(view.api_key.as_deref(), Some("key-b"));
     }
 
@@ -1450,7 +1663,10 @@ mod tests {
                 ..Default::default()
             },
         ];
-        assert_eq!(effective_provider_key(&first_active).map(|k| k.id.as_str()), Some("b"));
+        assert_eq!(
+            effective_provider_key(&first_active).map(|k| k.id.as_str()),
+            Some("b")
+        );
 
         // Several marked active → the first marked one wins.
         let multi_active = vec![
@@ -1467,7 +1683,10 @@ mod tests {
                 ..Default::default()
             },
         ];
-        assert_eq!(effective_provider_key(&multi_active).map(|k| k.id.as_str()), Some("a"));
+        assert_eq!(
+            effective_provider_key(&multi_active).map(|k| k.id.as_str()),
+            Some("a")
+        );
 
         // None marked → the first entry wins.
         let unmarked = vec![
@@ -1482,7 +1701,10 @@ mod tests {
                 ..Default::default()
             },
         ];
-        assert_eq!(effective_provider_key(&unmarked).map(|k| k.id.as_str()), Some("a"));
+        assert_eq!(
+            effective_provider_key(&unmarked).map(|k| k.id.as_str()),
+            Some("a")
+        );
 
         // Empty array → no named key; legacy api_key stays authoritative.
         assert!(effective_provider_key(&[]).is_none());
@@ -1498,7 +1720,8 @@ mod tests {
             provider_type: Some("anthropic".to_string()),
             ..ProviderConfig::default()
         };
-        let view = provider.effective_for_protocol(crate::provider::ProviderProtocol::OpenAiChatCompletions);
+        let view = provider
+            .effective_for_protocol(crate::provider::ProviderProtocol::OpenAiChatCompletions);
         assert_eq!(view.base_url, provider.base_url);
         assert_eq!(view.provider_type, provider.provider_type);
         assert_eq!(view.api_key, provider.api_key);
@@ -1537,66 +1760,84 @@ mod tests {
         };
 
         // Happy path validates.
-        base().validate_for_save().expect("valid multi-surface provider");
+        base()
+            .validate_for_save()
+            .expect("valid multi-surface provider");
 
         // Duplicate endpoint ids.
         let mut config = base();
         config.providers[0].endpoints[1].id = "anthropic-surface".to_string();
-        assert!(config
-            .validate_for_save()
-            .is_err_and(|error| error.to_string().contains("端点 id 重复")));
+        assert!(
+            config
+                .validate_for_save()
+                .is_err_and(|error| error.to_string().contains("端点 id 重复"))
+        );
 
         // Unknown protocol marker.
         let mut config = base();
         config.providers[0].endpoints[0].protocol = "grpc".to_string();
-        assert!(config
-            .validate_for_save()
-            .is_err_and(|error| error.to_string().contains("协议无效")));
+        assert!(
+            config
+                .validate_for_save()
+                .is_err_and(|error| error.to_string().contains("协议无效"))
+        );
 
         // Non-http endpoint baseUrl.
         let mut config = base();
         config.providers[0].endpoints[0].base_url = "ftp://nope".to_string();
-        assert!(config
-            .validate_for_save()
-            .is_err_and(|error| error.to_string().contains("baseUrl")));
+        assert!(
+            config
+                .validate_for_save()
+                .is_err_and(|error| error.to_string().contains("baseUrl"))
+        );
 
         // Duplicate key ids.
         let mut config = base();
         config.providers[0].keys[1].id = "primary".to_string();
-        assert!(config
-            .validate_for_save()
-            .is_err_and(|error| error.to_string().contains("密钥 id 重复")));
+        assert!(
+            config
+                .validate_for_save()
+                .is_err_and(|error| error.to_string().contains("密钥 id 重复"))
+        );
 
         // Empty key value (would authenticate with `Bearer `).
         let mut config = base();
         config.providers[0].keys[1].value = "  ".to_string();
-        assert!(config
-            .validate_for_save()
-            .is_err_and(|error| error.to_string().contains("未填写密钥值")));
+        assert!(
+            config
+                .validate_for_save()
+                .is_err_and(|error| error.to_string().contains("未填写密钥值"))
+        );
 
         // Unknown balance adapter.
         let mut config = base();
         config.providers[0].balance_adapter = Some("acme".to_string());
-        assert!(config
-            .validate_for_save()
-            .is_err_and(|error| error.to_string().contains("余额适配器无效")));
+        assert!(
+            config
+                .validate_for_save()
+                .is_err_and(|error| error.to_string().contains("余额适配器无效"))
+        );
 
         // Aggregate providers are virtual — surfaces would be silently
         // ignored at request time, so they are rejected at save.
         let mut config = base();
         config.providers[0].provider_type = Some(AGGREGATE_PROVIDER_TYPE.to_string());
-        assert!(config
-            .validate_for_save()
-            .is_err_and(|error| error.to_string().contains("聚合 Provider")));
+        assert!(
+            config
+                .validate_for_save()
+                .is_err_and(|error| error.to_string().contains("聚合 Provider"))
+        );
 
         let mut config = base();
         config.providers[0].provider_type = Some(AGGREGATE_PROVIDER_TYPE.to_string());
         config.providers[0].endpoints.clear();
         config.providers[0].keys.clear();
         config.providers[0].balance_adapter = Some("deepseek".to_string());
-        assert!(config
-            .validate_for_save()
-            .is_err_and(|error| error.to_string().contains("聚合 Provider")));
+        assert!(
+            config
+                .validate_for_save()
+                .is_err_and(|error| error.to_string().contains("聚合 Provider"))
+        );
     }
 
     #[test]
