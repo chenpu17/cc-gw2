@@ -34,8 +34,8 @@
 | 路径 | 方法 | 状态 | 说明 |
 | --- | --- | --- | --- |
 | `/api/status` | `GET` | 已兼容 | 返回端口、主机、runtime、PID、活跃请求数等；含 `activeByClientKind`（按 agent 客户端类型分组的在途请求数，map 形式，无在途时为 `{}`；与其他活跃指标一样遵循 `?endpoint=` 筛选） |
-| `/api/config` | `GET` | 已兼容 | 读取主配置 |
-| `/api/config` | `PUT` | 已兼容 | 更新主配置 |
+| `/api/config` | `GET` | 已兼容 | 读取主配置。Provider 对象新增 additive 可选字段（v0.15，旧配置缺失即等价旧行为）：`endpoints: ProviderEndpointConfig[]`（多协议端点，`id/label?/protocol/baseUrl`）、`keys: ProviderKeyConfig[]`（命名密钥，`id/label?/value/active?`）、`balanceAdapter?: string`；未设置时序列化为空数组 / `null` |
+| `/api/config` | `PUT` | 已兼容 | 更新主配置；上述新字段随 Provider 整体校验（端点 id 非空且 provider 内唯一、protocol 枚举合法、base_url 非空 http(s)、key id 唯一），不要求恰好一个 active key |
 | `/api/config/info` | `GET` | 已兼容 | 返回配置和配置文件路径 |
 | `/api/providers` | `GET` | 已兼容 | 列出 Provider |
 | `/api/providers/{id}/test` | `POST` | 已兼容 | 测试 Provider 连通性 |

@@ -39,6 +39,8 @@
   - API Key 单 Key 最大并发限制：语义、数据库变更、内存追踪、429 响应和管理台 UI
 - [provider-rpm-limit.md](./provider-rpm-limit.md)
   - Provider 级 RPM 限流与排队等待：语义、滑动窗口实现、429 + Retry-After 和管理台 UI
+- [provider-2.0.md](./provider-2.0.md)
+  - Provider 2.0：多协议端点与命名密钥的归一化视图、余额 adapter、预设模板目录与主从管理台
 
 如果后续继续补文档，优先遵守这条规则：
 
