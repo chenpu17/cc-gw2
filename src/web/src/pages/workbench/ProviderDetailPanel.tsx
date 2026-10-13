@@ -153,16 +153,18 @@ export function ProviderDetailPanel({
           <p className="mt-0.5 font-mono text-xs text-muted-foreground">{provider.id}</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="bg-card text-xs"
-            onClick={() => onTest(providerForm.serialize())}
-            disabled={testing}
-          >
-            {testing ? t('common.actions.testingConnection') : t('providers.actions.test')}
-          </Button>
+          {isAggregate ? null : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="bg-card text-xs"
+              onClick={() => onTest(providerForm.serialize())}
+              disabled={testing}
+            >
+              {testing ? t('common.actions.testingConnection') : t('providers.actions.test')}
+            </Button>
+          )}
           <Button
             type="button"
             variant="ghost"
