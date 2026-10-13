@@ -16,7 +16,7 @@ test.afterAll(async () => {
 // 本 test 验证：UI 开关存在可勾选 → 保存后 config 持久化 streamUsage=true；
 // 未勾选时字段保持缺省（不下发 false），兼容不认识该字段的旧后端。
 // 注入行为本身已有 Rust 单测覆盖（proxy_routes::stream_options_*）。
-test('streamUsage switch renders and persists via provider drawer', async ({ page, request }) => {
+test('streamUsage switch renders and persists via provider panel', async ({ page, request }) => {
   const baseUrl = harness.baseUrl()
   const providerId = `stream-usage-${Date.now()}`
 
@@ -24,34 +24,36 @@ test('streamUsage switch renders and persists via provider drawer', async ({ pag
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const drawer = page.locator('aside').filter({ hasText: '新增 Provider' })
-  await drawer.getByRole('button', { name: /OpenAI/ }).click()
-  await drawer.getByPlaceholder('如 openai').fill(providerId)
-  await drawer.getByPlaceholder('https://api.example.com/v1').fill('http://127.0.0.1:9/v1')
+  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  await createDialog.getByRole('combobox', { name: '模板' }).click()
+  await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+  await createDialog.getByPlaceholder('如 openai').fill(providerId)
+  await createDialog.getByPlaceholder('https://api.example.com/v1').fill('http://127.0.0.1:9/v1')
+  await createDialog.getByRole('button', { name: '创建' }).click()
+  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
 
-  // 展开高级选项，确认开关存在、默认关闭，可勾选
-  await drawer.locator('summary').filter({ hasText: '高级选项' }).click()
-  const usageSwitch = drawer.getByRole('switch', { name: '流式请求携带 usage 统计' })
+  // 详情面板内联编辑：编辑模式高级选项默认展开（useProviderForm
+  // advancedOpen 初始 = edit），开关默认关闭。
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+  const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
+  const usageSwitch = panel.getByRole('switch', { name: '流式请求携带 usage 统计' })
+  await expect(advanced).toBeVisible()
   await expect(usageSwitch).toBeVisible()
   await expect(usageSwitch).not.toBeChecked()
 
   // 警示文案渲染为 warning 色（与普通开关的 muted 提示区分）
   await expect(
-    drawer.getByText('⚠️ 兼容性风险', { exact: false })
+    panel.getByText('⚠️ 兼容性风险', { exact: false })
   ).toBeVisible()
 
   await usageSwitch.click()
   await expect(usageSwitch).toBeChecked()
 
-  // 视觉验证：高级选项展开，含「非流式转流式」「使用绝对路径」「流式 usage 统计」四块
-  await page.setViewportSize({ width: 1440, height: 1200 })
-  await drawer.screenshot({ path: '/tmp/cc-gw-visual/drawer-stream-usage.png' })
-
-  await drawer.getByRole('button', { name: '下一步' }).click()
-  await drawer.getByRole('button', { name: '新增模型' }).click()
-  await drawer.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model')
-  await drawer.getByRole('button', { name: '保存设置' }).click()
-  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
+  await panel.getByRole('button', { name: '新增模型' }).click()
+  await panel.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model')
+  await panel.getByTestId('provider-save').click()
+  await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
 
   // 持久化断言：开启的 provider streamUsage === true
   const configResponse = await request.get(`${baseUrl}/api/config`)

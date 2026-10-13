@@ -26,31 +26,33 @@ test('useAbsoluteUrl switch renders, persists, and bypasses path suffix end-to-e
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const drawer = page.locator('aside').filter({ hasText: '新增 Provider' })
-  await drawer.getByRole('button', { name: /OpenAI/ }).click()
-  await drawer.getByPlaceholder('如 openai').fill(providerId)
+  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  await createDialog.getByRole('combobox', { name: '模板' }).click()
+  await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+  await createDialog.getByPlaceholder('如 openai').fill(providerId)
   // baseUrl 只填到 stub 根；不勾选时网关会追加 /v1/chat/completions（stub 200），
   // 勾选时原样用根路径（stub 对 POST / 返回 404），两者可区分。
-  await drawer.getByPlaceholder('https://api.example.com/v1').fill(stubRoot)
-  await drawer.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
+  await createDialog.getByPlaceholder('https://api.example.com/v1').fill(stubRoot)
+  await createDialog.getByRole('button', { name: '创建' }).click()
+  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
 
-  // 展开高级选项，确认「使用绝对路径」开关存在并可勾选
-  await drawer.locator('summary').filter({ hasText: '高级选项' }).click()
-  const absoluteSwitch = drawer.getByRole('switch', { name: '使用绝对路径' })
+  // 详情面板内联编辑：密钥 + 高级选项里的「使用绝对路径」开关。
+  // 编辑模式高级选项默认展开（useProviderForm advancedOpen 初始 = edit）。
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+  await panel.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
+  const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
+  const absoluteSwitch = panel.getByRole('switch', { name: '使用绝对路径' })
+  await expect(advanced).toBeVisible()
   await expect(absoluteSwitch).toBeVisible()
   await expect(absoluteSwitch).not.toBeChecked()
   await absoluteSwitch.click()
   await expect(absoluteSwitch).toBeChecked()
 
-  // 视觉验证：高级选项展开，含「非流式转流式」「使用绝对路径」「自定义请求头」三块
-  await page.setViewportSize({ width: 1440, height: 1200 })
-  await drawer.screenshot({ path: '/tmp/cc-gw-visual/drawer-absolute-url.png' })
-
-  await drawer.getByRole('button', { name: '下一步' }).click()
-  await drawer.getByRole('button', { name: '新增模型' }).click()
-  await drawer.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model')
-  await drawer.getByRole('button', { name: '保存设置' }).click()
-  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
+  await panel.getByRole('button', { name: '新增模型' }).click()
+  await panel.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model')
+  await panel.getByTestId('provider-save').click()
+  await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
 
   // 持久化断言：config 里 useAbsoluteUrl === true
   const configResponse = await request.get(`${baseUrl}/api/config`)

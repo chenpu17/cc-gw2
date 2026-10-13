@@ -127,11 +127,11 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await page.getByTestId('provider-rail-row').filter({ hasText: PROVIDER_ID }).click()
     const panel = page.getByTestId('provider-detail-panel')
     await expect(panel).toBeVisible()
-    // 编辑模式高级选项默认展开；若折叠（开关不可见）则点开。面板里每个
-    // 模型行也有同名「高级选项」Disclosure，取第一个（基础区认证下的）。
+    // 编辑模式高级选项默认展开（useProviderForm advancedOpen 初始 = edit）。
+    // 面板里每个模型行也有同名「高级选项」Disclosure，取第一个（基础区认证下的）。
     const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
     const usageToggle = panel.getByRole('switch', { name: '流式请求携带 usage 统计' })
-    if (!(await usageToggle.isVisible())) await advanced.locator('summary').click()
+    await expect(advanced).toBeVisible()
     await expect(usageToggle).toBeVisible()
     await page.waitForTimeout(200)
     await expect(advanced).toHaveScreenshot('overlay-provider-advanced.png', {
