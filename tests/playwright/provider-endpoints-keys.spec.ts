@@ -163,6 +163,29 @@ test('dual-endpoint provider routes native protocols and switches keys', async (
     .filter((item) => item.url === '/v1/chat/completions')
     .pop()
   expect(switchedHit.authorization).toBe('Bearer sk-beta')
+
+  // 删除当前激活的 key-b → 剩余首把（key-a）自动晋升为生效
+  const activeRow = panel.getByTestId('provider-key-row').nth(1)
+  await activeRow.getByRole('button', { name: '删除' }).click()
+  await panel.getByTestId('provider-save').click()
+  await expect(page.getByText('已更新 Provider：Dual Surface')).toBeVisible()
+  await expect
+    .poll(async () => {
+      const afterDelete = await getConfig(request, baseUrl)
+      const provider = afterDelete.providers.find((item: any) => item.id === 'dual')
+      return provider.keys.map((key: any) => ({ id: key.id, active: key.active === true }))
+    })
+    .toEqual([{ id: 'key-a', active: true }])
+
+  // 晋升后的 key-a 重新生效
+  const promotedResponse = await request.post(`${baseUrl}/openai/v1/chat/completions`, {
+    data: { model: 'dual-model', messages: [{ role: 'user', content: 'promoted' }] },
+  })
+  expect(promotedResponse.status()).toBe(200)
+  const promotedHit = (await stubRequests(request))
+    .filter((item: any) => item.url === '/v1/chat/completions')
+    .pop()
+  expect(promotedHit.authorization).toBe('Bearer sk-alpha')
 })
 
 test('panel endpoint table edits save to config', async ({ page, request }) => {
@@ -194,14 +217,19 @@ test('panel endpoint table edits save to config', async ({ page, request }) => {
     { id: 'chat-surface', protocol: 'openai', baseUrl: stubBase, label: null },
   ])
 
-  // 删除端点行后保存 → endpoints 清空（回到仅主端点）
+  // 删除端点行后保存 → endpoints 清空（回到仅主端点）。用 poll 断言：同文案
+  // 的残留 toast 可能先满足可见断言，而第二次 PUT 尚未落库。
   const endpointRowAfter = panel.getByTestId('surface-endpoint-row')
   await endpointRowAfter.getByRole('button', { name: '删除' }).click()
   await panel.getByTestId('provider-save').click()
   await expect(page.getByText('已更新 Provider：Stub Provider')).toBeVisible()
-  const afterRemove = await getConfig(request, baseUrl)
-  const stubAfter = afterRemove.providers.find((provider: any) => provider.id === 'stub')
-  expect(stubAfter.endpoints ?? []).toEqual([])
+  await expect
+    .poll(async () => {
+      const afterRemove = await getConfig(request, baseUrl)
+      const stubAfter = afterRemove.providers.find((provider: any) => provider.id === 'stub')
+      return stubAfter.endpoints ?? 'pending'
+    })
+    .toEqual([])
 })
 
 test('balance refresh shows the normalized snapshot', async ({ page, request }) => {
@@ -248,4 +276,41 @@ test('balance refresh shows the normalized snapshot', async ({ page, request }) 
   const funded = balances.find((item: any) => item.providerId === 'funded')
   expect(funded.adapter).toBe('deepseek')
   expect(funded.display).toBe('110.00 CNY')
+})
+
+test('balance refresh failure surfaces an error toast and stores no snapshot', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+
+  // 适配器指向不可达上游 → 刷新 502 → 错误 toast，运行态无快照
+  await putProviders(request, baseUrl, [
+    {
+      id: 'stub',
+      label: 'Stub Provider',
+      type: 'openai',
+      baseUrl: `http://127.0.0.1:${harness.stubPort}`,
+      apiKey: 'stub-key',
+      defaultModel: 'stub-model',
+      models: [{ id: 'stub-model', label: 'Stub Model' }],
+    },
+    {
+      id: 'broke',
+      label: 'Broke',
+      type: 'openai',
+      baseUrl: 'http://127.0.0.1:9/v1',
+      apiKey: 'stub-key',
+      balanceAdapter: 'deepseek',
+      models: [{ id: 'stub-model' }],
+    },
+  ])
+
+  await page.goto(`${baseUrl}/ui/providers`)
+  await page.getByTestId('provider-rail-row').filter({ hasText: 'Broke' }).click()
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+  await panel.getByRole('button', { name: '刷新余额' }).click()
+
+  await expect(page.getByText('余额刷新失败', { exact: false })).toBeVisible()
+  const balancesResponse = await request.get(`${baseUrl}/api/providers/balances`)
+  const { balances } = await balancesResponse.json()
+  expect(balances.find((item: any) => item.providerId === 'broke')).toBeFalsy()
 })
