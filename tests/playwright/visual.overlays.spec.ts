@@ -34,20 +34,25 @@ test.describe.serial('@overlay-only overlay open states', () => {
   test('setup: seed provider, endpoint, route, preset, and a request log', async ({ page, request }) => {
     const baseUrl = harness.baseUrl()
 
-    // Provider via UI (two-step drawer)
+    // Provider via UI (create dialog + inline detail panel)
     await page.goto(`${baseUrl}/ui/providers`)
     await page.getByRole('button', { name: '新增提供商' }).first().click()
-    const drawer = page.locator('aside').filter({ hasText: '新增 Provider' })
-    await drawer.getByRole('button', { name: /OpenAI/ }).click()
-    await drawer.getByPlaceholder('如 openai').fill(PROVIDER_ID)
-    await drawer.getByPlaceholder('https://api.example.com/v1').fill(`http://127.0.0.1:${harness.stubPort}`)
-    await drawer.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
-    await drawer.getByRole('button', { name: '下一步' }).click()
-    await drawer.getByRole('button', { name: '新增模型' }).click()
-    await drawer.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-overlay')
-    await drawer.getByLabel('设为默认模型').check()
-    await drawer.getByRole('button', { name: '保存设置' }).click()
+    const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+    await createDialog.getByRole('combobox', { name: '模板' }).click()
+    await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+    await createDialog.getByPlaceholder('如 openai').fill(PROVIDER_ID)
+    await createDialog.getByPlaceholder('https://api.example.com/v1').fill(`http://127.0.0.1:${harness.stubPort}`)
+    await createDialog.getByRole('button', { name: '创建' }).click()
     await expect(page.getByText(`已添加 Provider：${PROVIDER_ID}`)).toBeVisible()
+
+    const panel = page.getByTestId('provider-detail-panel')
+    await expect(panel).toBeVisible()
+    await panel.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
+    await panel.getByRole('button', { name: '新增模型' }).click()
+    await panel.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-overlay')
+    await panel.getByLabel('设为默认模型').check()
+    await panel.getByTestId('provider-save').click()
+    await expect(page.getByText(`已更新 Provider：${PROVIDER_ID}`)).toBeVisible()
 
     // Endpoint + route + preset on the routing view
     await page.getByRole('tab', { name: '路由' }).click()
@@ -93,45 +98,43 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await expectPageSnapshot(page, 'overlay-command-palette.png')
   })
 
-  test('provider drawer — create mode', async ({ page }) => {
+  test('provider create dialog — template closed', async ({ page }) => {
     await page.goto(`${harness.baseUrl()}/ui/providers`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
     await page.getByRole('button', { name: '新增提供商' }).first().click()
-    const drawer = page.locator('aside').filter({ hasText: '新增 Provider' })
-    await expect(drawer).toBeVisible()
+    const dialog = page.getByRole('dialog', { name: '新增 Provider' })
+    await expect(dialog).toBeVisible()
     await page.waitForTimeout(200)
-    await expectPageSnapshot(page, 'overlay-provider-drawer-create.png')
+    await expectPageSnapshot(page, 'overlay-provider-create-dialog.png')
   })
 
-  test('provider drawer — edit mode', async ({ page }) => {
+  test('provider detail panel — inline editing', async ({ page }) => {
     await page.goto(`${harness.baseUrl()}/ui/providers`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
-    const card = page.locator('[data-testid="provider-card"]').filter({ hasText: PROVIDER_ID })
-    await card.getByRole('button', { name: '编辑' }).click()
-    const drawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
-    await expect(drawer).toBeVisible()
+    await page.getByTestId('provider-rail-row').filter({ hasText: PROVIDER_ID }).click()
+    const panel = page.getByTestId('provider-detail-panel')
+    await expect(panel).toBeVisible()
     await page.waitForTimeout(200)
-    await expectPageSnapshot(page, 'overlay-provider-drawer-edit.png')
+    await expectPageSnapshot(page, 'overlay-provider-detail-panel.png')
   })
 
   // 高级选项展开态：非流式转流式 / 使用绝对路径 / 流式 usage 统计（警示色提示）。
   // streamUsage 提示文案较其余开关更长，基线固定换行与 warning 色渲染。
-  // 元素级快照：视口级截图会受抽屉滚动落点不稳定影响（scrollIntoViewIfNeeded
-  // 的最小滚动量每次不同），只截高级区块本身则与滚动位置无关。
-  test('provider drawer — advanced options expanded', async ({ page }) => {
+  // 元素级快照：与滚动位置无关（面板内联编辑区常驻可见）。
+  test('provider detail panel — advanced options expanded', async ({ page }) => {
     await page.goto(`${harness.baseUrl()}/ui/providers`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
-    const card = page.locator('[data-testid="provider-card"]').filter({ hasText: PROVIDER_ID })
-    await card.getByRole('button', { name: '编辑' }).click()
-    const drawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
-    await expect(drawer).toBeVisible()
-    // 编辑模式高级选项默认展开；若折叠（开关不可见）则点开
-    const advanced = drawer.locator('details').filter({ hasText: '高级选项' })
-    const usageToggle = drawer.getByRole('switch', { name: '流式请求携带 usage 统计' })
+    await page.getByTestId('provider-rail-row').filter({ hasText: PROVIDER_ID }).click()
+    const panel = page.getByTestId('provider-detail-panel')
+    await expect(panel).toBeVisible()
+    // 编辑模式高级选项默认展开；若折叠（开关不可见）则点开。面板里每个
+    // 模型行也有同名「高级选项」Disclosure，取第一个（基础区认证下的）。
+    const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
+    const usageToggle = panel.getByRole('switch', { name: '流式请求携带 usage 统计' })
     if (!(await usageToggle.isVisible())) await advanced.locator('summary').click()
     await expect(usageToggle).toBeVisible()
     await page.waitForTimeout(200)
-    await expect(advanced).toHaveScreenshot('overlay-provider-drawer-advanced.png', {
+    await expect(advanced).toHaveScreenshot('overlay-provider-advanced.png', {
       animations: 'disabled',
       caret: 'hide',
       maxDiffPixelRatio: 0.015,
@@ -141,12 +144,10 @@ test.describe.serial('@overlay-only overlay open states', () => {
   test('probe models dialog — open', async ({ page }) => {
     await page.goto(`${harness.baseUrl()}/ui/providers`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
-    const card = page.locator('[data-testid="provider-card"]').filter({ hasText: PROVIDER_ID })
-    await card.getByRole('button', { name: '编辑' }).click()
-    const drawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
-    await expect(drawer).toBeVisible()
-    await drawer.getByRole('button', { name: '下一步' }).click()
-    await drawer.getByRole('button', { name: '探测模型' }).click()
+    await page.getByTestId('provider-rail-row').filter({ hasText: PROVIDER_ID }).click()
+    const panel = page.getByTestId('provider-detail-panel')
+    await expect(panel).toBeVisible()
+    await panel.getByRole('button', { name: '探测模型' }).click()
     const dialog = page.getByRole('dialog', { name: '探测可用模型' })
     await expect(dialog).toBeVisible()
     // 等探测结果渲染完（stub 上游返回两个模型行）
@@ -309,17 +310,15 @@ test('sampled: command palette (all locales)', async ({ page }) => {
   await expectPageSnapshot(page, 'sample-command-palette.png')
 })
 
-test('sampled: provider drawer edit (all locales)', async ({ page }) => {
+test('sampled: provider detail panel (all locales)', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/providers`)
   await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
-  // Stub provider is harness-seeded; its footer's last button is "edit".
-  const stubCard = page.locator('[data-testid="provider-card"]').filter({ hasText: 'Stub Provider' })
-  await stubCard.getByRole('button').last().click()
-  // The drawer renders as <aside role="dialog">; bare `aside` also matches the
-  // two sidebar shells + the drawer's preview panel → strict-mode violation.
-  await expect(page.getByRole('dialog')).toBeVisible()
+  // Stub provider is harness-seeded; select its rail row (locale-agnostic
+  // testid) to mount the inline detail panel.
+  await page.getByTestId('provider-rail-row').first().click()
+  await expect(page.getByTestId('provider-detail-panel')).toBeVisible()
   await page.waitForTimeout(200)
-  await expectPageSnapshot(page, 'sample-provider-drawer-edit.png')
+  await expectPageSnapshot(page, 'sample-provider-detail-panel.png')
 })
 
 test('sampled: log details drawer (all locales)', async ({ page, request }) => {
