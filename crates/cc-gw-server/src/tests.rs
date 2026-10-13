@@ -1035,6 +1035,178 @@ async fn provider_models_probe_returns_normalized_list() {
 }
 
 #[tokio::test]
+async fn provider_test_and_probe_apply_named_keys() {
+    // The v0.15 panel manages keys only via the named `keys` array (no legacy
+    // `apiKey`), so the console test/probe must authenticate with the active
+    // named key exactly like proxied traffic — otherwise a keys-only provider
+    // would show misleading test/probe failures while real requests succeed.
+    let chat_auth = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let models_auth = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let hits_for_chat = Arc::clone(&chat_auth);
+    let hits_for_models = Arc::clone(&models_auth);
+    let upstream = Router::new()
+        .route(
+            "/v1/chat/completions",
+            post(move |headers: HeaderMap| {
+                let hits = Arc::clone(&hits_for_chat);
+                async move {
+                    record_payload(
+                        &hits,
+                        &json!({
+                            "auth": headers
+                                .get(header::AUTHORIZATION)
+                                .and_then(|value| value.to_str().ok()),
+                        }),
+                    );
+                    mock_draft_chat().await
+                }
+            }),
+        )
+        .route(
+            "/v1/models",
+            get(move |headers: HeaderMap| {
+                let hits = Arc::clone(&hits_for_models);
+                async move {
+                    record_payload(
+                        &hits,
+                        &json!({
+                            "auth": headers
+                                .get(header::AUTHORIZATION)
+                                .and_then(|value| value.to_str().ok()),
+                        }),
+                    );
+                    mock_openai_models().await
+                }
+            }),
+        );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let keys_only_provider = |key_a_active: Option<bool>,
+                              key_b_active: Option<bool>|
+     cc_gw_core::config::ProviderConfig {
+        id: "keys-only".to_string(),
+        label: "Keys Only".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-a".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-a".to_string(),
+            label: None,
+            ..Default::default()
+        }],
+        keys: vec![
+            cc_gw_core::config::ProviderKeyConfig {
+                id: "a".to_string(),
+                label: None,
+                value: "sk-a".to_string(),
+                active: key_a_active,
+            },
+            cc_gw_core::config::ProviderKeyConfig {
+                id: "b".to_string(),
+                label: None,
+                value: "sk-b".to_string(),
+                active: key_b_active,
+            },
+        ],
+        ..cc_gw_core::config::ProviderConfig::default()
+    };
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![keys_only_provider(Some(false), Some(true))];
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "provider-named-keys").await;
+    let client = reqwest::Client::new();
+
+    // active 的 b 生效：连通性测试与模型探测都带 Bearer sk-b。
+    let test_result: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/keys-only/test"
+        ))
+        .send()
+        .await
+        .expect("send test request")
+        .json()
+        .await
+        .expect("decode test response");
+    assert_eq!(test_result.get("ok").and_then(Value::as_bool), Some(true));
+    {
+        let hits = chat_auth.lock().expect("lock chat hits");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(
+            hits[0].get("auth").and_then(Value::as_str),
+            Some("Bearer sk-b")
+        );
+    }
+
+    let probe: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/keys-only/models/probe"
+        ))
+        .send()
+        .await
+        .expect("send probe request")
+        .json()
+        .await
+        .expect("decode probe response");
+    assert_eq!(probe.get("ok").and_then(Value::as_bool), Some(true));
+    {
+        let hits = models_auth.lock().expect("lock models hits");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(
+            hits[0].get("auth").and_then(Value::as_str),
+            Some("Bearer sk-b")
+        );
+    }
+
+    // 清空 active 标记 → 回落第一把 key（a）。
+    let mut updated: Value = client
+        .get(format!("http://{gateway_addr}/api/config"))
+        .send()
+        .await
+        .expect("send config request")
+        .json()
+        .await
+        .expect("decode config response");
+    for key in updated["providers"][0]["keys"]
+        .as_array_mut()
+        .expect("keys array")
+    {
+        key["active"] = Value::Null;
+    }
+    let put = client
+        .put(format!("http://{gateway_addr}/api/config"))
+        .json(&updated)
+        .send()
+        .await
+        .expect("send config update");
+    assert_eq!(put.status(), StatusCode::OK);
+
+    let fallback: Value = client
+        .post(format!(
+            "http://{gateway_addr}/api/providers/keys-only/test"
+        ))
+        .send()
+        .await
+        .expect("send fallback test request")
+        .json()
+        .await
+        .expect("decode fallback test response");
+    assert_eq!(fallback.get("ok").and_then(Value::as_bool), Some(true));
+    {
+        let hits = chat_auth.lock().expect("lock chat hits");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(
+            hits[1].get("auth").and_then(Value::as_str),
+            Some("Bearer sk-a")
+        );
+    }
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn direct_proxy_responses_do_not_forward_upstream_set_cookie() {
     let upstream = Router::new().route(
         "/v1/chat/completions",

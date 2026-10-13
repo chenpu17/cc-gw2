@@ -6,7 +6,7 @@ use reqwest::{
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::config::ProviderConfig;
+use crate::config::{ProviderConfig, effective_provider_key};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -415,6 +415,14 @@ pub async fn fetch_provider_models(
     let mut views = vec![provider.clone()];
     for endpoint in &provider.endpoints {
         views.push(provider.endpoint_view(endpoint));
+    }
+    // Named keys authenticate probes exactly like proxied traffic; without
+    // this a keys-only provider (no legacy `api_key`) would probe upstream
+    // without any credentials and fail with a misleading 401.
+    if let Some(key) = effective_provider_key(&provider.keys) {
+        for view in &mut views {
+            view.api_key = Some(key.value.clone());
+        }
     }
 
     let mut merged: Vec<ProbedModel> = Vec::new();

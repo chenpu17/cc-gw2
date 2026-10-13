@@ -571,6 +571,10 @@ pub(super) async fn api_provider_test(
     };
 
     let started_at = chrono::Utc::now().timestamp_millis();
+    // Exercise the same effective surface (active named key + protocol-matching
+    // endpoint) that proxied traffic would use for this protocol — a keys-only
+    // provider must not fail the console test while real requests succeed.
+    let provider = provider.effective_for_protocol(protocol);
     match forward_request(
         &state.http_client,
         &provider,
