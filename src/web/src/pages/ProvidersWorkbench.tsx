@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSearchParams } from 'react-router-dom'
+import { useBlocker, useSearchParams } from 'react-router-dom'
 import { Boxes, GitBranch } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { PageToolbar } from '@/components/PageToolbar'
@@ -56,6 +56,16 @@ export default function ProvidersWorkbenchPage() {
   // view switch (the panel unmounts when the view changes).
   const [providersPanelDirty, setProvidersPanelDirty] = useState(false)
   const [pendingViewSwitch, setPendingViewSwitch] = useState<WorkbenchView | null>(null)
+
+  // …and guarding SPA route leaves: a sidebar link to another route unmounts
+  // the panel just the same, but beforeunload never fires for client-side
+  // navigation. Same-path moves (search-param changes like the view tab) are
+  // excluded — the pendingViewSwitch confirm above owns those. Requires the
+  // data router in app/router.tsx.
+  const routeBlocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      providersPanelDirty && currentLocation.pathname !== nextLocation.pathname
+  )
 
   // Providers-view selection is deep-linkable via session state only — the
   // chosen detail panel persists across reloads via localStorage.
@@ -404,6 +414,20 @@ export default function ProvidersWorkbenchPage() {
         onConfirm={() => {
           if (pendingViewSwitch) applyViewChange(pendingViewSwitch)
           setPendingViewSwitch(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={routeBlocker.state === 'blocked'}
+        onOpenChange={(open) => {
+          if (!open && routeBlocker.state === 'blocked') routeBlocker.reset()
+        }}
+        title={t('providers.masterDetail.unsavedTitle')}
+        description={t('providers.masterDetail.unsavedBody')}
+        confirmLabel={t('providers.masterDetail.unsavedConfirm')}
+        cancelLabel={t('common.actions.cancel')}
+        onConfirm={() => {
+          if (routeBlocker.state === 'blocked') routeBlocker.proceed()
         }}
       />
     </div>

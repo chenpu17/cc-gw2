@@ -314,3 +314,42 @@ test('balance refresh failure surfaces an error toast and stores no snapshot', a
   const { balances } = await balancesResponse.json()
   expect(balances.find((item: any) => item.providerId === 'broke')).toBeFalsy()
 })
+
+test('unsaved draft guards SPA route leave and incomplete rows count as dirty', async ({ page }) => {
+  const baseUrl = harness.baseUrl()
+  const stubBase = `http://127.0.0.1:${harness.stubPort}`
+
+  await page.goto(`${baseUrl}/ui/providers`)
+  await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+
+  // 只填 Base URL 的端点行会被 serialize() 过滤 —— 旧 dirty 判定把它当成
+  // 「无修改」，切换后面板整行消失且无确认。原始表单判定必须抓住它。
+  await panel.getByRole('button', { name: '添加端点' }).click()
+  const endpointRow = panel.getByTestId('surface-endpoint-row')
+  await endpointRow.getByLabel('端点 Base URL').fill(stubBase)
+  await expect(panel.getByTestId('provider-save')).toBeVisible()
+
+  // SPA 路由离开（侧栏）此前无守卫：beforeunload 不覆盖客户端导航。
+  await page.getByRole('link', { name: '请求日志' }).click()
+  const leaveDialog = page.getByRole('dialog', { name: '放弃未保存的修改？' })
+  await expect(leaveDialog).toBeVisible()
+  await leaveDialog.getByRole('button', { name: '取消' }).click()
+  await expect(leaveDialog).toHaveCount(0)
+  await expect(panel).toBeVisible()
+
+  // 确认后离开，草稿丢弃
+  await page.getByRole('link', { name: '请求日志' }).click()
+  await expect(leaveDialog).toBeVisible()
+  await leaveDialog.getByRole('button', { name: '放弃修改并离开' }).click()
+  await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
+
+  // 回到工作台：草稿已清（无保存页脚），端点行未落库
+  await page.getByRole('link', { name: '模型与路由' }).first().click()
+  await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
+  const panelAfter = page.getByTestId('provider-detail-panel')
+  await expect(panelAfter).toBeVisible()
+  await expect(panelAfter.getByTestId('provider-save')).toHaveCount(0)
+  await expect(panelAfter.getByTestId('surface-endpoint-row')).toHaveCount(0)
+})
