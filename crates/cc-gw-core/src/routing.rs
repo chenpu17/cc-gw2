@@ -358,10 +358,26 @@ pub fn resolve_route_plan_with_reason(
 /// Expand a resolved target into a [`RoutePlan`]: aggregated models expand to
 /// their member backends in priority order (unresolvable members skipped,
 /// duplicates dropped), everything else stays a single candidate.
-fn expand_route_plan(target: RouteTarget, providers: &[ProviderConfig]) -> Result<RoutePlan> {
+/// Apply the request-scoped provider view (multi-protocol endpoint selection
+/// + named-key selection) onto a resolved candidate, so every consumer of the
+/// plan (proxy, simulator, failover loop) sees the surface that will actually
+/// serve the request.
+fn effective_target(target: RouteTarget, request_protocol: ProviderProtocol) -> RouteTarget {
+    RouteTarget {
+        provider: target.provider.effective_for_protocol(request_protocol),
+        provider_id: target.provider_id,
+        model_id: target.model_id,
+    }
+}
+
+fn expand_route_plan(
+    target: RouteTarget,
+    providers: &[ProviderConfig],
+    request_protocol: ProviderProtocol,
+) -> Result<RoutePlan> {
     if !target.provider.is_aggregate() {
         return Ok(RoutePlan {
-            candidates: vec![target],
+            candidates: vec![effective_target(target, request_protocol)],
             failover: None,
         });
     }
@@ -392,7 +408,7 @@ fn expand_route_plan(target: RouteTarget, providers: &[ProviderConfig]) -> Resul
                 member_target.provider_id.clone(),
                 member_target.model_id.clone(),
             )) {
-                candidates.push(member_target);
+                candidates.push(effective_target(member_target, request_protocol));
             }
         }
     }
@@ -449,7 +465,7 @@ fn resolve_route_inner(
         if let Some(target) = resolve_by_identifier(&mapped_identifier, providers, requested_model)
         {
             return Ok((
-                expand_route_plan(target, providers)?,
+                expand_route_plan(target, providers, protocol)?,
                 RouteMatchReason::ModelRoute { via_alias },
             ));
         }
@@ -461,7 +477,7 @@ fn resolve_route_inner(
             resolve_by_identifier(requested_model, providers, Some(requested_model))
         {
             return Ok((
-                expand_route_plan(target, providers)?,
+                expand_route_plan(target, providers, protocol)?,
                 RouteMatchReason::DirectMatch,
             ));
         }
@@ -472,7 +488,7 @@ fn resolve_route_inner(
         if let Some(reasoning) = endpoint_config.defaults.reasoning.as_deref() {
             if let Some(target) = resolve_by_identifier(reasoning, providers, requested_model) {
                 return Ok((
-                    expand_route_plan(target, providers)?,
+                    expand_route_plan(target, providers, protocol)?,
                     RouteMatchReason::ThinkingDefault,
                 ));
             }
@@ -486,7 +502,7 @@ fn resolve_route_inner(
         if let Some(background) = endpoint_config.defaults.background.as_deref() {
             if let Some(target) = resolve_by_identifier(background, providers, requested_model) {
                 return Ok((
-                    expand_route_plan(target, providers)?,
+                    expand_route_plan(target, providers, protocol)?,
                     RouteMatchReason::LongContextDefault {
                         token_estimate,
                         threshold,
@@ -500,7 +516,7 @@ fn resolve_route_inner(
     if let Some(completion) = endpoint_config.defaults.completion.as_deref() {
         if let Some(target) = resolve_by_identifier(completion, providers, requested_model) {
             return Ok((
-                expand_route_plan(target, providers)?,
+                expand_route_plan(target, providers, protocol)?,
                 RouteMatchReason::CompletionDefault,
             ));
         }
@@ -527,7 +543,7 @@ fn resolve_route_inner(
             model_id,
         };
         return Ok((
-            expand_route_plan(target, providers)?,
+            expand_route_plan(target, providers, protocol)?,
             RouteMatchReason::Fallback,
         ));
     }
@@ -558,6 +574,100 @@ mod tests {
             provider_type: Some("openai".to_string()),
             ..ProviderConfig::default()
         }
+    }
+
+    #[test]
+    fn route_plan_applies_endpoint_surface_and_named_key() {
+        use crate::config::{ProviderEndpointConfig, ProviderKeyConfig};
+
+        let mut dual = provider("dual", "m");
+        dual.provider_type = Some("openai".to_string());
+        dual.api_key = Some("legacy".to_string());
+        dual.endpoints = vec![
+            ProviderEndpointConfig {
+                id: "anthropic-surface".to_string(),
+                label: None,
+                protocol: "anthropic".to_string(),
+                base_url: "https://dual-anthropic.example.com/api".to_string(),
+            },
+            ProviderEndpointConfig {
+                id: "openai-surface".to_string(),
+                label: None,
+                protocol: "openai".to_string(),
+                base_url: "https://dual-openai.example.com/v1".to_string(),
+            },
+        ];
+        dual.keys = vec![ProviderKeyConfig {
+            id: "k1".to_string(),
+            label: None,
+            value: "active-key".to_string(),
+            active: Some(true),
+            ..Default::default()
+        }];
+
+        let mut config = GatewayConfig::default();
+        config.providers = vec![dual];
+        for endpoint in ["anthropic", "openai"] {
+            config
+                .endpoint_routing
+                .get_mut(endpoint)
+                .unwrap()
+                .model_routes
+                .insert("m".to_string(), "dual:m".to_string());
+        }
+
+        let body = json!({"model": "m"});
+
+        // Anthropic-protocol request resolves to the native anthropic surface
+        // with the active named key applied.
+        let anthropic_plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &body,
+            Some("m"),
+            false,
+        )
+        .expect("resolve anthropic plan");
+        let anthropic = anthropic_plan.primary();
+        assert_eq!(anthropic.provider.base_url, "https://dual-anthropic.example.com/api");
+        assert_eq!(anthropic.provider.provider_type.as_deref(), Some("anthropic"));
+        assert_eq!(anthropic.provider.api_key.as_deref(), Some("active-key"));
+
+        // OpenAI-protocol request resolves to the native openai surface.
+        let openai_plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &body,
+            Some("m"),
+            false,
+        )
+        .expect("resolve openai plan");
+        assert_eq!(
+            openai_plan.primary().provider.base_url,
+            "https://dual-openai.example.com/v1"
+        );
+        assert_eq!(
+            openai_plan.primary().provider.provider_type.as_deref(),
+            Some("openai")
+        );
+
+        // A protocol with no matching surface keeps the primary surface
+        // (proxy converts).
+        let responses_plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiResponses,
+            &body,
+            Some("m"),
+            false,
+        )
+        .expect("resolve responses plan");
+        assert_eq!(
+            responses_plan.primary().provider.base_url,
+            "https://dual.example.com"
+        );
     }
 
     #[test]

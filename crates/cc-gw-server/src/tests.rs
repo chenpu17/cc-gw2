@@ -5476,6 +5476,253 @@ async fn non_stream_via_stream_error_detail_keeps_upstream_body() {
 }
 
 #[tokio::test]
+async fn multi_surface_provider_routes_native_protocol_and_active_key() {
+    use cc_gw_core::config::{AggregateMemberConfig, ProviderKeyConfig, ProviderModelConfig};
+
+    // One stub upstream exposing two protocol surfaces at different paths,
+    // recording every hit's Authorization header and request body.
+    let hits: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let hits_for_anthropic = Arc::clone(&hits);
+    let hits_for_openai = Arc::clone(&hits);
+    let upstream = Router::new()
+        .route(
+            "/anthropic-surface/v1/messages",
+            post(
+                move |headers: HeaderMap, AxumJson(payload): AxumJson<Value>| {
+                    let hits = Arc::clone(&hits_for_anthropic);
+                    async move {
+                        record_payload(
+                            &hits,
+                            &json!({
+                                "surface": "anthropic",
+                                "auth": headers.get(header::AUTHORIZATION).and_then(|value| value.to_str().ok()),
+                                "hasMessagesField": payload.get("messages").is_some(),
+                            }),
+                        );
+                        Json(json!({
+                            "id": "msg_surface",
+                            "type": "message",
+                            "role": "assistant",
+                            "model": "m",
+                            "content": [{"type": "text", "text": "hi"}],
+                            "stop_reason": "end_turn",
+                            "usage": {"input_tokens": 3, "output_tokens": 2}
+                        }))
+                    }
+                },
+            ),
+        )
+        .route(
+            "/openai-surface/v1/chat/completions",
+            post(
+                move |headers: HeaderMap, AxumJson(payload): AxumJson<Value>| {
+                    let hits = Arc::clone(&hits_for_openai);
+                    async move {
+                        record_payload(
+                            &hits,
+                            &json!({
+                                "surface": "openai",
+                                "auth": headers.get(header::AUTHORIZATION).and_then(|value| value.to_str().ok()),
+                                "hasMessagesField": payload.get("messages").is_some(),
+                            }),
+                        );
+                        Json(json!({
+                            "id": "chatcmpl_surface",
+                            "object": "chat.completion",
+                            "choices": [{"index": 0, "message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}],
+                            "usage": {"prompt_tokens": 3, "completion_tokens": 2}
+                        }))
+                    }
+                },
+            ),
+        );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let dual_surface_provider = |active_key_id: &str| cc_gw_core::config::ProviderConfig {
+        id: "dual-surface".to_string(),
+        label: "Dual Surface".to_string(),
+        base_url: format!("http://{upstream_addr}/openai-surface"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("m".to_string()),
+        models: vec![ProviderModelConfig {
+            id: "m".to_string(),
+            label: Some("M".to_string()),
+            ..Default::default()
+        }],
+        endpoints: vec![
+            cc_gw_core::config::ProviderEndpointConfig {
+                id: "anthropic".to_string(),
+                label: None,
+                protocol: "anthropic".to_string(),
+                base_url: format!("http://{upstream_addr}/anthropic-surface"),
+            },
+            cc_gw_core::config::ProviderEndpointConfig {
+                id: "openai".to_string(),
+                label: None,
+                protocol: "openai".to_string(),
+                base_url: format!("http://{upstream_addr}/openai-surface"),
+            },
+        ],
+        keys: vec![
+            ProviderKeyConfig {
+                id: "a".to_string(),
+                label: Some("备用".to_string()),
+                value: "sk-a".to_string(),
+                active: Some(active_key_id == "a"),
+            },
+            ProviderKeyConfig {
+                id: "b".to_string(),
+                label: Some("主力".to_string()),
+                value: "sk-b".to_string(),
+                active: Some(active_key_id == "b"),
+            },
+        ],
+        ..cc_gw_core::config::ProviderConfig::default()
+    };
+
+    let build_config = |active_key_id: &str| {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![
+            dual_surface_provider(active_key_id),
+            cc_gw_core::config::ProviderConfig {
+                id: "team".to_string(),
+                label: "Team".to_string(),
+                provider_type: Some(cc_gw_core::config::AGGREGATE_PROVIDER_TYPE.to_string()),
+                models: vec![ProviderModelConfig {
+                    id: "team-model".to_string(),
+                    label: None,
+                    members: Some(vec![AggregateMemberConfig {
+                        target: "dual-surface:m".to_string(),
+                    }]),
+                    ..Default::default()
+                }],
+                ..cc_gw_core::config::ProviderConfig::default()
+            },
+        ];
+        for endpoint in ["anthropic", "openai"] {
+            let routing = config.endpoint_routing.get_mut(endpoint).unwrap();
+            routing.model_routes.insert(
+                "m".to_string(),
+                "dual-surface:m".to_string(),
+            );
+            routing.model_routes.insert(
+                "team-model".to_string(),
+                "team:team-model".to_string(),
+            );
+        }
+        config
+    };
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(build_config("b"), "multi-surface-provider").await;
+    let client = reqwest::Client::new();
+
+    // 1) Anthropic request → native anthropic surface, no conversion, active
+    //    named key b authenticates.
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hello"}]
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send anthropic request");
+    assert_eq!(response.status(), StatusCode::OK);
+    let response_json: Value = response.json().await.expect("decode anthropic response");
+    assert_eq!(response_json["type"].as_str(), Some("message"));
+
+    // 2) OpenAI request → native openai surface.
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "m",
+            "messages": [{"role": "user", "content": "hello"}]
+        }))
+        .send()
+        .await
+        .expect("send openai request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // 3) Aggregate member pointing at the dual-surface provider also resolves
+    //    through the matching anthropic surface.
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "team-model",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hello"}]
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send aggregate request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    sleep(Duration::from_millis(150)).await;
+    {
+        let hits = hits.lock().expect("lock hits");
+        let anthropic_hits: Vec<&Value> = hits
+            .iter()
+            .filter(|hit| hit["surface"].as_str() == Some("anthropic"))
+            .collect();
+        assert_eq!(anthropic_hits.len(), 2, "direct + aggregate anthropic hits");
+        for hit in &anthropic_hits {
+            assert_eq!(hit["auth"].as_str(), Some("Bearer sk-b"));
+            assert_eq!(hit["hasMessagesField"].as_bool(), Some(true));
+        }
+        let openai_hits: Vec<&Value> = hits
+            .iter()
+            .filter(|hit| hit["surface"].as_str() == Some("openai"))
+            .collect();
+        assert_eq!(openai_hits.len(), 1);
+        assert_eq!(openai_hits[0]["auth"].as_str(), Some("Bearer sk-b"));
+        assert_eq!(openai_hits[0]["hasMessagesField"].as_bool(), Some(true));
+    }
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+
+    // 4) Flipping the active named key changes the upstream credential.
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(build_config("a"), "multi-surface-provider-key-a").await;
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hello"}]
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send request with flipped key");
+    assert_eq!(response.status(), StatusCode::OK);
+    sleep(Duration::from_millis(150)).await;
+    {
+        let hits = hits.lock().expect("lock hits");
+        let last = hits.last().expect("hit recorded after key flip");
+        assert_eq!(last["surface"].as_str(), Some("anthropic"));
+        assert_eq!(last["auth"].as_str(), Some("Bearer sk-a"));
+    }
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn anthropic_to_openai_retry_drops_metadata_and_tool_choice() {
     let attempts = Arc::new(Mutex::new(Vec::<Value>::new()));
     let attempts_for_route = Arc::clone(&attempts);
