@@ -1,5 +1,6 @@
-import type { RefObject } from 'react'
+import { useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Disclosure } from '@/components/ui/disclosure'
 import { Input } from '@/components/ui/input'
@@ -403,6 +404,9 @@ export function BasicsStep({
 }: ProviderStepShared) {
   const { t } = useTranslation()
   const isAggregate = form.type === 'aggregate'
+  // The basic API key is masked like the named keys below it — one masking
+  // policy for every credential input on the panel.
+  const [apiKeyRevealed, setApiKeyRevealed] = useState(false)
   return (
     <div className="space-y-8">
       <section className="space-y-5" aria-labelledby="provider-type-fields">
@@ -497,11 +501,29 @@ export function BasicsStep({
 
         <Label className="flex flex-col gap-2 text-sm">
           <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.apiKey')}</span>
-          <Input
-            value={form.apiKey}
-            onChange={(event) => onFieldChange('apiKey')(event.target.value)}
-            placeholder={t('providers.drawer.fields.apiKeyPlaceholder')}
-          />
+          <div className="flex gap-1.5">
+            <Input
+              type={apiKeyRevealed ? 'text' : 'password'}
+              value={form.apiKey}
+              onChange={(event) => onFieldChange('apiKey')(event.target.value)}
+              placeholder={t('providers.drawer.fields.apiKeyPlaceholder')}
+              autoComplete="off"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 w-9 shrink-0 px-0"
+              onClick={() => setApiKeyRevealed((previous) => !previous)}
+              aria-label={apiKeyRevealed ? t('providers.keys.hide') : t('providers.keys.reveal')}
+            >
+              {apiKeyRevealed ? (
+                <EyeOff className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Eye className="h-4 w-4" aria-hidden="true" />
+              )}
+            </Button>
+          </div>
         </Label>
 
         <fieldset className="grid gap-2 rounded-xl border border-transparent bg-card p-4 text-xs shadow-[var(--surface-shadow)]">
