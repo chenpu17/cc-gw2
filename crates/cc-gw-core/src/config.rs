@@ -191,23 +191,32 @@ impl ProviderConfig {
         &self,
         request_protocol: crate::provider::ProviderProtocol,
     ) -> ProviderConfig {
-        let mut view = self.clone();
-        if let Some(endpoint) = self
+        let matched = self
             .endpoints
             .iter()
-            .find(|endpoint| endpoint.protocol == protocol_marker(request_protocol))
-        {
-            view.base_url = endpoint.base_url.clone();
-            view.provider_type = Some(endpoint.protocol.clone());
-            // The endpoint's protocol is authoritative — don't let a stale
-            // anthropic-version header re-trigger the Anthropic heuristic.
-            if endpoint.protocol != "anthropic" {
-                view.extra_headers
-                    .retain(|key, _| !key.eq_ignore_ascii_case("anthropic-version"));
-            }
-        }
+            .find(|endpoint| endpoint.protocol == protocol_marker(request_protocol));
+        let mut view = match matched {
+            Some(endpoint) => self.endpoint_view(endpoint),
+            None => self.clone(),
+        };
         if let Some(key) = effective_provider_key(&self.keys) {
             view.api_key = Some(key.value.clone());
+        }
+        view
+    }
+
+    /// View of this provider routed through `endpoint`: its `base_url` and
+    /// protocol marker override the primary surface, and a stale
+    /// anthropic-version header is dropped so the endpoint's protocol stays
+    /// authoritative. Used by `effective_for_protocol` and by endpoint-level
+    /// model probing.
+    pub fn endpoint_view(&self, endpoint: &ProviderEndpointConfig) -> ProviderConfig {
+        let mut view = self.clone();
+        view.base_url = endpoint.base_url.clone();
+        view.provider_type = Some(endpoint.protocol.clone());
+        if endpoint.protocol != "anthropic" {
+            view.extra_headers
+                .retain(|key, _| !key.eq_ignore_ascii_case("anthropic-version"));
         }
         view
     }

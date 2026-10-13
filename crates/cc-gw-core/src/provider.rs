@@ -408,6 +408,43 @@ pub async fn fetch_provider_models(
     client: &Client,
     provider: &ProviderConfig,
 ) -> std::result::Result<Vec<ProbedModel>, ProviderModelsError> {
+    // Probe the primary surface plus every configured multi-protocol endpoint,
+    // merging and deduping the results. Individual failures are tolerated as
+    // long as any surface answers — e.g. Anthropic-compatible coding-plan
+    // endpoints often have no model-list route at all.
+    let mut views = vec![provider.clone()];
+    for endpoint in &provider.endpoints {
+        views.push(provider.endpoint_view(endpoint));
+    }
+
+    let mut merged: Vec<ProbedModel> = Vec::new();
+    let mut first_error: Option<ProviderModelsError> = None;
+    let mut any_succeeded = false;
+    for view in &views {
+        match fetch_models_for_view(client, view).await {
+            Ok(models) => {
+                any_succeeded = true;
+                for model in models {
+                    if !merged.iter().any(|existing| existing.id == model.id) {
+                        merged.push(model);
+                    }
+                }
+            }
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    if any_succeeded {
+        return Ok(merged);
+    }
+    Err(first_error.unwrap_or(ProviderModelsError::UnsupportedEndpoint))
+}
+
+async fn fetch_models_for_view(
+    client: &Client,
+    provider: &ProviderConfig,
+) -> std::result::Result<Vec<ProbedModel>, ProviderModelsError> {
     let url = resolve_models_url(provider).ok_or(ProviderModelsError::UnsupportedEndpoint)?;
     let protocol = if provider_prefers_anthropic_protocol(provider) {
         ProviderProtocol::AnthropicMessages

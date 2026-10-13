@@ -1,6 +1,7 @@
 use super::*;
 use axum::extract::{Json as AxumJson, Query};
 use axum::http::{HeaderName, HeaderValue};
+use axum::routing::get;
 use futures_util::StreamExt;
 use std::collections::BTreeMap;
 use std::fs as stdfs;
@@ -5716,6 +5717,84 @@ async fn multi_surface_provider_routes_native_protocol_and_active_key() {
         assert_eq!(last["surface"].as_str(), Some("anthropic"));
         assert_eq!(last["auth"].as_str(), Some("Bearer sk-a"));
     }
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn provider_models_probe_merges_all_surfaces() {
+    // Primary surface lists one model; the anthropic endpoint lists another
+    // (plus a duplicate of the primary's); the openai endpoint has no
+    // models route at all (404) and must not fail the whole probe.
+    let upstream = Router::new()
+        .route(
+            "/primary-surface/v1/models",
+            get(|| async {
+                Json(json!({"data": [{"id": "primary-model"}]}))
+            }),
+        )
+        .route(
+            "/anthropic-surface/v1/models",
+            get(|| async {
+                Json(json!({"data": [{"id": "anthropic-model"}, {"id": "primary-model"}]}))
+            }),
+        );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "multi-probe".to_string(),
+        label: "Multi Probe".to_string(),
+        base_url: format!("http://{upstream_addr}/primary-surface"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("primary-model".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "primary-model".to_string(),
+            label: None,
+            ..Default::default()
+        }],
+        endpoints: vec![
+            cc_gw_core::config::ProviderEndpointConfig {
+                id: "anthropic".to_string(),
+                label: None,
+                protocol: "anthropic".to_string(),
+                base_url: format!("http://{upstream_addr}/anthropic-surface"),
+            },
+            cc_gw_core::config::ProviderEndpointConfig {
+                id: "openai".to_string(),
+                label: None,
+                protocol: "openai".to_string(),
+                // No /v1/models route on this surface — probe failure tolerated.
+                base_url: format!("http://{upstream_addr}/openai-surface"),
+            },
+        ],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "multi-surface-probe").await;
+    let client = reqwest::Client::new();
+
+    let probe: Value = client
+        .post(format!("http://{gateway_addr}/api/providers/multi-probe/models/probe"))
+        .send()
+        .await
+        .expect("request models probe")
+        .json()
+        .await
+        .expect("decode models probe");
+    assert_eq!(probe["ok"].as_bool(), Some(true), "probe response: {probe}");
+    let models: Vec<String> = probe["models"]
+        .as_array()
+        .expect("models array")
+        .iter()
+        .map(|model| model["id"].as_str().expect("model id").to_string())
+        .collect();
+    assert!(models.contains(&"primary-model".to_string()), "{models:?}");
+    assert!(models.contains(&"anthropic-model".to_string()), "{models:?}");
+    assert_eq!(models.len(), 2, "duplicate ids must be merged: {models:?}");
 
     gateway_handle.abort();
     upstream_handle.abort();
