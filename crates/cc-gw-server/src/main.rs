@@ -95,8 +95,7 @@ struct AppState {
     active_client_sessions_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     active_requests_by_api_key: Arc<Mutex<HashMap<i64, u64>>>,
     active_requests_by_client_kind: Arc<Mutex<BTreeMap<String, u64>>>,
-    active_requests_by_client_kind_by_endpoint:
-        Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
+    active_requests_by_client_kind_by_endpoint: Arc<Mutex<HashMap<String, HashMap<String, u64>>>>,
     /// Latest manual balance refresh per provider id (runtime state only).
     provider_balances: Arc<Mutex<HashMap<String, BalanceSnapshot>>>,
     network_ingress_bytes: Arc<AtomicU64>,
@@ -560,6 +559,7 @@ fn build_router(state: AppState) -> Router {
             "/api/stats/api-keys/usage",
             get(admin_routes::api_stats_api_keys_usage),
         )
+        .route("/api/billing/prices", get(admin_routes::api_billing_prices))
         .route(
             "/anthropic/api/event_logging/batch",
             post(ui_routes::anthropic_event_logging_batch),

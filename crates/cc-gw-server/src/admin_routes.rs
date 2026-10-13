@@ -1,7 +1,14 @@
 use super::*;
+use cc_gw_core::billing::{PricingEngine, attach_log_costs};
 use semver::Version;
 use std::collections::BTreeMap;
 use std::time::Duration;
+
+/// 查询期定价引擎：每次请求从当前 config 快照构建（纯内存、无 IO），
+/// config 热加载后下一请求即生效。
+fn pricing_engine(state: &AppState) -> PricingEngine {
+    PricingEngine::from_config(&config_snapshot(state).billing)
+}
 
 #[derive(Debug, Deserialize)]
 struct NpmRegistryPackageResponse {
@@ -675,7 +682,7 @@ pub(super) async fn api_provider_balance_refresh(
                     StatusCode::NOT_FOUND,
                     Json(json!({ "error": "Provider not found" })),
                 )
-                    .into_response()
+                    .into_response();
             }
         }
     };
@@ -1733,12 +1740,14 @@ pub(super) async fn api_logs(
 
     match query_logs(&state.paths.db_path, &log_query) {
         Ok(result) => {
+            let pricing = pricing_engine(&state);
             let mut value = serde_json::to_value(result).unwrap_or_else(|_| json!({}));
             if let Some(items) = value.get_mut("items").and_then(Value::as_array_mut) {
                 for item in items {
                     mask_log_record_api_key(item, &state.paths.home_dir);
                 }
             }
+            attach_log_costs(&mut value, &pricing);
             Json(value).into_response()
         }
         Err(error) => (
@@ -1813,6 +1822,7 @@ pub(super) async fn api_logs_export(
         }
     };
 
+    let pricing = pricing_engine(&state);
     let records = result
         .into_iter()
         .map(|item| {
@@ -1836,6 +1846,7 @@ pub(super) async fn api_logs_export(
                 );
                 object.insert("api_key_value".to_string(), Value::Null);
             }
+            attach_log_costs(&mut value, &pricing);
             value
         })
         .collect::<Vec<_>>();
@@ -1843,7 +1854,8 @@ pub(super) async fn api_logs_export(
         "exportedAt": chrono::Utc::now().to_rfc3339(),
         "count": records.len(),
         "limit": limit,
-        "records": records
+        "records": records,
+        "cost_currency": pricing.display_currency().code(),
     });
 
     let cursor = Cursor::new(Vec::<u8>::new());
@@ -1931,8 +1943,10 @@ pub(super) async fn api_log_detail(
 ) -> Response {
     match get_log_detail(&state.paths.db_path, id) {
         Ok(Some(result)) => {
+            let pricing = pricing_engine(&state);
             let mut value = serde_json::to_value(result).unwrap_or_else(|_| json!({}));
             mask_log_record_api_key(&mut value, &state.paths.home_dir);
+            attach_log_costs(&mut value, &pricing);
             Json(value).into_response()
         }
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({ "error": "Not found" }))).into_response(),
@@ -1985,7 +1999,8 @@ pub(super) async fn api_stats_api_keys_usage(
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(10)
         .clamp(1, 50);
-    match get_api_key_usage_metrics(&state.paths.db_path, days, limit, endpoint) {
+    let pricing = pricing_engine(&state);
+    match get_api_key_usage_metrics(&state.paths.db_path, days, limit, endpoint, &pricing) {
         Ok(result) => Json(json!(result)).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -2033,7 +2048,8 @@ pub(super) async fn api_stats_overview(
         .get("endpoint")
         .map(|value| value.as_str())
         .filter(|v| !v.is_empty());
-    match get_metrics_overview(&state.paths.db_path, endpoint) {
+    let pricing = pricing_engine(&state);
+    match get_metrics_overview(&state.paths.db_path, endpoint, &pricing) {
         Ok(result) => Json(json!(result)).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -2056,7 +2072,8 @@ pub(super) async fn api_stats_daily(
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(7)
         .clamp(1, 30);
-    match get_daily_metrics(&state.paths.db_path, days, endpoint) {
+    let pricing = pricing_engine(&state);
+    match get_daily_metrics(&state.paths.db_path, days, endpoint, &pricing) {
         Ok(result) => Json(json!(result)).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -2084,7 +2101,8 @@ pub(super) async fn api_stats_model(
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(10)
         .clamp(1, 50);
-    match get_model_usage_metrics(&state.paths.db_path, days, limit, endpoint) {
+    let pricing = pricing_engine(&state);
+    match get_model_usage_metrics(&state.paths.db_path, days, limit, endpoint, &pricing) {
         Ok(result) => Json(json!(result)).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -2120,7 +2138,15 @@ fn dimension_stats_response(
     limit: i64,
     endpoint: Option<&str>,
 ) -> Response {
-    match get_dimension_usage_metrics(&state.paths.db_path, dimension, days, limit, endpoint) {
+    let pricing = pricing_engine(state);
+    match get_dimension_usage_metrics(
+        &state.paths.db_path,
+        dimension,
+        days,
+        limit,
+        endpoint,
+        &pricing,
+    ) {
         Ok(result) => Json(json!(result)).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -2152,4 +2178,15 @@ pub(super) async fn api_stats_clients(
 ) -> Response {
     let (days, limit, endpoint) = dimension_stats_params(&query);
     dimension_stats_response(&state, UsageDimension::ClientKind, days, limit, endpoint)
+}
+
+/// `GET /api/billing/prices` — 内置价格表 + 用户覆盖的合并只读视图，
+/// 设置页「计费」分区数据源。
+pub(super) async fn api_billing_prices(State(state): State<AppState>) -> Response {
+    let engine = pricing_engine(&state);
+    Json(json!({
+        "displayCurrency": engine.display_currency().code(),
+        "entries": engine.merged_table(),
+    }))
+    .into_response()
 }

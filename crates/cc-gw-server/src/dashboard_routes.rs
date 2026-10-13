@@ -18,11 +18,12 @@ pub(super) async fn api_dashboard_summary(
     let home_dir = &state.paths.home_dir;
 
     let status = admin_routes::build_status_response(&state, endpoint);
+    let pricing = cc_gw_core::billing::PricingEngine::from_config(&config_snapshot(&state).billing);
 
     let result = (|| -> Result<Value> {
-        let overview = get_metrics_overview(db_path, endpoint)?;
-        let daily = get_daily_metrics(db_path, 14, endpoint)?;
-        let model_stats = get_model_usage_metrics(db_path, 7, 6, endpoint)?;
+        let overview = get_metrics_overview(db_path, endpoint, &pricing)?;
+        let daily = get_daily_metrics(db_path, 14, endpoint, &pricing)?;
+        let model_stats = get_model_usage_metrics(db_path, 7, 6, endpoint, &pricing)?;
         // Rolling 10-minute token throughput (input/output split). Raw sums
         // over the window, divided here by the window length — deliberately
         // separate from the 1-minute `requestsPerMinute` semantics in
@@ -78,6 +79,7 @@ pub(super) async fn api_dashboard_summary(
                     mask_log_record_api_key(item, home_dir);
                 }
             }
+            cc_gw_core::billing::attach_log_costs(&mut value, &pricing);
             value
         };
         // `/api/events` only accepts a single level filter, so merge the

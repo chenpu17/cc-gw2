@@ -1081,34 +1081,34 @@ async fn provider_test_and_probe_apply_named_keys() {
         );
     let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
 
-    let keys_only_provider = |key_a_active: Option<bool>,
-                              key_b_active: Option<bool>|
-     cc_gw_core::config::ProviderConfig {
-        id: "keys-only".to_string(),
-        label: "Keys Only".to_string(),
-        base_url: format!("http://{upstream_addr}"),
-        provider_type: Some("openai".to_string()),
-        default_model: Some("gpt-a".to_string()),
-        models: vec![cc_gw_core::config::ProviderModelConfig {
-            id: "gpt-a".to_string(),
-            label: None,
-            ..Default::default()
-        }],
-        keys: vec![
-            cc_gw_core::config::ProviderKeyConfig {
-                id: "a".to_string(),
+    let keys_only_provider = |key_a_active: Option<bool>, key_b_active: Option<bool>| {
+        cc_gw_core::config::ProviderConfig {
+            id: "keys-only".to_string(),
+            label: "Keys Only".to_string(),
+            base_url: format!("http://{upstream_addr}"),
+            provider_type: Some("openai".to_string()),
+            default_model: Some("gpt-a".to_string()),
+            models: vec![cc_gw_core::config::ProviderModelConfig {
+                id: "gpt-a".to_string(),
                 label: None,
-                value: "sk-a".to_string(),
-                active: key_a_active,
-            },
-            cc_gw_core::config::ProviderKeyConfig {
-                id: "b".to_string(),
-                label: None,
-                value: "sk-b".to_string(),
-                active: key_b_active,
-            },
-        ],
-        ..cc_gw_core::config::ProviderConfig::default()
+                ..Default::default()
+            }],
+            keys: vec![
+                cc_gw_core::config::ProviderKeyConfig {
+                    id: "a".to_string(),
+                    label: None,
+                    value: "sk-a".to_string(),
+                    active: key_a_active,
+                },
+                cc_gw_core::config::ProviderKeyConfig {
+                    id: "b".to_string(),
+                    label: None,
+                    value: "sk-b".to_string(),
+                    active: key_b_active,
+                },
+            ],
+            ..cc_gw_core::config::ProviderConfig::default()
+        }
     };
 
     let mut config = GatewayConfig::default();
@@ -1391,6 +1391,255 @@ async fn non_stream_response_logging_does_not_store_compressed_payload_gibberish
         response_payload_json["choices"][0]["message"]["content"].as_str(),
         Some("plain response")
     );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn billing_overrides_flow_into_logs_and_stats() {
+    // 整数价 + 整数 tokens 的手算口径：in ¥1/M、out ¥2/M →
+    // 1M×1 + 0.5M×2 = 2.0 CNY，logs/stats 五处一致。
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            Json(json!({
+                "id": "chatcmpl_billing",
+                "object": "chat.completion",
+                "model": "gpt-test",
+                "choices": [{
+                    "index": 0,
+                    "message": { "role": "assistant", "content": "ok" },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 1_000_000,
+                    "completion_tokens": 500_000,
+                    "total_tokens": 1_500_000
+                }
+            }))
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("mock-openai:gpt-test".to_string());
+    }
+    config.billing.model_prices.insert(
+        "gpt-test".to_string(),
+        cc_gw_core::config::ModelPriceOverride {
+            currency: "CNY".to_string(),
+            input: 1.0,
+            output: 2.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+            label: Some("集成测试价".to_string()),
+        },
+    );
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "billing-overrides").await;
+    let client = reqwest::Client::new();
+
+    let _: Value = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-test",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send billing request")
+        .json()
+        .await
+        .expect("decode billing response");
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=5"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs");
+    assert_eq!(logs["cost_currency"], "CNY");
+    let item = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("log item");
+    assert_eq!(item["cost"].as_f64(), Some(2.0));
+    assert_eq!(item["cost_breakdown"]["input"].as_f64(), Some(1.0));
+    assert_eq!(item["cost_breakdown"]["output"].as_f64(), Some(1.0));
+    let log_id = item["id"].as_i64().expect("log id");
+
+    let detail: Value = client
+        .get(format!("http://{gateway_addr}/api/logs/{log_id}"))
+        .send()
+        .await
+        .expect("request log detail")
+        .json()
+        .await
+        .expect("decode log detail");
+    assert_eq!(detail["cost"].as_f64(), Some(2.0));
+    assert_eq!(detail["cost_currency"], "CNY");
+
+    let overview: Value = client
+        .get(format!("http://{gateway_addr}/api/stats/overview"))
+        .send()
+        .await
+        .expect("request overview")
+        .json()
+        .await
+        .expect("decode overview");
+    assert_eq!(overview["costCurrency"], "CNY");
+    assert_eq!(overview["totals"]["cost"].as_f64(), Some(2.0));
+    assert_eq!(overview["totals"]["unpricedRequests"].as_i64(), Some(0));
+
+    let providers: Value = client
+        .get(format!("http://{gateway_addr}/api/stats/providers"))
+        .send()
+        .await
+        .expect("request provider stats")
+        .json()
+        .await
+        .expect("decode provider stats");
+    assert_eq!(providers[0]["key"], "mock-openai");
+    assert_eq!(providers[0]["cost"].as_f64(), Some(2.0));
+    assert_eq!(providers[0]["unpricedRequests"].as_i64(), Some(0));
+
+    let models: Value = client
+        .get(format!("http://{gateway_addr}/api/stats/model"))
+        .send()
+        .await
+        .expect("request model stats")
+        .json()
+        .await
+        .expect("decode model stats");
+    assert_eq!(models[0]["model"], "gpt-test");
+    assert_eq!(models[0]["cost"].as_f64(), Some(2.0));
+
+    let prices: Value = client
+        .get(format!("http://{gateway_addr}/api/billing/prices"))
+        .send()
+        .await
+        .expect("request prices")
+        .json()
+        .await
+        .expect("decode prices");
+    assert_eq!(prices["displayCurrency"], "CNY");
+    let entries = prices["entries"].as_array().expect("price entries");
+    assert!(entries.iter().any(|entry| {
+        entry["key"] == "gpt-test"
+            && entry["source"] == "override"
+            && entry["input"].as_f64() == Some(1.0)
+            && entry["currency"] == "CNY"
+    }));
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry["key"] == "claude-opus-4-5" && entry["source"] == "builtin")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn billing_without_prices_reports_null_costs() {
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            Json(json!({
+                "id": "chatcmpl_unpriced",
+                "object": "chat.completion",
+                "model": "gpt-test",
+                "choices": [{
+                    "index": 0,
+                    "message": { "role": "assistant", "content": "ok" },
+                    "finish_reason": "stop"
+                }],
+                "usage": { "prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110 }
+            }))
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("mock-openai:gpt-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "billing-unpriced").await;
+    let client = reqwest::Client::new();
+
+    let _: Value = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-test",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send request")
+        .json()
+        .await
+        .expect("decode response");
+
+    // 未配置任何价格：cost 为 null（不是 0），unpricedRequests 计满。
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=5"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs");
+    assert_eq!(logs["cost_currency"], "CNY");
+    let item = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("log item");
+    assert!(item["cost"].is_null());
+    assert!(item["cost_breakdown"].is_null());
+
+    let overview: Value = client
+        .get(format!("http://{gateway_addr}/api/stats/overview"))
+        .send()
+        .await
+        .expect("request overview")
+        .json()
+        .await
+        .expect("decode overview");
+    assert!(overview["totals"]["cost"].is_null());
+    assert_eq!(overview["totals"]["unpricedRequests"].as_i64(), Some(1));
 
     gateway_handle.abort();
     upstream_handle.abort();
@@ -5603,7 +5852,10 @@ async fn non_stream_via_stream_error_detail_keeps_upstream_body() {
         .await
         .expect("send materialized error request");
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    let response_json: Value = response.json().await.expect("decode passthrough error body");
+    let response_json: Value = response
+        .json()
+        .await
+        .expect("decode passthrough error body");
     assert_eq!(
         response_json["error"]["message"].as_str(),
         Some("upstream exploded with details")
@@ -5630,7 +5882,10 @@ async fn non_stream_via_stream_error_detail_keeps_upstream_body() {
         .and_then(Value::as_str)
         .expect("error_detail present on materialized error path");
     let detail: Value = serde_json::from_str(detail_raw).expect("parse error_detail");
-    assert_eq!(detail.get("stage").and_then(Value::as_str), Some("upstream"));
+    assert_eq!(
+        detail.get("stage").and_then(Value::as_str),
+        Some("upstream")
+    );
     assert_eq!(
         detail.get("upstreamStatus").and_then(Value::as_i64),
         Some(503)
@@ -5775,14 +6030,12 @@ async fn multi_surface_provider_routes_native_protocol_and_active_key() {
         ];
         for endpoint in ["anthropic", "openai"] {
             let routing = config.endpoint_routing.get_mut(endpoint).unwrap();
-            routing.model_routes.insert(
-                "m".to_string(),
-                "dual-surface:m".to_string(),
-            );
-            routing.model_routes.insert(
-                "team-model".to_string(),
-                "team:team-model".to_string(),
-            );
+            routing
+                .model_routes
+                .insert("m".to_string(), "dual-surface:m".to_string());
+            routing
+                .model_routes
+                .insert("team-model".to_string(), "team:team-model".to_string());
         }
         config
     };
@@ -5904,9 +6157,7 @@ async fn provider_models_probe_merges_all_surfaces() {
     let upstream = Router::new()
         .route(
             "/primary-surface/v1/models",
-            get(|| async {
-                Json(json!({"data": [{"id": "primary-model"}]}))
-            }),
+            get(|| async { Json(json!({"data": [{"id": "primary-model"}]})) }),
         )
         .route(
             "/anthropic-surface/v1/models",
@@ -5951,7 +6202,9 @@ async fn provider_models_probe_merges_all_surfaces() {
     let client = reqwest::Client::new();
 
     let probe: Value = client
-        .post(format!("http://{gateway_addr}/api/providers/multi-probe/models/probe"))
+        .post(format!(
+            "http://{gateway_addr}/api/providers/multi-probe/models/probe"
+        ))
         .send()
         .await
         .expect("request models probe")
@@ -5966,7 +6219,10 @@ async fn provider_models_probe_merges_all_surfaces() {
         .map(|model| model["id"].as_str().expect("model id").to_string())
         .collect();
     assert!(models.contains(&"primary-model".to_string()), "{models:?}");
-    assert!(models.contains(&"anthropic-model".to_string()), "{models:?}");
+    assert!(
+        models.contains(&"anthropic-model".to_string()),
+        "{models:?}"
+    );
     assert_eq!(models.len(), 2, "duplicate ids must be merged: {models:?}");
 
     gateway_handle.abort();
@@ -9791,7 +10047,9 @@ async fn provider_balance_refresh_stores_snapshot_and_records_failures() {
         .route(
             "/ok/user/balance",
             get(|headers: HeaderMap| async move {
-                if headers.get(header::AUTHORIZATION).and_then(|value| value.to_str().ok())
+                if headers
+                    .get(header::AUTHORIZATION)
+                    .and_then(|value| value.to_str().ok())
                     != Some("Bearer sk-live")
                 {
                     return (
@@ -9846,10 +10104,7 @@ async fn provider_balance_refresh_stores_snapshot_and_records_failures() {
         active: Some(true),
         ..Default::default()
     }];
-    config.providers = vec![
-        provider,
-        balance_provider("broken", "broken"),
-    ];
+    config.providers = vec![provider, balance_provider("broken", "broken")];
     config
         .endpoint_routing
         .get_mut("openai")
@@ -9863,7 +10118,9 @@ async fn provider_balance_refresh_stores_snapshot_and_records_failures() {
 
     // Successful refresh stores the snapshot (active named key used).
     let response = client
-        .post(format!("http://{gateway_addr}/api/providers/funded/balance/refresh"))
+        .post(format!(
+            "http://{gateway_addr}/api/providers/funded/balance/refresh"
+        ))
         .send()
         .await
         .expect("refresh funded balance");
@@ -9886,7 +10143,9 @@ async fn provider_balance_refresh_stores_snapshot_and_records_failures() {
 
     // Failed refresh → 502 + gateway event, no snapshot stored.
     let response = client
-        .post(format!("http://{gateway_addr}/api/providers/broken/balance/refresh"))
+        .post(format!(
+            "http://{gateway_addr}/api/providers/broken/balance/refresh"
+        ))
         .send()
         .await
         .expect("refresh broken balance");
@@ -9944,7 +10203,9 @@ async fn provider_presets_route_serves_complete_catalog() {
     for preset in &presets {
         for field in ["id", "label", "description", "type", "baseUrl"] {
             assert!(
-                preset[field].as_str().is_some_and(|value| !value.is_empty()),
+                preset[field]
+                    .as_str()
+                    .is_some_and(|value| !value.is_empty()),
                 "preset {:?} missing {field}",
                 preset["id"]
             );
