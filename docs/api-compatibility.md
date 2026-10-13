@@ -60,16 +60,17 @@
 | `/api/logs/clear` | `POST` | 已兼容 | 清空日志与部分统计 |
 | `/api/db/info` | `GET` | 已兼容 | 返回数据库体积、记录数、RSS 内存等 |
 | `/api/db/compact` | `POST` | 已兼容 | 执行数据库压缩 |
-| `/api/stats/overview` | `GET` | 已兼容 | 总体统计 |
-| `/api/stats/daily` | `GET` | 已兼容 | 每日统计 |
-| `/api/stats/model` | `GET` | 已兼容 | 模型维度统计 |
+| `/api/stats/overview` | `GET` | 已兼容 | 总体统计（additive：三段各新增 `cost` / `unpricedRequests`，顶层新增 `costCurrency`；查询期按计费配置实时计价，无价模型计为未计价而非 0，见 `docs/billing.md`） |
+| `/api/stats/daily` | `GET` | 已兼容 | 每日统计（additive：每行新增 `cost` / `unpricedRequests`） |
+| `/api/stats/model` | `GET` | 已兼容 | 模型维度统计（additive：每行新增 `cost` / `unpricedRequests`） |
 | `/api/stats/api-keys/overview` | `GET` | 已兼容 | API Key 总览统计 |
-| `/api/stats/api-keys/usage` | `GET` | 已兼容 | API Key 使用排名（additive：项内新增 `cacheReadTokens` / `cacheCreationTokens` / `avgLatencyMs`） |
+| `/api/stats/api-keys/usage` | `GET` | 已兼容 | API Key 使用排名（additive：项内新增 `cacheReadTokens` / `cacheCreationTokens` / `avgLatencyMs`；v0.16 再增 `cost` / `unpricedRequests`） |
 | `/api/stats/providers` | `GET` | 新增 | 按 provider 聚合用量（`?days=1-90&limit=1-50&endpoint=`） |
 | `/api/stats/endpoints` | `GET` | 新增 | 按端点聚合用量（参数同上） |
 | `/api/stats/clients` | `GET` | 新增 | 按 agent 客户端类型聚合用量（参数同上；历史无 `client_kind` 的行归入 `unknown`） |
+| `/api/billing/prices` | `GET` | 新增 | 计费价格表合并视图 `{ displayCurrency, entries: [{ key, source: "builtin"\|"override", scopedProvider?, currency, input, output, cacheRead, cacheCreation, label? }] }`（内置段与覆盖段各按 key 排序；价格为每 1M tokens 原币） |
 
-三条维度统计路由返回相同形状的数组：`[{ key, requests, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, avgLatencyMs }]`，按 requests 降序。
+三条维度统计路由返回相同形状的数组：`[{ key, requests, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, avgLatencyMs, cost, unpricedRequests }]`，按 requests 降序；`cost` 为已计价部分之和（展示货币），全未计价为 `null`。
 
 日志接口补充说明：
 
@@ -86,6 +87,7 @@
 - `logs.json` 顶层字段为 `exportedAt`、`count`、`limit`、`records`
 - `records[*].payload` 与日志详情接口使用同一套四字段结构
 - 导出结果中的 `api_key_value` 会被置空，另附带 `api_key_value_available` 和 `api_key_value_masked`
+- v0.16 additive：日志列表 / 详情 / 导出统一附加成本字段 —— 顶层 `cost_currency`（展示货币，snake_case 随日志惯例），每条记录 `cost`（number \| null）与 `cost_breakdown`（camelCase 分项 `input/output/cacheRead/cacheCreation/total`，展示货币计）；无价模型为 `null`，详见 `docs/billing.md`
 
 Dashboard 与事件流接口补充说明：
 

@@ -83,6 +83,7 @@
 - Anthropic / OpenAI 协议转换
 - API Key 加解密、鉴权和统计
 - 日志、事件、统计聚合
+- 统一货币计费（查询期定价引擎：内置价格表 + 用户覆盖 + 汇率换算，成本不落库）
 - SSE 观察与跨协议流式变换
 
 这是系统的核心业务层。`cc-gw-server` 尽量只做 API 入口和请求组织，核心逻辑放在这里。
@@ -211,6 +212,7 @@ SQLite 主要承担以下职责：
 - 管理台查询远多于写入，因此以简单表结构和直接查询为主
 - 单机场景下 SQLite 足够，减少部署复杂度
 - 使用 `rusqlite bundled` 规避宿主机 SQLite 版本依赖
+- 请求成本不持久化：每次查询按当前价格配置实时计价（改价后历史随之重算），见 [`billing.md`](./billing.md)
 
 更细的本地目录和表结构说明见 [`database-schema.md`](./database-schema.md)。
 
@@ -321,6 +323,7 @@ SQLite 主要承担以下职责：
 
 - 聚合模型设计：[`aggregate-models.md`](./aggregate-models.md)
 - Provider 2.0：[`provider-2.0.md`](./provider-2.0.md)
+- 统一货币计费：[`billing.md`](./billing.md)
 - 存储设计：[`database-schema.md`](./database-schema.md)
 - API 兼容矩阵：[`api-compatibility.md`](./api-compatibility.md)
 - npm 打包：[`npm-packaging.md`](./npm-packaging.md)
