@@ -52,6 +52,12 @@ test('settings web ui preserves manual save flow and supports config, maintenanc
   await page.locator('#section-config-file').getByRole('button', { name: '复制' }).click()
   await expect(page.getByText('配置文件路径已复制到剪贴板。')).toBeVisible()
 
+  // v0.16 计费分区：展示货币与汇率输入就位
+  const billingSection = page.locator('#section-billing')
+  await expect(billingSection).toBeVisible()
+  await expect(billingSection).toContainText('展示货币')
+  await expect(billingSection).toContainText('1 USD = ___ CNY')
+
   await page.locator('#section-cleanup').getByRole('button', { name: '清理历史日志' }).click()
   const cleanupDialog = page.getByRole('dialog', { name: '清理历史日志' })
   await expect(cleanupDialog).toBeVisible()

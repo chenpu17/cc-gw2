@@ -114,6 +114,10 @@ test('dashboard supports refresh, endpoint filters, compaction, and recent reque
   await expect(insights).toContainText('最快 TTFT 模型')
   await expect(insights).toContainText('stub-model')
 
+  // v0.16 今日成本卡：stub-model 未计价 → em dash + 未计价提示
+  await expect(page.getByTestId('dashboard-today-value-cost')).toHaveText('—')
+  await expect(page.getByTestId('dashboard-today-grid')).toContainText('条请求未计价')
+
   // 用量分布：默认 provider tab 出现 stub 行；client tab 出现协议兜底 kind
   await expect(page.getByTestId('dashboard-usage-tab-providers')).toBeVisible()
   await expect(page.getByTestId('dashboard-usage-row').filter({ hasText: 'stub' })).toHaveCount(1)

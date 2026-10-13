@@ -69,6 +69,9 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
   await page.keyboard.press('Escape')
   await expect(page.locator('thead').getByText('Tokens')).not.toBeVisible()
 
+  // v0.16 成本列：列偏好 v3 迁移后默认可见
+  await expect(page.locator('thead').getByText('成本')).toBeVisible()
+
   // 筛选面板默认展开，无需手动展开
   await page.getByRole('button', { name: '仅看失败' }).click()
   await expect(page.getByText('状态: 失败')).toBeVisible()
