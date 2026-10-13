@@ -214,6 +214,11 @@ impl ProviderConfig {
         let mut view = self.clone();
         view.base_url = endpoint.base_url.clone();
         view.provider_type = Some(endpoint.protocol.clone());
+        // Endpoint base URLs are surface bases (the proxy appends the protocol
+        // path), never complete chat URLs — don't inherit the primary's
+        // absolute-URL mode (Huawei-style), or requests would POST the bare
+        // endpoint root.
+        view.use_absolute_url = None;
         if endpoint.protocol != "anthropic" {
             view.extra_headers
                 .retain(|key, _| !key.eq_ignore_ascii_case("anthropic-version"));
@@ -505,6 +510,18 @@ impl GatewayConfig {
         const KNOWN_BALANCE_ADAPTERS: [&str; 4] =
             ["deepseek", "moonshot", "siliconflow", "openrouter"];
         for provider in &self.providers {
+            // Aggregate providers are virtual: surfaces/keys/balance would be
+            // silently ignored at request time, so reject them at save.
+            if provider.is_aggregate()
+                && (!provider.endpoints.is_empty()
+                    || !provider.keys.is_empty()
+                    || provider.balance_adapter.is_some())
+            {
+                bail!(
+                    "聚合 Provider {} 不能配置多协议端点、命名密钥或余额适配器",
+                    provider.id
+                );
+            }
             let mut endpoint_ids = HashSet::new();
             for endpoint in &provider.endpoints {
                 if endpoint.id.trim().is_empty() {
@@ -540,6 +557,9 @@ impl GatewayConfig {
                 }
                 if !key_ids.insert(key.id.clone()) {
                     bail!("Provider {} 的命名密钥 id 重复: {}", provider.id, key.id);
+                }
+                if key.value.trim().is_empty() {
+                    bail!("Provider {} 的命名密钥 {} 未填写密钥值", provider.id, key.id);
                 }
             }
             if let Some(adapter) = provider.balance_adapter.as_deref() {
@@ -1547,11 +1567,49 @@ mod tests {
             .validate_for_save()
             .is_err_and(|error| error.to_string().contains("密钥 id 重复")));
 
+        // Empty key value (would authenticate with `Bearer `).
+        let mut config = base();
+        config.providers[0].keys[1].value = "  ".to_string();
+        assert!(config
+            .validate_for_save()
+            .is_err_and(|error| error.to_string().contains("未填写密钥值")));
+
         // Unknown balance adapter.
         let mut config = base();
         config.providers[0].balance_adapter = Some("acme".to_string());
         assert!(config
             .validate_for_save()
             .is_err_and(|error| error.to_string().contains("余额适配器无效")));
+
+        // Aggregate providers are virtual — surfaces would be silently
+        // ignored at request time, so they are rejected at save.
+        let mut config = base();
+        config.providers[0].provider_type = Some(AGGREGATE_PROVIDER_TYPE.to_string());
+        assert!(config
+            .validate_for_save()
+            .is_err_and(|error| error.to_string().contains("聚合 Provider")));
+
+        let mut config = base();
+        config.providers[0].provider_type = Some(AGGREGATE_PROVIDER_TYPE.to_string());
+        config.providers[0].endpoints.clear();
+        config.providers[0].keys.clear();
+        config.providers[0].balance_adapter = Some("deepseek".to_string());
+        assert!(config
+            .validate_for_save()
+            .is_err_and(|error| error.to_string().contains("聚合 Provider")));
+    }
+
+    #[test]
+    fn endpoint_view_never_inherits_absolute_url_mode() {
+        let mut provider = multi_surface_provider();
+        // Huawei-style primary: base URL is a complete chat URL used verbatim.
+        provider.use_absolute_url = Some(true);
+        let view = provider.endpoint_view(&provider.endpoints[0]);
+        assert_eq!(view.base_url, "https://anthropic.example.com/api");
+        // Endpoint bases are surface bases — the proxy must append the
+        // protocol path instead of POSTing the bare endpoint root.
+        assert_eq!(view.use_absolute_url, None);
+        // The primary surface keeps its own mode untouched.
+        assert_eq!(provider.use_absolute_url, Some(true));
     }
 }
