@@ -95,7 +95,9 @@ export function useDashboardPageState() {
       outputTokens: row.outputTokens,
       cacheReadTokens: row.cacheReadTokens ?? 0,
       cacheCreationTokens: row.cacheCreationTokens ?? 0,
-      avgLatencyMs: row.avgLatencyMs ?? 0
+      avgLatencyMs: row.avgLatencyMs ?? 0,
+      cost: row.cost ?? null,
+      unpricedRequests: row.unpricedRequests ?? 0
     }))
   }, [usageDimensionQuery.data, usageDimension])
 

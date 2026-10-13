@@ -34,6 +34,9 @@ export const queryKeys = {
   dashboard: {
     summary: (endpoint = 'all') => ['dashboard', 'summary', endpoint] as const
   },
+  billing: {
+    prices: () => ['billing', 'prices'] as const
+  },
   logs: {
     list: (params: Record<string, unknown>) => ['logs', params] as const,
     recent: (endpoint = 'all') => ['logs', 'recent', endpoint] as const,

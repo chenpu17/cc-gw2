@@ -204,6 +204,32 @@ export interface GatewayConfig {
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
   bodyLimit?: number
   webAuth?: WebAuthConfig
+  /** Billing settings (v0.16) — query-time pricing, hot-reloaded. */
+  billing?: BillingConfig
+}
+
+/** Billing config mirror (v0.16): prices/rates are estimation-only and
+ * re-price history retroactively at query time. */
+export interface BillingConfig {
+  /** "CNY" (default) | "USD" — display currency for all cost fields. */
+  displayCurrency?: string
+  /** Source currency (uppercase) → 1 unit in display currency; builtin
+   * default 1 USD = 7.20 CNY, overridable. */
+  rates?: Record<string, number>
+  /** Price overrides keyed by `model-id` (global) or `providerId:modelId`. */
+  modelPrices?: Record<string, ModelPriceOverride>
+}
+
+/** Per-model price override (per 1M tokens, native currency; 0 = free). */
+export interface ModelPriceOverride {
+  /** "USD" | "CNY" (case-insensitive on the server). */
+  currency: string
+  input: number
+  output: number
+  cacheRead: number
+  cacheCreation: number
+  /** Optional display note (e.g. enterprise agreement price). */
+  label?: string
 }
 
 export interface ConfigInfoResponse {

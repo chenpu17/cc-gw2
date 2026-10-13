@@ -25,6 +25,19 @@ export interface LogRecord {
   api_key_name: string | null
   api_key_value_masked?: string | null
   api_key_value_available?: boolean
+  /** Query-time cost in the display currency (billing, v0.16); null = unpriced. */
+  cost?: number | null
+  /** Per-component cost breakdown; null when unpriced. */
+  cost_breakdown?: CostBreakdown | null
+}
+
+/** Cost components (camelCase, mirrors the stats contracts). */
+export interface CostBreakdown {
+  input: number
+  output: number
+  cacheRead: number
+  cacheCreation: number
+  total: number
 }
 
 export interface LogPayload {
@@ -41,4 +54,6 @@ export interface LogDetail extends LogRecord {
 export interface LogListResponse {
   total: number
   items: LogRecord[]
+  /** Display currency of `cost` fields (billing, v0.16). */
+  cost_currency?: string
 }

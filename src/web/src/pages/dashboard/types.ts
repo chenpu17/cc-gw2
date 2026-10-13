@@ -1,35 +1,28 @@
-export interface OverviewStats {
-  totals: {
-    requests: number
-    inputTokens: number
-    outputTokens: number
-    cachedTokens: number
-    cacheReadTokens: number
-    cacheCreationTokens: number
-    avgLatencyMs: number
-    errorCount: number
-  }
-  today: {
-    requests: number
-    inputTokens: number
-    outputTokens: number
-    cachedTokens: number
-    cacheReadTokens: number
-    cacheCreationTokens: number
-    avgLatencyMs: number
-    errorCount: number
-  }
-  yesterday?: {
-    requests: number
-    inputTokens: number
-    outputTokens: number
-    cachedTokens: number
-    cacheReadTokens: number
-    cacheCreationTokens: number
-    avgLatencyMs: number
-    errorCount: number
-  }
+/** Cost fields carried by every overview section (billing, v0.16). */
+interface OverviewCostFields {
+  /** Sum of priced requests' cost in the display currency; null = nothing priced. */
+  cost: number | null
+  unpricedRequests: number
 }
+
+export interface OverviewStats {
+  totals: OverviewStatsSection
+  today: OverviewStatsSection
+  yesterday?: OverviewStatsSection
+  /** Display currency of all cost fields ("CNY" | "USD"). */
+  costCurrency?: string
+}
+
+export type OverviewStatsSection = {
+  requests: number
+  inputTokens: number
+  outputTokens: number
+  cachedTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  avgLatencyMs: number
+  errorCount: number
+} & OverviewCostFields
 
 export interface DailyMetric {
   date: string
@@ -40,6 +33,9 @@ export interface DailyMetric {
   cacheReadTokens: number
   cacheCreationTokens: number
   avgLatencyMs: number
+  /** Sum of priced requests' cost (display currency); null = nothing priced (v0.16). */
+  cost: number | null
+  unpricedRequests: number
 }
 
 export interface ModelUsageMetric {
@@ -51,6 +47,9 @@ export interface ModelUsageMetric {
   avgLatencyMs: number
   avgTtftMs: number | null
   avgTpotMs: number | null
+  /** Row cost (display currency); null = unpriced (v0.16). */
+  cost: number | null
+  unpricedRequests: number
 }
 
 export interface ServiceStatus {

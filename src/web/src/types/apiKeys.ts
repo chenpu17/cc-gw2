@@ -40,4 +40,7 @@ export interface ApiKeyUsageMetric {
   cacheCreationTokens?: number
   avgLatencyMs?: number
   lastUsedAt: string | null
+  /** Sum of priced requests' cost (display currency); null = nothing priced (v0.16). */
+  cost?: number | null
+  unpricedRequests?: number
 }

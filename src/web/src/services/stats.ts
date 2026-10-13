@@ -11,6 +11,9 @@ export interface DimensionUsageMetric {
   cacheReadTokens: number
   cacheCreationTokens: number
   avgLatencyMs: number
+  /** Sum of priced requests' cost (display currency); null = nothing priced (v0.16). */
+  cost: number | null
+  unpricedRequests: number
 }
 
 export const statsApi = {
