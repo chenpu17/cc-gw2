@@ -5,13 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { ProviderConfig } from '@/types/providers'
-import { providerTypeLabel } from './ProviderDrawerSteps'
-import { BasicsStep, ModelsStep } from './ProviderDrawerSteps'
+import { BasicsStep, ModelsStep, providerTypeLabel } from './ProviderDrawerSteps'
 import { AggregateModelsStep } from './AggregateModelsStep'
 import { ProbeModelsDialog } from './ProbeModelsDialog'
 import { ProviderBalanceSection } from './ProviderBalanceSection'
 import { ProviderSurfacesSection } from './ProviderSurfacesSection'
-import { TestResultInline } from './TestResultInline'
 import type { ProviderTestResult } from './shared'
 import type { TargetOption } from './TargetCombobox'
 import { useProviderDetailState } from './useProviderDetailState'
@@ -22,7 +20,8 @@ interface ProviderDetailPanelProps {
   allProviders: ProviderConfig[]
   testResult: ProviderTestResult | null
   testing: boolean
-  onTest: (provider: ProviderConfig) => void
+  /** Receives the unsaved draft, so tests respect in-progress edits. */
+  onTest: (draft: ProviderConfig) => void
   onRequestDelete: (provider: ProviderConfig) => void
   onSubmit: (payload: ProviderConfig) => Promise<void>
 }
@@ -116,7 +115,9 @@ export function ProviderDetailPanel({
           available: true,
           testing,
           result: testResult,
-          onTest: () => onTest(provider)
+          // Tests run against the serialized draft, not the saved provider —
+          // unsaved URL/key/model edits count (same semantics as the header).
+          onTest: () => onTest(providerForm.serialize())
         },
     probeModels: isAggregate
       ? undefined
@@ -129,7 +130,7 @@ export function ProviderDetailPanel({
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden" data-testid="provider-detail-panel">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-secondary/50 px-5 py-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -148,7 +149,7 @@ export function ProviderDetailPanel({
             variant="outline"
             size="sm"
             className="bg-card text-xs"
-            onClick={() => onTest(provider)}
+            onClick={() => onTest(providerForm.serialize())}
             disabled={testing}
           >
             {testing ? t('common.actions.testingConnection') : t('providers.actions.test')}
@@ -189,7 +190,6 @@ export function ProviderDetailPanel({
               />
             </>
           )}
-          {testResult ? <TestResultInline result={testResult} /> : null}
           {isAggregate ? <AggregateModelsStep {...stepProps} /> : <ModelsStep {...stepProps} />}
         </div>
       </CardContent>
@@ -220,7 +220,7 @@ export function ProviderDetailPanel({
             >
               {t('providers.masterDetail.discard')}
             </Button>
-            <Button type="button" size="sm" onClick={() => void save()} disabled={saving}>
+            <Button type="button" size="sm" data-testid="provider-save" onClick={() => void save()} disabled={saving}>
               {saving ? t('common.actions.saving') : t('providers.masterDetail.save')}
             </Button>
           </div>

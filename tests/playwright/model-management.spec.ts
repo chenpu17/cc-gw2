@@ -47,40 +47,46 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   await page.goto(`${baseUrl}/ui/providers`)
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
+  // 创建走「模板 + id/label」小对话框；其余配置都在右侧详情面板内联完成
   await page.getByRole('button', { name: '新增提供商' }).first().click()
+  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  await expect(createDialog).toBeVisible()
+  await createDialog.getByRole('combobox', { name: '模板' }).click()
+  await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+  // 模板自动预填 Base URL（可改写为 stub 地址）
+  await expect(createDialog.getByPlaceholder('https://api.example.com/v1')).toHaveValue('https://api.openai.com/v1')
+  await createDialog.getByPlaceholder('如 openai').fill(providerId)
+  await createDialog.getByPlaceholder('https://api.example.com/v1').fill(providerBaseUrl)
+  await createDialog.getByRole('button', { name: '创建' }).click()
 
-  // Provider 抽屉从 4 步精简为 2 步：基础与认证 -> 模型与验证
-  const providerDrawer = page.locator('aside').filter({ hasText: '新增 Provider' })
-  await expect(providerDrawer).toBeVisible()
-  await providerDrawer.getByRole('button', { name: /OpenAI/ }).click()
-  await providerDrawer.getByPlaceholder('如 openai').fill(providerId)
-  await providerDrawer.getByPlaceholder('https://api.example.com/v1').fill(providerBaseUrl)
-  await providerDrawer.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
-  await providerDrawer.getByRole('button', { name: '下一步' }).click()
-  await providerDrawer.getByRole('button', { name: '新增模型' }).click()
-  await providerDrawer.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-playwright')
-  await providerDrawer.getByLabel('设为默认模型').check()
+  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
+  // 创建后自动选中，左侧 rail 行 + 右侧详情面板同时出现
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+  await expect(page.getByTestId('provider-rail-row').filter({ hasText: providerId })).toBeVisible()
 
-  // 新建模式（未保存）：探测草稿配置并勾选导入
-  await providerDrawer.getByRole('button', { name: '探测模型' }).click()
+  // 面板内联编辑：密钥 + 模型 + 设默认
+  await panel.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
+  await panel.getByRole('button', { name: '新增模型' }).click()
+  await panel.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-playwright')
+  await panel.getByLabel('设为默认模型').check()
+
+  // 未保存草稿即可探测（后端按草稿探测），勾选导入
+  await panel.getByRole('button', { name: '探测模型' }).click()
   const createProbeDialog = page.getByRole('dialog', { name: '探测可用模型' })
   await expect(createProbeDialog).toBeVisible()
   await createProbeDialog.getByPlaceholder('搜索模型 ID 或名称').fill('probe')
   await createProbeDialog.locator('label').filter({ hasText: 'stub-model-probe' }).click()
   await createProbeDialog.getByRole('button', { name: '导入 1 个模型' }).click()
   await expect(page.getByText('已导入 1 个模型')).toBeVisible()
-  await expect(providerDrawer.locator('input[value="stub-model-probe"][placeholder]')).toBeVisible()
+  await expect(panel.locator('input[value="stub-model-probe"][placeholder]')).toBeVisible()
 
-  // 新建模式（未保存）：对草稿发起测试连接，内联展示结果
-  await providerDrawer.getByRole('button', { name: '测试连接' }).click()
-  await expect(providerDrawer.getByText('连接成功')).toBeVisible()
+  // 已保存 Provider 的连接测试从面板 header 发起，结果内联展示
+  await panel.getByRole('button', { name: '测试连接' }).first().click()
+  await expect(panel.getByText('连接成功')).toBeVisible()
 
-  await providerDrawer.getByRole('button', { name: '保存设置' }).click()
-
-  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
-  // 新建后卡片直接出现在网格中（不再自动弹详情对话框）
-  const providerCard = page.locator('[data-testid="provider-card"]').filter({ hasText: providerId })
-  await expect(providerCard).toBeVisible()
+  await panel.getByTestId('provider-save').click()
+  await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
 
   const configResponse = await request.get(`${baseUrl}/api/config`)
   expect(configResponse.status()).toBe(200)
@@ -88,22 +94,16 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   const createdProvider = config.providers.find((provider: any) => provider.id === providerId)
   expect(createdProvider).toBeTruthy()
   expect(createdProvider.baseUrl).toBe(providerBaseUrl)
-  // 新建流程中探测导入的模型随保存一起落库
+  // 探测导入的模型随保存一起落库
   expect(createdProvider.models.map((model: any) => model.id)).toEqual(
     expect.arrayContaining(['stub-model-playwright', 'stub-model-probe'])
   )
 
-  // 操作按钮直接挂在卡片上
-  await providerCard.getByRole('button', { name: '测试连接' }).click()
-
-  await providerCard.getByRole('button', { name: '编辑' }).click()
-  const editProviderDrawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
-  await expect(editProviderDrawer).toBeVisible()
-  await editProviderDrawer.getByPlaceholder('如 官方主账号').fill('Playwright Provider Updated')
-  await editProviderDrawer.getByRole('button', { name: '保存设置' }).click()
+  // 面板内改显示名称并保存
+  await panel.getByPlaceholder('如 官方主账号').fill('Playwright Provider Updated')
+  await panel.getByTestId('provider-save').click()
   await expect(page.getByText('已更新 Provider：Playwright Provider Updated')).toBeVisible()
-  // 保存后抽屉关闭，卡片展示新名称
-  await expect(page.locator('[data-testid="provider-card"]').filter({ hasText: 'Playwright Provider Updated' })).toBeVisible()
+  await expect(page.getByTestId('provider-rail-row').filter({ hasText: 'Playwright Provider Updated' })).toBeVisible()
 
   const providerTestResponse = await request.post(`${baseUrl}/api/providers/${providerId}/test`, {
     data: {},
@@ -196,13 +196,12 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   // 等删除确认框完全退出，避免残留动画中的按钮被误点
   await expect(deletePresetDialog).not.toBeVisible()
 
-  // 切到供应商视图，经编辑抽屉内的「删除」文字链删除 Provider
+  // 切回供应商视图，选中后经面板 header「删除」删除 Provider
   await page.getByRole('tab', { name: '供应商' }).click()
-  const deleteCard = page.locator('[data-testid="provider-card"]').filter({ hasText: 'Playwright Provider Updated' })
-  await deleteCard.getByRole('button', { name: '编辑' }).click()
-  const deleteDrawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
-  await expect(deleteDrawer).toBeVisible()
-  await deleteDrawer.getByRole('button', { name: '删除' }).click()
+  await page.getByTestId('provider-rail-row').filter({ hasText: 'Playwright Provider Updated' }).click()
+  const deletePanel = page.getByTestId('provider-detail-panel')
+  await expect(deletePanel).toBeVisible()
+  await deletePanel.getByRole('button', { name: '删除', exact: true }).click()
   const deleteProviderDialog = page.getByRole('dialog', { name: '删除' })
   await expect(deleteProviderDialog).toBeVisible()
   await deleteProviderDialog.getByRole('button', { name: '删除' }).click()
@@ -222,30 +221,32 @@ test('model management supports provider edit, delete, route reset, and preset d
   const providerId = `pm-edit-${Date.now()}`
   const providerBaseUrl = `http://127.0.0.1:${harness.stubPort}`
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const drawer = page.locator('aside').filter({ hasText: '新增 Provider' })
-  await drawer.getByRole('button', { name: /OpenAI/ }).click()
-  await drawer.getByPlaceholder('如 openai').fill(providerId)
-  await drawer.getByPlaceholder('https://api.example.com/v1').fill(providerBaseUrl)
-  await drawer.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
-  await drawer.getByRole('button', { name: '下一步' }).click()
-  await drawer.getByRole('button', { name: '新增模型' }).click()
-  await drawer.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-edit')
-  await drawer.getByRole('button', { name: '保存设置' }).click()
+  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  await createDialog.getByRole('combobox', { name: '模板' }).click()
+  await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+  await createDialog.getByPlaceholder('如 openai').fill(providerId)
+  await createDialog.getByPlaceholder('https://api.example.com/v1').fill(providerBaseUrl)
+  await createDialog.getByRole('button', { name: '创建' }).click()
   await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
 
-  // 新建后卡片直接出现在网格中，编辑从卡片按钮发起
-  const providerCard = page.locator('[data-testid="provider-card"]').filter({ hasText: providerId })
-  await expect(providerCard).toBeVisible()
-  await providerCard.getByRole('button', { name: '编辑' }).click()
-  const editDrawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
-  await editDrawer.getByPlaceholder('如 官方主账号').fill(`${providerId}-edited`)
-  await editDrawer.getByRole('button', { name: '保存设置' }).click()
-  await expect(page.getByText(`已更新 Provider：${providerId}-edited`)).toBeVisible()
+  // 创建后自动选中详情面板，内联编辑模型后保存
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+  await panel.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
+  await panel.getByRole('button', { name: '新增模型' }).click()
+  await panel.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model-edit')
+  await panel.getByTestId('provider-save').click()
+  await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
 
-  // 保存后抽屉关闭，卡片展示新名称，测试连接从卡片按钮发起
-  const editedCard = page.locator('[data-testid="provider-card"]').filter({ hasText: `${providerId}-edited` })
-  await expect(editedCard).toBeVisible()
-  await editedCard.getByRole('button', { name: '测试连接' }).click()
+  // 面板内改显示名称并保存，rail 行随配置轮询更新
+  await panel.getByPlaceholder('如 官方主账号').fill(`${providerId}-edited`)
+  await panel.getByTestId('provider-save').click()
+  await expect(page.getByText(`已更新 Provider：${providerId}-edited`)).toBeVisible()
+  const editedRow = page.getByTestId('provider-rail-row').filter({ hasText: `${providerId}-edited` })
+  await expect(editedRow).toBeVisible()
+  // 连接测试从面板 header 发起
+  await panel.getByRole('button', { name: '测试连接' }).first().click()
+  await expect(panel.getByText('连接成功')).toBeVisible()
 
   // 端点在「路由」视图创建，点击端点行选中它（内联三栏工作台管理规则）
   await page.getByRole('tab', { name: '路由' }).click()
@@ -292,13 +293,12 @@ test('model management supports provider edit, delete, route reset, and preset d
   // 等删除确认框完全退出，避免残留动画中的按钮被误点
   await expect(deleteDialog).not.toBeVisible()
 
-  // 切到供应商视图，经编辑抽屉内的「删除」文字链删除 Provider
+  // 切回供应商视图，选中后经面板 header「删除」删除 Provider
   await page.getByRole('tab', { name: '供应商' }).click()
-  const deleteCard = page.locator('[data-testid="provider-card"]').filter({ hasText: `${providerId}-edited` })
-  await deleteCard.getByRole('button', { name: '编辑' }).click()
-  const deleteDrawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
-  await expect(deleteDrawer).toBeVisible()
-  await deleteDrawer.getByRole('button', { name: '删除' }).click()
+  await page.getByTestId('provider-rail-row').filter({ hasText: `${providerId}-edited` }).click()
+  const deletePanel = page.getByTestId('provider-detail-panel')
+  await expect(deletePanel).toBeVisible()
+  await deletePanel.getByRole('button', { name: '删除', exact: true }).click()
   const confirmDialog = page.getByRole('dialog', { name: '删除' })
   await expect(confirmDialog).toBeVisible()
   await confirmDialog.getByRole('button', { name: '删除' }).click()
@@ -380,16 +380,15 @@ test('provider models can be probed and selectively imported', async ({ page, re
   await page.goto(`${baseUrl}/ui/providers`)
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
-  // stub provider 由 harness 预置（已含 stub-model），从卡片进入编辑抽屉
-  const card = page.locator('[data-testid="provider-card"]').filter({ hasText: 'Stub Provider' })
-  await expect(card).toBeVisible()
-  await card.getByRole('button', { name: '编辑' }).click()
-  const drawer = page.locator('aside').filter({ hasText: '编辑 Provider' })
-  await expect(drawer).toBeVisible()
-  await drawer.getByRole('button', { name: '下一步' }).click()
+  // stub provider 由 harness 预置（已含 stub-model），在 rail 中选中进入面板
+  const railRow = page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' })
+  await expect(railRow).toBeVisible()
+  await railRow.click()
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
 
   // 打开探测弹窗（stub 上游返回 stub-model + stub-model-probe）
-  await drawer.getByRole('button', { name: '探测模型' }).click()
+  await panel.getByRole('button', { name: '探测模型' }).click()
   const dialog = page.getByRole('dialog', { name: '探测可用模型' })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText('共 2 个模型')).toBeVisible()
@@ -410,12 +409,12 @@ test('provider models can be probed and selectively imported', async ({ page, re
   await dialog.getByRole('button', { name: '导入 1 个模型' }).click()
   await expect(page.getByText('已导入 1 个模型')).toBeVisible()
 
-  // 抽屉中出现新模型行（id 与 display_name 预填的 label）
-  await expect(drawer.locator('input[value="stub-model-probe"][placeholder]')).toBeVisible()
-  await expect(drawer.locator('input[value="Stub Probe Model"]')).toBeVisible()
+  // 面板中出现新模型行（id 与 display_name 预填的 label）
+  await expect(panel.locator('input[value="stub-model-probe"][placeholder]')).toBeVisible()
+  await expect(panel.locator('input[value="Stub Probe Model"]')).toBeVisible()
 
   // 保存后写入配置：新模型合并进来，已有模型保持不变
-  await drawer.getByRole('button', { name: '保存设置' }).click()
+  await panel.getByTestId('provider-save').click()
   await expect(page.getByText('已更新 Provider：Stub Provider')).toBeVisible()
   const configResponse = await request.get(`${baseUrl}/api/config`)
   const config = await configResponse.json()

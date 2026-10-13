@@ -131,6 +131,7 @@ export function ProvidersMasterDetail({
                   <li key={provider.id}>
                     <button
                       type="button"
+                      data-testid="provider-rail-row"
                       onClick={() => onSelectProvider(provider.id)}
                       aria-current={active ? 'true' : undefined}
                       className={cn(

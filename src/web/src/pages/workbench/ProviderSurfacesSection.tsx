@@ -94,7 +94,7 @@ export function ProviderSurfacesSection({
             {form.endpoints.map((endpoint, index) => {
               const error = errors.endpoints?.[endpoint._key]
               return (
-                <div key={endpoint._key} className="space-y-2 p-3">
+                <div key={endpoint._key} className="space-y-2 p-3" data-testid="surface-endpoint-row">
                   <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_170px_minmax(0,1.6fr)_auto]">
                     <Input
                       value={endpoint.id}
@@ -188,7 +188,7 @@ export function ProviderSurfacesSection({
             {form.keys.map((key, index) => {
               const error = errors.keys?.[key._key]
               return (
-                <div key={key._key} className="space-y-2 p-3">
+                <div key={key._key} className="space-y-2 p-3" data-testid="provider-key-row">
                   <div className="grid gap-2 md:grid-cols-[auto_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,2fr)_auto_auto] md:items-center">
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <input

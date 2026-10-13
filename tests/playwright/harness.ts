@@ -15,9 +15,20 @@ export interface GatewayHarness {
   gatewayProcess: ChildProcessWithoutNullStreams | null
   stubServer: http.Server | null
   secondaryServer: http.Server | null
+  /** Every request the primary stub upstream received (for endpoint/key
+   * routing assertions); also served as `GET /__test/requests`. */
+  stubRequests: () => RecordedStubRequest[]
   start: () => Promise<void>
   stop: () => Promise<void>
   baseUrl: () => string
+}
+
+export interface RecordedStubRequest {
+  method: string
+  url: string
+  authorization: string | null
+  xApiKey: string | null
+  model: string | null
 }
 
 export interface GatewayHarnessOptions {
@@ -70,14 +81,43 @@ async function findFreePort(): Promise<number> {
   })
 }
 
+function recordGet(req: http.IncomingMessage): RecordedStubRequest {
+  return {
+    method: req.method ?? 'GET',
+    url: req.url ?? '',
+    authorization: (req.headers.authorization as string | undefined) ?? null,
+    xApiKey: (req.headers['x-api-key'] as string | undefined) ?? null,
+    model: null,
+  }
+}
+
 async function startStubProvider(
   port: number,
   options: { marker?: string } = {}
-): Promise<http.Server> {
+): Promise<{ server: http.Server; requests: RecordedStubRequest[] }> {
   const marker = options.marker ?? 'Stub'
+  const requests: RecordedStubRequest[] = []
   const rootPackage = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as { version?: string }
   const currentVersion = rootPackage.version ?? '0.0.0'
   const server = http.createServer((req, res) => {
+    // Test-introspection route: dump what the stub has received so far.
+    if (req.method === 'GET' && req.url === '/__test/requests') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ requests }))
+      return
+    }
+
+    if (req.method === 'GET' && req.url === '/user/balance') {
+      requests.push(recordGet(req))
+      // DeepSeek dashboard shape — the deepseek balance adapter's fixture.
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        is_available: true,
+        balance_infos: [{ currency: 'CNY', total_balance: '110.00' }],
+      }))
+      return
+    }
+
     if (req.method === 'GET' && req.url?.includes('cc-gw')) {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({
@@ -88,6 +128,7 @@ async function startStubProvider(
     }
 
     if (req.method === 'GET' && req.url === '/v1/models') {
+      requests.push(recordGet(req))
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({
         object: 'list',
@@ -112,6 +153,47 @@ async function startStubProvider(
       try {
         body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
       } catch {}
+
+      requests.push({
+        method: req.method ?? 'POST',
+        url: req.url ?? '',
+        authorization: (req.headers.authorization as string | undefined) ?? null,
+        xApiKey: (req.headers['x-api-key'] as string | undefined) ?? null,
+        model: typeof body?.model === 'string' ? body.model : null,
+      })
+
+      if (req.url === '/v1/messages') {
+        // Minimal Anthropic Messages surface (native anthropic-endpoint legs).
+        if (body.stream === true) {
+          const events: Array<[string, Record<string, unknown>]> = [
+            ['message_start', { type: 'message_start', message: { id: 'msg_stub', type: 'message', role: 'assistant', model: body.model ?? 'stub-model', content: [], usage: { input_tokens: 9, output_tokens: 1 } } }],
+            ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
+            ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: `${marker} anthropic stream` } }],
+            ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+            ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 4 } }],
+            ['message_stop', { type: 'message_stop' }],
+          ]
+          res.writeHead(200, { 'content-type': 'text/event-stream' })
+          for (const [event, payload] of events) {
+            res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
+          }
+          res.end()
+          return
+        }
+
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({
+          id: 'msg_stub',
+          type: 'message',
+          role: 'assistant',
+          model: body.model ?? 'stub-model',
+          content: [{ type: 'text', text: `${marker} anthropic response` }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 9, output_tokens: 4 },
+        }))
+        return
+      }
 
       if (req.url === '/v1/chat/completions') {
         const message = Array.isArray(body.messages) && body.messages.length > 0
@@ -212,7 +294,7 @@ async function startStubProvider(
     server.listen(port, '127.0.0.1', () => resolve())
   })
 
-  return server
+  return { server, requests }
 }
 
 function createLegacyPasswordRecord(password: string): { passwordHash: string; passwordSalt: string } {
@@ -392,6 +474,7 @@ async function startGatewayWithStubRegistry(
 }
 
 export function createGatewayHarness(options: GatewayHarnessOptions = {}): GatewayHarness {
+  let stubRequestLog: RecordedStubRequest[] = []
   const harness: GatewayHarness = {
     tempHome: '',
     gatewayPort: 0,
@@ -400,15 +483,19 @@ export function createGatewayHarness(options: GatewayHarnessOptions = {}): Gatew
     gatewayProcess: null,
     stubServer: null,
     secondaryServer: null,
+    stubRequests: () => stubRequestLog,
     baseUrl: () => `http://127.0.0.1:${harness.gatewayPort}`,
     start: async () => {
       harness.stubPort = await findFreePort()
       harness.gatewayPort = await findFreePort()
       harness.tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-gw-web-e2e-'))
-      harness.stubServer = await startStubProvider(harness.stubPort)
+      const stub = await startStubProvider(harness.stubPort)
+      harness.stubServer = stub.server
+      stubRequestLog = stub.requests
       if (options.secondaryUpstream) {
         harness.secondaryPort = await findFreePort()
-        harness.secondaryServer = await startStubProvider(harness.secondaryPort, { marker: 'Secondary stub' })
+        const secondary = await startStubProvider(harness.secondaryPort, { marker: 'Secondary stub' })
+        harness.secondaryServer = secondary.server
       }
       writeConfig(harness.tempHome, harness.gatewayPort, harness.stubPort, harness.secondaryPort, options)
       harness.gatewayProcess = await startGatewayWithStubRegistry(harness.tempHome, harness.gatewayPort, harness.stubPort)

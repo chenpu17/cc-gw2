@@ -123,8 +123,8 @@ test('aggregate model fails over across providers on separate upstreams', async 
 })
 
 // ---------------------------------------------------------------------------
-// WebUI 全链路：抽屉里创建聚合供应商（无 baseUrl/密钥区）→ 聚合模型步骤
-// 配置成员 → 保存 → 卡片以聚合形态展示 → 真实流量命中成员后端。
+// WebUI 全链路：模板对话框创建聚合供应商（无 baseUrl）→ 详情面板聚合模型区
+// 配置成员 → 保存 → rail 以聚合形态展示 → 真实流量命中成员后端。
 // ---------------------------------------------------------------------------
 test('aggregate provider can be configured via the drawer and serves traffic', async ({ page, request }) => {
   const baseUrl = harness.baseUrl()
@@ -133,36 +133,40 @@ test('aggregate provider can be configured via the drawer and serves traffic', a
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const drawer = page.locator('aside').filter({ hasText: '新增 Provider' })
-  await expect(drawer).toBeVisible()
+  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  await expect(createDialog).toBeVisible()
 
-  // 聚合类型：隐藏 Base URL / 认证区，展示说明卡
-  await drawer.getByRole('button', { name: /聚合/ }).click()
-  await expect(drawer.getByText('聚合供应商说明')).toBeVisible()
-  await expect(drawer.getByPlaceholder('https://api.example.com/v1')).toHaveCount(0)
-  await drawer.getByPlaceholder('如 openai').fill('agg-ui')
+  // 手动配置组选「Aggregate」：隐藏 Base URL，展示聚合说明文案
+  await createDialog.getByRole('combobox', { name: '模板' }).click()
+  await page.getByRole('option', { name: 'Aggregate', exact: true }).click()
+  await expect(createDialog.getByText('聚合供应商没有自己的上游地址与密钥')).toBeVisible()
+  await expect(createDialog.getByPlaceholder('https://api.example.com/v1')).toHaveCount(0)
+  await createDialog.getByPlaceholder('如 openai').fill('agg-ui')
+  await createDialog.getByRole('button', { name: '创建' }).click()
+  await expect(page.getByText('已添加 Provider：agg-ui')).toBeVisible()
 
-  await drawer.getByRole('button', { name: '下一步' }).click()
-  await expect(drawer.getByRole('heading', { name: '聚合模型' })).toBeVisible()
+  // 创建后自动选中，聚合模型区直接在详情面板内联展示
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel.getByRole('heading', { name: '聚合模型' })).toBeVisible()
 
-  await drawer.getByRole('button', { name: '新增模型' }).click()
-  await drawer.getByPlaceholder('如 glm-5.1').fill('glm-ui')
+  await panel.getByRole('button', { name: '新增模型' }).click()
+  await panel.getByPlaceholder('如 glm-5.1').fill('glm-ui')
 
-  await drawer.getByTestId('aggregate-add-member').click()
-  await drawer.getByPlaceholder('选择 providerId:modelId').fill('Stub Model')
+  await panel.getByTestId('aggregate-add-member').click()
+  await panel.getByPlaceholder('选择 providerId:modelId').fill('Stub Model')
   await page.getByRole('option', { name: 'Stub Model' }).click()
-  const memberRow = drawer.getByTestId('aggregate-member-row').first()
+  const memberRow = panel.getByTestId('aggregate-member-row').first()
   await expect(memberRow.locator('input')).toHaveValue('stub:stub-model')
   await expect(memberRow).toContainText('首选')
 
-  await drawer.getByRole('button', { name: '保存设置' }).click()
-  await expect(page.getByText('已添加 Provider：agg-ui')).toBeVisible()
+  await panel.getByTestId('provider-save').click()
+  await expect(page.getByText('已更新 Provider：agg-ui')).toBeVisible()
 
-  // 卡片：聚合徽章 + 模型→成员摘要
-  const card = page.locator('[data-testid="provider-card"]').filter({ hasText: 'agg-ui' })
-  await expect(card).toBeVisible()
-  await expect(card.getByText('聚合', { exact: true })).toBeVisible()
-  await expect(card).toContainText('glm-ui → stub:stub-model')
+  // rail：聚合徽章
+  const railRow = page.getByTestId('provider-rail-row').filter({ hasText: 'agg-ui' })
+  await expect(railRow).toBeVisible()
+  await expect(railRow.getByText('聚合', { exact: true })).toBeVisible()
 
   // 真实流量：请求聚合模型名，命中成员后端
   const response = await request.post(`${baseUrl}/v1/messages`, {

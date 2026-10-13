@@ -128,16 +128,20 @@ export function useProvidersState(
   ) => {
     setTestingProviderId(provider.id)
     try {
-      const payload =
-        options && (options.headers || options.query)
-          ? {
-              headers:
-                options.headers && Object.keys(options.headers).length > 0
-                  ? options.headers
-                  : undefined,
-              query: options.query && options.query.trim().length > 0 ? options.query.trim() : undefined
-            }
-          : undefined
+      // The panel always passes the serialized draft — send it along so the
+      // test respects unsaved URL/key/model edits (it wins over the saved
+      // lookup on the backend).
+      const payload: {
+        provider: ProviderConfig
+        headers?: Record<string, string>
+        query?: string
+      } = { provider }
+      if (options?.headers && Object.keys(options.headers).length > 0) {
+        payload.headers = options.headers
+      }
+      if (options?.query && options.query.trim().length > 0) {
+        payload.query = options.query.trim()
+      }
 
       const response = await modelManagementApi.testProvider(provider.id, payload)
       if (response.ok) {

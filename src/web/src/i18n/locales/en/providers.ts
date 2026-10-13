@@ -439,9 +439,6 @@ export default {
     groupManual: 'Manual setup',
     noModelProbeNote: 'This service has no model-list endpoint; fill in models manually after creation.',
     createAction: 'Create',
-    errors: {
-      missingConfig: 'Config not loaded yet — try again in a moment.'
-    },
     catalog: {
       'opencode-zen': 'Anthropic-compatible endpoint with curated models for coding agents (often includes a free tier).',
       'volcano-coding': 'Volcano Ark Coding plan, Anthropic-compatible endpoint.',

@@ -1,14 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toApiError } from '@/services/api'
-import { gatewayApi } from '@/services/gateway'
 import { queryKeys } from '@/services/queryKeys'
-import type {
-  GatewayConfig,
-  ProviderConfig,
-  ProviderPreset,
-  ProviderPresetsResponse
-} from '@/types/providers'
+import type { ProviderConfig, ProviderPreset, ProviderPresetsResponse } from '@/types/providers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -42,8 +36,9 @@ const MANUAL_PREFIX = 'manual:'
 interface CreateProviderDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  config: GatewayConfig | null
   existingProviderIds: string[]
+  /** Shared create save (appends + toasts); throws on failure. */
+  onSubmit: (payload: ProviderConfig) => Promise<void>
   /** Called with the new provider id after a successful save. */
   onCreated: (providerId: string) => void
 }
@@ -56,8 +51,8 @@ interface CreateProviderDialogProps {
 export function CreateProviderDialog({
   open,
   onOpenChange,
-  config,
   existingProviderIds,
+  onSubmit,
   onCreated
 }: CreateProviderDialogProps) {
   const { t, i18n } = useTranslation()
@@ -123,17 +118,17 @@ export function CreateProviderDialog({
     : undefined
   const isAggregate = manualType === 'aggregate'
 
-  /** EN locale overrides the zh catalog description when a translation exists. */
+  /** The catalog descriptions are zh on the server; EN overrides live in
+   * i18n. `i18n.exists` would match fallback keys too, so gate on the
+   * resolved language and fall back to the server text via defaultValue. */
   const describePreset = (preset: ProviderPreset): string => {
-    const key = `providers.presets.catalog.${preset.id}`
-    return i18n.exists(key) ? t(key) : preset.description
+    if (!i18n.resolvedLanguage?.startsWith('en')) {
+      return preset.description
+    }
+    return t(`providers.presets.catalog.${preset.id}`, { defaultValue: preset.description })
   }
 
   const handleSubmit = async () => {
-    if (!config) {
-      setError(t('providers.presets.errors.missingConfig'))
-      return
-    }
     const trimmedId = providerId.trim()
     const trimmedUrl = baseUrl.trim()
     if (!trimmedId) {
@@ -176,8 +171,7 @@ export function CreateProviderDialog({
 
     setSaving(true)
     try {
-      const nextConfig: GatewayConfig = { ...config, providers: [...config.providers, payload] }
-      await gatewayApi.saveConfig(nextConfig)
+      await onSubmit(payload)
     } catch (saveError) {
       setSaving(false)
       setError(t('providers.drawer.toast.saveFailure', { message: toApiError(saveError).message }))

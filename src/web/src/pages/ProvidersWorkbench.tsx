@@ -68,14 +68,15 @@ export default function ProvidersWorkbenchPage() {
     window.localStorage.setItem(storageKeys.workbench.providerSelection, selectedProviderId)
   }, [selectedProviderId])
 
-  // Clear a stale selection once the config has loaded (deleted provider or
-  // a hand-edited config that no longer contains it).
+  // Clear a stale selection once the config has loaded and settled (deleted
+  // provider or a hand-edited config that no longer contains it). While a
+  // refetch is in flight the list may not contain a just-created provider.
   useEffect(() => {
     if (!selectedProviderId) return
-    if (base.configQuery.isPending) return
+    if (base.configQuery.isPending || base.configQuery.isFetching) return
     if (providers.providers.some((item) => item.id === selectedProviderId)) return
     setSelectedProviderId(null)
-  }, [selectedProviderId, providers.providers, base.configQuery.isPending])
+  }, [selectedProviderId, providers.providers, base.configQuery.isPending, base.configQuery.isFetching])
 
   // The selected routing endpoint is deep-linkable via `?tab=routing&endpoint=<id>`.
   // (Was the route editor dialog; now selects the endpoint in the col-1 rail.)
@@ -294,11 +295,14 @@ export default function ProvidersWorkbenchPage() {
       <CreateProviderDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
-        config={base.config}
         existingProviderIds={providers.providers.map((item) => item.id)}
+        onSubmit={providers.handleCreateProvider}
         onCreated={(providerId) => {
-          setSelectedProviderId(providerId)
-          void base.configQuery.refetch()
+          // Wait for the refetched config so the stale-selection guard below
+          // sees the new provider before the selection lands.
+          void base.configQuery.refetch().then(() => {
+            setSelectedProviderId(providerId)
+          })
         }}
       />
 

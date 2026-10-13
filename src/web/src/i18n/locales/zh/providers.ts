@@ -430,10 +430,7 @@ export default {
     groupPresets: '预设模板',
     groupManual: '手动配置',
     noModelProbeNote: '该服务无模型列表接口，创建后请手动填写模型。',
-    createAction: '创建',
-    errors: {
-      missingConfig: '配置尚未加载，请稍后重试'
-    }
+    createAction: '创建'
   },
   confirm: {
     delete: '确认删除 Provider「{{name}}」？',
