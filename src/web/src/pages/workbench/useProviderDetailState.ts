@@ -12,7 +12,7 @@ interface UseProviderDetailStateOptions {
 
 /**
  * Inline-editing state for the provider detail panel: wraps the shared
- * {@link useProviderForm} with a dirty draft (serialize-vs-initial compare),
+ * {@link useProviderForm} with a dirty draft (raw-form vs initial compare),
  * a single save action and discard. The panel is remounted per provider
  * (React key), so state initializes fresh per selection.
  */
@@ -30,27 +30,32 @@ export function useProviderDetailState({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // Initial serialized snapshot — set on first render only; nulled to force a
+  // Initial RAW form snapshot — set on first render only; nulled to force a
   // re-baseline after `discard` or after a clean re-sync below.
-  const initialJsonRef = useRef<string | null>(null)
-  if (initialJsonRef.current === null) {
-    initialJsonRef.current = JSON.stringify(providerForm.serialize())
+  // Raw, not serialize(): serialize() drops incomplete rows (endpoint without
+  // id+baseUrl, named key without id, model without id), so "added an
+  // endpoint, filled only the Base URL" compared as unchanged — the draft
+  // looked clean and the row was silently dropped on switch. Dirty = "there
+  // is unsaved input"; what passes validation and gets saved is a separate
+  // question resolved at submit time.
+  const initialFormJsonRef = useRef<string | null>(null)
+  if (initialFormJsonRef.current === null) {
+    initialFormJsonRef.current = JSON.stringify(providerForm.form)
   }
-  const currentJson = JSON.stringify(providerForm.serialize())
-  const dirty = currentJson !== initialJsonRef.current
+  const dirty = JSON.stringify(providerForm.form) !== initialFormJsonRef.current
 
   // The saved provider can change underneath the panel (config refetch after
   // another tab/CLI/endpoint dialog saved). A dirty draft always wins —
   // protecting unsaved edits is the point — but a clean panel must not keep
   // showing the mount-time snapshot, or the next small edit + save would
   // silently roll the external change back. Render-phase reset with a
-  // re-baseline: the null initialJson re-initializes on the follow-up render.
+  // re-baseline: the null snapshot re-initializes on the follow-up render.
   const savedProviderRef = useRef(provider)
   if (savedProviderRef.current !== provider) {
     savedProviderRef.current = provider
     if (!dirty) {
       providerForm.resetForm()
-      initialJsonRef.current = null
+      initialFormJsonRef.current = null
     }
   }
 
@@ -61,7 +66,10 @@ export function useProviderDetailState({
     try {
       const payload = providerForm.serialize()
       await onSubmit(payload)
-      initialJsonRef.current = JSON.stringify(payload)
+      // Re-baseline the raw form as typed; the config refetch right after
+      // save swaps in the canonical provider and the clean re-sync above
+      // re-derives the form from it.
+      initialFormJsonRef.current = JSON.stringify(providerForm.form)
       return true
     } catch (error) {
       setSaveError(toApiError(error).message)
@@ -73,7 +81,7 @@ export function useProviderDetailState({
 
   const discard = () => {
     providerForm.resetForm()
-    initialJsonRef.current = null
+    initialFormJsonRef.current = null
     setSaveError(null)
   }
 
