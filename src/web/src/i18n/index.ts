@@ -14,6 +14,7 @@ import zhModelManagement from './locales/zh/modelManagement'
 import zhRoutingManagement from './locales/zh/routingManagement'
 import zhEvents from './locales/zh/events'
 import zhSettings from './locales/zh/settings'
+import zhBilling from './locales/zh/billing'
 import zhHelp from './locales/zh/help'
 import zhAbout from './locales/zh/about'
 import zhApiKeys from './locales/zh/apiKeys'
@@ -33,6 +34,7 @@ import enModelManagement from './locales/en/modelManagement'
 import enRoutingManagement from './locales/en/routingManagement'
 import enEvents from './locales/en/events'
 import enSettings from './locales/en/settings'
+import enBilling from './locales/en/billing'
 import enHelp from './locales/en/help'
 import enAbout from './locales/en/about'
 import enApiKeys from './locales/en/apiKeys'
@@ -55,6 +57,7 @@ const resources = {
       routingManagement: zhRoutingManagement,
       events: zhEvents,
       settings: zhSettings,
+      billing: zhBilling,
       help: zhHelp,
       about: zhAbout,
       apiKeys: zhApiKeys,
@@ -77,6 +80,7 @@ const resources = {
       routingManagement: enRoutingManagement,
       events: enEvents,
       settings: enSettings,
+      billing: enBilling,
       help: enHelp,
       about: enAbout,
       apiKeys: enApiKeys,

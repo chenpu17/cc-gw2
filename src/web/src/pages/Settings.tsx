@@ -5,6 +5,7 @@ import { PageToolbar } from '@/components/PageToolbar'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   BasicsSection,
+  BillingSection,
   CleanupSection,
   ConfigFileSection,
   ProtocolSection,
@@ -17,7 +18,7 @@ import { useSettingsPageState } from './settings/useSettingsPageState'
 export default function SettingsPage() {
   const { t } = useTranslation()
   const state = useSettingsPageState()
-  const dirtyCount = Number(state.isConfigDirty) + Number(state.isAuthDirty)
+  const dirtyCount = Number(state.isConfigDirty) + Number(state.isAuthDirty) + Number(state.isBillingDirty)
 
   return (
     <div className="flex flex-col gap-6">
@@ -77,6 +78,13 @@ export default function SettingsPage() {
                 needsPassword={state.needsPassword}
                 onSetAuthForm={state.setAuthForm}
                 sectionRef={state.setSectionRef('section-security')}
+              />
+
+              <BillingSection
+                errors={state.billingErrors}
+                form={state.billingForm}
+                onSetForm={state.setBillingForm}
+                sectionRef={state.setSectionRef('section-billing')}
               />
 
               <ConfigFileSection

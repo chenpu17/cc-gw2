@@ -27,6 +27,7 @@ export default {
     configFile: 'Configuration file',
     cleanup: 'Log cleanup',
     security: 'Access security',
+    billing: 'Billing',
     protocol: 'Protocol Configuration',
     jump: 'Jump to'
   },

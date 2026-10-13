@@ -1,5 +1,6 @@
 import type { Dispatch, Ref, SetStateAction } from 'react'
-import { AlertCircle, Copy, Shield } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { AlertCircle, Copy, Plus, Shield, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -7,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
+import { Disclosure } from '@/components/ui/disclosure'
 import {
   Select,
   SelectContent,
@@ -14,9 +16,13 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { useApiQuery } from '@/hooks/useApiQuery'
+import { billingApi, type BillingPricesResponse } from '@/services/billing'
+import { queryKeys } from '@/services/queryKeys'
 import { PageLoadingState } from '@/components/PageState'
 import { cn } from '@/lib/utils'
-import { LOG_LEVEL_OPTIONS, SETTINGS_SECTIONS, type AuthFormErrors, type AuthFormState, type FormErrors, type FormState, type LogLevel } from './shared'
+import type { ApiError } from '@/services/api'
+import { LOG_LEVEL_OPTIONS, SETTINGS_SECTIONS, type AuthFormErrors, type AuthFormState, type BillingFormErrors, type BillingFormState, type FormErrors, type FormState, type LogLevel } from './shared'
 
 export function SettingsSectionNav({
   activeSection,
@@ -413,6 +419,274 @@ export function SecuritySection({
             </div>
           </div>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Billing section (v0.16): display currency, single USD↔CNY rate input,
+ *  per-model price overrides, and a read-only builtin price table. All costs
+ *  are query-time estimates — saving re-prices history retroactively. */
+export function BillingSection({
+  errors,
+  form,
+  onSetForm,
+  sectionRef
+}: {
+  errors: BillingFormErrors
+  form: BillingFormState
+  onSetForm: Dispatch<SetStateAction<BillingFormState>>
+  sectionRef?: Ref<HTMLDivElement>
+}) {
+  const { t } = useTranslation()
+  const [builtinFilter, setBuiltinFilter] = useState('')
+
+  const pricesQuery = useApiQuery<BillingPricesResponse, ApiError>(
+    queryKeys.billing.prices(),
+    billingApi.pricesRequest()
+  )
+
+  const updateRow = (index: number, patch: Partial<BillingFormState['overrides'][number]>) => {
+    onSetForm((previous) => ({
+      ...previous,
+      overrides: previous.overrides.map((row, i) => (i === index ? { ...row, ...patch } : row))
+    }))
+  }
+  const removeRow = (index: number) => {
+    onSetForm((previous) => ({ ...previous, overrides: previous.overrides.filter((_, i) => i !== index) }))
+  }
+  const addRow = () => {
+    onSetForm((previous) => ({
+      ...previous,
+      overrides: [
+        ...previous.overrides,
+        { key: '', currency: 'CNY', input: '', output: '', cacheRead: '', cacheCreation: '', label: '' }
+      ]
+    }))
+  }
+
+  const builtinEntries = useMemo(() => {
+    const entries = pricesQuery.data?.entries ?? []
+    const needle = builtinFilter.trim().toLowerCase()
+    return needle ? entries.filter((entry) => entry.key.toLowerCase().includes(needle)) : entries
+  }, [pricesQuery.data, builtinFilter])
+
+  const priceCell = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 4 })
+
+  return (
+    <Card
+      id="section-billing"
+      ref={sectionRef}
+      className="bg-card shadow-[var(--surface-shadow)]"
+    >
+      <CardContent className="space-y-6 pt-6">
+        <div>
+          <h3 className="text-sm font-semibold">{t('settings.sections.billing')}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">{t('billing.description')}</p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>{t('billing.displayCurrency')}</Label>
+            <Select
+              value={form.displayCurrency}
+              onValueChange={(value) =>
+                onSetForm((previous) => ({
+                  ...previous,
+                  displayCurrency: value === 'USD' ? 'USD' : 'CNY'
+                }))
+              }
+            >
+              <SelectTrigger aria-label={t('billing.displayCurrency')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CNY">CNY（¥）</SelectItem>
+                <SelectItem value="USD">USD（$）</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{t('billing.displayCurrencyHint')}</p>
+          </div>
+          <div className="space-y-2">
+            <Label>{t('billing.rateLabel')}</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.0001"
+              value={form.usdCnyRate}
+              onChange={(event) =>
+                onSetForm((previous) => ({ ...previous, usdCnyRate: event.target.value }))
+              }
+              aria-invalid={Boolean(errors.usdCnyRate)}
+            />
+            {errors.usdCnyRate ? (
+              <p className="text-xs text-destructive">{errors.usdCnyRate}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {t('billing.rateHint', {
+                  value: (1 / (Number(form.usdCnyRate) || 1)).toFixed(4)
+                })}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium">{t('billing.overrides.title')}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t('billing.overrides.description')}</p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={addRow}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              {t('billing.overrides.add')}
+            </Button>
+          </div>
+
+          <div className="space-y-3">
+            {form.overrides.map((row, index) => {
+              const rowErrors = errors.overrides?.[index]
+              return (
+                <div
+                  key={index}
+                  data-testid={`billing-override-row-${index}`}
+                  className="grid gap-3 rounded-xl bg-secondary/60 p-3 lg:grid-cols-[minmax(0,1.4fr)_auto_repeat(4,minmax(0,0.8fr))_auto] lg:items-end"
+                >
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">{t('billing.overrides.key')}</Label>
+                    <Input
+                      value={row.key}
+                      onChange={(event) => updateRow(index, { key: event.target.value })}
+                      placeholder="claude-sonnet-4-5 / acme:internal-model"
+                      aria-invalid={Boolean(rowErrors?.key)}
+                    />
+                    {rowErrors?.key ? (
+                      <p className="text-xs text-destructive">{rowErrors.key}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground/70">{t('billing.overrides.keyHint')}</p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">{t('billing.overrides.currency')}</Label>
+                    <Select
+                      value={row.currency}
+                      onValueChange={(value) => updateRow(index, { currency: value })}
+                    >
+                      <SelectTrigger className="w-[92px]" aria-label={t('billing.overrides.currency')}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CNY">CNY</SelectItem>
+                        <SelectItem value="USD">USD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(
+                    [
+                      ['input', 'priceInput'],
+                      ['output', 'priceOutput'],
+                      ['cacheRead', 'priceCacheRead'],
+                      ['cacheCreation', 'priceCacheCreation']
+                    ] as const
+                  ).map(([field, labelKey]) => (
+                    <div key={field} className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">{t(`billing.overrides.${labelKey}`)}</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        value={row[field]}
+                        onChange={(event) => updateRow(index, { [field]: event.target.value })}
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => removeRow(index)}
+                    disabled={form.overrides.length === 1}
+                    aria-label={t('billing.overrides.remove')}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                  {rowErrors?.prices ? (
+                    <p className="text-xs text-destructive lg:col-span-7">{rowErrors.prices}</p>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <Disclosure
+          summary={<span className="text-sm font-medium">{t('billing.builtin.title')}</span>}
+          badge={
+            <Badge variant="secondary" className="text-[10px]">{builtinEntries.length}</Badge>
+          }
+          contentClassName="border-t border-border p-4"
+        >
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">{t('billing.builtin.description')}</p>
+            <Input
+              value={builtinFilter}
+              onChange={(event) => setBuiltinFilter(event.target.value)}
+              placeholder={t('billing.builtin.filterPlaceholder')}
+              className="max-w-xs"
+            />
+            {pricesQuery.isPending ? (
+              <PageLoadingState compact label={t('common.loadingShort')} />
+            ) : pricesQuery.isError ? (
+              <p className="text-xs text-destructive">
+                {t('billing.builtin.loadError', { message: pricesQuery.error?.message ?? '' })}
+              </p>
+            ) : (
+              <div className="max-h-[320px] overflow-auto rounded-lg border border-border">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-secondary text-left uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">{t('billing.builtin.columns.key')}</th>
+                      <th className="px-3 py-2 font-semibold">{t('billing.builtin.columns.source')}</th>
+                      <th className="px-3 py-2 text-right font-semibold">{t('billing.builtin.columns.input')}</th>
+                      <th className="px-3 py-2 text-right font-semibold">{t('billing.builtin.columns.output')}</th>
+                      <th className="px-3 py-2 text-right font-semibold">{t('billing.builtin.columns.cacheRead')}</th>
+                      <th className="px-3 py-2 text-right font-semibold">{t('billing.builtin.columns.cacheCreation')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {builtinEntries.map((entry) => (
+                      <tr key={`${entry.source}:${entry.key}`} className="tabular-nums">
+                        <td className="px-3 py-1.5 font-mono">{entry.key}</td>
+                        <td className="px-3 py-1.5">
+                          <Badge variant={entry.source === 'override' ? 'default' : 'secondary'} className="text-[10px]">
+                            {entry.source}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-1.5 text-right">{priceCell(entry.input)}</td>
+                        <td className="px-3 py-1.5 text-right">{priceCell(entry.output)}</td>
+                        <td className="px-3 py-1.5 text-right">{priceCell(entry.cacheRead)}</td>
+                        <td className="px-3 py-1.5 text-right">{priceCell(entry.cacheCreation)}</td>
+                      </tr>
+                    ))}
+                    {builtinEntries.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">
+                          {t('billing.builtin.empty')}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground/70">{t('billing.builtin.footnote')}</p>
+          </div>
+        </Disclosure>
+
+        <div className="rounded-xl bg-secondary px-4 py-3 text-xs text-muted-foreground">
+          {t('billing.estimateNote')}
+        </div>
       </CardContent>
     </Card>
   )

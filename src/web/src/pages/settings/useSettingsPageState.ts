@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useAppMutation } from '@/hooks/useAppMutation'
 import { useToast } from '@/providers/ToastProvider'
@@ -11,11 +12,16 @@ import { queryKeys } from '@/services/queryKeys'
 import { formatBytes, type DatabaseInfo } from '@/pages/dashboard/types'
 import type { ConfigInfoResponse, GatewayConfig, WebAuthStatusResponse } from '@/types/providers'
 import {
+  billingOverrideRowHasContent,
   deriveAuthFormState,
+  deriveBillingFormState,
   deriveFormState,
+  serializeBillingForm,
   SETTINGS_SECTIONS,
   type AuthFormErrors,
   type AuthFormState,
+  type BillingFormErrors,
+  type BillingFormState,
   type FormErrors,
   type FormState,
   type LogLevel
@@ -24,6 +30,7 @@ import {
 export function useSettingsPageState() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
+  const queryClient = useQueryClient()
   const [activeSection, setActiveSection] = useState<string>(SETTINGS_SECTIONS[0].id)
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map())
 
@@ -151,6 +158,12 @@ export function useSettingsPageState() {
   })
   const [authErrors, setAuthErrors] = useState<AuthFormErrors>({})
   const [savingAuth, setSavingAuth] = useState(false)
+  const [billingForm, setBillingForm] = useState<BillingFormState>({
+    displayCurrency: 'CNY',
+    usdCnyRate: '7.2',
+    overrides: [{ key: '', currency: 'CNY', input: '', output: '', cacheRead: '', cacheCreation: '', label: '' }]
+  })
+  const [billingErrors, setBillingErrors] = useState<BillingFormErrors>({})
 
   const defaultsSummary = useMemo(() => {
     if (!config?.defaults) return null
@@ -187,6 +200,17 @@ export function useSettingsPageState() {
     () => (initialAuthForm ? JSON.stringify(authForm) !== JSON.stringify(initialAuthForm) : false),
     [authForm, initialAuthForm]
   )
+  const initialBillingForm = useMemo(
+    () => (config ? deriveBillingFormState(config) : null),
+    [config]
+  )
+  const isBillingDirty = useMemo(
+    () =>
+      initialBillingForm
+        ? JSON.stringify(billingForm) !== JSON.stringify(initialBillingForm)
+        : false,
+    [billingForm, initialBillingForm]
+  )
   const protocolChangesPending = useMemo(() => {
     if (!initialForm) return false
 
@@ -212,6 +236,8 @@ export function useSettingsPageState() {
     setConfig(configQuery.data.config)
     setConfigPath(configQuery.data.path)
     setForm(deriveFormState(configQuery.data.config))
+    setBillingForm(deriveBillingFormState(configQuery.data.config))
+    setBillingErrors({})
   }, [configQuery.data])
 
   useEffect(() => {
@@ -316,12 +342,38 @@ export function useSettingsPageState() {
     return Object.keys(nextErrors).length === 0
   }, [authForm, authSettings, t])
 
+  const validateBilling = useCallback((): boolean => {
+    const nextErrors: BillingFormErrors = {}
+    const rate = Number(billingForm.usdCnyRate)
+    if (!Number.isFinite(rate) || rate <= 0 || rate > 10_000) {
+      nextErrors.usdCnyRate = t('billing.validation.rate')
+    }
+    nextErrors.overrides = billingForm.overrides.map((row) => {
+      if (!billingOverrideRowHasContent(row)) return undefined
+      const rowErrors: { key?: string; prices?: string } = {}
+      if (!row.key.trim()) {
+        rowErrors.key = t('billing.validation.keyRequired')
+      } else if (row.key.trim().split(':').length > 2) {
+        rowErrors.key = t('billing.validation.keyFormat')
+      }
+      const prices = [row.input, row.output, row.cacheRead, row.cacheCreation]
+      if (prices.some((value) => value.trim() !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0))) {
+        rowErrors.prices = t('billing.validation.prices')
+      }
+      return Object.keys(rowErrors).length > 0 ? rowErrors : undefined
+    })
+    const hasRowErrors = nextErrors.overrides.some(Boolean)
+    setBillingErrors(nextErrors)
+    return !nextErrors.usdCnyRate && !hasRowErrors
+  }, [billingForm, t])
+
   const handleSave = useCallback(async () => {
     if (!config) {
       pushToast({ title: t('settings.toast.loadFailure', { message: t('settings.toast.missingConfig') }), variant: 'error' })
       return
     }
     if (!validate()) return
+    if (!validateBilling()) return
 
     setSaving(true)
     try {
@@ -353,7 +405,10 @@ export function useSettingsPageState() {
         storeResponsePayloads: form.storeResponsePayloads,
         logLevel: form.logLevel,
         bodyLimit: Math.max(1, Math.floor(bodyLimitValue * 1024 * 1024)),
-        enableRoutingFallback: form.enableRoutingFallback
+        enableRoutingFallback: form.enableRoutingFallback,
+        // Only rewrite billing when it was actually edited — an untouched
+        // config keeps its original billing block (or absence of one).
+        ...(isBillingDirty ? { billing: serializeBillingForm(billingForm) } : {})
       }
       delete (nextConfig as GatewayConfig & { requestLogging?: boolean }).requestLogging
       delete (nextConfig as GatewayConfig & { responseLogging?: boolean }).responseLogging
@@ -385,6 +440,14 @@ export function useSettingsPageState() {
         title: protocolChanged ? t('settings.toast.protocolRestartRequired') : t('settings.toast.saveSuccess'),
         variant: 'success'
       })
+      // Billing changes re-price dashboards/logs/logs-export at query time —
+      // bust every stats-bearing cache so new numbers show immediately.
+      if (isBillingDirty) {
+        void queryClient.invalidateQueries({ queryKey: ['stats'] })
+        void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+        void queryClient.invalidateQueries({ queryKey: ['logs'] })
+        void queryClient.invalidateQueries({ queryKey: ['billing'] })
+      }
       void configQuery.refetch()
     } catch (error) {
       pushToast({
@@ -394,12 +457,14 @@ export function useSettingsPageState() {
     } finally {
       setSaving(false)
     }
-  }, [config, configQuery, form, pushToast, t, validate])
+  }, [billingForm, config, configQuery, form, isBillingDirty, pushToast, queryClient, t, validate, validateBilling])
 
   const handleReset = useCallback(() => {
     if (!config) return
     setForm(deriveFormState(config))
+    setBillingForm(deriveBillingFormState(config))
     setErrors({})
+    setBillingErrors({})
   }, [config])
 
   const handleAuthSave = useCallback(async () => {
@@ -439,13 +504,13 @@ export function useSettingsPageState() {
   }, [authSettings])
 
   const handleSaveAll = useCallback(async () => {
-    if (isConfigDirty) {
+    if (isConfigDirty || isBillingDirty) {
       await handleSave()
     }
     if (isAuthDirty) {
       await handleAuthSave()
     }
-  }, [handleAuthSave, handleSave, isAuthDirty, isConfigDirty])
+  }, [handleAuthSave, handleSave, isAuthDirty, isBillingDirty, isConfigDirty])
 
   const handleResetAll = useCallback(() => {
     handleReset()
@@ -526,6 +591,8 @@ export function useSettingsPageState() {
     authForm,
     authQuery,
     authSettings,
+    billingErrors,
+    billingForm,
     clearingAll,
     cleaning,
     compacting: compactDbMutation.isPending,
@@ -551,6 +618,7 @@ export function useSettingsPageState() {
     handleSaveAll,
     handleSectionClick,
     isAuthDirty,
+    isBillingDirty,
     isConfigDirty,
     isLoading,
     needsPassword,
@@ -564,6 +632,7 @@ export function useSettingsPageState() {
     setConfirmClearAllOpen,
     setErrors,
     setForm,
+    setBillingForm,
     setSectionRef,
     t
   }

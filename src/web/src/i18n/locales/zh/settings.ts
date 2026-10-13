@@ -27,6 +27,7 @@ export default {
     configFile: '配置文件',
     cleanup: '日志清理',
     security: '访问安全',
+    billing: '计费',
     protocol: '协议配置',
     jump: '跳转到'
   },
