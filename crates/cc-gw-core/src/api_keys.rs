@@ -1,18 +1,19 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use aes_gcm::{
-    Aes256Gcm, Nonce,
     aead::{AeadInPlace, KeyInit},
+    Aes256Gcm, Nonce,
 };
-use anyhow::{Context, Result, anyhow, bail};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use anyhow::{anyhow, bail, Context, Result};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use rand::RngCore;
-use rusqlite::{Connection, OptionalExtension, Row, params, types::ValueRef};
+use rusqlite::{params, types::ValueRef, Connection, OptionalExtension, Row};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::events::{RecordEventInput, record_event};
+use crate::events::{record_event, RecordEventInput};
 use crate::observability::UsageStats;
 
 const KEY_PREFIX: &str = "sk-ccgw-";
@@ -100,6 +101,9 @@ pub struct ApiKeyUsageMetric {
     pub cache_creation_tokens: i64,
     pub avg_latency_ms: i64,
     pub last_used_at: Option<String>,
+    /// 该密钥行已计价部分成本和（展示货币）；全未计价为 null。
+    pub cost: Option<f64>,
+    pub unpriced_requests: i64,
 }
 
 fn open_db(db_path: &Path) -> Result<Connection> {
@@ -952,9 +956,13 @@ pub fn get_api_key_usage_metrics(
     days: i64,
     limit: i64,
     endpoint: Option<&str>,
+    pricing: &crate::billing::PricingEngine,
 ) -> Result<Vec<ApiKeyUsageMetric>> {
     let conn = open_db(db_path)?;
     let since = chrono::Utc::now().timestamp_millis() - days.clamp(1, 90) * 24 * 60 * 60 * 1000;
+    // 成本子行：密钥行聚合多模型，需按 (key, model, provider) 二级分组后
+    // 在 Rust 折叠（SQL LIMIT 只截展示行，不影响子行完整折叠）。
+    let cost_by_key = api_key_cost_by_key(&conn, since, endpoint, pricing)?;
     let sql = if endpoint.is_some() {
         "SELECT api_key_id, api_key_name, COUNT(*), COALESCE(SUM(input_tokens), 0),
                 COALESCE(SUM(output_tokens), 0), COALESCE(SUM(cache_read_tokens), 0),
@@ -986,9 +994,15 @@ pub fn get_api_key_usage_metrics(
     while let Some(row) = rows.next()? {
         let requests: i64 = row.get(2)?;
         let total_latency: i64 = row.get(7)?;
+        let api_key_id: Option<i64> = row.get(0)?;
+        let api_key_name: Option<String> = row.get(1)?;
+        let (cost, unpriced_requests) = cost_by_key
+            .get(&(api_key_id, api_key_name.clone()))
+            .copied()
+            .unwrap_or((None, 0));
         items.push(ApiKeyUsageMetric {
-            api_key_id: row.get(0)?,
-            api_key_name: row.get(1)?,
+            api_key_id,
+            api_key_name,
             requests,
             input_tokens: row.get(3)?,
             output_tokens: row.get(4)?,
@@ -1000,9 +1014,70 @@ pub fn get_api_key_usage_metrics(
                 0
             },
             last_used_at: row_timestamp_to_iso(row, 8)?,
+            cost,
+            unpriced_requests,
         });
     }
     Ok(items)
+}
+
+/// 密钥行成本子行：GROUP BY (api_key_id, api_key_name, model, provider)
+/// 无 LIMIT 折叠成 (id, name) → (cost, unpricedRequests)。NULL id/name 在
+/// SQL 分组与 HashMap 键下都自然归并，口径一致。
+fn api_key_cost_by_key(
+    conn: &rusqlite::Connection,
+    since: i64,
+    endpoint: Option<&str>,
+    pricing: &crate::billing::PricingEngine,
+) -> Result<HashMap<(Option<i64>, Option<String>), (Option<f64>, i64)>> {
+    use crate::billing::{CostFold, UsageTotals};
+    let select = "SELECT api_key_id, api_key_name, model, provider, COUNT(*),
+           SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens)
+     FROM request_logs";
+    let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match endpoint {
+        Some(endpoint) => (
+            format!(
+                "{select}
+                 WHERE timestamp >= ?1 AND endpoint = ?2
+                 GROUP BY api_key_id, api_key_name, model, provider"
+            ),
+            vec![Box::new(since), Box::new(endpoint.to_string())],
+        ),
+        None => (
+            format!(
+                "{select}
+                 WHERE timestamp >= ?1
+                 GROUP BY api_key_id, api_key_name, model, provider"
+            ),
+            vec![Box::new(since)],
+        ),
+    };
+    let mut stmt = conn.prepare(sql.as_str())?;
+    let mut rows = stmt.query(rusqlite::params_from_iter(
+        params_vec.iter().map(|value| value.as_ref()),
+    ))?;
+    let mut folds: HashMap<(Option<i64>, Option<String>), CostFold> = HashMap::new();
+    while let Some(row) = rows.next()? {
+        let api_key_id: Option<i64> = row.get(0)?;
+        let api_key_name: Option<String> = row.get(1)?;
+        let model: String = row.get(2)?;
+        let provider: String = row.get(3)?;
+        let requests: i64 = row.get(4)?;
+        let usage = UsageTotals {
+            input: row.get(5)?,
+            output: row.get(6)?,
+            cache_read: row.get(7)?,
+            cache_creation: row.get(8)?,
+        };
+        folds
+            .entry((api_key_id, api_key_name))
+            .or_default()
+            .add(pricing.compute(&model, Some(&provider), &usage), requests);
+    }
+    Ok(folds
+        .into_iter()
+        .map(|(key, fold)| (key, fold.finish()))
+        .collect())
 }
 
 pub fn decrypt_log_api_key_value(home_dir: &Path, value: Option<&str>) -> Option<String> {

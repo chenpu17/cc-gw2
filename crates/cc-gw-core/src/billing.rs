@@ -329,6 +329,37 @@ fn round6(value: f64) -> f64 {
     (value * 1_000_000.0).round() / 1_000_000.0
 }
 
+/// 聚合行成本折叠器：维度/日/密钥等行由多个 (模型, provider) 子行组成，
+/// 逐子行 [`PricingEngine::compute`] 后累计 —— 已计价子行加 total，未计价
+/// 子行累计请求数。整行全未计价时 `cost` 保持 None（不冒充 0）。
+#[derive(Debug, Default)]
+pub struct CostFold {
+    cost: f64,
+    priced: bool,
+    unpriced_requests: i64,
+}
+
+impl CostFold {
+    pub fn add(&mut self, breakdown: Option<CostBreakdown>, requests: i64) {
+        match breakdown {
+            Some(breakdown) => {
+                self.cost += breakdown.total;
+                self.priced = true;
+            }
+            None => self.unpriced_requests += requests,
+        }
+    }
+
+    /// 返回 `(cost, unpricedRequests)`：cost 为已计价部分之和（6 位小数），
+    /// 无任何已计价子行时为 None。
+    pub fn finish(self) -> (Option<f64>, i64) {
+        (
+            self.priced.then(|| round6(self.cost)),
+            self.unpriced_requests,
+        )
+    }
+}
+
 /// 查询期定价引擎：从 `BillingConfig` 构建，热加载后随 config 一起重建。
 #[derive(Debug, Clone)]
 pub struct PricingEngine {
@@ -629,21 +660,17 @@ mod tests {
 
     #[test]
     fn candidates_strip_modifier_suffix_and_dates() {
-        assert!(
-            price_lookup_candidates("claude-3-7-sonnet:beta")
-                .contains(&"claude-3-7-sonnet".to_string())
-        );
+        assert!(price_lookup_candidates("claude-3-7-sonnet:beta")
+            .contains(&"claude-3-7-sonnet".to_string()));
         assert!(price_lookup_candidates("o3-2025-04-16").contains(&"o3".to_string()));
         assert!(price_lookup_candidates("gpt-4o-20241120").contains(&"gpt-4o".to_string()));
         // 4 位数字不是日期，不得误剥（kimi-k2-0905-preview 不得变成 kimi-k2）
         let candidates = price_lookup_candidates("kimi-k2-0905-preview");
         assert!(candidates.contains(&"kimi-k2-0905-preview".to_string()));
         assert!(!candidates.iter().any(|c| c == "kimi-k2"));
-        assert!(
-            !candidates
-                .iter()
-                .any(|c| c == "kimi-k2-0905-preview-preview")
-        );
+        assert!(!candidates
+            .iter()
+            .any(|c| c == "kimi-k2-0905-preview-preview"));
     }
 
     #[test]
@@ -652,11 +679,9 @@ mod tests {
             price_lookup_candidates("claude-sonnet-4.5").contains(&"claude-sonnet-4-5".to_string())
         );
         // 非数字两侧的点不动（版本点之外的句点）
-        assert!(
-            price_lookup_candidates("model.v2")
-                .iter()
-                .all(|c| !c.contains('-'))
-        );
+        assert!(price_lookup_candidates("model.v2")
+            .iter()
+            .all(|c| !c.contains('-')));
     }
 
     #[test]
@@ -809,25 +834,21 @@ mod tests {
     #[test]
     fn compute_returns_none_for_unknown_input_or_model() {
         let engine = engine(None, &[]);
-        assert!(
-            engine
-                .compute(
-                    "gpt-4o",
-                    None,
-                    &UsageTotals {
-                        input: None,
-                        output: Some(100),
-                        cache_read: None,
-                        cache_creation: None,
-                    }
-                )
-                .is_none()
-        );
-        assert!(
-            engine
-                .compute("mystery-model", None, &usage(1, 1, 0, 0))
-                .is_none()
-        );
+        assert!(engine
+            .compute(
+                "gpt-4o",
+                None,
+                &UsageTotals {
+                    input: None,
+                    output: Some(100),
+                    cache_read: None,
+                    cache_creation: None,
+                }
+            )
+            .is_none());
+        assert!(engine
+            .compute("mystery-model", None, &usage(1, 1, 0, 0))
+            .is_none());
     }
 
     #[test]

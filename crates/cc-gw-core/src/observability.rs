@@ -6,9 +6,11 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use brotli::{CompressorWriter, Decompressor};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
+
+use crate::billing::{CostFold, PricingEngine, UsageTotals};
 
 #[derive(Debug, Clone)]
 pub struct RequestLogInput {
@@ -157,14 +159,21 @@ pub struct MetricsOverviewSection {
     pub cache_creation_tokens: i64,
     pub avg_latency_ms: i64,
     pub error_count: i64,
+    /// 范围内已计价请求的成本和（展示货币）；无任何已计价请求时为 null。
+    pub cost: Option<f64>,
+    /// 范围内未计价（无价模型 / input 未知）的请求数。
+    pub unpriced_requests: i64,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MetricsOverview {
     pub totals: MetricsOverviewSection,
     pub today: MetricsOverviewSection,
     /// Previous local day; drives the today-card delta pills (vs yesterday).
     pub yesterday: MetricsOverviewSection,
+    /// 成本展示货币（"CNY"/"USD"），成本字段均以此币种计。
+    pub cost_currency: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -178,6 +187,9 @@ pub struct DailyMetric {
     pub cache_read_tokens: i64,
     pub cache_creation_tokens: i64,
     pub avg_latency_ms: i64,
+    /// 当日已计价请求的成本和（展示货币）；全未计价为 null。
+    pub cost: Option<f64>,
+    pub unpriced_requests: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -191,6 +203,10 @@ pub struct ModelUsageMetric {
     pub avg_latency_ms: i64,
     pub avg_ttft_ms: Option<f64>,
     pub avg_tpot_ms: Option<f64>,
+    /// 该 (model, provider) 行的成本（展示货币）；未计价为 null。
+    pub cost: Option<f64>,
+    /// 未计价请求数（该行 compute 无价时等于 requests，否则 0）。
+    pub unpriced_requests: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -901,6 +917,7 @@ fn request_log_metrics_section(
     conn: &Connection,
     range: Option<(i64, i64)>,
     endpoint: Option<&str>,
+    pricing: &PricingEngine,
 ) -> Result<MetricsOverviewSection> {
     let select = "SELECT
        COUNT(*),
@@ -944,6 +961,8 @@ fn request_log_metrics_section(
         )?,
         (None, None) => conn.query_row(select, [], map_row)?,
     };
+    let (cost, unpriced_requests) =
+        request_log_metrics_section_cost(conn, range, endpoint, pricing)?;
     Ok(MetricsOverviewSection {
         requests: row.0,
         input_tokens: row.1,
@@ -953,15 +972,80 @@ fn request_log_metrics_section(
         cache_creation_tokens: row.5,
         avg_latency_ms: if row.7 > 0 { row.6 / row.7 } else { 0 },
         error_count: row.8,
+        cost,
+        unpriced_requests,
     })
 }
 
-pub fn get_metrics_overview(db_path: &Path, endpoint: Option<&str>) -> Result<MetricsOverview> {
+/// 范围内按 (model, provider) 分组的成本子行查询 —— SUM 不做 COALESCE，
+/// 让「整组 input 未知」自然落成未计价，而不是把未知当 0 冒充免费。
+fn request_log_metrics_section_cost(
+    conn: &Connection,
+    range: Option<(i64, i64)>,
+    endpoint: Option<&str>,
+    pricing: &PricingEngine,
+) -> Result<(Option<f64>, i64)> {
+    // GROUP BY 不可省：空范围下无分组的聚合会吐出一行裸 NULL model，
+    // 而分组查询空集返回零行 → cost None / unpriced 0，语义正确。
+    let select = "SELECT model, provider, COUNT(*),
+       SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens)
+     FROM request_logs";
+    let group_by = " GROUP BY model, provider";
+    let (sql, param_values): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (range, endpoint) {
+        (Some((since, until)), Some(endpoint)) => (
+            format!(
+                "{select} WHERE timestamp >= ?1 AND timestamp < ?2 AND endpoint = ?3{group_by}"
+            ),
+            vec![
+                Box::new(since),
+                Box::new(until),
+                Box::new(endpoint.to_string()),
+            ],
+        ),
+        (Some((since, until)), None) => (
+            format!("{select} WHERE timestamp >= ?1 AND timestamp < ?2{group_by}"),
+            vec![Box::new(since), Box::new(until)],
+        ),
+        (None, Some(endpoint)) => (
+            format!("{select} WHERE endpoint = ?1{group_by}"),
+            vec![Box::new(endpoint.to_string())],
+        ),
+        (None, None) => (format!("{select}{group_by}"), Vec::new()),
+    };
+    let mut stmt = conn.prepare(sql.as_str())?;
+    let mut rows = stmt.query(rusqlite::params_from_iter(
+        param_values.iter().map(|value| value.as_ref()),
+    ))?;
+    let mut fold = CostFold::default();
+    while let Some(row) = rows.next()? {
+        let model: String = row.get(0)?;
+        let provider: String = row.get(1)?;
+        let requests: i64 = row.get(2)?;
+        let usage = UsageTotals {
+            input: row.get(3)?,
+            output: row.get(4)?,
+            cache_read: row.get(5)?,
+            cache_creation: row.get(6)?,
+        };
+        fold.add(pricing.compute(&model, Some(&provider), &usage), requests);
+    }
+    Ok(fold.finish())
+}
+
+pub fn get_metrics_overview(
+    db_path: &Path,
+    endpoint: Option<&str>,
+    pricing: &PricingEngine,
+) -> Result<MetricsOverview> {
     let conn = open_db(db_path)?;
-    let totals = request_log_metrics_section(&conn, None, endpoint)?;
+    let totals = request_log_metrics_section(&conn, None, endpoint, pricing)?;
     let (today_start, tomorrow_start) = local_today_bounds_millis();
-    let today_section =
-        request_log_metrics_section(&conn, Some((today_start, tomorrow_start)), endpoint)?;
+    let today_section = request_log_metrics_section(
+        &conn,
+        Some((today_start, tomorrow_start)),
+        endpoint,
+        pricing,
+    )?;
     // Yesterday = the prior local calendar day, computed DST-aware. A naive
     // `today_start - 86_400_000` drifts by ~1h around DST transitions (days can
     // be 23 or 25h); `local_day_bounds_millis` resolves midnight in local time,
@@ -969,13 +1053,18 @@ pub fn get_metrics_overview(db_path: &Path, endpoint: Option<&str>) -> Result<Me
     let today = chrono::Local::now().date_naive();
     let yesterday = today.pred_opt().unwrap_or(today);
     let (yesterday_start, _) = local_day_bounds_millis(yesterday);
-    let yesterday_section =
-        request_log_metrics_section(&conn, Some((yesterday_start, today_start)), endpoint)?;
+    let yesterday_section = request_log_metrics_section(
+        &conn,
+        Some((yesterday_start, today_start)),
+        endpoint,
+        pricing,
+    )?;
 
     Ok(MetricsOverview {
         totals,
         today: today_section,
         yesterday: yesterday_section,
+        cost_currency: pricing.display_currency().code().to_string(),
     })
 }
 
@@ -983,6 +1072,7 @@ pub fn get_daily_metrics(
     db_path: &Path,
     days: i64,
     endpoint: Option<&str>,
+    pricing: &PricingEngine,
 ) -> Result<Vec<DailyMetric>> {
     let conn = open_db(db_path)?;
     let since = local_daily_range_start_millis(days);
@@ -1026,12 +1116,15 @@ pub fn get_daily_metrics(
         stmt.query(params![since, days])?
     };
     let mut items = Vec::new();
+    let cost_by_date = daily_cost_by_date(&conn, since, endpoint, pricing)?;
     while let Some(row) = rows.next()? {
         let request_count: i64 = row.get(1)?;
         let total_latency: i64 = row.get(7)?;
         let latency_count: i64 = row.get(8)?;
+        let date: String = row.get(0)?;
+        let (cost, unpriced_requests) = cost_by_date.get(&date).copied().unwrap_or((None, 0));
         items.push(DailyMetric {
-            date: row.get(0)?,
+            date,
             request_count,
             input_tokens: row.get(2)?,
             output_tokens: row.get(3)?,
@@ -1043,10 +1136,63 @@ pub fn get_daily_metrics(
             } else {
                 0
             },
+            cost,
+            unpriced_requests,
         });
     }
     items.reverse();
     Ok(items)
+}
+
+/// 日维度成本子行：GROUP BY (date, model, provider)（无 LIMIT —— LIMIT 会截
+/// 断模型的子行污染当日成本），在 Rust 折叠成 date → (cost, unpriced)。
+fn daily_cost_by_date(
+    conn: &Connection,
+    since: i64,
+    endpoint: Option<&str>,
+    pricing: &PricingEngine,
+) -> Result<HashMap<String, (Option<f64>, i64)>> {
+    let select = "SELECT strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime') AS date,
+           model, provider, COUNT(*),
+           SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens)
+     FROM request_logs";
+    let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match endpoint {
+        Some(endpoint) => (
+            format!(
+                "{select} WHERE timestamp >= ?1 AND endpoint = ?2 GROUP BY date, model, provider"
+            ),
+            vec![Box::new(since), Box::new(endpoint.to_string())],
+        ),
+        None => (
+            format!("{select} WHERE timestamp >= ?1 GROUP BY date, model, provider"),
+            vec![Box::new(since)],
+        ),
+    };
+    let mut stmt = conn.prepare(sql.as_str())?;
+    let mut rows = stmt.query(rusqlite::params_from_iter(
+        params_vec.iter().map(|value| value.as_ref()),
+    ))?;
+    let mut folds: HashMap<String, CostFold> = HashMap::new();
+    while let Some(row) = rows.next()? {
+        let date: String = row.get(0)?;
+        let model: String = row.get(1)?;
+        let provider: String = row.get(2)?;
+        let requests: i64 = row.get(3)?;
+        let usage = UsageTotals {
+            input: row.get(4)?,
+            output: row.get(5)?,
+            cache_read: row.get(6)?,
+            cache_creation: row.get(7)?,
+        };
+        folds
+            .entry(date)
+            .or_default()
+            .add(pricing.compute(&model, Some(&provider), &usage), requests);
+    }
+    Ok(folds
+        .into_iter()
+        .map(|(date, fold)| (date, fold.finish()))
+        .collect())
 }
 
 pub fn get_model_usage_metrics(
@@ -1054,11 +1200,15 @@ pub fn get_model_usage_metrics(
     days: i64,
     limit: i64,
     endpoint: Option<&str>,
+    pricing: &PricingEngine,
 ) -> Result<Vec<ModelUsageMetric>> {
     let conn = open_db(db_path)?;
     let since = chrono::Utc::now().timestamp_millis() - days * 24 * 60 * 60 * 1000;
+    // SUM 保持可空：整组 input 未知 → 该行未计价（而不是 0 tokens 冒充免费）。
+    // cache 两列只为成本计算新增，展示口径不变。
     let sql = if endpoint.is_some() {
-        "SELECT model, provider, COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+        "SELECT model, provider, COUNT(*), SUM(input_tokens), SUM(output_tokens),
+                SUM(cache_read_tokens), SUM(cache_creation_tokens),
                 COALESCE(SUM(latency_ms), 0), AVG(ttft_ms), AVG(tpot_ms)
          FROM request_logs
          WHERE timestamp >= ?1 AND endpoint = ?2
@@ -1066,7 +1216,8 @@ pub fn get_model_usage_metrics(
          ORDER BY COUNT(*) DESC
          LIMIT ?3"
     } else {
-        "SELECT model, provider, COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+        "SELECT model, provider, COUNT(*), SUM(input_tokens), SUM(output_tokens),
+                SUM(cache_read_tokens), SUM(cache_creation_tokens),
                 COALESCE(SUM(latency_ms), 0), AVG(ttft_ms), AVG(tpot_ms)
          FROM request_logs
          WHERE timestamp >= ?1
@@ -1083,20 +1234,35 @@ pub fn get_model_usage_metrics(
     let mut items = Vec::new();
     while let Some(row) = rows.next()? {
         let requests: i64 = row.get(2)?;
-        let total_latency: i64 = row.get(5)?;
+        let total_latency: i64 = row.get(7)?;
+        let usage = UsageTotals {
+            input: row.get(3)?,
+            output: row.get(4)?,
+            cache_read: row.get(5)?,
+            cache_creation: row.get(6)?,
+        };
+        let model: String = row.get(0)?;
+        let provider: String = row.get(1)?;
+        let breakdown = pricing.compute(&model, Some(&provider), &usage);
+        let (cost, unpriced_requests) = match breakdown {
+            Some(breakdown) => (Some(breakdown.total), 0),
+            None => (None, requests),
+        };
         items.push(ModelUsageMetric {
-            model: row.get(0)?,
-            provider: row.get(1)?,
+            model,
+            provider,
             requests,
-            input_tokens: row.get(3)?,
-            output_tokens: row.get(4)?,
+            input_tokens: usage.input.unwrap_or(0),
+            output_tokens: usage.output.unwrap_or(0),
             avg_latency_ms: if requests > 0 {
                 total_latency / requests
             } else {
                 0
             },
-            avg_ttft_ms: row.get(6)?,
-            avg_tpot_ms: row.get(7)?,
+            avg_ttft_ms: row.get(8)?,
+            avg_tpot_ms: row.get(9)?,
+            cost,
+            unpriced_requests,
         });
     }
     Ok(items)
@@ -1131,6 +1297,9 @@ pub struct DimensionUsageMetric {
     pub cache_read_tokens: i64,
     pub cache_creation_tokens: i64,
     pub avg_latency_ms: i64,
+    /// 该维度行已计价部分成本和（展示货币）；全未计价为 null。
+    pub cost: Option<f64>,
+    pub unpriced_requests: i64,
 }
 
 /// Usage grouped by provider / endpoint / client kind over the last `days`
@@ -1142,10 +1311,12 @@ pub fn get_dimension_usage_metrics(
     days: i64,
     limit: i64,
     endpoint: Option<&str>,
+    pricing: &PricingEngine,
 ) -> Result<Vec<DimensionUsageMetric>> {
     let conn = open_db(db_path)?;
     let since = chrono::Utc::now().timestamp_millis() - days.clamp(1, 90) * 24 * 60 * 60 * 1000;
     let group = dimension.group_expression();
+    let cost_by_key = dimension_cost_by_key(&conn, group, since, endpoint, pricing)?;
     let sql = if endpoint.is_some() {
         format!(
             "SELECT {group}, COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
@@ -1179,8 +1350,10 @@ pub fn get_dimension_usage_metrics(
     while let Some(row) = rows.next()? {
         let requests: i64 = row.get(1)?;
         let total_latency: i64 = row.get(6)?;
+        let key: String = row.get(0)?;
+        let (cost, unpriced_requests) = cost_by_key.get(&key).copied().unwrap_or((None, 0));
         items.push(DimensionUsageMetric {
-            key: row.get(0)?,
+            key,
             requests,
             input_tokens: row.get(2)?,
             output_tokens: row.get(3)?,
@@ -1191,9 +1364,63 @@ pub fn get_dimension_usage_metrics(
             } else {
                 0
             },
+            cost,
+            unpriced_requests,
         });
     }
     Ok(items)
+}
+
+/// 维度行成本子行：GROUP BY ({group}, model, provider) 无 LIMIT（维度行聚合
+/// 多模型，SQL LIMIT 截断的是展示行，但子行截断会污染成本），Rust 折叠成
+/// group-key → (cost, unpricedRequests)。
+fn dimension_cost_by_key(
+    conn: &Connection,
+    group: &str,
+    since: i64,
+    endpoint: Option<&str>,
+    pricing: &PricingEngine,
+) -> Result<HashMap<String, (Option<f64>, i64)>> {
+    let select = format!(
+        "SELECT {group}, model, provider, COUNT(*),
+                SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens)
+         FROM request_logs"
+    );
+    let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match endpoint {
+        Some(endpoint) => (
+            format!("{select} WHERE timestamp >= ?1 AND endpoint = ?2 GROUP BY {group}, model, provider"),
+            vec![Box::new(since), Box::new(endpoint.to_string())],
+        ),
+        None => (
+            format!("{select} WHERE timestamp >= ?1 GROUP BY {group}, model, provider"),
+            vec![Box::new(since)],
+        ),
+    };
+    let mut stmt = conn.prepare(sql.as_str())?;
+    let mut rows = stmt.query(rusqlite::params_from_iter(
+        params_vec.iter().map(|value| value.as_ref()),
+    ))?;
+    let mut folds: HashMap<String, CostFold> = HashMap::new();
+    while let Some(row) = rows.next()? {
+        let key: String = row.get(0)?;
+        let model: String = row.get(1)?;
+        let provider: String = row.get(2)?;
+        let requests: i64 = row.get(3)?;
+        let usage = UsageTotals {
+            input: row.get(4)?,
+            output: row.get(5)?,
+            cache_read: row.get(6)?,
+            cache_creation: row.get(7)?,
+        };
+        folds
+            .entry(key)
+            .or_default()
+            .add(pricing.compute(&model, Some(&provider), &usage), requests);
+    }
+    Ok(folds
+        .into_iter()
+        .map(|(key, fold)| (key, fold.finish()))
+        .collect())
 }
 
 pub fn get_database_info(db_path: &Path) -> Result<DatabaseInfo> {
@@ -1424,6 +1651,208 @@ pub fn clear_all_logs(db_path: &Path) -> Result<(i64, i64)> {
 mod tests {
     use super::*;
     use crate::storage::initialize_database;
+
+    fn test_pricing() -> crate::billing::PricingEngine {
+        crate::billing::PricingEngine::from_config(&crate::config::BillingConfig::default())
+    }
+
+    #[test]
+    fn usage_metrics_cost_null_when_nothing_priced() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-cost-unpriced-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+        let now = chrono::Utc::now().timestamp_millis();
+        let insert = |model: &str| {
+            insert_request_log(
+                &db_path,
+                &RequestLogInput {
+                    timestamp: now,
+                    session_id: None,
+                    source_ip: None,
+                    client_kind: None,
+                    user_agent: None,
+                    endpoint: "openai".to_string(),
+                    provider: "mock".to_string(),
+                    model: model.to_string(),
+                    client_model: None,
+                    stream: false,
+                    api_key_id: None,
+                    api_key_name: None,
+                    api_key_value: None,
+                },
+            )
+            .expect("insert request log")
+        };
+        // 一条已 finalize 但模型无价（stub-model 不在内置表），一条 pending
+        // （input 未知）—— 两种未计价来源都计入 unpricedRequests。
+        let done = insert("stub-model");
+        finalize_request_log(
+            &db_path,
+            done,
+            &RequestLogUpdate {
+                latency_ms: Some(10),
+                status_code: Some(200),
+                input_tokens: Some(100),
+                output_tokens: Some(10),
+                ..RequestLogUpdate::default()
+            },
+        )
+        .expect("finalize request log");
+        let _pending = insert("stub-model");
+
+        let pricing = test_pricing();
+        let overview = get_metrics_overview(&db_path, None, &pricing).expect("query overview");
+        assert_eq!(overview.cost_currency, "CNY");
+        assert_eq!(overview.today.cost, None);
+        assert_eq!(overview.today.unpriced_requests, 2);
+        assert_eq!(overview.totals.cost, None);
+        assert_eq!(overview.totals.unpriced_requests, 2);
+
+        let providers =
+            get_dimension_usage_metrics(&db_path, UsageDimension::Provider, 7, 10, None, &pricing)
+                .expect("query provider metrics");
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].key, "mock");
+        assert_eq!(providers[0].cost, None);
+        assert_eq!(providers[0].unpriced_requests, 2);
+
+        let models =
+            get_model_usage_metrics(&db_path, 7, 10, None, &pricing).expect("query model metrics");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].model, "stub-model");
+        assert_eq!(models[0].cost, None);
+        assert_eq!(models[0].unpriced_requests, 2);
+
+        let keys = crate::api_keys::get_api_key_usage_metrics(&db_path, 7, 10, None, &pricing)
+            .expect("query api key metrics");
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].cost, None);
+        assert_eq!(keys[0].unpriced_requests, 2);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn usage_metrics_cost_folds_override_prices_across_models() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-cost-fold-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+        let now = chrono::Utc::now().timestamp_millis();
+        let insert = |model: &str| {
+            insert_request_log(
+                &db_path,
+                &RequestLogInput {
+                    timestamp: now,
+                    session_id: None,
+                    source_ip: None,
+                    client_kind: None,
+                    user_agent: None,
+                    endpoint: "openai".to_string(),
+                    provider: "mock".to_string(),
+                    model: model.to_string(),
+                    client_model: None,
+                    stream: false,
+                    api_key_id: Some(7),
+                    api_key_name: Some("team-a".to_string()),
+                    api_key_value: None,
+                },
+            )
+            .expect("insert request log")
+        };
+        let finalize = |log_id: i64, input: i64, output: i64, cache_read: i64| {
+            finalize_request_log(
+                &db_path,
+                log_id,
+                &RequestLogUpdate {
+                    latency_ms: Some(10),
+                    status_code: Some(200),
+                    input_tokens: Some(input),
+                    output_tokens: Some(output),
+                    cache_read_tokens: Some(cache_read),
+                    cache_creation_tokens: Some(0),
+                    ..RequestLogUpdate::default()
+                },
+            )
+            .expect("finalize request log")
+        };
+        // A: stub-model（全局覆盖 ¥1/¥2/读¥0.5/写¥0）→ 0.8 + 1.0 + 0.1 = 1.9
+        finalize(insert("stub-model"), 1_000_000, 500_000, 200_000);
+        // B: other-model（范围覆盖 mock:other-model ¥4/¥8）→ 4.0
+        finalize(insert("other-model"), 1_000_000, 0, 0);
+        // C: mystery-model 无价 → unpriced 1
+        finalize(insert("mystery-model"), 100_000, 0, 0);
+
+        let mut billing = crate::config::BillingConfig::default();
+        billing.model_prices.insert(
+            "stub-model".to_string(),
+            crate::config::ModelPriceOverride {
+                currency: "CNY".to_string(),
+                input: 1.0,
+                output: 2.0,
+                cache_read: 0.5,
+                cache_creation: 0.0,
+                label: None,
+            },
+        );
+        billing.model_prices.insert(
+            "mock:other-model".to_string(),
+            crate::config::ModelPriceOverride {
+                currency: "CNY".to_string(),
+                input: 4.0,
+                output: 8.0,
+                cache_read: 1.0,
+                cache_creation: 4.0,
+                label: None,
+            },
+        );
+        let pricing = crate::billing::PricingEngine::from_config(&billing);
+
+        let overview = get_metrics_overview(&db_path, None, &pricing).expect("query overview");
+        assert_eq!(overview.today.cost, Some(5.9));
+        assert_eq!(overview.today.unpriced_requests, 1);
+        assert_eq!(overview.totals.cost, Some(5.9));
+
+        let daily = get_daily_metrics(&db_path, 14, None, &pricing).expect("query daily");
+        assert_eq!(daily.len(), 1);
+        assert_eq!(daily[0].cost, Some(5.9));
+        assert_eq!(daily[0].unpriced_requests, 1);
+
+        let providers =
+            get_dimension_usage_metrics(&db_path, UsageDimension::Provider, 7, 10, None, &pricing)
+                .expect("query provider metrics");
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].key, "mock");
+        assert_eq!(providers[0].cost, Some(5.9));
+        assert_eq!(providers[0].unpriced_requests, 1);
+
+        let models =
+            get_model_usage_metrics(&db_path, 7, 10, None, &pricing).expect("query model metrics");
+        let stub = models.iter().find(|m| m.model == "stub-model").unwrap();
+        assert_eq!(stub.cost, Some(1.9));
+        assert_eq!(stub.unpriced_requests, 0);
+        let other = models.iter().find(|m| m.model == "other-model").unwrap();
+        assert_eq!(other.cost, Some(4.0));
+        let mystery = models.iter().find(|m| m.model == "mystery-model").unwrap();
+        assert_eq!(mystery.cost, None);
+        assert_eq!(mystery.unpriced_requests, 1);
+
+        let keys = crate::api_keys::get_api_key_usage_metrics(&db_path, 7, 10, None, &pricing)
+            .expect("query api key metrics");
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].api_key_name.as_deref(), Some("team-a"));
+        assert_eq!(keys[0].cost, Some(5.9));
+        assert_eq!(keys[0].unpriced_requests, 1);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn error_detail_round_trips_through_finalize_and_queries() {
@@ -1762,9 +2191,15 @@ mod tests {
         seed("alpha", "anthropic", Some("codex"), 50, 10, 300);
         seed("beta", "openai", None, 7, 0, 60);
 
-        let providers =
-            get_dimension_usage_metrics(&db_path, UsageDimension::Provider, 7, 10, None)
-                .expect("provider metrics");
+        let providers = get_dimension_usage_metrics(
+            &db_path,
+            UsageDimension::Provider,
+            7,
+            10,
+            None,
+            &test_pricing(),
+        )
+        .expect("provider metrics");
         assert_eq!(providers.len(), 2);
         assert_eq!(providers[0].key, "alpha");
         assert_eq!(providers[0].requests, 2);
@@ -1773,16 +2208,28 @@ mod tests {
         assert_eq!(providers[0].avg_latency_ms, 200);
         assert_eq!(providers[1].key, "beta");
 
-        let endpoints =
-            get_dimension_usage_metrics(&db_path, UsageDimension::Endpoint, 7, 10, None)
-                .expect("endpoint metrics");
+        let endpoints = get_dimension_usage_metrics(
+            &db_path,
+            UsageDimension::Endpoint,
+            7,
+            10,
+            None,
+            &test_pricing(),
+        )
+        .expect("endpoint metrics");
         assert_eq!(endpoints.len(), 2);
         assert_eq!(endpoints[0].key, "anthropic");
 
         // NULL client_kind groups under "unknown"; endpoint filter narrows.
-        let clients =
-            get_dimension_usage_metrics(&db_path, UsageDimension::ClientKind, 7, 10, None)
-                .expect("client metrics");
+        let clients = get_dimension_usage_metrics(
+            &db_path,
+            UsageDimension::ClientKind,
+            7,
+            10,
+            None,
+            &test_pricing(),
+        )
+        .expect("client metrics");
         assert_eq!(clients.len(), 2);
         assert_eq!(clients[0].key, "codex");
         assert_eq!(clients[0].requests, 2);
@@ -1794,6 +2241,7 @@ mod tests {
             7,
             10,
             Some("anthropic"),
+            &test_pricing(),
         )
         .expect("client metrics for endpoint");
         assert_eq!(anthropic_clients.len(), 1);
@@ -1979,7 +2427,8 @@ mod tests {
         )
         .expect("insert pending openai request log");
 
-        let overview = get_metrics_overview(&db_path, None).expect("query overview");
+        let overview =
+            get_metrics_overview(&db_path, None, &test_pricing()).expect("query overview");
         assert_eq!(overview.totals.requests, 3);
         assert_eq!(overview.totals.input_tokens, 16);
         assert_eq!(overview.totals.output_tokens, 9);
@@ -1992,7 +2441,8 @@ mod tests {
         assert_eq!(overview.today.cache_creation_tokens, 3);
         assert_eq!(overview.today.avg_latency_ms, 100);
 
-        let openai = get_metrics_overview(&db_path, Some("openai")).expect("query openai overview");
+        let openai = get_metrics_overview(&db_path, Some("openai"), &test_pricing())
+            .expect("query openai overview");
         assert_eq!(openai.totals.requests, 2);
         assert_eq!(openai.today.requests, 2);
         assert_eq!(openai.today.input_tokens, 6);
@@ -2000,7 +2450,8 @@ mod tests {
         assert_eq!(openai.today.avg_latency_ms, 80);
 
         let today_date = chrono::Local::now().format("%Y-%m-%d").to_string();
-        let daily = get_daily_metrics(&db_path, 14, None).expect("query daily metrics");
+        let daily =
+            get_daily_metrics(&db_path, 14, None, &test_pricing()).expect("query daily metrics");
         assert_eq!(daily.len(), 1);
         assert_eq!(daily[0].date, today_date);
         assert_eq!(daily[0].request_count, 3);
@@ -2008,8 +2459,8 @@ mod tests {
         assert_eq!(daily[0].output_tokens, 9);
         assert_eq!(daily[0].avg_latency_ms, 100);
 
-        let openai_daily =
-            get_daily_metrics(&db_path, 14, Some("openai")).expect("query openai daily metrics");
+        let openai_daily = get_daily_metrics(&db_path, 14, Some("openai"), &test_pricing())
+            .expect("query openai daily metrics");
         assert_eq!(openai_daily.len(), 1);
         assert_eq!(openai_daily[0].request_count, 2);
         assert_eq!(openai_daily[0].input_tokens, 6);
@@ -2077,7 +2528,8 @@ mod tests {
             .expect("finalize request log");
         }
 
-        let overview = get_metrics_overview(&db_path, None).expect("query overview");
+        let overview =
+            get_metrics_overview(&db_path, None, &test_pricing()).expect("query overview");
         // yesterday window = [yesterday_start, today_start) → 2 rows.
         assert_eq!(overview.yesterday.requests, 2);
         assert_eq!(overview.yesterday.input_tokens, 20);
@@ -2088,14 +2540,16 @@ mod tests {
         assert_eq!(overview.totals.requests, 5);
 
         // Endpoint filter keeps yesterday scoped to that endpoint.
-        let anthropic = get_metrics_overview(&db_path, Some("anthropic")).expect("query anthropic");
+        let anthropic = get_metrics_overview(&db_path, Some("anthropic"), &test_pricing())
+            .expect("query anthropic");
         // anthropic yesterday rows: only the one at yesterday_start
         // (the yesterday_start-1 row is anthropic but falls before yesterday).
         assert_eq!(anthropic.yesterday.requests, 1);
         assert_eq!(anthropic.today.requests, 0);
         assert_eq!(anthropic.totals.requests, 2);
 
-        let openai = get_metrics_overview(&db_path, Some("openai")).expect("query openai");
+        let openai =
+            get_metrics_overview(&db_path, Some("openai"), &test_pricing()).expect("query openai");
         // openai yesterday: today_start-1 only; openai today: today_start + tomorrow_start-1.
         assert_eq!(openai.yesterday.requests, 1);
         assert_eq!(openai.today.requests, 2);
@@ -2202,7 +2656,8 @@ mod tests {
         )
         .expect("insert pending request log");
 
-        let overview = get_metrics_overview(&db_path, None).expect("query overview");
+        let overview =
+            get_metrics_overview(&db_path, None, &test_pricing()).expect("query overview");
         // 3 rows total (success + failure + pending); pending stays in the request count
         assert_eq!(overview.totals.requests, 3);
         assert_eq!(overview.today.requests, 3);
@@ -2262,7 +2717,8 @@ mod tests {
             .expect("finalize request log");
         }
 
-        let overview = get_metrics_overview(&db_path, None).expect("query overview");
+        let overview =
+            get_metrics_overview(&db_path, None, &test_pricing()).expect("query overview");
         assert_eq!(overview.today.requests, 2);
         assert_eq!(overview.today.output_tokens, 2);
         assert_eq!(overview.today.avg_latency_ms, 10);
@@ -2606,5 +3062,54 @@ mod tests {
         assert_eq!(finished_error_source, None);
 
         let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+#[cfg(test)]
+mod cost_probe {
+    use super::*;
+    use crate::storage::initialize_database;
+
+    #[test]
+    fn probe_cost_query_types() {
+        let root = std::env::temp_dir().join("cc-gw2-cost-probe");
+        std::fs::create_dir_all(&root).expect("create root");
+        let db_path = root.join("gateway.db");
+        let _ = std::fs::remove_file(&db_path);
+        initialize_database(&db_path).expect("init");
+        let id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: 1,
+                session_id: None,
+                source_ip: None,
+                client_kind: None,
+                user_agent: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "stub-model".to_string(),
+                client_model: None,
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert");
+        let _ = id;
+        let conn = open_db(&db_path).unwrap();
+        let sql = "SELECT model, provider, COUNT(*),
+           SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens)
+         FROM request_logs GROUP BY model, provider";
+        let mut stmt = conn.prepare(sql).unwrap();
+        let col_names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
+        eprintln!("columns: {col_names:?}");
+        let mut rows = stmt.query([]).unwrap();
+        while let Some(row) = rows.next().unwrap() {
+            for i in 0..7 {
+                eprintln!("col {i} ({}) = {:?}", col_names[i], row.get_ref(i).unwrap());
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
