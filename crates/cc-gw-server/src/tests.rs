@@ -9789,7 +9789,7 @@ async fn provider_balance_refresh_stores_snapshot_and_records_failures() {
     // provider's upstream rejects the key with 401.
     let upstream = Router::new()
         .route(
-            "/ok/v1/user/balance",
+            "/ok/user/balance",
             get(|headers: HeaderMap| async move {
                 if headers.get(header::AUTHORIZATION).and_then(|value| value.to_str().ok())
                     != Some("Bearer sk-live")
@@ -9808,7 +9808,7 @@ async fn provider_balance_refresh_stores_snapshot_and_records_failures() {
             }),
         )
         .route(
-            "/broken/v1/user/balance",
+            "/broken/user/balance",
             get(|| async {
                 (
                     StatusCode::UNAUTHORIZED,
@@ -9819,6 +9819,8 @@ async fn provider_balance_refresh_stores_snapshot_and_records_failures() {
         );
     let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
 
+    // DeepSeek's dashboard route sits on the bare host: base `/ok/v1` strips
+    // its version segment down to `/ok/user/balance`.
     let balance_provider = |id: &str, base_path: &str| cc_gw_core::config::ProviderConfig {
         id: id.to_string(),
         label: id.to_string(),

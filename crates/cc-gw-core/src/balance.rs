@@ -10,8 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 
-use crate::config::ProviderConfig;
-use crate::provider::ProviderProtocol;
+use crate::config::{ProviderConfig, effective_provider_key};
 
 pub const BALANCE_ADAPTERS: [&str; 4] = ["deepseek", "moonshot", "siliconflow", "openrouter"];
 
@@ -43,42 +42,42 @@ pub async fn fetch_balance(
         return Err(format!("未知余额适配器: {adapter}"));
     }
     // Key selection mirrors request routing: the active named key wins over
-    // the legacy `api_key`.
-    let view = provider.effective_for_protocol(ProviderProtocol::OpenAiChatCompletions);
-    let api_key = view
-        .api_key
-        .clone()
+    // the legacy `api_key`. The dashboard route always lives on the primary
+    // surface — a protocol-matched mirror endpoint would not host it.
+    let api_key = effective_provider_key(&provider.keys)
+        .map(|key| key.value.clone())
+        .or_else(|| provider.api_key.clone())
         .ok_or_else(|| format!("Provider {} 未配置 API Key，无法查询余额", provider.id))?;
-    let base = view.base_url.trim_end_matches('/');
 
-    let (path, normalizer): (&str, fn(&Value) -> Option<String>) = match adapter {
-        "deepseek" => ("/user/balance", normalize_deepseek),
-        "moonshot" => ("/users/me/balance", normalize_moonshot),
-        "siliconflow" => ("/user/info", normalize_siliconflow),
-        "openrouter" => ("/key", normalize_openrouter),
+    let normalizer: fn(&Value) -> Option<String> = match adapter {
+        "deepseek" => normalize_deepseek,
+        "moonshot" => normalize_moonshot,
+        "siliconflow" => normalize_siliconflow,
+        "openrouter" => normalize_openrouter,
         other => return Err(format!("未知余额适配器: {other}")),
     };
+    let url = balance_url(adapter, &provider.base_url)?;
 
     let response = client
-        .get(format!("{base}{path}"))
+        .get(url)
         .header("authorization", format!("Bearer {api_key}"))
         .timeout(Duration::from_secs(10))
         .send()
         .await
         .map_err(|error| format!("余额查询请求失败: {error}"))?;
+    // Read the body as text first: error intermediaries answer 502/504 with
+    // HTML, and a blind `.json()` would swallow the status code.
     let status = response.status();
-    let raw: Value = response
-        .json()
+    let text = response
+        .text()
         .await
-        .map_err(|error| format!("余额响应解析失败: {error}"))?;
+        .map_err(|error| format!("余额响应读取失败: {error}"))?;
     if !status.is_success() {
-        let body = raw.to_string();
-        let body: String = body.chars().take(300).collect();
-        return Err(format!(
-            "余额查询失败 (HTTP {}): {body}",
-            status.as_u16()
-        ));
+        let body: String = text.chars().take(300).collect();
+        return Err(format!("余额查询失败 (HTTP {}): {body}", status.as_u16()));
     }
+    let raw: Value = serde_json::from_str(&text)
+        .map_err(|error| format!("余额响应解析失败: {error}"))?;
 
     Ok(BalanceSnapshot {
         adapter: adapter.to_string(),
@@ -87,6 +86,33 @@ pub async fn fetch_balance(
         display: normalizer(&raw),
         raw,
     })
+}
+
+/// Dashboard URL for `adapter` off the provider's primary `base`. Chat
+/// routing (`resolve_endpoint`) appends `/v1` when a base carries no version
+/// segment; balance paths mirror that so hand-typed bases like
+/// `https://api.moonshot.cn` still land on `/v1/users/me/balance`. DeepSeek
+/// is the exception: its dashboard route sits on the bare host.
+pub fn balance_url(adapter: &str, base: &str) -> std::result::Result<String, String> {
+    let base = base.trim_end_matches('/');
+    Ok(match adapter {
+        "deepseek" => {
+            let host_base = base.strip_suffix("/v1").unwrap_or(base);
+            format!("{host_base}/user/balance")
+        }
+        "moonshot" => format!("{}/users/me/balance", versioned_base(base)),
+        "siliconflow" => format!("{}/user/info", versioned_base(base)),
+        "openrouter" => format!("{}/key", versioned_base(base)),
+        other => return Err(format!("未知余额适配器: {other}")),
+    })
+}
+
+fn versioned_base(base: &str) -> String {
+    if base.ends_with("/v1") {
+        base.to_string()
+    } else {
+        format!("{base}/v1")
+    }
 }
 
 /// DeepSeek `/user/balance` → sum of `balance_infos[].total_balance` per
@@ -202,5 +228,36 @@ mod tests {
         assert_eq!(normalize_moonshot(&serde_json::json!({})), None);
         assert_eq!(normalize_siliconflow(&serde_json::json!({})), None);
         assert_eq!(normalize_openrouter(&serde_json::json!({})), None);
+    }
+
+    #[test]
+    fn derives_balance_urls_across_base_shapes() {
+        // Preset bases ship /v1; hand-typed bases may omit it — versioned
+        // adapters append it, DeepSeek strips it back to the bare host.
+        assert_eq!(
+            balance_url("deepseek", "https://api.deepseek.com/v1").as_deref(),
+            Ok("https://api.deepseek.com/user/balance")
+        );
+        assert_eq!(
+            balance_url("deepseek", "https://api.deepseek.com").as_deref(),
+            Ok("https://api.deepseek.com/user/balance")
+        );
+        assert_eq!(
+            balance_url("moonshot", "https://api.moonshot.cn/v1/").as_deref(),
+            Ok("https://api.moonshot.cn/v1/users/me/balance")
+        );
+        assert_eq!(
+            balance_url("moonshot", "https://api.moonshot.cn").as_deref(),
+            Ok("https://api.moonshot.cn/v1/users/me/balance")
+        );
+        assert_eq!(
+            balance_url("siliconflow", "https://api.siliconflow.cn").as_deref(),
+            Ok("https://api.siliconflow.cn/v1/user/info")
+        );
+        assert_eq!(
+            balance_url("openrouter", "https://openrouter.ai/api/v1").as_deref(),
+            Ok("https://openrouter.ai/api/v1/key")
+        );
+        assert!(balance_url("unknown", "https://example.com").is_err());
     }
 }
