@@ -306,3 +306,39 @@ test('currency switch re-prices the api-key usage table without a reload', async
   const usageApi = await (await request.get(`${baseUrl}/api/stats/api-keys/usage`)).json()
   expect(usageApi[0].cost).toBeCloseTo(12.55 * usageApi[0].requests, 4)
 })
+
+test('scoped colon-suffixed override key round-trips and never blocks settings save', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+  // 后端合法键：providerId=mock，modelId=anthropic/claude-3-7-sonnet:beta
+  //（modelId 本身可含冒号；首个冒号分隔）。前端曾按冒号总数判非法，
+  // 回读后不编辑它也阻断整页保存。
+  const scopedKey = 'mock:anthropic/claude-3-7-sonnet:beta'
+  await putBillingConfig(request, baseUrl, {
+    displayCurrency: 'CNY',
+    modelPrices: {
+      [scopedKey]: { currency: 'CNY', input: 1_000_000, output: 137_500, cacheRead: 0, cacheCreation: 0 },
+    },
+  })
+
+  await page.goto(`${baseUrl}/ui/settings`)
+  const billingSection = page.locator('#section-billing')
+  await expect(billingSection).toBeVisible()
+  const keyInput = billingSection.getByTestId('billing-override-row-0').locator('input').first()
+  await expect(keyInput).toHaveValue(scopedKey)
+
+  // 只改无关设置（日志保留天数），保存必须放行。basics 分区第 2 个数字
+  // 输入即保留天数（第 1 个是端口；Label 无 htmlFor，不能按可访问名定位）。
+  await page.locator('#section-basics').locator('input[type="number"]').nth(1).fill('31')
+  await page.getByRole('button', { name: '保存设置' }).first().click()
+  await expect(page.getByText(/系统配置已更新|配置已保存/)).toBeVisible()
+
+  const config = await (await request.get(`${baseUrl}/api/config`)).json()
+  expect(config.logRetentionDays).toBe(31)
+  expect(config.billing.modelPrices[scopedKey]).toBeTruthy()
+
+  // 覆盖经 prices 端点透出，scoped provider 按首个冒号拆出
+  const prices = await (await request.get(`${baseUrl}/api/billing/prices`)).json()
+  const entry = prices.entries.find((item: any) => item.key === scopedKey)
+  expect(entry?.source).toBe('override')
+  expect(entry?.scopedProvider).toBe('mock')
+})

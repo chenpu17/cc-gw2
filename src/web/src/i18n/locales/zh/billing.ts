@@ -36,7 +36,7 @@ export default {
   validation: {
     rate: '汇率必须为 (0, 10000] 内的数字',
     keyRequired: '请填写模型键',
-    keyFormat: '键格式：model-id 或 providerId:modelId',
+    keyFormat: '键格式：model-id 或 providerId:modelId（按首个冒号分隔，模型名可含冒号）',
     prices: '价格必须是不小于 0 的数字（每 1M tokens）'
   },
   estimateNote: '未计价的请求在界面上显示 —（不会以 0 冒充）；为私有/内部模型添加覆盖即可补全成本。'

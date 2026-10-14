@@ -36,7 +36,7 @@ export default {
   validation: {
     rate: 'Rate must be a number in (0, 10000]',
     keyRequired: 'Model key is required',
-    keyFormat: 'Key format: model-id or providerId:modelId',
+    keyFormat: 'Key format: model-id or providerId:modelId (split on the first colon; model ids may contain colons)',
     prices: 'Prices must be numbers ≥ 0 (per 1M tokens)'
   },
   estimateNote: 'Unpriced requests render as — (never as 0); add an override for private/internal models to complete cost coverage.'

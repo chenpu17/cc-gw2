@@ -353,8 +353,15 @@ export function useSettingsPageState() {
       const rowErrors: { key?: string; prices?: string } = {}
       if (!row.key.trim()) {
         rowErrors.key = t('billing.validation.keyRequired')
-      } else if (row.key.trim().split(':').length > 2) {
-        rowErrors.key = t('billing.validation.keyFormat')
+      } else {
+        // 与后端一致：键 = model-id 或 providerId:modelId，按**首个**冒号
+        // 分隔 —— modelId 本身可含冒号（如 anthropic/claude-3-7-sonnet:beta），
+        // 只禁止空 provider 段或空 model 段，不能按冒号总数判非法。
+        const key = row.key.trim()
+        const colon = key.indexOf(':')
+        if (colon === 0 || colon === key.length - 1) {
+          rowErrors.key = t('billing.validation.keyFormat')
+        }
       }
       const prices = [row.input, row.output, row.cacheRead, row.cacheCreation]
       if (prices.some((value) => value.trim() !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0))) {
