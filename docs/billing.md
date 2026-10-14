@@ -84,6 +84,7 @@ v0.14 之前的历史行只有 `cached_tokens`（无 cache_read/cache_creation �
 
 > 编写时的官方标价快照，估算用途非账单；以 `GET /api/billing/prices` 输出为准。
 > OpenAI 家族按 developers.openai.com/api/docs/pricing 于 2026-10-13 核对修正（gpt-5.2 与 gpt-5.1/5 单价不同档）。
+> Gemini 家族按 ai.google.dev/gemini-api/docs/pricing 于 2026-10-14 核对：缓存读为输入价的 1/4，gemini-2.5-pro 取精确值 $0.3125（官方页展示舍入为 $0.31）。
 
 | 家族 | 模型 | 币种 | 输入 | 输出 | 缓存读 | 缓存写 |
 |---|---|---|---|---|---|---|
@@ -99,7 +100,7 @@ v0.14 之前的历史行只有 `cached_tokens`（无 cache_read/cache_creation �
 | | gpt-4o / gpt-4o-mini | USD | 2.5 / 0.15 | 10.0 / 0.6 | 1.25 / 0.075 | — |
 | | o3 / o4-mini | USD | 2.0 / 1.1 | 8.0 / 4.4 | 0.5 / 0.275 | — |
 | Gemini | gemini-3-pro | USD | 2.0 | 12.0 | 0.5 | — |
-| | gemini-2.5-pro | USD | 1.25 | 10.0 | 0.31 | — |
+| | gemini-2.5-pro | USD | 1.25 | 10.0 | 0.3125 | — |
 | | gemini-2.5-flash / 2.0-flash | USD | 0.3 / 0.1 | 2.5 / 0.4 | 0.075 / 0.025 | — |
 | | gemini-2.5-flash-lite | USD | 0.1 | 0.4 | 0.025 | — |
 | DeepSeek | deepseek-chat / v3.1 / v3 | CNY | 2.0 | 8.0 | 0.5 | 2.0 |

@@ -116,8 +116,11 @@ static BUILTIN_PRICES: &[BuiltinPriceEntry] = &[
     entry("o3", usd(2.0, 8.0, 0.5, 0.0)),
     entry("o4-mini", usd(1.1, 4.4, 0.275, 0.0)),
     // Gemini — USD；cache 存储费不计
+    // 快照核对：ai.google.dev/gemini-api/docs/pricing，2026-10-14；
+    // cache 读 = 输入价的 1/4，2.5-pro 为 $1.25/4 = $0.3125（官方页展示
+    // 舍入为 $0.31，本表取精确值，与同族 0.075/0.025 的 1/4 口径一致）。
     entry("gemini-3-pro", usd(2.0, 12.0, 0.5, 0.0)),
-    entry("gemini-2.5-pro", usd(1.25, 10.0, 0.31, 0.0)),
+    entry("gemini-2.5-pro", usd(1.25, 10.0, 0.3125, 0.0)),
     entry("gemini-2.5-flash", usd(0.3, 2.5, 0.075, 0.0)),
     entry("gemini-2.5-flash-lite", usd(0.1, 0.4, 0.025, 0.0)),
     entry("gemini-2.0-flash", usd(0.1, 0.4, 0.025, 0.0)),
