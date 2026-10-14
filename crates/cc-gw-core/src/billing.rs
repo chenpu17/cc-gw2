@@ -244,9 +244,10 @@ fn replace_digit_dots(model: &str) -> String {
 }
 
 /// 内置表查价：候选按序精确匹配，全失败后做边界前缀最长匹配
-/// （`候选 == 键` 或 `候选以键为前缀且下一字符 ∈ {'.', ':', '@'}`）。
-/// 边界**不含 `-`**：`gpt-4o` 不许匹配 `gpt-4o-mini`、`glm-4.5` 不许匹配
-/// `glm-4.5-air` —— 变体模型必须显式建条目。
+/// （`候选 == 键` 或 `候选以键为前缀且下一字符 ∈ {':', '@'}`）。
+/// 边界**不含 `-` 与 `.`**：`gpt-4o` 不许匹配 `gpt-4o-mini`；点号曾是
+/// 边界会让 `gpt-5.2-pro` / `gpt-5.4` 越过 `gpt-5.2`（`-` 挡住）继续吃到
+/// 更短的 `gpt-5`（`.` 放行），未知版本/变体必须显式建条目，否则未计价。
 pub fn builtin_price(model_id: &str) -> Option<ModelPrice> {
     let candidates = price_lookup_candidates(model_id);
     for candidate in &candidates {
@@ -264,7 +265,7 @@ pub fn builtin_price(model_id: &str) -> Option<ModelPrice> {
             let key = found.model;
             if candidate.len() > key.len() && candidate.starts_with(key) {
                 let boundary = candidate.as_bytes()[key.len()];
-                if boundary == b'.' || boundary == b':' || boundary == b'@' {
+                if boundary == b':' || boundary == b'@' {
                     let better = best.map(|(_, len)| key.len() > len).unwrap_or(true);
                     if better {
                         best = Some((found, key.len()));
@@ -779,6 +780,22 @@ mod tests {
             builtin_price("glm-4.5").unwrap().input
         );
         assert_eq!(builtin_price("glm-4.5-air").unwrap().input, 0.8);
+    }
+
+    #[test]
+    fn builtin_unknown_versions_and_variants_stay_unpriced() {
+        // 点号曾是边界：gpt-5.2-pro 被 `gpt-5.2` 的 `-` 挡住后继续吃到
+        // `gpt-5`（`.` 放行），以 $10 冒充官方 $168；gpt-5.4 同理套 gpt-5。
+        // 未知版本/变体无显式条目时必须保持未计价。
+        assert!(builtin_price("gpt-5.2-pro").is_none());
+        assert!(builtin_price("gpt-5.4").is_none());
+        assert!(builtin_price("gpt-5.3").is_none());
+        assert!(builtin_price("gpt-4.1-nano").is_none());
+        assert!(builtin_price("claude-sonnet-4-6").is_none());
+        // 显式条目与日期别名不受影响：剥日期走候选轮，非边界轮
+        let price = builtin_price("gpt-5.2-20241120").unwrap();
+        assert_eq!(price.output, 14.0);
+        assert_eq!(builtin_price("gpt-5.2:beta").unwrap().output, 14.0);
     }
 
     #[test]
