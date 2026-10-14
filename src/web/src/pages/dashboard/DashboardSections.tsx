@@ -158,7 +158,11 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
   const outputTokens = today?.outputTokens ?? 0
   const cacheRead = today?.cacheReadTokens ?? 0
   const errorCount = today?.errorCount ?? 0
-  const costCurrency = overview?.costCurrency ?? 'CNY'
+  // No fallback here: while the overview is loading (or after a failed fetch)
+  // the backend hasn't reported any currency — guessing CNY would mislabel a
+  // USD-configured deployment. formatCost renders a symbol-less number when
+  // the currency is missing.
+  const costCurrency = overview?.costCurrency
   const unpriced = today?.unpricedRequests ?? 0
 
   const errorRate = requests > 0 ? (errorCount / requests) * 100 : 0
