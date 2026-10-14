@@ -302,9 +302,18 @@ test('currency switch re-prices the api-key usage table without a reload', async
   await expect(keyRowCost).toContainText('$')
   await expect(keyRowCost).not.toContainText('¥')
 
-  // The re-priced row matches the API's post-switch value ($12.55/request).
+  // The DOM amount (not just the symbol — the old bug kept ¥90.36×n under a
+  // $-symbol overview) must match the API's post-switch value ($12.55/request).
+  // Mirrors formatCost for USD at this magnitude: 2 decimals, trailing zeros
+  // dropped, thousands separators.
   const usageApi = await (await request.get(`${baseUrl}/api/stats/api-keys/usage`)).json()
   expect(usageApi[0].cost).toBeCloseTo(12.55 * usageApi[0].requests, 4)
+  const usdAmount = usageApi[0].cost
+    .toFixed(2)
+    .replace(/0+$/, '')
+    .replace(/\.$/, '')
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  await expect(keyRowCost).toContainText(`$${usdAmount}`)
 })
 
 test('scoped colon-suffixed override key round-trips and never blocks settings save', async ({ page, request }) => {
