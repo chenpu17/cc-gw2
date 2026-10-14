@@ -353,3 +353,79 @@ test('unsaved draft guards SPA route leave and incomplete rows count as dirty', 
   await expect(panelAfter.getByTestId('provider-save')).toHaveCount(0)
   await expect(panelAfter.getByTestId('surface-endpoint-row')).toHaveCount(0)
 })
+
+test('browser back to the routing tab guards the dirty provider draft', async ({ page }) => {
+  const baseUrl = harness.baseUrl()
+
+  // 从路由视图经侧栏进入 providers 视图：同一 pathname，仅 tab search 变化
+  await page.goto(`${baseUrl}/ui/providers?tab=routing`)
+  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+  await page.getByRole('link', { name: '模型与路由' }).first().click()
+  await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+  // 脏稿：添加端点只填 Base URL
+  await panel.getByRole('button', { name: '添加端点' }).click()
+  await panel.getByTestId('surface-endpoint-row').getByLabel('端点 Base URL')
+    .fill(`http://127.0.0.1:${harness.stubPort}`)
+  await expect(panel.getByTestId('provider-save')).toBeVisible()
+
+  // 浏览器后退到 ?tab=routing 是 POP：不经过视图标签点击，必须由路由
+  // 守卫拦截（此前只比较 pathname，同路径 search 变化直接卸载面板）
+  await page.goBack()
+  const leaveDialog = page.getByRole('dialog', { name: '放弃未保存的修改？' })
+  await expect(leaveDialog).toBeVisible()
+  await leaveDialog.getByRole('button', { name: '取消' }).click()
+  await expect(leaveDialog).toHaveCount(0)
+  await expect(panel).toBeVisible()
+  await expect(panel.getByTestId('provider-save')).toBeVisible()
+
+  // 确认后回到路由视图，草稿丢弃
+  await page.goBack()
+  await expect(leaveDialog).toBeVisible()
+  await leaveDialog.getByRole('button', { name: '放弃修改并离开' }).click()
+  await expect(page.getByTestId('provider-detail-panel')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+})
+
+test('creating a provider guards the previous dirty draft', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+
+  await page.goto(`${baseUrl}/ui/providers`)
+  await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+  await panel.getByRole('button', { name: '添加端点' }).click()
+  await panel.getByTestId('surface-endpoint-row').getByLabel('端点 Base URL')
+    .fill(`http://127.0.0.1:${harness.stubPort}`)
+  await expect(panel.getByTestId('provider-save')).toBeVisible()
+
+  // 创建成功后的自动选中会卸载旧脏稿面板（URL 不变，路由守卫看不见），
+  // 必须先确认
+  const createAndConfirm = async (providerId: string, action: '取消' | '放弃修改并离开') => {
+    await page.getByRole('button', { name: '新增提供商' }).first().click()
+    const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+    await expect(createDialog).toBeVisible()
+    await createDialog.getByRole('combobox', { name: '模板' }).click()
+    await page.getByRole('option', { name: /DeepSeek.*开放平台/ }).click()
+    await createDialog.getByPlaceholder('如 openai').fill(providerId)
+    await createDialog.getByRole('button', { name: '创建' }).click()
+    const leaveDialog = page.getByRole('dialog', { name: '放弃未保存的修改？' })
+    await expect(leaveDialog).toBeVisible()
+    await leaveDialog.getByRole('button', { name: action }).click()
+    await expect(leaveDialog).toHaveCount(0)
+  }
+
+  // 取消：草稿保留、选中不变
+  await createAndConfirm('guard-cancel', '取消')
+  await expect(panel).toBeVisible()
+  await expect(panel.getByTestId('provider-save')).toBeVisible()
+  await expect(panel).toContainText('Stub Provider')
+
+  // 确认：切换到新建的 provider，旧草稿丢弃（新面板无保存页脚、不再是
+  // Stub Provider 的编辑态）
+  await createAndConfirm('guard-confirm', '放弃修改并离开')
+  const switchedPanel = page.getByTestId('provider-detail-panel')
+  await expect(switchedPanel).not.toContainText('Stub Provider')
+  await expect(switchedPanel.getByTestId('provider-save')).toHaveCount(0)
+})

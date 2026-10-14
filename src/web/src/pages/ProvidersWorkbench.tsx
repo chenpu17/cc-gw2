@@ -55,16 +55,26 @@ export default function ProvidersWorkbenchPage() {
   // Unsaved inline-draft flag from the providers detail panel, guarding the
   // view switch (the panel unmounts when the view changes).
   const [providersPanelDirty, setProvidersPanelDirty] = useState(false)
-  const [pendingViewSwitch, setPendingViewSwitch] = useState<WorkbenchView | null>(null)
+  // Creating a provider auto-selects it, which unmounts the previous dirty
+  // panel without touching the URL — the blocker below cannot see it.
+  const [pendingCreatedProvider, setPendingCreatedProvider] = useState<string | null>(null)
 
-  // …and guarding SPA route leaves: a sidebar link to another route unmounts
-  // the panel just the same, but beforeunload never fires for client-side
-  // navigation. Same-path moves (search-param changes like the view tab) are
-  // excluded — the pendingViewSwitch confirm above owns those. Requires the
+  // Draft guard for SPA navigation. Covers both route leaves (sidebar links)
+  // and same-path view switches via the `tab` search param — a browser-back
+  // from the provider panel to `?tab=routing` is a POP that never goes
+  // through the tab buttons, so the guard must live here at the router level
+  // rather than in a click handler. Tab clicks and history pops share this
+  // single confirm. beforeunload still covers full page exits. Requires the
   // data router in app/router.tsx.
+  const viewOfSearch = (search: string): WorkbenchView => {
+    const tab = new URLSearchParams(search).get('tab')
+    return tab === 'routing' || tab === 'endpoints' ? 'routing' : 'providers'
+  }
   const routeBlocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      providersPanelDirty && currentLocation.pathname !== nextLocation.pathname
+      providersPanelDirty
+      && (currentLocation.pathname !== nextLocation.pathname
+        || viewOfSearch(currentLocation.search) !== viewOfSearch(nextLocation.search))
   )
 
   // Providers-view selection is deep-linkable via session state only — the
@@ -135,15 +145,10 @@ export default function ProvidersWorkbenchPage() {
     setEditingEndpoint(endpoint)
     setEndpointDialogOpen(true)
   }
-  const handleViewChange = (nextView: WorkbenchView) => {
-    // Leaving the providers view unmounts the inline detail panel — guard the
-    // unsaved draft the same way the rail does.
-    if (view === 'providers' && nextView !== 'providers' && providersPanelDirty) {
-      setPendingViewSwitch(nextView)
-      return
-    }
-    applyViewChange(nextView)
-  }
+  // Tab clicks go straight through applyViewChange (below): when a dirty
+  // provider panel would unmount, the route blocker intercepts the
+  // search-param navigation and shows the shared confirm — the same path
+  // browser-back takes, so click and history navigation can't diverge.
 
   const applyViewChange = (nextView: WorkbenchView) => {
     setSearchParams((previous) => {
@@ -257,7 +262,7 @@ export default function ProvidersWorkbenchPage() {
               type="button"
               role="tab"
               aria-selected={isActive}
-              onClick={() => handleViewChange(tab.value)}
+              onClick={() => applyViewChange(tab.value)}
               className={cn(
                 'motion-surface flex items-center gap-3 rounded-xl border p-4 text-left',
                 isActive
@@ -325,6 +330,13 @@ export default function ProvidersWorkbenchPage() {
           // Wait for the refetched config so the stale-selection guard below
           // sees the new provider before the selection lands.
           void base.configQuery.refetch().then(() => {
+            // Auto-selecting the new provider unmounts the previous dirty
+            // panel with no URL change — the blocker cannot intercept, so
+            // confirm here like the rail does for manual selection.
+            if (providersPanelDirty) {
+              setPendingCreatedProvider(providerId)
+              return
+            }
             setSelectedProviderId(providerId)
           })
         }}
@@ -403,21 +415,6 @@ export default function ProvidersWorkbenchPage() {
       </ConfirmDialog>
 
       <ConfirmDialog
-        open={!!pendingViewSwitch}
-        onOpenChange={(open) => {
-          if (!open) setPendingViewSwitch(null)
-        }}
-        title={t('providers.masterDetail.unsavedTitle')}
-        description={t('providers.masterDetail.unsavedBody')}
-        confirmLabel={t('providers.masterDetail.unsavedConfirm')}
-        cancelLabel={t('common.actions.cancel')}
-        onConfirm={() => {
-          if (pendingViewSwitch) applyViewChange(pendingViewSwitch)
-          setPendingViewSwitch(null)
-        }}
-      />
-
-      <ConfirmDialog
         open={routeBlocker.state === 'blocked'}
         onOpenChange={(open) => {
           if (!open && routeBlocker.state === 'blocked') routeBlocker.reset()
@@ -428,6 +425,21 @@ export default function ProvidersWorkbenchPage() {
         cancelLabel={t('common.actions.cancel')}
         onConfirm={() => {
           if (routeBlocker.state === 'blocked') routeBlocker.proceed()
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!pendingCreatedProvider}
+        onOpenChange={(open) => {
+          if (!open) setPendingCreatedProvider(null)
+        }}
+        title={t('providers.masterDetail.unsavedTitle')}
+        description={t('providers.masterDetail.unsavedBody')}
+        confirmLabel={t('providers.masterDetail.unsavedConfirm')}
+        cancelLabel={t('common.actions.cancel')}
+        onConfirm={() => {
+          if (pendingCreatedProvider) setSelectedProviderId(pendingCreatedProvider)
+          setPendingCreatedProvider(null)
         }}
       />
     </div>
