@@ -1030,11 +1030,15 @@ fn api_key_cost_by_key(
     endpoint: Option<&str>,
     pricing: &crate::billing::PricingEngine,
 ) -> Result<HashMap<(Option<i64>, Option<String>), (Option<f64>, i64)>> {
-    use crate::billing::{CostFold, UsageTotals};
-    let select = "SELECT api_key_id, api_key_name, model, provider, COUNT(*),
+    use crate::billing::{BILLABLE_INPUT_SUM_SQL, CostFold, UsageTotals};
+    let select = format!(
+        "SELECT api_key_id, api_key_name, model, provider, COUNT(*),
            SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_creation_tokens),
-           SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END)
-     FROM request_logs";
+           SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END),
+           {}
+     FROM request_logs",
+        BILLABLE_INPUT_SUM_SQL
+    );
     let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match endpoint {
         Some(endpoint) => (
             format!(
@@ -1069,6 +1073,8 @@ fn api_key_cost_by_key(
             output: row.get(6)?,
             cache_read: row.get(7)?,
             cache_creation: row.get(8)?,
+            // 逐行钳零后的可计费输入之和（异常 cache>input 不抵扣他行）
+            billable_input: row.get(10)?,
         };
         let unknown_usage: i64 = row.get(9)?;
         folds.entry((api_key_id, api_key_name)).or_default().add(

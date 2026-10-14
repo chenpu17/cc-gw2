@@ -22,6 +22,11 @@ use crate::config::BillingConfig;
 /// 内置默认汇率（1 USD = 7.20 CNY），config `billing.rates` 可覆盖。
 pub const DEFAULT_USD_CNY_RATE: f64 = 7.20;
 
+/// SQL 片段：逐行钳零后的可计费输入之和（标量 `MAX(a, b)` 逐行求值，
+/// 再 SUM）。钳零必须在行内做 —— 见 [`UsageTotals::billable_input`]：
+/// 聚合后钳零会让异常 `cache_read > input` 行抵扣同组正常行的输入费用。
+pub const BILLABLE_INPUT_SUM_SQL: &str = "SUM(MAX(input_tokens - COALESCE(cache_read_tokens, 0) - COALESCE(cache_creation_tokens, 0), 0))";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Currency {
     Usd,
@@ -278,12 +283,20 @@ pub fn builtin_price(model_id: &str) -> Option<ModelPrice> {
 }
 
 /// 单条请求 / 聚合行的 token 用量。None 表示该维度未知（未知 input 无法计价）。
+///
+/// `billable_input` 是**逐行钳零后**的可计费输入（单条 `max(0, input −
+/// cache_read − cache_creation)`；聚合行为各行钳零后之和，由 SQL
+/// `SUM(MAX(…, 0))` 逐行求值）。钳零必须在行内做：上游异常用量
+/// （`cache_read > input`）若在聚合后钳零，多出的缓存量会抵扣同组其他
+/// 正常请求的输入费用。
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct UsageTotals {
     pub input: Option<i64>,
     pub output: Option<i64>,
     pub cache_read: Option<i64>,
     pub cache_creation: Option<i64>,
+    /// 已逐行钳零的可计费输入；None（input 未知）→ 整体未计价。
+    pub billable_input: Option<i64>,
 }
 
 impl UsageTotals {
@@ -293,11 +306,35 @@ impl UsageTotals {
     pub fn from_log_record(record: &serde_json::Value) -> Self {
         let get =
             |field: &str| -> Option<i64> { record.get(field).and_then(serde_json::Value::as_i64) };
+        let input = get("input_tokens");
+        let cache_read = get("cache_read_tokens");
+        let cache_creation = get("cache_creation_tokens");
+        let billable_input = input
+            .map(|input| (input - cache_read.unwrap_or(0) - cache_creation.unwrap_or(0)).max(0));
         Self {
-            input: get("input_tokens"),
+            input,
             output: get("output_tokens"),
-            cache_read: get("cache_read_tokens"),
-            cache_creation: get("cache_creation_tokens"),
+            cache_read,
+            cache_creation,
+            billable_input,
+        }
+    }
+
+    /// 逐条口径的用量（`billable_input` 在行内钳零）。
+    pub fn from_raw(
+        input: Option<i64>,
+        output: Option<i64>,
+        cache_read: Option<i64>,
+        cache_creation: Option<i64>,
+    ) -> Self {
+        let billable_input = input
+            .map(|input| (input - cache_read.unwrap_or(0) - cache_creation.unwrap_or(0)).max(0));
+        Self {
+            input,
+            output,
+            cache_read,
+            cache_creation,
+            billable_input,
         }
     }
 }
@@ -468,11 +505,12 @@ impl PricingEngine {
     ) -> Option<CostBreakdown> {
         let priced = self.resolve(model_id, provider_id)?;
         // input 未知则整体无法计价（output 单独存在也无从估算输入侧）。
-        let input = usage.input?;
+        // billable_input 已在构造处逐行钳零（单条行内 max，聚合逐行
+        // SUM(MAX(…, 0))），异常 cache>input 不抵扣其他行。
+        let billable_input = usage.billable_input?;
         let output = usage.output.unwrap_or(0);
         let cache_read = usage.cache_read.unwrap_or(0);
         let cache_creation = usage.cache_creation.unwrap_or(0);
-        let billable_input = (input - cache_read - cache_creation).max(0);
 
         let price = priced.price;
         let per_million = |tokens: i64| tokens as f64 / 1_000_000.0;
@@ -636,12 +674,12 @@ mod tests {
     }
 
     fn usage(input: i64, output: i64, cache_read: i64, cache_creation: i64) -> UsageTotals {
-        UsageTotals {
-            input: Some(input),
-            output: Some(output),
-            cache_read: Some(cache_read),
-            cache_creation: Some(cache_creation),
-        }
+        UsageTotals::from_raw(
+            Some(input),
+            Some(output),
+            Some(cache_read),
+            Some(cache_creation),
+        )
     }
 
     #[test]
@@ -929,6 +967,7 @@ mod tests {
                         output: Some(100),
                         cache_read: None,
                         cache_creation: None,
+                        billable_input: None,
                     }
                 )
                 .is_none()
