@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useBlocker, useSearchParams } from 'react-router-dom'
 import { Boxes, GitBranch } from 'lucide-react'
@@ -55,6 +55,15 @@ export default function ProvidersWorkbenchPage() {
   // Unsaved inline-draft flag from the providers detail panel, guarding the
   // view switch (the panel unmounts when the view changes).
   const [providersPanelDirty, setProvidersPanelDirty] = useState(false)
+  // Mirror of the flag for async callbacks: the post-create auto-select runs
+  // in a .then() after the config refetch — reading the state there sees the
+  // value captured at creation time, so edits started while the refetch is in
+  // flight must be visible via the ref, updated synchronously here.
+  const providersPanelDirtyRef = useRef(false)
+  const handlePanelDirtyChange = useCallback((dirty: boolean) => {
+    providersPanelDirtyRef.current = dirty
+    setProvidersPanelDirty(dirty)
+  }, [])
   // Creating a provider auto-selects it, which unmounts the previous dirty
   // panel without touching the URL — the blocker below cannot see it.
   const [pendingCreatedProvider, setPendingCreatedProvider] = useState<string | null>(null)
@@ -304,7 +313,7 @@ export default function ProvidersWorkbenchPage() {
           onSelectProvider={setSelectedProviderId}
           onTest={(provider) => providers.initiateTestConnection(provider)}
           onRequestDelete={(provider) => setConfirmAction({ kind: 'provider', provider })}
-          onDirtyChange={setProvidersPanelDirty}
+          onDirtyChange={handlePanelDirtyChange}
         />
       ) : (
         <RoutingWorkspace
@@ -332,8 +341,11 @@ export default function ProvidersWorkbenchPage() {
           void base.configQuery.refetch().then(() => {
             // Auto-selecting the new provider unmounts the previous dirty
             // panel with no URL change — the blocker cannot intercept, so
-            // confirm here like the rail does for manual selection.
-            if (providersPanelDirty) {
+            // confirm here like the rail does for manual selection. Read the
+            // ref, not the state: this closure captured the dirty value at
+            // creation time, and edits started while the refetch was in
+            // flight would otherwise be dropped silently.
+            if (providersPanelDirtyRef.current) {
               setPendingCreatedProvider(providerId)
               return
             }

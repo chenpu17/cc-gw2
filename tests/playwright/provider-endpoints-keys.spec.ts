@@ -429,3 +429,47 @@ test('creating a provider guards the previous dirty draft', async ({ page, reque
   await expect(switchedPanel).not.toContainText('Stub Provider')
   await expect(switchedPanel.getByTestId('provider-save')).toHaveCount(0)
 })
+
+test('editing during the post-create config refetch still guards the draft', async ({ page }) => {
+  const baseUrl = harness.baseUrl()
+
+  // 创建后的自动选中要等配置刷新返回。延迟该 GET，模拟慢配置响应，
+  // 让「刷新在途期间开始编辑」的窗口可复现：切换时必须读最新脏稿
+  // 状态（曾因异步闭包捕获创建时的 dirty=false 而静默丢稿）。
+  let delayConfigGet = false
+  await page.route('**/api/config', async (route) => {
+    if (delayConfigGet && route.request().method() === 'GET') {
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+    }
+    await route.continue()
+  })
+
+  await page.goto(`${baseUrl}/ui/providers`)
+  await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+
+  // 面板初始无草稿时创建 → onCreated 进入刷新等待
+  delayConfigGet = true
+  await page.getByRole('button', { name: '新增提供商' }).first().click()
+  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  await createDialog.getByRole('combobox', { name: '模板' }).click()
+  await page.getByRole('option', { name: /DeepSeek.*开放平台/ }).click()
+  await createDialog.getByPlaceholder('如 openai').fill('refetch-race')
+  await createDialog.getByRole('button', { name: '创建' }).click()
+
+  // 刷新在途期间开始编辑旧 Provider（对话框已关，面板可交互）
+  await panel.getByRole('button', { name: '添加端点' }).click()
+  await panel.getByTestId('surface-endpoint-row').getByLabel('端点 Base URL')
+    .fill(`http://127.0.0.1:${harness.stubPort}`)
+  await expect(panel.getByTestId('provider-save')).toBeVisible()
+
+  // 刷新返回后不得静默切换；取消则草稿保留
+  const leaveDialog = page.getByRole('dialog', { name: '放弃未保存的修改？' })
+  await expect(leaveDialog).toBeVisible({ timeout: 15_000 })
+  await leaveDialog.getByRole('button', { name: '取消' }).click()
+  await expect(leaveDialog).toHaveCount(0)
+  await expect(panel).toBeVisible()
+  await expect(panel.getByTestId('provider-save')).toBeVisible()
+  delayConfigGet = false
+})
