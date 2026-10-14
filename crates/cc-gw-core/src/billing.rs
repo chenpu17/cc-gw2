@@ -604,6 +604,11 @@ impl Serialize for Currency {
 /// - 单条记录（detail/export 扁平对象）→ 直接补同名字段；
 /// - 顶层数组（export）→ 逐条补字段。
 /// 未计价（无价模型 / input 未知）写入 `cost: null`，与聚合口径一致。
+///
+/// 契约注意：顶层数组分支**不会**（也无法）注入 `cost_currency` —— 裸数组
+/// 没有可挂信封字段的位置。当前所有调用方都走前两种形态；若未来以裸数组
+/// 为出口（如批量导出），调用方必须自行在外层信封标注 `cost_currency`，
+/// 正如 admin_routes 的导出处理器在 wrapper 里手写的那样。
 pub fn attach_log_costs(value: &mut serde_json::Value, pricing: &PricingEngine) {
     let currency = serde_json::Value::String(pricing.display_currency().code().to_string());
     if let Some(items) = value.get_mut("items").and_then(|v| v.as_array_mut()) {
@@ -1046,6 +1051,21 @@ mod tests {
         let breakdown = &legacy["cost_breakdown"];
         assert!((breakdown["total"].as_f64().unwrap() - 2.0).abs() < 1e-9); // 全量 ¥2/M
         assert_eq!(breakdown["cacheRead"].as_f64().unwrap(), 0.0);
+    }
+
+    #[test]
+    fn attach_log_costs_top_level_array_has_no_currency_envelope() {
+        // 契约固化（当前零调用方）：裸数组分支只逐条补 cost 字段——数组
+        // 顶层没有可挂 cost_currency 的信封位置，调用方须自行在外层标注
+        //（见 admin_routes 导出处理器的 wrapper 写法）。
+        let engine = engine(Some("CNY"), &[("USD", 7.0)]);
+        let mut array = serde_json::json!([
+            { "id": 1, "provider": "acme", "model": "gpt-4o", "input_tokens": 1_000_000, "output_tokens": 0 }
+        ]);
+        attach_log_costs(&mut array, &engine);
+        assert!(array.is_array());
+        assert!((array[0]["cost"].as_f64().unwrap() - 17.5).abs() < 1e-9);
+        assert!(array[0].get("cost_currency").is_none());
     }
 
     #[test]
