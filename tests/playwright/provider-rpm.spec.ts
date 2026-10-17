@@ -24,13 +24,13 @@ test('provider RPM limit fields render and persist via provider panel', async ({
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  const createDialog = page.getByRole('dialog', { name: '新增提供商' })
   await createDialog.getByRole('combobox', { name: '模板' }).click()
   await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
   await createDialog.getByPlaceholder('如 openai').fill(providerId)
   await createDialog.getByPlaceholder('https://api.example.com/v1').fill('http://127.0.0.1:9/v1')
   await createDialog.getByRole('button', { name: '创建' }).click()
-  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
+  await expect(page.getByText(`已添加提供商：${providerId}`)).toBeVisible()
 
   // 详情面板：高级选项默认折叠，展开后填写 RPM 上限与最长等待 + 一个模型
   const panel = page.getByTestId('provider-detail-panel')
@@ -43,7 +43,7 @@ test('provider RPM limit fields render and persist via provider panel', async ({
   await panel.getByRole('button', { name: '新增模型' }).click()
   await panel.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model')
   await panel.getByTestId('provider-save').click()
-  await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
+  await expect(page.getByText(`已更新提供商：${providerId}`)).toBeVisible()
 
   const configResponse = await request.get(`${baseUrl}/api/config`)
   expect(configResponse.status()).toBe(200)
@@ -66,7 +66,7 @@ test('provider RPM limit fields render and persist via provider panel', async ({
   await panel.getByPlaceholder('如 60').fill('')
   await panel.getByPlaceholder('默认 30').fill('')
   await panel.getByTestId('provider-save').click()
-  await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
+  await expect(page.getByText(`已更新提供商：${providerId}`)).toBeVisible()
 
   // 用 poll 而非立即 GET：同文案的残留 toast 可能让断言先行满足，而 PUT
   // 尚未落库（双保存竞态）。
@@ -160,7 +160,7 @@ test('RPM limit set via WebUI panel throttles real client traffic', async ({ pag
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  const createDialog = page.getByRole('dialog', { name: '新增提供商' })
   await createDialog.getByRole('combobox', { name: '模板' }).click()
   await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
   await createDialog.getByPlaceholder('如 openai').fill(providerId)
@@ -168,7 +168,7 @@ test('RPM limit set via WebUI panel throttles real client traffic', async ({ pag
     `http://127.0.0.1:${(harness as any).stubPort}`
   )
   await createDialog.getByRole('button', { name: '创建' }).click()
-  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
+  await expect(page.getByText(`已添加提供商：${providerId}`)).toBeVisible()
 
   // 详情面板：密钥 + RPM 1/5 + 模型
   const panel = page.getByTestId('provider-detail-panel')
@@ -182,7 +182,7 @@ test('RPM limit set via WebUI panel throttles real client traffic', async ({ pag
   await panel.getByRole('button', { name: '新增模型' }).click()
   await panel.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('rpm-chain-model')
   await panel.getByTestId('provider-save').click()
-  await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
+  await expect(page.getByText(`已更新提供商：${providerId}`)).toBeVisible()
 
   const post = (content: string) =>
     request.post(`${baseUrl}/openai/v1/chat/completions`, {

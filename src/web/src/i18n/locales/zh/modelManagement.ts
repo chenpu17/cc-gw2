@@ -1,7 +1,7 @@
 export default {
   targetPicker: {
-    helper: '可输入 Provider、模型名或 ID 快速筛选。',
-    searchPlaceholder: '搜索 Provider、模型名或 ID',
+    helper: '可输入提供商、模型名或 ID 快速筛选。',
+    searchPlaceholder: '搜索提供商、模型名或 ID',
     matchCount: '找到 {{count}} 个匹配目标',
     recent: '最近使用',
     custom: '自定义 / 已保存',
@@ -85,7 +85,7 @@ export default {
   },
   presets: {
     title: '路由模板',
-    description: '保存当前 Anthropic 路由映射，便于在不同 Provider 方案之间快速切换。',
+    description: '保存当前 Anthropic 路由映射，便于在不同提供商方案之间快速切换。',
     namePlaceholder: '输入模板名称，例如 fox',
     save: '保存模板',
     saving: '保存中...',

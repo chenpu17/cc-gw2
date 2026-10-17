@@ -46,7 +46,7 @@ test('preset template create fills the detail panel and config', async ({ page, 
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  const createDialog = page.getByRole('dialog', { name: '新增提供商' })
   await expect(createDialog).toBeVisible()
 
   // 预设目录来自 GET /api/provider-presets（Rust 单源 8 条）
@@ -62,7 +62,7 @@ test('preset template create fills the detail panel and config', async ({ page, 
   await expect(createDialog.getByPlaceholder('https://api.example.com/v1')).toHaveValue('https://api.deepseek.com/v1')
   await createDialog.getByPlaceholder('如 openai').fill('preset-deepseek')
   await createDialog.getByRole('button', { name: '创建' }).click()
-  await expect(page.getByText('已添加 Provider：preset-deepseek')).toBeVisible()
+  await expect(page.getByText('已添加提供商：preset-deepseek')).toBeVisible()
 
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
@@ -150,7 +150,7 @@ test('dual-endpoint provider routes native protocols and switches keys', async (
   const keyRowB = panel.getByTestId('provider-key-row').nth(1)
   await keyRowB.getByLabel('生效').check()
   await panel.getByTestId('provider-save').click()
-  await expect(page.getByText('已更新 Provider：Dual Surface')).toBeVisible()
+  await expect(page.getByText('已更新提供商：Dual Surface')).toBeVisible()
 
   const afterSave = await getConfig(request, baseUrl)
   const dualProvider = afterSave.providers.find((provider: any) => provider.id === 'dual')
@@ -176,7 +176,7 @@ test('dual-endpoint provider routes native protocols and switches keys', async (
   const activeRow = panel.getByTestId('provider-key-row').nth(1)
   await activeRow.getByRole('button', { name: '删除' }).click()
   await panel.getByTestId('provider-save').click()
-  await expect(page.getByText('已更新 Provider：Dual Surface')).toBeVisible()
+  await expect(page.getByText('已更新提供商：Dual Surface')).toBeVisible()
   await expect
     .poll(async () => {
       const afterDelete = await getConfig(request, baseUrl)
@@ -217,7 +217,7 @@ test('panel endpoint table edits save to config', async ({ page, request }) => {
   await page.getByRole('option', { name: 'OpenAI Chat Completions' }).click()
 
   await panel.getByTestId('provider-save').click()
-  await expect(page.getByText('已更新 Provider：Stub Provider')).toBeVisible()
+  await expect(page.getByText('已更新提供商：Stub Provider')).toBeVisible()
 
   const config = await getConfig(request, baseUrl)
   const stubProvider = config.providers.find((provider: any) => provider.id === 'stub')
@@ -232,7 +232,7 @@ test('panel endpoint table edits save to config', async ({ page, request }) => {
   const endpointRowAfter = panel.getByTestId('surface-endpoint-row')
   await endpointRowAfter.getByRole('button', { name: '删除' }).click()
   await panel.getByTestId('provider-save').click()
-  await expect(page.getByText('已更新 Provider：Stub Provider')).toBeVisible()
+  await expect(page.getByText('已更新提供商：Stub Provider')).toBeVisible()
   await expect
     .poll(async () => {
       const afterRemove = await getConfig(request, baseUrl)
@@ -420,7 +420,7 @@ test('creating a provider guards the previous dirty draft', async ({ page, reque
   // 必须先确认
   const createAndConfirm = async (providerId: string, action: '取消' | '放弃修改并离开') => {
     await page.getByRole('button', { name: '新增提供商' }).first().click()
-    const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+    const createDialog = page.getByRole('dialog', { name: '新增提供商' })
     await expect(createDialog).toBeVisible()
     await createDialog.getByRole('combobox', { name: '模板' }).click()
     await page.getByRole('option', { name: /DeepSeek.*开放平台/ }).click()
@@ -469,7 +469,7 @@ test('editing during the post-create config refetch still guards the draft', asy
   // 面板初始无草稿时创建 → onCreated 进入刷新等待
   delayConfigGet = true
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  const createDialog = page.getByRole('dialog', { name: '新增提供商' })
   await createDialog.getByRole('combobox', { name: '模板' }).click()
   await page.getByRole('option', { name: /DeepSeek.*开放平台/ }).click()
   await createDialog.getByPlaceholder('如 openai').fill('refetch-race')

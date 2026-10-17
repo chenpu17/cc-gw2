@@ -26,7 +26,7 @@ test('useAbsoluteUrl switch renders, persists, and bypasses path suffix end-to-e
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  const createDialog = page.getByRole('dialog', { name: '新增提供商' })
   await createDialog.getByRole('combobox', { name: '模板' }).click()
   await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
   await createDialog.getByPlaceholder('如 openai').fill(providerId)
@@ -34,7 +34,7 @@ test('useAbsoluteUrl switch renders, persists, and bypasses path suffix end-to-e
   // 勾选时原样用根路径（stub 对 POST / 返回 404），两者可区分。
   await createDialog.getByPlaceholder('https://api.example.com/v1').fill(stubRoot)
   await createDialog.getByRole('button', { name: '创建' }).click()
-  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
+  await expect(page.getByText(`已添加提供商：${providerId}`)).toBeVisible()
 
   // 详情面板内联编辑：密钥 + 高级选项里的「使用绝对路径」开关。
   // 高级选项默认折叠，先展开。
@@ -52,7 +52,7 @@ test('useAbsoluteUrl switch renders, persists, and bypasses path suffix end-to-e
   await panel.getByRole('button', { name: '新增模型' }).click()
   await panel.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model')
   await panel.getByTestId('provider-save').click()
-  await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
+  await expect(page.getByText(`已更新提供商：${providerId}`)).toBeVisible()
 
   // 持久化断言：config 里 useAbsoluteUrl === true
   const configResponse = await request.get(`${baseUrl}/api/config`)

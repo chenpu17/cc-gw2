@@ -107,7 +107,7 @@ export default {
     description: '配置 HTTP 和 HTTPS 服务端口，默认同时启用两个协议',
     restartWarning: '⚠️ 修改协议配置后需要重启服务才能生效',
     restartHint: '保存配置后，请执行以下命令重启服务：',
-    restartTip: '💡 提示：端口、协议启用状态、证书路径需要重启；Provider 和路由配置支持热加载无需重启',
+    restartTip: '💡 提示：端口、协议启用状态、证书路径需要重启；提供商和路由配置支持热加载无需重启',
     http: {
       enable: '启用 HTTP',
       hint: '标准 HTTP 协议，适用于本地开发和内网环境',

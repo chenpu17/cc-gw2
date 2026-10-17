@@ -77,7 +77,7 @@ test('aggregate model fails over transparently and records the chain', async ({ 
 })
 
 // ---------------------------------------------------------------------------
-// 跨供应商降级：agg-cross-model 成员链横跨两个独立上游进程
+// 跨提供商降级：agg-cross-model 成员链横跨两个独立上游进程
 // [stub:stub-model-broken(恒 500), secondary:stub-model-secondary]，
 // 验证不同 provider / 不同 baseUrl 之间的透明切换。
 // ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ test('aggregate model fails over across providers on separate upstreams', async 
   const body = await response.json()
   expect(JSON.stringify(body.content)).toContain('Secondary stub response')
 
-  // 日志行记录实际服务的 secondary 供应商后端
+  // 日志行记录实际服务的 secondary 提供商后端
   const logsResponse = await request.get(`${baseUrl}/api/logs?limit=20`)
   expect(logsResponse.ok()).toBeTruthy()
   const logs = await logsResponse.json()
@@ -123,7 +123,7 @@ test('aggregate model fails over across providers on separate upstreams', async 
 })
 
 // ---------------------------------------------------------------------------
-// WebUI 全链路：模板对话框创建聚合供应商（无 baseUrl）→ 详情面板聚合模型区
+// WebUI 全链路：模板对话框创建聚合提供商（无 baseUrl）→ 详情面板聚合模型区
 // 配置成员 → 保存 → rail 以聚合形态展示 → 真实流量命中成员后端。
 // ---------------------------------------------------------------------------
 test('aggregate provider can be configured via the drawer and serves traffic', async ({ page, request }) => {
@@ -133,17 +133,17 @@ test('aggregate provider can be configured via the drawer and serves traffic', a
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  const createDialog = page.getByRole('dialog', { name: '新增提供商' })
   await expect(createDialog).toBeVisible()
 
   // 手动配置组选「Aggregate」：隐藏 Base URL，展示聚合说明文案
   await createDialog.getByRole('combobox', { name: '模板' }).click()
   await page.getByRole('option', { name: '聚合', exact: true }).click()
-  await expect(createDialog.getByText('聚合供应商没有自己的上游地址与密钥')).toBeVisible()
+  await expect(createDialog.getByText('聚合提供商没有自己的上游地址与密钥')).toBeVisible()
   await expect(createDialog.getByPlaceholder('https://api.example.com/v1')).toHaveCount(0)
   await createDialog.getByPlaceholder('如 openai').fill('agg-ui')
   await createDialog.getByRole('button', { name: '创建' }).click()
-  await expect(page.getByText('已添加 Provider：agg-ui')).toBeVisible()
+  await expect(page.getByText('已添加提供商：agg-ui')).toBeVisible()
 
   // 创建后自动选中，聚合模型区直接在详情面板内联展示
   const panel = page.getByTestId('provider-detail-panel')
@@ -161,7 +161,7 @@ test('aggregate provider can be configured via the drawer and serves traffic', a
   await expect(memberRow).toContainText('首选')
 
   await panel.getByTestId('provider-save').click()
-  await expect(page.getByText('已更新 Provider：agg-ui')).toBeVisible()
+  await expect(page.getByText('已更新提供商：agg-ui')).toBeVisible()
 
   // rail：聚合徽章
   const railRow = page.getByTestId('provider-rail-row').filter({ hasText: 'agg-ui' })

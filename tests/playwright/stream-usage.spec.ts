@@ -24,13 +24,13 @@ test('streamUsage switch renders and persists via provider panel', async ({ page
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
-  const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
+  const createDialog = page.getByRole('dialog', { name: '新增提供商' })
   await createDialog.getByRole('combobox', { name: '模板' }).click()
   await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
   await createDialog.getByPlaceholder('如 openai').fill(providerId)
   await createDialog.getByPlaceholder('https://api.example.com/v1').fill('http://127.0.0.1:9/v1')
   await createDialog.getByRole('button', { name: '创建' }).click()
-  await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
+  await expect(page.getByText(`已添加提供商：${providerId}`)).toBeVisible()
 
   // 详情面板内联编辑：高级选项默认折叠，展开后开关默认关闭。
   const panel = page.getByTestId('provider-detail-panel')
@@ -52,7 +52,7 @@ test('streamUsage switch renders and persists via provider panel', async ({ page
   await panel.getByRole('button', { name: '新增模型' }).click()
   await panel.getByPlaceholder('如 claude-sonnet-4-5-20250929').fill('stub-model')
   await panel.getByTestId('provider-save').click()
-  await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
+  await expect(page.getByText(`已更新提供商：${providerId}`)).toBeVisible()
 
   // 持久化断言：开启的 provider streamUsage === true
   const configResponse = await request.get(`${baseUrl}/api/config`)

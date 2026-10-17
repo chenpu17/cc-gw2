@@ -1,9 +1,9 @@
 export default {
   title: '模型与路由工作台',
-  description: '统一管理模型 Provider、端点路由规则与自定义端点。',
+  description: '统一管理模型提供商、端点路由规则与自定义端点。',
   viewSwitch: {
     label: '工作台视图',
-    providers: '供应商',
+    providers: '提供商',
     providersDesc: '管理上游模型服务',
     routing: '路由',
     routingDesc: '决定请求转发到哪个服务'
@@ -36,7 +36,7 @@ export default {
     errorPrefix: '无法解析路由',
     reasonModelRoute: '命中模型路由规则',
     reasonModelRouteAlias: '命中模型路由规则（经别名展开）',
-    reasonDirectMatch: '直接匹配 Provider',
+    reasonDirectMatch: '直接匹配提供商',
     reasonThinkingDefault: '命中思考默认',
     reasonCompletionDefault: '命中补全默认',
     reasonLongContext: '命中长上下文默认',
@@ -70,9 +70,9 @@ export default {
     rulesSubtitle: '从上往下匹配，支持 * 通配符；拖动左侧手柄调整优先级',
     dragHandle: '拖动排序',
     sourceLabel: '客户端请求的模型',
-    targetLabel: '转发到（Provider:模型）',
+    targetLabel: '转发到（provider:model）',
     emptyTitle: '还没有路由规则',
-    emptyDescription: '客户端按模型名发起请求，在这里配置它应该转发给哪个 Provider 的模型。例如把 claude-sonnet-4 映射到你刚添加的 Provider；未列出的模型名走上方「默认转发」。',
+    emptyDescription: '客户端按模型名发起请求，在这里配置它应该转发给哪个提供商的模型。例如把 claude-sonnet-4 映射到你刚添加的提供商；未列出的模型名走上方「默认转发」。',
     addFirst: '添加第一条规则'
   },
   list: {
@@ -103,7 +103,7 @@ export default {
   drawer: {
     verifyTitle: '连接验证',
     verifyHint: '对当前配置发起一次真实请求，确认认证与网络可用（未保存的草稿也可测试）。',
-    verifySaveFirst: '保存 Provider 后才能进行连接测试。',
+    verifySaveFirst: '保存提供商后才能进行连接测试。',
     verifyRun: '测试连接'
   }
 }

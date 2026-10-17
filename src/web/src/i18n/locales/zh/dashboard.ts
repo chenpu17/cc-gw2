@@ -28,7 +28,7 @@ export default {
   status: {
     listeningLabel: '监听地址',
     listening: '监听：{{host}}:{{port}}',
-    providers: 'Provider 数量：{{value}}',
+    providers: '提供商数量：{{value}}',
     todayRequests: '今日请求：{{value}}',
     active: '活动请求：{{value}}',
     dbSize: '数据库：{{value}}',
@@ -106,7 +106,7 @@ export default {
     empty: '该维度暂无用量数据',
     error: '用量统计获取失败',
     tabs: {
-      providers: 'Provider',
+      providers: '提供商',
       endpoints: '端点',
       clients: '客户端',
       apiKeys: 'API Key'
@@ -156,7 +156,7 @@ export default {
     columns: {
       time: '时间',
       endpoint: '端点',
-      provider: 'Provider',
+      provider: '提供商',
       route: '路由',
       latency: '耗时(ms)',
       status: '状态'
@@ -180,11 +180,11 @@ export default {
   },
   guide: {
     title: '先走通这三步',
-    subtitle: '把 Provider、路由和 API Key 配好后发起一条请求，仪表盘就会开始有数据。',
+    subtitle: '把提供商、路由和 API Key 配好后发起一条请求，仪表盘就会开始有数据。',
     startWizard: '开始引导设置',
-    step1Title: '先配置 Provider',
-    step1Desc: '先在模型供应商里接入至少 1 个上游模型服务。',
-    step1DescDone: '当前已检测到 {{count}} 个 Provider，可直接继续下一步。',
+    step1Title: '先配置提供商',
+    step1Desc: '先在"模型与路由"里接入至少 1 个上游模型服务。',
+    step1DescDone: '当前已检测到 {{count}} 个提供商，可直接继续下一步。',
     step1Cta: '去模型与路由',
     step2Title: '确认默认路由入口',
     step2Desc: '把一个端点或默认路由配置清楚，后续客户端就能稳定接入。',
@@ -199,7 +199,7 @@ export default {
     description: '统计每个后端模型的请求数、平均耗时、TTFT 与 TPOT。',
     empty: '暂无模型统计数据。',
     columns: {
-      model: 'Provider/模型',
+      model: '提供商/模型',
       requests: '请求数',
       latency: '平均耗时',
       ttft: 'TTFT',

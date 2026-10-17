@@ -100,7 +100,7 @@ export default {
       desc: '错误信息：{{message}}'
     },
     providerError: {
-      title: 'Provider 列表获取失败',
+      title: '提供商列表获取失败',
       desc: '错误信息：{{message}}'
     },
     exportSuccess: {

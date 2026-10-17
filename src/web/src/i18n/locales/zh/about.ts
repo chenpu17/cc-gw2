@@ -36,7 +36,7 @@ export default {
   support: {
     title: '使用提示',
     subtitle: '运行维护说明',
-    description: '通过 Web UI 管理 Provider、模型路由与日志，高级配置可直接编辑 ~/.cc-gw/config.json。',
+    description: '通过 Web UI 管理提供商、模型路由与日志，高级配置可直接编辑 ~/.cc-gw/config.json。',
     tip: '高级配置建议结合 CLI 使用，可将 ~/.cc-gw/config.json 纳入版本管理或自动化脚本。',
     actions: {
       checkUpdates: '检查更新',

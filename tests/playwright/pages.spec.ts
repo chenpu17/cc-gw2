@@ -27,7 +27,7 @@ test('web console pages load and navigation works', async ({ page }) => {
   await page.getByRole('link', { name: '模型与路由' }).first().click()
   await expect(page).toHaveURL(/\/ui\/providers$/)
   await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
-  // 默认进入「供应商」视图
+  // 默认进入「提供商」视图
   await expect(page.getByRole('button', { name: '新增提供商' })).toBeVisible()
   await expect(page.getByText('配置导览')).toHaveCount(0)
   // 端点与路由规则在「路由」视图中：主体是端点表格，工具栏提供「新建端点」

@@ -1,7 +1,7 @@
 export default {
-  emptyState: '暂无 Provider，请点击“新增提供商”以开始配置。',
+  emptyState: '暂无提供商，请点击“新增提供商”以开始配置。',
   emptyStateSub: '点击上方按钮添加您的第一个提供商。',
-  emptyFiltered: '当前筛选条件下没有匹配的 Provider。',
+  emptyFiltered: '当前筛选条件下没有匹配的提供商。',
   groupCount: '{{count}} 个提供商',
   filters: {
     searchPlaceholder: '按名称、ID 或 Base URL 搜索',
@@ -31,14 +31,14 @@ export default {
     needsDefault: '待设默认模型'
   },
   toast: {
-    createSuccess: '已添加 Provider：{{name}}',
-    updateSuccess: '已更新 Provider：{{name}}',
-    testSuccess: 'Provider 连通性检查通过。',
+    createSuccess: '已添加提供商：{{name}}',
+    updateSuccess: '已更新提供商：{{name}}',
+    testSuccess: '提供商连通性检查通过。',
     testSuccessDesc: '状态：{{status}} · 耗时：{{duration}}',
-    testFailure: 'Provider 连通性检查失败：{{message}}',
+    testFailure: '提供商连通性检查失败：{{message}}',
     loadFailure: '获取配置失败：{{message}}',
-    deleteSuccess: '已删除 Provider：{{name}}',
-    deleteFailure: '删除 Provider 失败：{{message}}'
+    deleteSuccess: '已删除提供商：{{name}}',
+    deleteFailure: '删除提供商失败：{{message}}'
   },
   actions: {
     add: '新增提供商',
@@ -132,8 +132,8 @@ export default {
   },
   noModelDialog: {
     title: '未配置模型',
-    subtitle: 'Provider「{{name}}」还没有可用于测试的模型',
-    description: '连接测试需要先知道要请求哪个模型。请先为该 Provider 添加至少一个模型，或设置默认模型后再测试。',
+    subtitle: '提供商「{{name}}」还没有可用于测试的模型',
+    description: '连接测试需要先知道要请求哪个模型。请先为该提供商添加至少一个模型，或设置默认模型后再测试。',
     hint: '如果你只是想使用透传模式，也需要在实际请求或路由映射里指定模型；诊断测试不能自动猜测上游模型 ID。',
     primary: '去配置模型'
   },
@@ -164,18 +164,18 @@ export default {
       noMembers: '尚未配置聚合模型'
     },
     drawer: {
-      explainerTitle: '聚合供应商说明',
-      explainerBody: '聚合供应商没有自己的上游地址与密钥。它旗下的每个「聚合模型」是一个虚拟模型名，映射到一组真实后端（可跨供应商、跨模型名）。请求按成员顺序尝试：高优先级后端连续失败后自动切换到低优先级，冷却期满自动恢复。',
+      explainerTitle: '聚合提供商说明',
+      explainerBody: '聚合提供商没有自己的上游地址与密钥。它旗下的每个「聚合模型」是一个虚拟模型名，映射到一组真实后端（可跨提供商、跨模型名）。请求按成员顺序尝试：高优先级后端连续失败后自动切换到低优先级，冷却期满自动恢复。',
       stepTitle: '聚合模型',
       modelsDescription: '每个聚合模型是对客户端暴露的虚拟模型名，由一组有序的真实后端成员组成。',
       modelIdLabel: '聚合模型 ID',
       modelIdPlaceholder: '如 glm-5.1',
-      modelIdHint: '客户端请求中填写的模型名；路由规则可直接映射到 聚合供应商:模型ID。',
+      modelIdHint: '客户端请求中填写的模型名；路由规则可直接映射到 聚合提供商:模型ID。',
       membersTitle: '后端成员（按优先级）',
       memberTarget: '成员后端',
       memberPlaceholder: '选择 providerId:modelId',
       memberEmptyHint: '尚未添加成员。请从下方选择至少一个真实后端模型。',
-      memberHint: '拖动手柄调整优先级（自上而下依次尝试）；支持手填 providerId:* 表示该供应商的同名模型。',
+      memberHint: '拖动手柄调整优先级（自上而下依次尝试）；支持手填 providerId:* 表示该提供商的同名模型。',
       addMember: '添加成员',
       primaryBadge: '首选',
       failoverTitle: '降级策略（高级）',
@@ -198,8 +198,8 @@ export default {
     errors: {
       memberRequired: '每个聚合模型至少需要一个成员后端',
       memberInvalid: '成员格式必须为 providerId:modelId',
-      memberDangling: '成员指向的供应商不存在：{{provider}}',
-      memberNested: '成员不能指向聚合供应商：{{provider}}',
+      memberDangling: '成员指向的提供商不存在：{{provider}}',
+      memberNested: '成员不能指向聚合提供商：{{provider}}',
       memberDuplicate: '成员后端重复：{{target}}',
       failoverInvalid: '降级策略数值超出范围（阈值 ≥1，冷却 1-86400 秒，窗口 ≥1 秒）',
       triggerCodesInvalid: '触发状态码格式无效（支持 1xx-5xx 类别或 100-599 具体码，逗号分隔）'
@@ -216,7 +216,7 @@ export default {
     modelsDescription: '维护支持的模型列表。',
     defaultHint: '当前默认模型：{{model}}',
     sections: {
-      type: '选择 Provider 类型',
+      type: '选择提供商类型',
       basic: '填写基础信息',
       auth: '设置认证',
       checklist: '提交前检查'
@@ -227,7 +227,7 @@ export default {
       aggregateModels: '聚合模型'
     },
     hints: {
-      type: '先选择 Provider 模板，可自动填入推荐 Base URL。',
+      type: '先选择提供商模板，可自动填入推荐 Base URL。',
       typeVendorPinned: '预设创建的厂商类型；切换到协议模板后不再保留。',
       basic: 'ID 用于路由映射；显示名称用于界面展示。',
       checkAuth: '确认密钥与认证 Header 类型匹配。',
@@ -236,7 +236,7 @@ export default {
       advancedBody: '开启后可单独维护显示名称与模型别名；如果只是快速接入，保留默认同步即可。'
     },
     fields: {
-      id: 'Provider ID',
+      id: '提供商 ID',
       idPlaceholder: '如 openai',
       label: '显示名称',
       labelPlaceholder: '如 官方主账号',
@@ -248,13 +248,13 @@ export default {
       authMode: '认证方式',
       authModeHint: '选择 API 认证方式，填写对应的密钥值。',
       authModeApiKey: 'X-API-Key',
-      authModeProviderDefault: 'Provider 默认',
+      authModeProviderDefault: '提供商默认',
       authModeAuthToken: 'Authorization: Bearer',
       authModeXAuthToken: 'X-Auth-Token',
       nonStreamViaStream: '非流式请求转上游流式',
       nonStreamViaStreamHint: '仅在客户端请求非流式时生效。网关向上游发送流式请求，读取完整 SSE 后一次性返回 JSON。',
       useAbsoluteUrl: '使用绝对路径',
-      useAbsoluteUrlHint: '勾选后,Base URL 将原样作为上游请求地址(需填完整端点,如 https://x/internal/v1/messages),网关不再自动追加 /v1/messages、/v1/chat/completions 等后缀。协议(请求体格式)仍由 Provider 类型决定,互不影响。',
+      useAbsoluteUrlHint: '勾选后,Base URL 将原样作为上游请求地址(需填完整端点,如 https://x/internal/v1/messages),网关不再自动追加 /v1/messages、/v1/chat/completions 等后缀。协议(请求体格式)仍由提供商类型决定,互不影响。',
       streamUsage: '流式请求携带 usage 统计（默认关闭）',
       streamUsageHint: '⚠️ 兼容性风险：开启后网关会向上游附加 stream_options.include_usage 参数。部分 OpenAI 兼容模型服务不认识该参数，可能导致报错或流式返回为空。默认关闭；若开启后请求异常，请关闭此开关。多数上游本身就会返回 usage，无需开启。',
       models: '模型配置',
@@ -267,7 +267,7 @@ export default {
       modelLabel: '显示名称（可选）',
       modelLabelPlaceholder: '如 GPT-4 旗舰',
       modelNonStreamViaStream: '非流式转流式',
-      modelNonStreamViaStreamInherit: '使用 Provider 默认',
+      modelNonStreamViaStreamInherit: '使用提供商默认',
       modelNonStreamViaStreamEnabled: '启用',
       modelNonStreamViaStreamDisabled: '禁用',
       setDefault: '设为默认模型',
@@ -279,7 +279,7 @@ export default {
       rpmMaxWaitSeconds: '最长等待（秒）',
       rpmMaxWaitPlaceholder: '默认 30',
       extraHeaders: '自定义请求头',
-      extraHeadersHint: '附加到发往该 Provider 的上游请求,并覆盖客户端发送的同名头。认证类请求头(Authorization、x-api-key 等)由网关根据 API Key 统一设置,无法在此覆盖。',
+      extraHeadersHint: '附加到发往该提供商的上游请求,并覆盖客户端发送的同名头。认证类请求头(Authorization、x-api-key 等)由网关根据 API Key 统一设置,无法在此覆盖。',
       addHeader: '新增请求头',
       headerName: '名称',
       headerValue: '取值',
@@ -294,7 +294,7 @@ export default {
       subtitle: '从「{{name}}」的上游接口获取模型列表，勾选后导入。',
       loading: '正在向上游探测模型列表…',
       failedTitle: '探测失败',
-      failedHint: '该供应商可能不支持模型列表接口，请手动添加模型。',
+      failedHint: '该提供商可能不支持模型列表接口，请手动添加模型。',
       failedFallback: '上游未返回可用的模型列表',
       searchPlaceholder: '搜索模型 ID 或名称',
       totalCount: '共 {{count}} 个模型',
@@ -307,8 +307,8 @@ export default {
       importSuccess: '已导入 {{count}} 个模型'
     },
     errors: {
-      idRequired: '请填写 Provider ID',
-      idDuplicate: '该 Provider ID 已存在',
+      idRequired: '请填写提供商 ID',
+      idDuplicate: '该提供商 ID 已存在',
       baseUrlInvalid: 'Base URL 格式无效',
       modelsRequired: '请至少配置一个模型',
       modelInvalid: '模型 ID 不可为空或重复',
@@ -322,7 +322,7 @@ export default {
       saveFailure: '保存失败：{{message}}'
     },
     noModelsTitle: '透传模式已启用',
-    noModelsHint: '当前未配置模型列表。该 Provider 将以"透传"模式使用，可在模型路由中映射，或在请求中直接指定模型。',
+    noModelsHint: '当前未配置模型列表。该提供商将以"透传"模式使用，可在模型路由中映射，或在请求中直接指定模型。',
     routeExample: '路由映射示例：'
   },
   endpoints: {
@@ -345,7 +345,7 @@ export default {
   },
   keys: {
     title: '命名密钥',
-    hint: '为同一 Provider 配置多把密钥，选中「生效」的一把用于全部上游请求；命名密钥优先于上方的基础 API Key。',
+    hint: '为同一提供商配置多把密钥，选中「生效」的一把用于全部上游请求；命名密钥优先于上方的基础 API Key。',
     add: '添加密钥',
     active: '生效',
     id: '密钥 ID',
@@ -365,7 +365,7 @@ export default {
   },
   balance: {
     title: '余额',
-    hint: '部分服务商支持余额查询。选择适配器（随配置保存）后可手动刷新；快照保存在网关运行态，重启后需重新刷新。',
+    hint: '部分提供商支持余额查询。选择适配器（随配置保存）后可手动刷新；快照保存在网关运行态，重启后需重新刷新。',
     adapter: '余额适配器',
     adapterNone: '不查询',
     refresh: '刷新余额',
@@ -381,8 +381,8 @@ export default {
     displayEmpty: '未能解析余额（可查看原始数据）'
   },
   masterDetail: {
-    emptyDetailTitle: '选择一个 Provider',
-    emptyDetailHint: '从左侧列表选择 Provider 查看与编辑，或点击上方「新增提供商」创建。',
+    emptyDetailTitle: '选择一个提供商',
+    emptyDetailHint: '从左侧列表选择提供商查看与编辑，或点击上方「新增提供商」创建。',
     modelsMeta: '{{count}} 个模型',
     keysMeta: '{{count}} 个密钥',
     noKeysMeta: '未配置密钥',
@@ -415,7 +415,7 @@ export default {
     typeFootnote: '厂商类型：{{type}}'
   },
   presets: {
-    title: '新增 Provider',
+    title: '新增提供商',
     description: '从预设模板一键创建，或选择手动配置。',
     template: '模板',
     templatePlaceholder: '选择模板或手动配置',
@@ -427,7 +427,7 @@ export default {
     createAction: '创建'
   },
   confirm: {
-    delete: '确认删除 Provider「{{name}}」？',
-    deleteImpact: '将同时清理 {{count}} 条引用该 Provider 的路由规则。'
+    delete: '确认删除提供商「{{name}}」？',
+    deleteImpact: '将同时清理 {{count}} 条引用该提供商的路由规则。'
   }
 }

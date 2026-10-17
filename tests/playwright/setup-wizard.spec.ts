@@ -29,7 +29,7 @@ test('setup wizard creates a provider via the shared form primitives', async ({ 
   await page.goto(`${baseUrl}/ui/setup`)
   await expect(page.getByRole('heading', { name: '引导设置', level: 1 })).toBeVisible()
   // 步骤标题是 CardTitle（非 heading role），用步骤内的表单标题锚定
-  await expect(page.getByRole('heading', { name: '选择 Provider 类型' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '选择提供商类型' })).toBeVisible()
 
   // 类型卡 + 基础信息（与面板同一套表单原语）
   await page.getByRole('button', { name: /OpenAI/ }).first().click()

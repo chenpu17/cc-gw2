@@ -6,7 +6,7 @@ export default {
   rateHint: '价格条目保留原币（USD/CNY），展示时按此汇率换算（1 CNY ≈ {{value}} USD）。',
   overrides: {
     title: '模型价格覆盖',
-    description: '覆盖优先于内置价格表。键为全局 model-id，或 providerId:modelId 限定到单个 Provider。',
+    description: '覆盖优先于内置价格表。键为全局 model-id，或 providerId:modelId 限定到单个提供商。',
     add: '添加覆盖',
     remove: '删除该行',
     key: '模型键',
