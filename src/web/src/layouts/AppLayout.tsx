@@ -309,13 +309,16 @@ export function AppLayout() {
           <div className="flex items-center gap-2">
             {/* Live throughput, deliberately quieter than the sidebar's single
                 status pill — two identical pills for two different facts read
-                as one ambiguous signal. */}
-            <span
-              data-testid="header-rpm-badge"
-              className="hidden items-center gap-1.5 text-[11px] font-medium text-muted-foreground before:h-1.5 before:w-1.5 before:rounded-full before:bg-muted-foreground/50 before:animate-live-pulse sm:inline-flex"
-            >
-              {t('app.liveRpm', { count: rpm })}
-            </span>
+                as one ambiguous signal. Hidden on the dashboard, where the
+                spotlight row already shows the same RPM as a real metric. */}
+            {location.pathname === '/' ? null : (
+              <span
+                data-testid="header-rpm-badge"
+                className="hidden items-center gap-1.5 text-[11px] font-medium text-muted-foreground before:h-1.5 before:w-1.5 before:rounded-full before:bg-muted-foreground/50 before:animate-live-pulse sm:inline-flex"
+              >
+                {t('app.liveRpm', { count: rpm })}
+              </span>
+            )}
             {authEnabled && username && (
               <span className="hidden text-xs text-muted-foreground sm:inline">
                 {t('login.status', { username })}
