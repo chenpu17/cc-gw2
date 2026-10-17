@@ -1,11 +1,4 @@
 export default {
-  title: 'Models & Routing',
-  description: 'Configure providers, routing rules, and custom endpoints.',
-  providersEyebrow: 'Supply Pool',
-  header: {
-    providersHelper: 'Maintain the upstream provider pool first, then move to Routing to map built-in and custom endpoints.',
-    routingHelper: 'You are editing routing rules for "{{name}}" in a single focused workspace.'
-  },
   guide: {
     title: 'Guided setup',
     subtitle: 'Separate upstream resources from public traffic entry points.',
@@ -37,7 +30,6 @@ export default {
     customEndpoints: 'Custom endpoints',
     customEndpointsHint: 'Keep custom endpoints in a compact horizontal strip so they remain easy to switch, edit, and remove.',
     headerWithCustom: 'Switch and maintain custom endpoints here to avoid squeezing the main workspace into a multi-column layout.',
-    headerWithoutCustom: 'Set up providers and built-in routing first, then add custom endpoints when needed.',
     endpointPaths: 'Access paths',
     protocols: 'Protocol paths',
     endpointEnabled: 'Enabled',

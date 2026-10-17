@@ -1,6 +1,4 @@
 export default {
-  title: '模型提供商',
-  description: '管理集成的模型服务，查看默认模型及支持能力。',
   emptyState: '暂无 Provider，请点击“新增提供商”以开始配置。',
   emptyStateSub: '点击上方按钮添加您的第一个提供商。',
   emptyFiltered: '当前筛选条件下没有匹配的 Provider。',

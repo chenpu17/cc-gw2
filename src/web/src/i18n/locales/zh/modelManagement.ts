@@ -1,11 +1,4 @@
 export default {
-  title: '模型与路由管理',
-  description: '统一维护模型提供商配置、模型路由映射与自定义端点。',
-  providersEyebrow: '供应池',
-  header: {
-    providersHelper: '先维护上游 Provider 供应池，再进入路由管理为内置端点和自定义端点配置映射规则。',
-    routingHelper: '当前工作区正在编辑「{{name}}」的路由规则，保持单工作区上下文以减少切换混淆。'
-  },
   guide: {
     title: '配置导览',
     subtitle: '将资源池与流量入口拆开维护，减少信息混排。',
@@ -37,7 +30,6 @@ export default {
     customEndpoints: '自定义端点',
     customEndpointsHint: '自定义端点保留紧凑横向卡片，便于快速切换、编辑和删除。',
     headerWithCustom: '优先在此处切换和维护自定义端点，避免主工作区被多列布局挤压。',
-    headerWithoutCustom: '先配置提供商与内置路由，需要时再补充自定义端点。',
     endpointPaths: '访问路径',
     protocols: '协议路径',
     endpointEnabled: '已启用',

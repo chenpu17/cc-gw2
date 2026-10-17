@@ -1,6 +1,4 @@
 export default {
-  title: 'Model Providers',
-  description: 'Manage integrated services and default models.',
   emptyState: 'No providers yet. Click "Add provider" to get started.',
   emptyStateSub: 'Click the button above to add your first provider.',
   emptyFiltered: 'No providers match the current filters.',

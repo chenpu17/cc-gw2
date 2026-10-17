@@ -11,7 +11,6 @@ import zhDashboard from './locales/zh/dashboard'
 import zhLogs from './locales/zh/logs'
 import zhProviders from './locales/zh/providers'
 import zhModelManagement from './locales/zh/modelManagement'
-import zhRoutingManagement from './locales/zh/routingManagement'
 import zhEvents from './locales/zh/events'
 import zhSettings from './locales/zh/settings'
 import zhBilling from './locales/zh/billing'
@@ -31,7 +30,6 @@ import enDashboard from './locales/en/dashboard'
 import enLogs from './locales/en/logs'
 import enProviders from './locales/en/providers'
 import enModelManagement from './locales/en/modelManagement'
-import enRoutingManagement from './locales/en/routingManagement'
 import enEvents from './locales/en/events'
 import enSettings from './locales/en/settings'
 import enBilling from './locales/en/billing'
@@ -54,7 +52,6 @@ const resources = {
       logs: zhLogs,
       providers: zhProviders,
       modelManagement: zhModelManagement,
-      routingManagement: zhRoutingManagement,
       events: zhEvents,
       settings: zhSettings,
       billing: zhBilling,
@@ -77,7 +74,6 @@ const resources = {
       logs: enLogs,
       providers: enProviders,
       modelManagement: enModelManagement,
-      routingManagement: enRoutingManagement,
       events: enEvents,
       settings: enSettings,
       billing: enBilling,
