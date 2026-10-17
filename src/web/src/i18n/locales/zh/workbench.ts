@@ -8,10 +8,6 @@ export default {
     routing: '路由',
     routingDesc: '决定请求转发到哪个服务'
   },
-  routingGuide: {
-    flow: '客户端请求模型（如 claude-sonnet-4） → 匹配路由规则 → 转发到 Provider 的模型',
-    hint: '客户端按模型名发请求，先匹配下方规则，未命中则走默认转发。'
-  },
   flow: {
     title: '请求流向',
     clientStep: '客户端模型',
@@ -50,7 +46,6 @@ export default {
   },
   defaults: {
     title: '默认转发',
-    description: '没有命中下方规则的请求都会转发到这里。只有一个 Provider 时，通常只需要设置这一项就能跑通。',
     cardSubtitle: '没有命中规则的请求都会走这里',
     completionLabel: '转发目标（provider:model）',
     moreLabel: '更多默认设置',
@@ -79,12 +74,6 @@ export default {
     emptyTitle: '还没有路由规则',
     emptyDescription: '客户端按模型名发起请求，在这里配置它应该转发给哪个 Provider 的模型。例如把 claude-sonnet-4 映射到你刚添加的 Provider；未列出的模型名走上方「默认转发」。',
     addFirst: '添加第一条规则'
-  },
-  detail: {
-    routesTitle: '参与的路由规则',
-    routesEmptyHint: '还没有路由规则引用它——客户端的请求还到不了这个 Provider。',
-    addRuleCta: '去路由视图添加规则',
-    viewRoute: '在路由视图中查看该规则'
   },
   list: {
     emptyHint: '先添加一个上游模型服务（如 Anthropic、OpenAI 或兼容端点），再去路由视图把客户端模型映射过去。'

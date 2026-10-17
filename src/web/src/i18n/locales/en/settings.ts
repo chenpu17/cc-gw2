@@ -150,12 +150,7 @@ export default {
   },
   routing: {
     title: 'Model routing map',
-    description: 'Override Claude Code model requests with provider:model targets (e.g., map Claude to Kimi). Leave empty to fall back to defaults.',
     titleByEndpoint: '{{endpoint}} routing',
-    descriptionByEndpoint: {
-      anthropic: 'Requests hitting the /anthropic endpoint will use these mappings.',
-      openai: 'Requests hitting the /openai endpoint will use these mappings.'
-    },
     add: 'Add route',
     sourcePlaceholder: 'e.g. claude-sonnet-4-5-20250929',
     targetPlaceholder: 'e.g. kimi:kimi-k2-0905-preview',

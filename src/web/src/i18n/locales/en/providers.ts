@@ -2,7 +2,6 @@ export default {
   emptyState: 'No providers yet. Click "Add provider" to get started.',
   emptyStateSub: 'Click the button above to add your first provider.',
   emptyFiltered: 'No providers match the current filters.',
-  count: '{{count}} providers configured',
   groupCount: '{{count}} providers',
   filters: {
     searchPlaceholder: 'Search by name, ID, or Base URL',
@@ -48,24 +47,6 @@ export default {
     edit: 'Edit',
     delete: 'Delete',
     test: 'Test connection'
-  },
-  quickAddHuawei: {
-    button: 'Quick add Huawei models',
-    title: 'Quick add Huawei models',
-    description: 'Provide the API key to automatically configure Huawei Cloud DeepSeek V3.1, KIMI-K2, and Qwen3-235B-A22B.',
-    apiKeyLabel: 'API Key',
-    apiKeyPlaceholder: 'Enter your Huawei Cloud API Key',
-    note: 'You can further adjust settings from the provider list after creation.',
-    submit: 'Add provider',
-    providerLabel: 'Huawei Cloud',
-    validation: {
-      apiKey: 'API Key is required'
-    },
-    toast: {
-      success: 'Huawei provider added',
-      added: '{{name}} added successfully',
-      failure: 'Failed to add provider. Please try again later.'
-    }
   },
   testDialog: {
     title: 'Connection Test Options',
@@ -164,7 +145,6 @@ export default {
     modelsTitle: 'Supported models',
     noModels: 'No models configured yet.',
     authMode: 'Auth mode',
-    providerDefault: 'Provider default',
     modelCount: '{{count}} models',
     passthrough: 'Pass-through',
     statModels: 'Models',
@@ -186,7 +166,6 @@ export default {
       noMembers: 'No aggregated models yet'
     },
     drawer: {
-      typeHint: 'Virtual provider · automatic failover',
       explainerTitle: 'About aggregate providers',
       explainerBody: 'An aggregate provider has no upstream URL or key of its own. Each of its aggregated models is a virtual model name mapped to an ordered set of real backends (across providers and model names). Requests try members in order: after consecutive failures the gateway switches to lower-priority backends and recovers automatically once the cooldown expires.',
       stepTitle: 'Aggregated models',
@@ -233,19 +212,11 @@ export default {
     }
   },
   drawer: {
-    createTitle: 'Add Provider',
-    editTitle: 'Edit Provider',
     quickStart: 'Quick setup',
     description: 'Configure base settings and model list.',
     formSummary: 'Current draft',
     modelsDescription: 'Maintain supported models.',
     defaultHint: 'Current default model: {{model}}',
-    summary: {
-      type: 'Provider type',
-      auth: 'Authentication',
-      models: 'Models',
-      untitled: 'Untitled provider'
-    },
     sections: {
       type: 'Choose provider type',
       basic: 'Basic information',
@@ -261,9 +232,6 @@ export default {
       type: 'Start from a provider template to prefill the recommended Base URL.',
       typeVendorPinned: 'Vendor type from preset creation; switching to a protocol template drops it.',
       basic: 'The ID is used by routing rules; the display name is used in the UI.',
-      auth: 'Pick the header strategy expected by the upstream API.',
-      customProvider: 'Custom compatible service',
-      checkUrl: 'Make sure the Base URL points to the upstream API root.',
       checkAuth: 'Make sure the key matches the selected auth header mode.',
       checkModels: 'Add models if you want route suggestions and a default model.',
       advancedTitle: 'About advanced mode',
@@ -277,7 +245,6 @@ export default {
       baseUrl: 'Base URL',
       baseUrlPrimary: 'Primary endpoint URL',
       baseUrlPlaceholder: 'https://api.example.com/v1',
-      type: 'Provider type',
       apiKey: 'API Key (optional)',
       apiKeyPlaceholder: 'Leave blank to read from environment',
       authMode: 'Authentication mode',

@@ -1,53 +1,4 @@
 export default {
-  guide: {
-    title: 'Guided setup',
-    subtitle: 'Separate upstream resources from public traffic entry points.',
-    description: 'Configure providers first, then move to Routing to map /anthropic, /openai, and custom endpoints with focused context.',
-    endpointBadge: '{{count}} routing workspaces',
-    providersDescription: 'Manage Base URL, auth strategy, default model, and aliases. This layer only defines upstream resources.',
-    providersMeta: '{{count}} providers configured',
-    routingDescription: 'Control built-in endpoints, custom endpoints, presets, and compatibility policies. This layer decides how public traffic is routed.',
-    routingMeta: '{{count}} workspaces, {{dirty}} unsaved',
-    current: 'Current step',
-    currentAction: 'Current page',
-    openAction: 'Open'
-  },
-  overview: {
-    synced: 'Workspace synced',
-    unsavedCount: '{{count}} unsaved',
-    providersStat: 'Providers',
-    providersStatHint: 'Connected upstream supply pool',
-    routeWorkspacesStat: 'Route workspaces',
-    routeWorkspacesStatHint: 'System + custom endpoints',
-    customEndpointsStat: 'Custom endpoints',
-    customEndpointsStatHint: 'Additional public entry points',
-    activeWorkspace: 'Active workspace',
-    activeWorkspaceProvider: 'Provider inventory',
-    activeWorkspaceRouting: 'Routing editor',
-    providerAndSystem: 'Resources & system routing',
-    providerPoolTag: 'Provider pool',
-    systemEndpointTag: 'System endpoint',
-    customEndpoints: 'Custom endpoints',
-    customEndpointsHint: 'Keep custom endpoints in a compact horizontal strip so they remain easy to switch, edit, and remove.',
-    headerWithCustom: 'Switch and maintain custom endpoints here to avoid squeezing the main workspace into a multi-column layout.',
-    endpointPaths: 'Access paths',
-    protocols: 'Protocol paths',
-    endpointEnabled: 'Enabled',
-    endpointDisabled: 'Disabled',
-    endpointProtocols: '{{count}} protocol paths',
-    endpointNoProtocol: 'No protocol path configured',
-    endpointMorePaths: '{{count}} more paths',
-    endpointManagedExternally: 'This endpoint cannot be removed from the UI.',
-    suggestionHint: 'Seed common source model names for this endpoint with one click.',
-    resourceCardTitle: 'Provider supply pool',
-    resourceCardDescription: 'Providers represent upstream model resources and authentication only; they are not public gateway entry points by themselves.',
-    entryCardTitle: 'Endpoint entry layer',
-    entryCardDescription: 'Anthropic, OpenAI, and custom endpoints are the actual public gateway entries. Routing rules and presets are scoped per endpoint.'
-  },
-  providersSemantics: {
-    title: 'Maintain the provider pool first, then endpoint routing',
-    description: 'This workspace defines upstream vendors, auth, and model inventory. Public traffic still enters through built-in or custom endpoints.'
-  },
   targetPicker: {
     helper: 'Type a provider, model name, or ID to filter quickly.',
     searchPlaceholder: 'Search provider, model, or ID',
@@ -112,9 +63,6 @@ export default {
     footerTitle: 'Route actions',
     footerDirtyHint: 'You changed the current rules. Save them here when you are ready.',
     footerSavedHint: 'The current routing rules are in sync with the server.'
-  },
-  routing: {
-    selectTarget: 'Select provider:model'
   },
   openaiCompatibility: {
     title: 'OpenAI compatibility fallback',

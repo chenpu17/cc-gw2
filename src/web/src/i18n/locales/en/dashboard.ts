@@ -1,7 +1,6 @@
 export default {
   description: 'Monitor request volume and runtime health at a glance.',
   labels: {
-    providers: 'Providers',
     activeClientAddresses: 'Active client addresses',
     activeClientSessions: 'Active sessions',
     uniqueClientAddressesLastHour: '1h active client IPs',

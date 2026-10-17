@@ -2,7 +2,6 @@ export default {
   emptyState: '暂无 Provider，请点击“新增提供商”以开始配置。',
   emptyStateSub: '点击上方按钮添加您的第一个提供商。',
   emptyFiltered: '当前筛选条件下没有匹配的 Provider。',
-  count: '已配置：{{count}} 个 Provider',
   groupCount: '{{count}} 个提供商',
   filters: {
     searchPlaceholder: '按名称、ID 或 Base URL 搜索',
@@ -48,24 +47,6 @@ export default {
     edit: '编辑',
     delete: '删除',
     test: '测试连接'
-  },
-  quickAddHuawei: {
-    button: '一键添加华为云模型',
-    title: '一键添加华为云模型',
-    description: '输入 API Key 即可快速添加华为云 DeepSeek V3.1、KIMI-K2 与 Qwen3-235B-A22B 模型。',
-    apiKeyLabel: 'API Key',
-    apiKeyPlaceholder: '请输入华为云 API Key',
-    note: '完成后可在提供商列表中查看并进一步调整配置。',
-    submit: '添加',
-    providerLabel: '华为云',
-    validation: {
-      apiKey: '请填写 API Key'
-    },
-    toast: {
-      success: '已添加华为云模型',
-      added: '已添加 {{name}}',
-      failure: '添加失败，请稍后重试'
-    }
   },
   testDialog: {
     title: '连接测试选项',
@@ -164,7 +145,6 @@ export default {
     modelsTitle: '支持模型',
     noModels: '尚未配置模型。',
     authMode: '认证方式',
-    providerDefault: 'Provider 默认',
     modelCount: '{{count}} 个模型',
     passthrough: '透传模式',
     statModels: '模型',
@@ -184,7 +164,6 @@ export default {
       noMembers: '尚未配置聚合模型'
     },
     drawer: {
-      typeHint: '虚拟供应商 · 多后端自动降级',
       explainerTitle: '聚合供应商说明',
       explainerBody: '聚合供应商没有自己的上游地址与密钥。它旗下的每个「聚合模型」是一个虚拟模型名，映射到一组真实后端（可跨供应商、跨模型名）。请求按成员顺序尝试：高优先级后端连续失败后自动切换到低优先级，冷却期满自动恢复。',
       stepTitle: '聚合模型',
@@ -231,19 +210,11 @@ export default {
     }
   },
   drawer: {
-    createTitle: '新增 Provider',
-    editTitle: '编辑 Provider',
     quickStart: '快速配置',
     description: '配置基础信息与模型列表。',
     formSummary: '当前草稿',
     modelsDescription: '维护支持的模型列表。',
     defaultHint: '当前默认模型：{{model}}',
-    summary: {
-      type: 'Provider 类型',
-      auth: '认证方式',
-      models: '模型数量',
-      untitled: '未命名 Provider'
-    },
     sections: {
       type: '选择 Provider 类型',
       basic: '填写基础信息',
@@ -259,9 +230,6 @@ export default {
       type: '先选择 Provider 模板，可自动填入推荐 Base URL。',
       typeVendorPinned: '预设创建的厂商类型；切换到协议模板后不再保留。',
       basic: 'ID 用于路由映射；显示名称用于界面展示。',
-      auth: '根据上游接口要求选择 Header 认证方式。',
-      customProvider: '自定义兼容服务',
-      checkUrl: '确认 Base URL 指向上游 API 根路径。',
       checkAuth: '确认密钥与认证 Header 类型匹配。',
       checkModels: '如需路由提示和默认模型，请补充模型列表。',
       advancedTitle: '高级模式说明',
@@ -275,7 +243,6 @@ export default {
       baseUrl: 'Base URL',
       baseUrlPrimary: '主端点 Base URL',
       baseUrlPlaceholder: 'https://api.example.com/v1',
-      type: 'Provider 类型',
       apiKey: 'API Key（可选）',
       apiKeyPlaceholder: '可留空以从环境变量读取',
       authMode: '认证方式',

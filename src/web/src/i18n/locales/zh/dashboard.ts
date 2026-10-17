@@ -1,7 +1,6 @@
 export default {
   description: '快速了解请求规模与实时运行状态。',
   labels: {
-    providers: 'Provider 数量',
     activeClientAddresses: '活跃来源地址',
     activeClientSessions: '活跃会话',
     uniqueClientAddressesLastHour: '1小时活跃客户端 IP',

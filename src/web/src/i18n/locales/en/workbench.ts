@@ -8,10 +8,6 @@ export default {
     routing: 'Routing',
     routingDesc: 'Decide where requests are forwarded'
   },
-  routingGuide: {
-    flow: "Client-requested model (e.g. claude-sonnet-4) → matched route rule → forwarded to a provider's model",
-    hint: 'Clients request by model name: rules below are matched first, and anything unmatched falls through to the default.'
-  },
   flow: {
     title: 'Request flow',
     clientStep: 'Client model',
@@ -50,7 +46,6 @@ export default {
   },
   defaults: {
     title: 'Default forwarding',
-    description: 'Requests that match no rule below are forwarded here. With a single provider, setting this alone is usually all you need.',
     cardSubtitle: 'Requests that match no rule go here',
     completionLabel: 'Forward to (provider:model)',
     moreLabel: 'More default settings',
@@ -79,12 +74,6 @@ export default {
     emptyTitle: 'No route rules yet',
     emptyDescription: 'Clients send requests by model name — configure here which provider\'s model each should be forwarded to. For example, map claude-sonnet-4 to the provider you just added; model names not listed here use "Default forwarding" above.',
     addFirst: 'Add your first rule'
-  },
-  detail: {
-    routesTitle: 'Routing rules using this provider',
-    routesEmptyHint: "No route rules reference it yet — client requests can't reach this provider.",
-    addRuleCta: 'Add a rule in Routing view',
-    viewRoute: 'Open this rule in the routing view'
   },
   list: {
     emptyHint: 'Add an upstream model service first (Anthropic, OpenAI, or a compatible endpoint), then map client models to it in the Routing view.'

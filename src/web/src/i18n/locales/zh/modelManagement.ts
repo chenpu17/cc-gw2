@@ -1,53 +1,4 @@
 export default {
-  guide: {
-    title: '配置导览',
-    subtitle: '将资源池与流量入口拆开维护，减少信息混排。',
-    description: '先把上游 Provider 配完整，再去路由管理为 /anthropic、/openai 与自定义端点分配模型映射。',
-    endpointBadge: '{{count}} 个路由工作区',
-    providersDescription: '维护 Base URL、鉴权方式、默认模型与模型别名。这一层只定义上游资源。',
-    providersMeta: '当前已配置 {{count}} 个 Provider',
-    routingDescription: '分别管理内置端点与自定义端点的映射、模板和兼容策略。这一层决定对外入口如何分流。',
-    routingMeta: '{{count}} 个工作区，{{dirty}} 个未保存',
-    current: '当前步骤',
-    currentAction: '当前页',
-    openAction: '打开'
-  },
-  overview: {
-    synced: '工作区已同步',
-    unsavedCount: '未保存 {{count}}',
-    providersStat: 'Providers',
-    providersStatHint: '已接入的上游供应池',
-    routeWorkspacesStat: '路由工作区',
-    routeWorkspacesStatHint: '内置端点 + 自定义端点',
-    customEndpointsStat: '自定义端点',
-    customEndpointsStatHint: '额外暴露的接入入口',
-    activeWorkspace: '当前工作区',
-    activeWorkspaceProvider: 'Provider 清单',
-    activeWorkspaceRouting: '路由编辑区',
-    providerAndSystem: '资源与内置路由',
-    providerPoolTag: 'Provider 池',
-    systemEndpointTag: '内置端点',
-    customEndpoints: '自定义端点',
-    customEndpointsHint: '自定义端点保留紧凑横向卡片，便于快速切换、编辑和删除。',
-    headerWithCustom: '优先在此处切换和维护自定义端点，避免主工作区被多列布局挤压。',
-    endpointPaths: '访问路径',
-    protocols: '协议路径',
-    endpointEnabled: '已启用',
-    endpointDisabled: '已停用',
-    endpointProtocols: '{{count}} 条协议路径',
-    endpointNoProtocol: '尚未配置协议路径',
-    endpointMorePaths: '另有 {{count}} 条路径',
-    endpointManagedExternally: '该端点不可删除，仅可调整配置。',
-    suggestionHint: '一键补充该端点常见的源模型写法，减少手工录入。',
-    resourceCardTitle: 'Provider 供应池',
-    resourceCardDescription: 'Provider 只表示上游模型资源与鉴权配置，不直接决定外部请求入口。',
-    entryCardTitle: 'Endpoint 入口层',
-    entryCardDescription: 'Anthropic、OpenAI 与自定义端点才是网关对外暴露的入口；路由与模板都按 endpoint 作用域管理。'
-  },
-  providersSemantics: {
-    title: '先维护 Provider 资源池，再维护 Endpoint 路由',
-    description: '这里配置的是上游供应商、认证方式和模型清单；真正对客户端暴露的仍是内置端点与自定义端点。'
-  },
   targetPicker: {
     helper: '可输入 Provider、模型名或 ID 快速筛选。',
     searchPlaceholder: '搜索 Provider、模型名或 ID',
@@ -111,9 +62,6 @@ export default {
     footerTitle: '路由操作',
     footerDirtyHint: '已修改当前路由规则，请在此处完成保存。',
     footerSavedHint: '当前路由已与服务器保持同步。'
-  },
-  routing: {
-    selectTarget: '请选择目标 Provider:模型'
   },
   openaiCompatibility: {
     title: 'OpenAI 兼容降级',

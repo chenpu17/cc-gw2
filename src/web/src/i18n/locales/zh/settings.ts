@@ -150,12 +150,7 @@ export default {
   },
   routing: {
     title: '模型路由映射',
-    description: '为 Claude Code 发起的模型请求指定实际 Provider 与模型 ID（如将 claude 系列映射至 Kimi）。如需禁用映射，可留空或移除。',
     titleByEndpoint: '{{endpoint}} 路由配置',
-    descriptionByEndpoint: {
-      anthropic: '当 Claude Code 通过 /anthropic 端点请求特定模型时，将根据此映射选择目标 Provider 与模型。',
-      openai: '当 Codex 通过 /openai 端点请求特定模型时，将根据此映射选择目标 Provider 与模型。'
-    },
     add: '新增映射',
     sourcePlaceholder: '如 claude-sonnet-4-5-20250929',
     targetPlaceholder: '如 kimi:kimi-k2-0905-preview',
