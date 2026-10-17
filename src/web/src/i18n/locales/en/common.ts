@@ -64,7 +64,6 @@ export default {
   filters: {
     activeCount: '{{count}} active filters',
     collapse: 'Collapse filters',
-    expand: 'Expand filters',
-    allRequests: 'All requests'
+    expand: 'Expand filters'
   }
 }

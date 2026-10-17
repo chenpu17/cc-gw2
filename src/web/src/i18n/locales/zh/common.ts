@@ -64,7 +64,6 @@ export default {
   filters: {
     activeCount: '{{count}} 个筛选条件',
     collapse: '收起筛选',
-    expand: '展开筛选',
-    allRequests: '全部请求'
+    expand: '展开筛选'
   }
 }

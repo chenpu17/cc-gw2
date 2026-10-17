@@ -115,36 +115,28 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             </div>
           </div>
 
-          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="flex min-h-10 items-center rounded-lg bg-secondary px-3 py-2">
-              {activeFilters.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  {activeFilters.map((f) => (
-                    <Badge
-                      key={f.key}
-                      variant="outline"
-                      role="button"
-                      tabIndex={0}
-                      className="flex cursor-pointer items-center gap-1 border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground/90 transition hover:bg-secondary"
-                      onClick={f.onRemove}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f.onRemove() } }}
-                    >
-                      {f.label}
-                      <X className="h-3 w-3" aria-hidden="true" />
-                    </Badge>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-xs text-muted-foreground">{t('common.filters.allRequests')}</span>
-              )}
+          {/* Rendered only when there is something to summarise: an empty
+              state here was a full-width gray bar reading "全部请求", which
+              looked like an unused input and said nothing the selects below
+              (all set to 全部…) did not already say. */}
+          {activeFilters.length > 0 ? (
+            <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-lg bg-secondary px-3 py-2">
+              {activeFilters.map((f) => (
+                <Badge
+                  key={f.key}
+                  variant="outline"
+                  role="button"
+                  tabIndex={0}
+                  className="flex cursor-pointer items-center gap-1 border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground/90 transition hover:bg-secondary"
+                  onClick={f.onRemove}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f.onRemove() } }}
+                >
+                  {f.label}
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </Badge>
+              ))}
             </div>
-
-            <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
-              <FilterSummary label={t('logs.filters.apiKey')} value={selectedApiKeys.length.toString()} />
-              <FilterSummary label={t('logs.filters.provider')} value={providerFilter === 'all' ? '0' : '1'} />
-              <FilterSummary label={t('logs.filters.endpoint')} value={endpointFilter === 'all' ? '0' : '1'} />
-            </div>
-          </div>
+          ) : null}
 
           <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-secondary px-2 py-1.5">
             {(['all', 'errors', 'today', 'anthropic', 'openai'] as QuickView[]).map((view) => (
@@ -245,20 +237,5 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
         )}
       </CardContent>
     </Card>
-  )
-}
-
-function FilterSummary({
-  label,
-  value
-}: {
-  label: string
-  value: string
-}) {
-  return (
-    <div className="inline-flex items-center gap-1.5 border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground">
-      <span>{label}</span>
-      <span className="metric-number font-semibold text-foreground">{value}</span>
-    </div>
   )
 }
