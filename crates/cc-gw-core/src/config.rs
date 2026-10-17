@@ -225,6 +225,37 @@ impl ProviderConfig {
         }
         view
     }
+
+    /// True when this provider can serve `protocol` natively — no
+    /// cross-protocol conversion: one of its extra endpoints speaks the
+    /// protocol, or the primary surface's wire format already matches.
+    /// Routing uses this to prefer protocol-compatible providers when
+    /// several offer the same model.
+    pub fn serves_protocol_natively(
+        &self,
+        request_protocol: crate::provider::ProviderProtocol,
+    ) -> bool {
+        let marker = protocol_marker(request_protocol);
+        if self
+            .endpoints
+            .iter()
+            .any(|endpoint| endpoint.protocol == marker)
+        {
+            return true;
+        }
+        // Primary surface: None unwraps to "openai" downstream
+        // (`provider_type_name`), so an untyped provider speaks openai-chat.
+        match self.provider_type.as_deref().unwrap_or("openai") {
+            "anthropic" => marker == "anthropic",
+            // openai-chat-compatible dialects (deepseek/kimi/custom/huawei)
+            // share the openai wire format natively.
+            "openai" | "deepseek" | "kimi" | "custom" | "huawei" => marker == "openai",
+            "openai-responses" => marker == "openai-responses",
+            // `aggregate` (and unknown future types) has no upstream surface
+            // of its own — only reachable via the compatibility fallback pass.
+            _ => false,
+        }
+    }
 }
 
 impl Default for ProviderConfig {

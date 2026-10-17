@@ -259,6 +259,7 @@ export default {
     },
     hints: {
       type: '先选择 Provider 模板，可自动填入推荐 Base URL。',
+      typeVendorPinned: '预设创建的厂商类型；切换到协议模板后不再保留。',
       basic: 'ID 用于路由映射；显示名称用于界面展示。',
       auth: '根据上游接口要求选择 Header 认证方式。',
       customProvider: '自定义兼容服务',
@@ -274,6 +275,7 @@ export default {
       label: '显示名称',
       labelPlaceholder: '如 官方主账号',
       baseUrl: 'Base URL',
+      baseUrlPrimary: '主端点 Base URL',
       baseUrlPlaceholder: 'https://api.example.com/v1',
       type: 'Provider 类型',
       apiKey: 'API Key（可选）',
@@ -359,8 +361,8 @@ export default {
     routeExample: '路由映射示例：'
   },
   endpoints: {
-    title: '多协议端点',
-    hint: '为同一上游添加其他协议端点（与主端点共享密钥）。请求协议与某端点匹配时按该端点原生转发，否则经主端点跨协议转换。',
+    title: '额外协议端点',
+    hint: '在上方主端点之外，为同一上游添加其他协议端点（共享密钥）。请求协议与某端点匹配时按该端点原生转发，否则经主端点跨协议转换。',
     add: '添加端点',
     id: '端点 ID',
     idPlaceholder: '如 openai-surface',
@@ -424,7 +426,28 @@ export default {
     discard: '放弃修改',
     unsavedTitle: '放弃未保存的修改？',
     unsavedBody: '详情面板有未保存的修改，切换后将丢失。',
-    unsavedConfirm: '放弃修改并离开'
+    unsavedConfirm: '放弃修改并离开',
+    testOkShort: '已连通',
+    testFailedShort: '连接失败'
+  },
+  profile: {
+    edit: '编辑',
+    cancelEdit: '退出编辑',
+    editingTag: '编辑中',
+    connection: '连接',
+    primaryEndpoint: '主端点',
+    protocolEndpoint: '协议端点',
+    advanced: '高级',
+    namedKeys: '{{count}} 个命名密钥 · 当前 {{id}}',
+    singleKey: '已配置 API Key',
+    noKey: '未配置密钥',
+    rpmWait: '排队上限 {{seconds}}s',
+    headers: '{{count}} 个自定义 Header',
+    defaultIs: '默认模型：{{model}}',
+    defaultTag: '默认',
+    noModelsHint: '尚未配置模型。点击「编辑」添加模型，或用「探测导入」从上游拉取。',
+    copy: '复制',
+    typeFootnote: '厂商类型：{{type}}'
   },
   presets: {
     title: '新增 Provider',
@@ -433,6 +456,8 @@ export default {
     templatePlaceholder: '选择模板或手动配置',
     groupPresets: '预设模板',
     groupManual: '手动配置',
+    manualOpenAiCompatible: 'OpenAI 兼容',
+    manualAnthropicCompatible: 'Anthropic 兼容',
     noModelProbeNote: '该服务无模型列表接口，创建后请手动填写模型。',
     createAction: '创建'
   },

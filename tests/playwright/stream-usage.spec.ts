@@ -26,19 +26,18 @@ test('streamUsage switch renders and persists via provider panel', async ({ page
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
   await createDialog.getByRole('combobox', { name: '模板' }).click()
-  await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+  await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
   await createDialog.getByPlaceholder('如 openai').fill(providerId)
   await createDialog.getByPlaceholder('https://api.example.com/v1').fill('http://127.0.0.1:9/v1')
   await createDialog.getByRole('button', { name: '创建' }).click()
   await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
 
-  // 详情面板内联编辑：编辑模式高级选项默认展开（useProviderForm
-  // advancedOpen 初始 = edit），开关默认关闭。
+  // 详情面板内联编辑：高级选项默认折叠，展开后开关默认关闭。
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
   const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
   const usageSwitch = panel.getByRole('switch', { name: '流式请求携带 usage 统计' })
-  await expect(advanced).toBeVisible()
+  await advanced.locator('summary').click()
   await expect(usageSwitch).toBeVisible()
   await expect(usageSwitch).not.toBeChecked()
 

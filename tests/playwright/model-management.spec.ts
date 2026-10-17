@@ -52,7 +52,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
   await expect(createDialog).toBeVisible()
   await createDialog.getByRole('combobox', { name: '模板' }).click()
-  await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+  await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
   // 模板自动预填 Base URL（可改写为 stub 地址）
   await expect(createDialog.getByPlaceholder('https://api.example.com/v1')).toHaveValue('https://api.openai.com/v1')
   await createDialog.getByPlaceholder('如 openai').fill(providerId)
@@ -100,6 +100,7 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   )
 
   // 面板内改显示名称并保存
+  await panel.getByTestId('provider-edit').click()
   await panel.getByPlaceholder('如 官方主账号').fill('Playwright Provider Updated')
   await panel.getByTestId('provider-save').click()
   await expect(page.getByText('已更新 Provider：Playwright Provider Updated')).toBeVisible()
@@ -223,7 +224,7 @@ test('model management supports provider edit, delete, route reset, and preset d
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
   await createDialog.getByRole('combobox', { name: '模板' }).click()
-  await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+  await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
   await createDialog.getByPlaceholder('如 openai').fill(providerId)
   await createDialog.getByPlaceholder('https://api.example.com/v1').fill(providerBaseUrl)
   await createDialog.getByRole('button', { name: '创建' }).click()
@@ -238,15 +239,17 @@ test('model management supports provider edit, delete, route reset, and preset d
   await panel.getByTestId('provider-save').click()
   await expect(page.getByText(`已更新 Provider：${providerId}`)).toBeVisible()
 
-  // 面板内改显示名称并保存，rail 行随配置轮询更新
+  // 面板内改显示名称并保存，rail 行随配置轮询更新（保存后回只读档案，
+  // 再次编辑需显式进入）
+  await panel.getByTestId('provider-edit').click()
   await panel.getByPlaceholder('如 官方主账号').fill(`${providerId}-edited`)
   await panel.getByTestId('provider-save').click()
   await expect(page.getByText(`已更新 Provider：${providerId}-edited`)).toBeVisible()
   const editedRow = page.getByTestId('provider-rail-row').filter({ hasText: `${providerId}-edited` })
   await expect(editedRow).toBeVisible()
-  // 连接测试从面板 header 发起
+  // 连接测试从面板 header 发起（保存后处于只读档案，结果以头部徽章展示）
   await panel.getByRole('button', { name: '测试连接' }).first().click()
-  await expect(panel.getByText('连接成功')).toBeVisible()
+  await expect(panel.getByText('已连通')).toBeVisible()
 
   // 端点在「路由」视图创建，点击端点行选中它（内联三栏工作台管理规则）
   await page.getByRole('tab', { name: '路由' }).click()
@@ -386,6 +389,8 @@ test('provider models can be probed and selectively imported', async ({ page, re
   await railRow.click()
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
+  // 探测入口在编辑态模型区
+  await panel.getByTestId('provider-edit').click()
 
   // 打开探测弹窗（stub 上游返回 stub-model + stub-model-probe）
   await panel.getByRole('button', { name: '探测模型' }).click()

@@ -88,7 +88,8 @@ export function useProviderForm({ mode, provider, existingProviderIds, providers
   const { t } = useTranslation()
   const [form, setForm] = useState<FormState>(() => buildInitialState(provider))
   const [errors, setErrors] = useState<FormErrors>({})
-  const [advancedOpen, setAdvancedOpen] = useState(mode === 'edit')
+  // Advanced options start collapsed everywhere — rare tuning, not setup.
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const providerIdRef = useRef<HTMLInputElement | null>(null)
 
   const resetForm = useCallback(() => {

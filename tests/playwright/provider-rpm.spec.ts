@@ -26,15 +26,17 @@ test('provider RPM limit fields render and persist via provider panel', async ({
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
   await createDialog.getByRole('combobox', { name: '模板' }).click()
-  await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+  await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
   await createDialog.getByPlaceholder('如 openai').fill(providerId)
   await createDialog.getByPlaceholder('https://api.example.com/v1').fill('http://127.0.0.1:9/v1')
   await createDialog.getByRole('button', { name: '创建' }).click()
   await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
 
-  // 详情面板：高级选项默认展开，填写 RPM 上限与最长等待 + 一个模型
+  // 详情面板：高级选项默认折叠，展开后填写 RPM 上限与最长等待 + 一个模型
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
+  const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
+  await advanced.locator('summary').click()
   await expect(panel.getByText('RPM 限流（排队等待）')).toBeVisible()
   await panel.getByPlaceholder('如 60').fill('60')
   await panel.getByPlaceholder('默认 30').fill('45')
@@ -59,6 +61,8 @@ test('provider RPM limit fields render and persist via provider panel', async ({
   // 面板清空两个字段 → 保存后回到 null（关闭限流）
   await page.getByTestId('provider-rail-row').filter({ hasText: providerId }).click()
   await expect(page.getByTestId('provider-detail-panel')).toBeVisible()
+  // 保存后回到只读档案，重新进入编辑（面板未重挂载，高级选项仍保持展开）
+  await panel.getByTestId('provider-edit').click()
   await panel.getByPlaceholder('如 60').fill('')
   await panel.getByPlaceholder('默认 30').fill('')
   await panel.getByTestId('provider-save').click()
@@ -158,7 +162,7 @@ test('RPM limit set via WebUI panel throttles real client traffic', async ({ pag
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
   await createDialog.getByRole('combobox', { name: '模板' }).click()
-  await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+  await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
   await createDialog.getByPlaceholder('如 openai').fill(providerId)
   await createDialog.getByPlaceholder('https://api.example.com/v1').fill(
     `http://127.0.0.1:${(harness as any).stubPort}`
@@ -170,6 +174,9 @@ test('RPM limit set via WebUI panel throttles real client traffic', async ({ pag
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
   await panel.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
+  // 高级选项默认折叠，展开后填写 RPM 字段
+  const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
+  await advanced.locator('summary').click()
   await panel.getByPlaceholder('如 60').fill('1')
   await panel.getByPlaceholder('默认 30').fill('5')
   await panel.getByRole('button', { name: '新增模型' }).click()

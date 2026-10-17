@@ -7,8 +7,25 @@
 //! listed here speak `/v1/messages` only. Aliyun Bailian additionally has no
 //! model-list route at all, so its preset carries `noModelProbe` and the
 //! console skips the probe step.
+//!
+//! Vendors that officially serve both wire protocols carry `endpoints`
+//! entries so a preset-created provider speaks Anthropic AND OpenAI natively
+//! from the start (the primary surface is one protocol, extras add the rest;
+//! keys are shared across surfaces).
 
 use serde::Serialize;
+
+/// One extra protocol surface pre-filled by a preset — lands in the created
+/// provider's `endpoints[]` verbatim.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetEndpoint {
+    pub id: &'static str,
+    /// Protocol marker matching `ProviderEndpointConfig.protocol`
+    /// ("anthropic" | "openai" | "openai-responses").
+    pub protocol: &'static str,
+    pub base_url: &'static str,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +39,8 @@ pub struct ProviderPreset {
     #[serde(rename = "type")]
     pub provider_type: &'static str,
     pub base_url: &'static str,
+    /// Extra protocol surfaces the vendor also serves (shared keys).
+    pub endpoints: &'static [PresetEndpoint],
     /// Balance adapter id; None = the preset's balance is not queryable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub balance_adapter: Option<&'static str>,
@@ -43,6 +62,7 @@ static PRESETS: &[ProviderPreset] = &[
         description: "Anthropic 兼容端点，面向编码代理的精选模型（常含免费档）",
         provider_type: "anthropic",
         base_url: "https://opencode.ai/zen",
+        endpoints: &[],
         balance_adapter: None,
         no_model_probe: false,
         default_models: &[],
@@ -50,9 +70,14 @@ static PRESETS: &[ProviderPreset] = &[
     ProviderPreset {
         id: "volcano-coding",
         label: "火山方舟 Coding Plan",
-        description: "字节火山方舟 Coding 套餐，Anthropic 兼容端点",
+        description: "字节火山方舟 Coding 套餐，Anthropic + OpenAI 双协议端点",
         provider_type: "anthropic",
         base_url: "https://ark.cn-beijing.volces.com/api/coding",
+        endpoints: &[PresetEndpoint {
+            id: "openai",
+            protocol: "openai",
+            base_url: "https://ark.cn-beijing.volces.com/api/coding/v3",
+        }],
         balance_adapter: None,
         no_model_probe: false,
         default_models: &[],
@@ -60,9 +85,14 @@ static PRESETS: &[ProviderPreset] = &[
     ProviderPreset {
         id: "zhipu",
         label: "智谱 GLM",
-        description: "智谱开放平台 Anthropic 兼容端点",
+        description: "智谱开放平台，Anthropic + OpenAI 双协议端点",
         provider_type: "anthropic",
         base_url: "https://open.bigmodel.cn/api/anthropic",
+        endpoints: &[PresetEndpoint {
+            id: "openai",
+            protocol: "openai",
+            base_url: "https://open.bigmodel.cn/api/paas/v4",
+        }],
         balance_adapter: None,
         no_model_probe: false,
         default_models: &[],
@@ -70,9 +100,14 @@ static PRESETS: &[ProviderPreset] = &[
     ProviderPreset {
         id: "aliyun-bailian",
         label: "阿里云百炼",
-        description: "阿里云百炼 Anthropic 兼容端点；无模型列表接口，需手动填模型",
+        description: "阿里云百炼，Anthropic + OpenAI 双协议端点；无模型列表接口，需手动填模型",
         provider_type: "anthropic",
         base_url: "https://dashscope.aliyuncs.com/apps/anthropic",
+        endpoints: &[PresetEndpoint {
+            id: "openai",
+            protocol: "openai",
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        }],
         balance_adapter: None,
         no_model_probe: true,
         default_models: &[],
@@ -80,9 +115,14 @@ static PRESETS: &[ProviderPreset] = &[
     ProviderPreset {
         id: "kimi",
         label: "Kimi (Moonshot)",
-        description: "月之暗面开放平台，OpenAI 兼容端点，支持余额查询",
+        description: "月之暗面开放平台，OpenAI + Anthropic 双协议端点，支持余额查询",
         provider_type: "openai",
         base_url: "https://api.moonshot.cn/v1",
+        endpoints: &[PresetEndpoint {
+            id: "anthropic",
+            protocol: "anthropic",
+            base_url: "https://api.moonshot.cn/anthropic",
+        }],
         balance_adapter: Some("moonshot"),
         no_model_probe: false,
         default_models: &[],
@@ -90,9 +130,14 @@ static PRESETS: &[ProviderPreset] = &[
     ProviderPreset {
         id: "deepseek",
         label: "DeepSeek",
-        description: "DeepSeek 开放平台，OpenAI 兼容端点，支持余额查询",
+        description: "DeepSeek 开放平台，OpenAI + Anthropic 双协议端点，支持余额查询",
         provider_type: "openai",
         base_url: "https://api.deepseek.com/v1",
+        endpoints: &[PresetEndpoint {
+            id: "anthropic",
+            protocol: "anthropic",
+            base_url: "https://api.deepseek.com/anthropic",
+        }],
         balance_adapter: Some("deepseek"),
         no_model_probe: false,
         default_models: &[],
@@ -103,6 +148,7 @@ static PRESETS: &[ProviderPreset] = &[
         description: "SiliconFlow 聚合平台，OpenAI 兼容端点，支持余额查询",
         provider_type: "openai",
         base_url: "https://api.siliconflow.cn/v1",
+        endpoints: &[],
         balance_adapter: Some("siliconflow"),
         no_model_probe: false,
         default_models: &[],
@@ -113,6 +159,7 @@ static PRESETS: &[ProviderPreset] = &[
         description: "OpenRouter 聚合平台，OpenAI 兼容端点，支持额度查询",
         provider_type: "openai",
         base_url: "https://openrouter.ai/api/v1",
+        endpoints: &[],
         balance_adapter: Some("openrouter"),
         no_model_probe: false,
         default_models: &[],
@@ -136,6 +183,26 @@ mod tests {
                 preset.id,
                 preset.provider_type
             );
+            for endpoint in preset.endpoints {
+                assert!(
+                    matches!(
+                        endpoint.protocol,
+                        "anthropic" | "openai" | "openai-responses"
+                    ),
+                    "{} endpoint {} has invalid protocol {}",
+                    preset.id,
+                    endpoint.id,
+                    endpoint.protocol
+                );
+                assert!(endpoint.base_url.starts_with("https://"));
+                // A same-protocol surface would shadow the primary — extras
+                // only exist to add the OTHER wire protocol.
+                assert_ne!(
+                    endpoint.protocol, preset.provider_type,
+                    "{} adds a redundant {} surface",
+                    preset.id, endpoint.protocol
+                );
+            }
             if let Some(adapter) = preset.balance_adapter {
                 assert!(crate::balance::BALANCE_ADAPTERS.contains(&adapter));
             }
@@ -147,5 +214,18 @@ mod tests {
             .map(|preset| preset.id)
             .collect();
         assert_eq!(no_probe, vec!["aliyun-bailian"]);
+
+        // Dual-protocol vendors: presets whose primary + endpoints together
+        // cover both Anthropic and OpenAI surfaces.
+        let mut dual: Vec<&str> = presets
+            .iter()
+            .filter(|preset| !preset.endpoints.is_empty())
+            .map(|preset| preset.id)
+            .collect();
+        dual.sort_unstable();
+        assert_eq!(
+            dual,
+            vec!["aliyun-bailian", "deepseek", "kimi", "volcano-coding", "zhipu"]
+        );
     }
 }

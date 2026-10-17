@@ -39,7 +39,7 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await page.getByRole('button', { name: '新增提供商' }).first().click()
     const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
     await createDialog.getByRole('combobox', { name: '模板' }).click()
-    await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+    await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
     await createDialog.getByPlaceholder('如 openai').fill(PROVIDER_ID)
     await createDialog.getByPlaceholder('https://api.example.com/v1').fill(`http://127.0.0.1:${harness.stubPort}`)
     await createDialog.getByRole('button', { name: '创建' }).click()
@@ -127,10 +127,12 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await page.getByTestId('provider-rail-row').filter({ hasText: PROVIDER_ID }).click()
     const panel = page.getByTestId('provider-detail-panel')
     await expect(panel).toBeVisible()
-    // 编辑模式高级选项默认展开（useProviderForm advancedOpen 初始 = edit）。
+    // 面板默认只读档案，先进入编辑；高级选项默认折叠，展开后截图。
+    await panel.getByTestId('provider-edit').click()
     // 面板里每个模型行也有同名「高级选项」Disclosure，取第一个（基础区认证下的）。
     const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
     const usageToggle = panel.getByRole('switch', { name: '流式请求携带 usage 统计' })
+    await advanced.locator('summary').click()
     await expect(advanced).toBeVisible()
     await expect(usageToggle).toBeVisible()
     await page.waitForTimeout(200)
@@ -147,6 +149,8 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await page.getByTestId('provider-rail-row').filter({ hasText: PROVIDER_ID }).click()
     const panel = page.getByTestId('provider-detail-panel')
     await expect(panel).toBeVisible()
+    // 探测按钮在编辑态模型区，先进入编辑
+    await panel.getByTestId('provider-edit').click()
     await panel.getByRole('button', { name: '探测模型' }).click()
     const dialog = page.getByRole('dialog', { name: '探测可用模型' })
     await expect(dialog).toBeVisible()

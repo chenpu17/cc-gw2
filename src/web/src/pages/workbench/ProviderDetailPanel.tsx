@@ -3,16 +3,25 @@ import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { cn } from '@/lib/utils'
-import type { ProviderConfig } from '@/types/providers'
+import type { ProviderConfig, ProviderEndpointProtocol } from '@/types/providers'
 import { BasicsStep, ModelsStep, providerTypeLabel } from './ProviderDrawerSteps'
 import { AggregateModelsStep } from './AggregateModelsStep'
 import { ProbeModelsDialog } from './ProbeModelsDialog'
 import { ProviderBalanceSection } from './ProviderBalanceSection'
+import { ProviderProfileView } from './ProviderProfileView'
 import { ProviderSurfacesSection } from './ProviderSurfacesSection'
 import type { ProviderTestResult } from './shared'
 import type { TargetOption } from './TargetCombobox'
 import { useProviderDetailState } from './useProviderDetailState'
+
+/** Compact protocol names for the header fact chips (brand names stay untranslated). */
+const ENDPOINT_PROTOCOL_SHORT: Record<ProviderEndpointProtocol, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI Chat',
+  'openai-responses': 'Responses'
+}
 
 interface ProviderDetailPanelProps {
   provider: ProviderConfig
@@ -26,12 +35,16 @@ interface ProviderDetailPanelProps {
   onSubmit: (payload: ProviderConfig) => Promise<void>
   /** Reports draft dirtiness upward so navigation away can guard against loss. */
   onDirtyChange?: (dirty: boolean) => void
+  /** Land in edit mode — used right after creation (and other edit intents). */
+  startInEdit?: boolean
 }
 
 /**
- * Right-hand detail surface of the providers master-detail layout. All
- * sections edit one shared draft inline (no wizard steps, no drawer); the
- * sticky footer saves or discards the whole draft at once.
+ * Right-hand detail surface of the providers master-detail layout.
+ * View-first: the default state is a read-only profile; editing is an
+ * explicit mode that swaps in the inline draft form (BasicsStep + keys +
+ * balance + models) with the sticky save/discard footer. Saving or
+ * discarding returns to the profile.
  */
 export function ProviderDetailPanel({
   provider,
@@ -41,10 +54,13 @@ export function ProviderDetailPanel({
   onTest,
   onRequestDelete,
   onSubmit,
-  onDirtyChange
+  onDirtyChange,
+  startInEdit = false
 }: ProviderDetailPanelProps) {
   const { t } = useTranslation()
   const [probeOpen, setProbeOpen] = useState(false)
+  const [mode, setMode] = useState<'view' | 'edit'>(startInEdit ? 'edit' : 'view')
+  const [confirmExitEdit, setConfirmExitEdit] = useState(false)
   const { providerForm, dirty, saving, saveError, save, discard } = useProviderDetailState({
     provider,
     providers: allProviders,
@@ -52,6 +68,30 @@ export function ProviderDetailPanel({
   })
   const { form, errors, advancedOpen, providerIdRef } = providerForm
   const isAggregate = form.type === 'aggregate'
+
+  // Editing intent from outside (e.g. NoModelConfiguredDialog) can arrive
+  // while this provider is already selected — re-enter edit mode.
+  useEffect(() => {
+    if (startInEdit) setMode('edit')
+  }, [startInEdit])
+
+  const handleSave = async () => {
+    const ok = await save()
+    if (ok) setMode('view')
+  }
+
+  const handleDiscard = () => {
+    discard()
+    setMode('view')
+  }
+
+  const handleExitEdit = () => {
+    if (dirty) {
+      setConfirmExitEdit(true)
+      return
+    }
+    setMode('view')
+  }
 
   // Unmount (provider switch/delete) must not leave a stale dirty flag behind.
   useEffect(() => {
@@ -112,6 +152,9 @@ export function ProviderDetailPanel({
     onRemoveModel: providerForm.handleRemoveModel,
     onModelNonStreamViaStreamChange: providerForm.handleModelNonStreamViaStreamChange,
     onSetDefaultModel: providerForm.handleSetDefaultModel,
+    onEndpointChange: providerForm.handleEndpointChange,
+    onAddEndpoint: providerForm.handleAddEndpoint,
+    onRemoveEndpoint: providerForm.handleRemoveEndpoint,
     memberOptions,
     onAddMember: providerForm.handleAddMember,
     onRemoveMember: providerForm.handleRemoveMember,
@@ -138,6 +181,12 @@ export function ProviderDetailPanel({
         }
   }
 
+  const isEditing = mode === 'edit'
+  // Header facts follow the live draft while editing, the saved profile while viewing.
+  const factType = isEditing ? form.type : provider.type
+  const factEndpoints = isEditing ? form.endpoints : provider.endpoints ?? []
+  const factModelCount = isEditing ? form.models.length : (provider.models ?? []).length
+
   return (
     <Card className="overflow-hidden" data-testid="provider-detail-panel">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-secondary/50 px-5 py-4">
@@ -146,9 +195,44 @@ export function ProviderDetailPanel({
             <h2 className="truncate text-base font-semibold tracking-[-0.02em]">
               {provider.label || provider.id}
             </h2>
+            {testResult ? (
+              testResult.ok ? (
+                <Badge variant="success" className="shrink-0 text-[10px]">
+                  {testResult.durationMs !== undefined
+                    ? `${t('providers.masterDetail.testOkShort')} · ${testResult.durationMs}ms`
+                    : t('providers.masterDetail.testOkShort')}
+                </Badge>
+              ) : (
+                <Badge
+                  variant="destructive"
+                  className="shrink-0 text-[10px]"
+                  title={testResult.message ?? undefined}
+                >
+                  {t('providers.masterDetail.testFailedShort')}
+                </Badge>
+              )
+            ) : null}
+            {isEditing ? (
+              <Badge variant="outline" className="shrink-0 text-[10px] text-muted-foreground">
+                {t('providers.profile.editingTag')}
+              </Badge>
+            ) : null}
+          </div>
+          {/* Glance row: protocol surface + model count, visible without scrolling. */}
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <Badge variant="secondary" className="text-[10px]">
-              {providerTypeLabel(provider.type, t)}
+              {providerTypeLabel(factType, t)}
             </Badge>
+            {factType === 'aggregate'
+              ? null
+              : factEndpoints.map((endpoint) => (
+                  <Badge key={endpoint.id} variant="outline" className="text-[10px]">
+                    + {ENDPOINT_PROTOCOL_SHORT[endpoint.protocol]}
+                  </Badge>
+                ))}
+            <span className="text-[11px] text-muted-foreground">
+              {t('providers.masterDetail.modelsMeta', { count: factModelCount })}
+            </span>
           </div>
           <p className="mt-0.5 font-mono text-xs text-muted-foreground">{provider.id}</p>
         </div>
@@ -165,6 +249,22 @@ export function ProviderDetailPanel({
               {testing ? t('common.actions.testingConnection') : t('providers.actions.test')}
             </Button>
           )}
+          {isEditing ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="bg-card text-xs"
+              onClick={handleExitEdit}
+              disabled={saving}
+            >
+              {t('providers.profile.cancelEdit')}
+            </Button>
+          ) : (
+            <Button type="button" size="sm" data-testid="provider-edit" onClick={() => setMode('edit')}>
+              {t('providers.profile.edit')}
+            </Button>
+          )}
           <Button
             type="button"
             variant="ghost"
@@ -179,39 +279,40 @@ export function ProviderDetailPanel({
       </header>
 
       <CardContent className="p-5">
-        <div className="space-y-8">
-          <BasicsStep {...stepProps} />
-          {isAggregate ? null : (
-            <>
-              <ProviderSurfacesSection
-                form={form}
-                errors={errors}
-                onEndpointChange={providerForm.handleEndpointChange}
-                onAddEndpoint={providerForm.handleAddEndpoint}
-                onRemoveEndpoint={providerForm.handleRemoveEndpoint}
-                onKeyChange={providerForm.handleKeyChange}
-                onAddKey={providerForm.handleAddKey}
-                onRemoveKey={providerForm.handleRemoveKey}
-              />
-              <ProviderBalanceSection
-                providerId={provider.id}
-                adapter={form.balanceAdapter}
-                savedAdapter={provider.balanceAdapter}
-                onAdapterChange={providerForm.handleBalanceAdapterChange}
-              />
-            </>
-          )}
-          {isAggregate ? <AggregateModelsStep {...stepProps} /> : <ModelsStep {...stepProps} />}
-        </div>
+        {isEditing ? (
+          <div className="space-y-5">
+            <BasicsStep {...stepProps} />
+            {isAggregate ? null : (
+              <>
+                <ProviderSurfacesSection
+                  form={form}
+                  errors={errors}
+                  onKeyChange={providerForm.handleKeyChange}
+                  onAddKey={providerForm.handleAddKey}
+                  onRemoveKey={providerForm.handleRemoveKey}
+                />
+                <ProviderBalanceSection
+                  providerId={provider.id}
+                  adapter={form.balanceAdapter}
+                  savedAdapter={provider.balanceAdapter}
+                  onAdapterChange={providerForm.handleBalanceAdapterChange}
+                />
+              </>
+            )}
+            {isAggregate ? <AggregateModelsStep {...stepProps} /> : <ModelsStep {...stepProps} />}
+          </div>
+        ) : (
+          <ProviderProfileView provider={provider} />
+        )}
       </CardContent>
 
-      {dirty || saveError ? (
+      {isEditing && (dirty || saveError) ? (
         <footer className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-card px-5 py-3">
           <div className="min-w-0 text-xs">
             <span
               className={cn(
                 'font-medium',
-                saveError ? 'text-destructive' : 'text-primary'
+                saveError ? 'text-destructive' : 'text-foreground'
               )}
               aria-live="polite"
             >
@@ -226,17 +327,31 @@ export function ProviderDetailPanel({
               variant="outline"
               size="sm"
               className="bg-card text-xs"
-              onClick={discard}
+              onClick={handleDiscard}
               disabled={saving}
             >
               {t('providers.masterDetail.discard')}
             </Button>
-            <Button type="button" size="sm" data-testid="provider-save" onClick={() => void save()} disabled={saving}>
+            <Button type="button" size="sm" data-testid="provider-save" onClick={() => void handleSave()} disabled={saving}>
               {saving ? t('common.actions.saving') : t('providers.masterDetail.save')}
             </Button>
           </div>
         </footer>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmExitEdit}
+        onOpenChange={setConfirmExitEdit}
+        title={t('providers.masterDetail.unsavedTitle')}
+        description={t('providers.masterDetail.unsavedBody')}
+        confirmLabel={t('providers.masterDetail.unsavedConfirm')}
+        cancelLabel={t('common.actions.cancel')}
+        onConfirm={() => {
+          discard()
+          setMode('view')
+          setConfirmExitEdit(false)
+        }}
+      />
 
       <ProbeModelsDialog
         open={probeOpen}

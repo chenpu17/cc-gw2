@@ -261,6 +261,7 @@ export default {
     },
     hints: {
       type: 'Start from a provider template to prefill the recommended Base URL.',
+      typeVendorPinned: 'Vendor type from preset creation; switching to a protocol template drops it.',
       basic: 'The ID is used by routing rules; the display name is used in the UI.',
       auth: 'Pick the header strategy expected by the upstream API.',
       customProvider: 'Custom compatible service',
@@ -276,6 +277,7 @@ export default {
       label: 'Display name',
       labelPlaceholder: 'e.g. OpenAI Official',
       baseUrl: 'Base URL',
+      baseUrlPrimary: 'Primary endpoint URL',
       baseUrlPlaceholder: 'https://api.example.com/v1',
       type: 'Provider type',
       apiKey: 'API Key (optional)',
@@ -365,8 +367,8 @@ export default {
     routeExample: 'Route Mapping Example:'
   },
   endpoints: {
-    title: 'Protocol endpoints',
-    hint: 'Add extra protocol surfaces for the same upstream (they share the keys below). Requests whose protocol matches an endpoint are forwarded natively via it; others go through the primary endpoint with cross-protocol conversion.',
+    title: 'Extra protocol endpoints',
+    hint: 'Supplement the primary endpoint above with additional protocol surfaces for the same upstream (they share the keys below). Requests whose protocol matches one of these are forwarded natively; others fall back to the primary endpoint with cross-protocol conversion.',
     add: 'Add endpoint',
     id: 'Endpoint ID',
     idPlaceholder: 'e.g. openai-surface',
@@ -432,7 +434,30 @@ export default {
     discard: 'Discard changes',
     unsavedTitle: 'Discard unsaved changes?',
     unsavedBody: 'The detail panel has unsaved changes that will be lost when you switch away.',
-    unsavedConfirm: 'Discard and leave'
+    unsavedConfirm: 'Discard and leave',
+    testOkShort: 'Connected',
+    testFailedShort: 'Test failed'
+  },
+  profile: {
+    edit: 'Edit',
+    cancelEdit: 'Stop editing',
+    editingTag: 'Editing',
+    connection: 'Connection',
+    primaryEndpoint: 'Primary',
+    protocolEndpoint: 'Endpoint',
+    advanced: 'Advanced',
+    namedKeys_one: '{{count}} named key · active: {{id}}',
+    namedKeys_other: '{{count}} named keys · active: {{id}}',
+    singleKey: 'API key set',
+    noKey: 'no key configured',
+    rpmWait: 'queue up to {{seconds}}s',
+    headers_one: '{{count}} custom header',
+    headers_other: '{{count}} custom headers',
+    defaultIs: 'Default: {{model}}',
+    defaultTag: 'Default',
+    noModelsHint: 'No models yet. Click "Edit" to add some, or probe the upstream list.',
+    copy: 'Copy',
+    typeFootnote: 'Vendor type: {{type}}'
   },
   presets: {
     title: 'Add provider',
@@ -441,6 +466,8 @@ export default {
     templatePlaceholder: 'Pick a template or configure manually',
     groupPresets: 'Preset templates',
     groupManual: 'Manual setup',
+    manualOpenAiCompatible: 'OpenAI compatible',
+    manualAnthropicCompatible: 'Anthropic compatible',
     noModelProbeNote: 'This service has no model-list endpoint; fill in models manually after creation.',
     createAction: 'Create',
     catalog: {

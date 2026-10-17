@@ -62,7 +62,7 @@ pub fn build_models_response_for_endpoint(
             // reflects what the endpoint would actually forward to. Wildcard
             // targets (`provider:*`) have no concrete model without a
             // requested-model context and resolve to None here.
-            if let Some(target) = resolve_by_identifier(default, &config.providers, None) {
+            if let Some(target) = resolve_by_identifier(default, &config.providers, None, None) {
                 models
                     .entry(target.model_id.clone())
                     .or_default()

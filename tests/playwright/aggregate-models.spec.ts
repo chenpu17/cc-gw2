@@ -138,7 +138,7 @@ test('aggregate provider can be configured via the drawer and serves traffic', a
 
   // 手动配置组选「Aggregate」：隐藏 Base URL，展示聚合说明文案
   await createDialog.getByRole('combobox', { name: '模板' }).click()
-  await page.getByRole('option', { name: 'Aggregate', exact: true }).click()
+  await page.getByRole('option', { name: '聚合', exact: true }).click()
   await expect(createDialog.getByText('聚合供应商没有自己的上游地址与密钥')).toBeVisible()
   await expect(createDialog.getByPlaceholder('https://api.example.com/v1')).toHaveCount(0)
   await createDialog.getByPlaceholder('如 openai').fill('agg-ui')

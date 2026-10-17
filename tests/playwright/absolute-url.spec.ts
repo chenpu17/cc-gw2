@@ -28,7 +28,7 @@ test('useAbsoluteUrl switch renders, persists, and bypasses path suffix end-to-e
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const createDialog = page.getByRole('dialog', { name: '新增 Provider' })
   await createDialog.getByRole('combobox', { name: '模板' }).click()
-  await page.getByRole('option', { name: 'OpenAI', exact: true }).click()
+  await page.getByRole('option', { name: 'OpenAI 兼容', exact: true }).click()
   await createDialog.getByPlaceholder('如 openai').fill(providerId)
   // baseUrl 只填到 stub 根；不勾选时网关会追加 /v1/chat/completions（stub 200），
   // 勾选时原样用根路径（stub 对 POST / 返回 404），两者可区分。
@@ -37,13 +37,13 @@ test('useAbsoluteUrl switch renders, persists, and bypasses path suffix end-to-e
   await expect(page.getByText(`已添加 Provider：${providerId}`)).toBeVisible()
 
   // 详情面板内联编辑：密钥 + 高级选项里的「使用绝对路径」开关。
-  // 编辑模式高级选项默认展开（useProviderForm advancedOpen 初始 = edit）。
+  // 高级选项默认折叠，先展开。
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
   await panel.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
   const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
+  await advanced.locator('summary').click()
   const absoluteSwitch = panel.getByRole('switch', { name: '使用绝对路径' })
-  await expect(advanced).toBeVisible()
   await expect(absoluteSwitch).toBeVisible()
   await expect(absoluteSwitch).not.toBeChecked()
   await absoluteSwitch.click()

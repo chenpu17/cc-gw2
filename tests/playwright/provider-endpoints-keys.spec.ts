@@ -55,8 +55,8 @@ test('preset template create fills the detail panel and config', async ({ page, 
   const { presets } = await presetsResponse.json()
   expect(presets.length).toBe(8)
 
-  // DeepSeek 预设：类型/Base URL/余额适配器一并预填（预设选项的可访问名 =
-  // 标签 + 描述，需按描述消歧，避免命中手动配置组里的 DeepSeek 类型）
+  // DeepSeek 预设：类型/Base URL/余额适配器一并预填（手动配置组只有协议
+  // 模板，厂商类型只存在于预设目录）
   await createDialog.getByRole('combobox', { name: '模板' }).click()
   await page.getByRole('option', { name: /DeepSeek.*开放平台/ }).click()
   await expect(createDialog.getByPlaceholder('https://api.example.com/v1')).toHaveValue('https://api.deepseek.com/v1')
@@ -75,6 +75,10 @@ test('preset template create fills the detail panel and config', async ({ page, 
   expect(created.type).toBe('openai')
   expect(created.baseUrl).toBe('https://api.deepseek.com/v1')
   expect(created.balanceAdapter).toBe('deepseek')
+  // 双协议预设：Anthropic 端点一并落库（同密钥，原生转发）
+  expect(created.endpoints).toEqual([
+    { id: 'anthropic', protocol: 'anthropic', baseUrl: 'https://api.deepseek.com/anthropic', label: null },
+  ])
 })
 
 test('dual-endpoint provider routes native protocols and switches keys', async ({ page, request }) => {
@@ -140,6 +144,8 @@ test('dual-endpoint provider routes native protocols and switches keys', async (
   await page.getByTestId('provider-rail-row').filter({ hasText: 'Dual Surface' }).click()
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
+  // 面板默认只读档案，显式进入编辑
+  await panel.getByTestId('provider-edit').click()
   await expect(panel.getByTestId('provider-key-row')).toHaveCount(2)
   const keyRowB = panel.getByTestId('provider-key-row').nth(1)
   await keyRowB.getByLabel('生效').check()
@@ -164,7 +170,9 @@ test('dual-endpoint provider routes native protocols and switches keys', async (
     .pop()
   expect(switchedHit.authorization).toBe('Bearer sk-beta')
 
-  // 删除当前激活的 key-b → 剩余首把（key-a）自动晋升为生效
+  // 删除当前激活的 key-b → 剩余首把（key-a）自动晋升为生效（保存后回档案态，
+  // 重新进入编辑）
+  await panel.getByTestId('provider-edit').click()
   const activeRow = panel.getByTestId('provider-key-row').nth(1)
   await activeRow.getByRole('button', { name: '删除' }).click()
   await panel.getByTestId('provider-save').click()
@@ -196,6 +204,7 @@ test('panel endpoint table edits save to config', async ({ page, request }) => {
   await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
+  await panel.getByTestId('provider-edit').click()
 
   // 添加一个 openai 补充端点
   await panel.getByRole('button', { name: '添加端点' }).click()
@@ -219,6 +228,7 @@ test('panel endpoint table edits save to config', async ({ page, request }) => {
 
   // 删除端点行后保存 → endpoints 清空（回到仅主端点）。用 poll 断言：同文案
   // 的残留 toast 可能先满足可见断言，而第二次 PUT 尚未落库。
+  await panel.getByTestId('provider-edit').click()
   const endpointRowAfter = panel.getByTestId('surface-endpoint-row')
   await endpointRowAfter.getByRole('button', { name: '删除' }).click()
   await panel.getByTestId('provider-save').click()
@@ -265,7 +275,8 @@ test('balance refresh shows the normalized snapshot', async ({ page, request }) 
   await panel.getByRole('button', { name: '刷新余额' }).click()
 
   await expect(panel.getByText('110.00 CNY')).toBeVisible()
-  // 原始返回折叠在 Disclosure 里
+  // 原始返回折叠在编辑态余额分区的 Disclosure 里
+  await panel.getByTestId('provider-edit').click()
   await panel.getByText('原始返回数据').click()
   await expect(panel.getByText('"is_available"')).toBeVisible()
 
@@ -326,6 +337,7 @@ test('unsaved draft guards SPA route leave and incomplete rows count as dirty', 
 
   // 只填 Base URL 的端点行会被 serialize() 过滤 —— 旧 dirty 判定把它当成
   // 「无修改」，切换后面板整行消失且无确认。原始表单判定必须抓住它。
+  await panel.getByTestId('provider-edit').click()
   await panel.getByRole('button', { name: '添加端点' }).click()
   const endpointRow = panel.getByTestId('surface-endpoint-row')
   await endpointRow.getByLabel('端点 Base URL').fill(stubBase)
@@ -350,6 +362,8 @@ test('unsaved draft guards SPA route leave and incomplete rows count as dirty', 
   await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
   const panelAfter = page.getByTestId('provider-detail-panel')
   await expect(panelAfter).toBeVisible()
+  // 草稿已清：重进编辑态也不应有保存页脚与端点行
+  await panelAfter.getByTestId('provider-edit').click()
   await expect(panelAfter.getByTestId('provider-save')).toHaveCount(0)
   await expect(panelAfter.getByTestId('surface-endpoint-row')).toHaveCount(0)
 })
@@ -365,6 +379,7 @@ test('browser back to the routing tab guards the dirty provider draft', async ({
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
   // 脏稿：添加端点只填 Base URL
+  await panel.getByTestId('provider-edit').click()
   await panel.getByRole('button', { name: '添加端点' }).click()
   await panel.getByTestId('surface-endpoint-row').getByLabel('端点 Base URL')
     .fill(`http://127.0.0.1:${harness.stubPort}`)
@@ -395,6 +410,7 @@ test('creating a provider guards the previous dirty draft', async ({ page, reque
   await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
+  await panel.getByTestId('provider-edit').click()
   await panel.getByRole('button', { name: '添加端点' }).click()
   await panel.getByTestId('surface-endpoint-row').getByLabel('端点 Base URL')
     .fill(`http://127.0.0.1:${harness.stubPort}`)
@@ -448,6 +464,7 @@ test('editing during the post-create config refetch still guards the draft', asy
   await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
+  await panel.getByTestId('provider-edit').click()
 
   // 面板初始无草稿时创建 → onCreated 进入刷新等待
   delayConfigGet = true

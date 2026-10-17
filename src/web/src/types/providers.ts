@@ -87,6 +87,9 @@ export interface ProviderPreset {
   description: string
   type: 'anthropic' | 'openai'
   baseUrl: string
+  /** Extra protocol surfaces the vendor also serves; land in the created
+   * provider's `endpoints[]` so it speaks both protocols natively. */
+  endpoints: Array<{ id: string; protocol: ProviderEndpointProtocol; baseUrl: string }>
   balanceAdapter?: BalanceAdapterId
   /** True = the upstream has no model-list endpoint; skip the probe step. */
   noModelProbe?: boolean

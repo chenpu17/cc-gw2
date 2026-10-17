@@ -1,6 +1,6 @@
 import { useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Disclosure } from '@/components/ui/disclosure'
 import { Input } from '@/components/ui/input'
@@ -143,6 +143,10 @@ export interface ProviderStepShared {
   onRemoveModel: (index: number) => void
   onModelNonStreamViaStreamChange: (index: number, value: string) => void
   onSetDefaultModel: (id: string) => void
+  /** Extra protocol endpoint rows; optional — setup wizard doesn't use them. */
+  onEndpointChange?: (index: number, patch: Partial<FormState['endpoints'][number]>) => void
+  onAddEndpoint?: () => void
+  onRemoveEndpoint?: (index: number) => void
   /** Aggregate-model member chain editing (keyed by _key so reorder is safe).
    * Optional: only the workbench drawer wires these; the setup wizard renders
    * concrete provider types only. */
@@ -269,6 +273,15 @@ export const PROVIDER_TYPE_OPTIONS: Array<{ value: ProviderConfig['type']; label
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'custom', label: 'Custom' },
   { value: 'aggregate', label: 'Aggregate' }
+]
+
+/** Type chips shown in BasicsStep: protocol families only — vendor identity
+ * belongs to preset creation; the current vendor type (if any) is pinned as
+ * an extra active chip so it stays visible and preserved. */
+const TYPE_CHIP_OPTIONS: Array<{ value: NonNullable<ProviderConfig['type']>; labelKey: string }> = [
+  { value: 'openai', labelKey: 'providers.presets.manualOpenAiCompatible' },
+  { value: 'anthropic', labelKey: 'providers.presets.manualAnthropicCompatible' },
+  { value: 'aggregate', labelKey: 'providers.aggregate.typeLabel' }
 ]
 
 /** Localized label for a provider type; brand names stay untranslated. */
@@ -403,7 +416,10 @@ export function BasicsStep({
   onStreamUsageChange,
   onAddHeader,
   onRemoveHeader,
-  onHeaderChange
+  onHeaderChange,
+  onEndpointChange,
+  onAddEndpoint,
+  onRemoveEndpoint
 }: ProviderStepShared) {
   const { t } = useTranslation()
   const isAggregate = form.type === 'aggregate'
@@ -411,45 +427,49 @@ export function BasicsStep({
   // policy for every credential input on the panel.
   const [apiKeyRevealed, setApiKeyRevealed] = useState(false)
   return (
-    <div className="space-y-8">
-      <section className="space-y-5" aria-labelledby="provider-type-fields">
+    <div className="space-y-5">
+      <section className="space-y-3" aria-labelledby="provider-type-fields">
         <div className="space-y-1">
           <h3 id="provider-type-fields" className="text-sm font-semibold">{t('providers.drawer.sections.type')}</h3>
           <p className="text-xs text-muted-foreground">{t('providers.drawer.hints.type')}</p>
         </div>
 
-        <div className="grid gap-2 md:grid-cols-3">
-          {PROVIDER_TYPE_OPTIONS.map((option) => {
+        <div className="flex flex-wrap gap-1.5">
+          {/* Protocol-family chips. Vendor types (deepseek/kimi/…) come from
+              preset creation and stay reachable: if the current type is one,
+              it renders as an extra active chip so it is visible and kept
+              until the user actively switches. */}
+          {TYPE_CHIP_OPTIONS.some((option) => option.value === form.type) ? null : (
+            <span
+              className="border border-foreground bg-secondary px-3 py-1.5 text-xs font-medium text-foreground"
+              title={t('providers.drawer.hints.typeVendorPinned')}
+            >
+              {providerTypeLabel(form.type, t)}
+            </span>
+          )}
+          {TYPE_CHIP_OPTIONS.map((option) => {
             const active = option.value === form.type
             return (
               <button
-                key={option.value ?? 'custom'}
+                key={option.value}
                 type="button"
                 onClick={() => onTypeChange(option.value)}
                 className={cn(
-                  'rounded-2xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  'border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                   active
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border bg-card text-foreground hover:border-primary/20 hover:bg-accent/50'
+                    ? 'border-foreground bg-foreground text-background'
+                    : 'border-border bg-card text-foreground hover:border-foreground/30 hover:bg-accent/50'
                 )}
               >
-                <div className="text-sm font-semibold">{providerTypeLabel(option.value, t)}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {option.value === 'aggregate'
-                    ? t('providers.aggregate.drawer.typeHint')
-                    : PROVIDER_TYPE_PRESETS[option.value ?? 'custom']?.baseUrl ?? t('providers.drawer.hints.customProvider')}
-                </div>
+                {t(option.labelKey)}
               </button>
             )
           })}
         </div>
       </section>
 
-      <section className="space-y-4" aria-labelledby="provider-basic-info">
-        <div className="space-y-1">
-          <h3 id="provider-basic-info" className="text-sm font-semibold">{t('providers.drawer.sections.basic')}</h3>
-          <p className="text-xs text-muted-foreground">{t('providers.drawer.hints.basic')}</p>
-        </div>
+      <section className="space-y-3" aria-labelledby="provider-basic-info">
+        <h3 id="provider-basic-info" className="text-sm font-semibold">{t('providers.drawer.sections.basic')}</h3>
 
         <div className="grid gap-4 md:grid-cols-2">
           <Label className="flex flex-col gap-2 text-sm">
@@ -475,107 +495,94 @@ export function BasicsStep({
         </div>
 
         {isAggregate ? (
-          <div className="space-y-2 border border-border bg-card p-4">
-            <p className="text-sm font-semibold">{t('providers.aggregate.drawer.explainerTitle')}</p>
+          <div className="space-y-2 border border-border bg-card p-4">            <p className="text-sm font-semibold">{t('providers.aggregate.drawer.explainerTitle')}</p>
             <p className="text-xs leading-relaxed text-muted-foreground">
               {t('providers.aggregate.drawer.explainerBody')}
             </p>
           </div>
         ) : (
-          <Label className="flex flex-col gap-2 text-sm">
-            <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.baseUrl')}</span>
-            <Input
-              value={form.baseUrl}
-              onChange={(event) => onFieldChange('baseUrl')(event.target.value)}
-              placeholder={t('providers.drawer.fields.baseUrlPlaceholder')}
-              aria-invalid={Boolean(errors.baseUrl)}
-            />
-            {errors.baseUrl ? <span className="text-xs text-destructive">{errors.baseUrl}</span> : null}
-          </Label>
+          <div className="space-y-3">
+            <Label className="flex flex-col gap-2 text-sm">
+              <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.baseUrlPrimary')}</span>
+              <Input
+                value={form.baseUrl}
+                onChange={(event) => onFieldChange('baseUrl')(event.target.value)}
+                placeholder={t('providers.drawer.fields.baseUrlPlaceholder')}
+                aria-invalid={Boolean(errors.baseUrl)}
+              />
+              {errors.baseUrl ? <span className="text-xs text-destructive">{errors.baseUrl}</span> : null}
+            </Label>
+            {onEndpointChange && onAddEndpoint && onRemoveEndpoint ? (
+              <EndpointsTable
+                form={form}
+                errors={errors}
+                onEndpointChange={onEndpointChange}
+                onAddEndpoint={onAddEndpoint}
+                onRemoveEndpoint={onRemoveEndpoint}
+              />
+            ) : null}
+          </div>
         )}
       </section>
 
       {isAggregate ? null : (
-      <section className="space-y-4" aria-labelledby="provider-auth-fields">
-        <div className="space-y-1">
-          <h3 id="provider-auth-fields" className="text-sm font-semibold">{t('providers.drawer.sections.auth')}</h3>
-          <p className="text-xs text-muted-foreground">{t('providers.drawer.hints.auth')}</p>
-        </div>
+      <section className="space-y-3" aria-labelledby="provider-auth-fields">
+        <h3 id="provider-auth-fields" className="text-sm font-semibold">{t('providers.drawer.sections.auth')}</h3>
 
-        <Label className="flex flex-col gap-2 text-sm">
-          <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.apiKey')}</span>
-          <div className="flex gap-1.5">
-            <Input
-              type={apiKeyRevealed ? 'text' : 'password'}
-              value={form.apiKey}
-              onChange={(event) => onFieldChange('apiKey')(event.target.value)}
-              placeholder={t('providers.drawer.fields.apiKeyPlaceholder')}
-              autoComplete="off"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 w-9 shrink-0 px-0"
-              onClick={() => setApiKeyRevealed((previous) => !previous)}
-              aria-label={apiKeyRevealed ? t('providers.keys.hide') : t('providers.keys.reveal')}
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <Label className="flex flex-col gap-2 text-sm">
+            <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.apiKey')}</span>
+            <div className="flex gap-1.5">
+              <Input
+                type={apiKeyRevealed ? 'text' : 'password'}
+                value={form.apiKey}
+                onChange={(event) => onFieldChange('apiKey')(event.target.value)}
+                placeholder={t('providers.drawer.fields.apiKeyPlaceholder')}
+                autoComplete="off"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 w-9 shrink-0 px-0"
+                onClick={() => setApiKeyRevealed((previous) => !previous)}
+                aria-label={apiKeyRevealed ? t('providers.keys.hide') : t('providers.keys.reveal')}
+              >
+                {apiKeyRevealed ? (
+                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                )}
+              </Button>
+            </div>
+          </Label>
+          <div className="flex flex-col gap-2">
+            <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.authMode')}</span>
+            <Select
+              value={form.authMode}
+              onValueChange={(value) => onAuthModeChange(value as FormState['authMode'])}
             >
-              {apiKeyRevealed ? (
-                <EyeOff className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <Eye className="h-4 w-4" aria-hidden="true" />
-              )}
-            </Button>
+              <SelectTrigger
+                className="h-9 text-xs"
+                aria-label={t('providers.drawer.fields.authMode')}
+                title={t('providers.drawer.fields.authModeHint')}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="apiKey">{describeAuthMode(form.type, 'apiKey', t)}</SelectItem>
+                <SelectItem value="authToken">{t('providers.drawer.fields.authModeAuthToken')}</SelectItem>
+                <SelectItem value="xAuthToken">{t('providers.drawer.fields.authModeXAuthToken')}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </Label>
-
-        <fieldset className="grid gap-2 rounded-xl border border-transparent bg-card p-4 text-xs shadow-[var(--surface-shadow)]">
-          <legend className="px-1 text-muted-foreground">
-            {t('providers.drawer.fields.authMode')}
-          </legend>
-          <p className="text-[11px] text-muted-foreground">
-            {t('providers.drawer.fields.authModeHint')}
-          </p>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:bg-accent focus-within:bg-accent">
-            <input
-              type="radio"
-              name="provider-auth-mode"
-              value="apiKey"
-              checked={form.authMode === 'apiKey'}
-              onChange={() => onAuthModeChange('apiKey')}
-              className="mt-0.5 h-4 w-4 accent-primary"
-            />
-            <span>{describeAuthMode(form.type, 'apiKey', t)}</span>
-          </label>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:bg-accent focus-within:bg-accent">
-            <input
-              type="radio"
-              name="provider-auth-mode"
-              value="authToken"
-              checked={form.authMode === 'authToken'}
-              onChange={() => onAuthModeChange('authToken')}
-              className="mt-0.5 h-4 w-4 accent-primary"
-            />
-            <span>{t('providers.drawer.fields.authModeAuthToken')}</span>
-          </label>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:bg-accent focus-within:bg-accent">
-            <input
-              type="radio"
-              name="provider-auth-mode"
-              value="xAuthToken"
-              checked={form.authMode === 'xAuthToken'}
-              onChange={() => onAuthModeChange('xAuthToken')}
-              className="mt-0.5 h-4 w-4 accent-primary"
-            />
-            <span>{t('providers.drawer.fields.authModeXAuthToken')}</span>
-          </label>
-        </fieldset>
+        </div>
 
         <Disclosure
           open={advancedOpen}
           onOpenChange={onAdvancedOpenChange}
           summary={t('providers.drawer.fields.advancedOptions')}
-          className="rounded-xl border border-transparent bg-card shadow-[var(--surface-shadow)]"
+          className="border border-border bg-card"
           summaryClassName="px-4 py-3 text-sm font-medium"
           contentClassName="border-t border-border px-4 py-4"
         >
@@ -687,7 +694,7 @@ export function BasicsStep({
                 {form.extraHeaders.map((header, index) => (
                   <div
                     key={header._key}
-                    className="rounded-xl border border-transparent bg-secondary/40 p-3"
+                    className="border border-border bg-secondary/40 p-3"
                   >
                     <div className="grid gap-3 md:grid-cols-2">
                       <Label className="flex flex-col gap-1.5 text-sm">
@@ -730,11 +737,111 @@ export function BasicsStep({
   )
 }
 
+/** Extra protocol endpoint rows — rendered inside BasicsStep below the primary base URL. */
+function EndpointsTable({
+  form,
+  errors,
+  onEndpointChange,
+  onAddEndpoint,
+  onRemoveEndpoint
+}: {
+  form: FormState
+  errors: FormErrors
+  onEndpointChange: (index: number, patch: Partial<FormState['endpoints'][number]>) => void
+  onAddEndpoint: () => void
+  onRemoveEndpoint: (index: number) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">{t('providers.endpoints.hint')}</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onAddEndpoint}
+          className="shrink-0 bg-card text-xs"
+        >
+          {t('providers.endpoints.add')}
+        </Button>
+      </div>
+      {form.endpoints.length > 0 ? (
+        <div className="divide-y divide-border border border-border">
+          {form.endpoints.map((endpoint, index) => {
+            const error = errors.endpoints?.[endpoint._key]
+            return (
+              <div key={endpoint._key} className="space-y-2 p-3" data-testid="surface-endpoint-row">
+                <div className="grid gap-2 md:grid-cols-[minmax(0,0.9fr)_150px_minmax(0,1.4fr)_minmax(0,0.9fr)_auto]">
+                  <Input
+                    value={endpoint.id}
+                    onChange={(event) => onEndpointChange(index, { id: event.target.value })}
+                    placeholder={t('providers.endpoints.idPlaceholder')}
+                    aria-label={t('providers.endpoints.id')}
+                    className="h-8 text-xs"
+                    aria-invalid={Boolean(error)}
+                  />
+                  <Select
+                    value={endpoint.protocol}
+                    onValueChange={(value) =>
+                      onEndpointChange(index, {
+                        protocol: value as FormState['endpoints'][number]['protocol']
+                      })
+                    }
+                  >
+                    <SelectTrigger className="h-8 text-xs" aria-label={t('providers.endpoints.protocol')}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROVIDER_ENDPOINT_PROTOCOL_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={endpoint.baseUrl}
+                    onChange={(event) => onEndpointChange(index, { baseUrl: event.target.value })}
+                    placeholder={t('providers.endpoints.baseUrlPlaceholder')}
+                    aria-label={t('providers.endpoints.baseUrl')}
+                    className="h-8 font-mono text-xs"
+                    aria-invalid={Boolean(error)}
+                  />
+                  <Input
+                    value={endpoint.label}
+                    onChange={(event) => onEndpointChange(index, { label: event.target.value })}
+                    placeholder={t('providers.endpoints.labelPlaceholder')}
+                    aria-label={t('providers.endpoints.label')}
+                    className="h-8 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs text-destructive"
+                    onClick={() => onRemoveEndpoint(index)}
+                  >
+                    {t('common.delete')}
+                  </Button>
+                </div>
+                {error ? <p className="text-xs text-destructive">{error}</p> : null}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
+          {t('providers.endpoints.empty')}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function ModelsStep({
   form,
   errors,
-  advancedOpen,
-  onAdvancedOpenChange,
   onModelIdChange,
   onModelChange,
   onAddModel,
@@ -746,14 +853,29 @@ export function ModelsStep({
 }: ProviderStepShared) {
   const { t } = useTranslation()
   const availableDefaultModels = form.models.filter((model) => model.id.trim().length > 0)
+  // Track which model rows have their protocol-override panel expanded.
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+
+  const toggleRow = (key: string) => {
+    setExpandedRows((previous) => {
+      const next = new Set(previous)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
   return (
-    <div className="space-y-8">
-      <section className="space-y-4" aria-labelledby="provider-model-fields">
+    <div className="space-y-5">
+      <section className="space-y-3" aria-labelledby="provider-model-fields">
         <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <h3 id="provider-model-fields" className="text-sm font-semibold">{t('providers.drawer.fields.models')}</h3>
-            <p className="text-xs text-muted-foreground">{t('providers.drawer.modelsDescription')}</p>
-          </div>
+          <h3 id="provider-model-fields" className="text-sm font-semibold">
+            {form.models.length > 0
+              ? `${t('providers.drawer.fields.models')} (${form.models.length})`
+              : t('providers.drawer.fields.models')}
+          </h3>
           <div className="flex shrink-0 gap-2">
             {probeModels ? (
               <Button
@@ -782,65 +904,26 @@ export function ModelsStep({
 
         {errors.models ? <p className="text-xs text-destructive">{errors.models}</p> : null}
 
-        <div className="space-y-4">
-          {form.models.map((model, index) => (
-            <div
-              key={model._key}
-              className="rounded-xl border border-transparent bg-card p-4 shadow-[var(--surface-shadow)]"
-            >
-              <div className="grid gap-4 md:grid-cols-2">
-                <Label className="flex flex-col gap-2 text-sm">
-                  <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.modelId')}</span>
-                  <Input
-                    value={model.id}
-                    onChange={(event) => onModelIdChange(index, event.target.value)}
-                    placeholder={t('providers.drawer.fields.modelIdPlaceholder')}
-                  />
-                </Label>
-              </div>
+        {/* Column header row — only shown when there are models */}
+        {form.models.length > 0 ? (
+          <div className="grid items-center gap-2 border-b border-border pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground md:grid-cols-[auto_minmax(0,1fr)_minmax(0,0.8fr)_auto_auto]">
+            <span className="w-5" />
+            <span>{t('providers.drawer.fields.modelId')}</span>
+            <span>{t('providers.drawer.fields.modelLabel')}</span>
+            <span />
+            <span />
+          </div>
+        ) : null}
 
-              <Disclosure
-                open={advancedOpen}
-                onOpenChange={onAdvancedOpenChange}
-                summary={t('providers.drawer.fields.advancedOptions')}
-                className="mt-4 rounded-xl bg-secondary/50"
-                summaryClassName="px-3 py-2 text-xs font-medium"
-                contentClassName="space-y-4 px-3 py-3"
-              >
-                <Label className="flex flex-col gap-2 text-sm">
-                  <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.modelLabel')}</span>
-                  <Input
-                    value={model.label ?? ''}
-                    onChange={(event) => onModelChange(index, { label: event.target.value })}
-                    placeholder={t('providers.drawer.fields.modelLabelPlaceholder')}
-                  />
-                </Label>
-                <Label className="flex flex-col gap-2 text-sm">
-                  <span className="text-xs text-muted-foreground">{t('providers.drawer.fields.modelNonStreamViaStream')}</span>
-                  <Select
-                    value={
-                      model.nonStreamViaStream === undefined
-                        ? 'inherit'
-                        : model.nonStreamViaStream
-                          ? 'enabled'
-                          : 'disabled'
-                    }
-                    onValueChange={(value) => onModelNonStreamViaStreamChange(index, value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="inherit">{t('providers.drawer.fields.modelNonStreamViaStreamInherit')}</SelectItem>
-                      <SelectItem value="enabled">{t('providers.drawer.fields.modelNonStreamViaStreamEnabled')}</SelectItem>
-                      <SelectItem value="disabled">{t('providers.drawer.fields.modelNonStreamViaStreamDisabled')}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Label>
-              </Disclosure>
-
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-                <label className="flex items-center gap-2 text-muted-foreground">
+        <div className="divide-y divide-border border border-border">
+          {form.models.map((model, index) => {
+            const isExpanded = expandedRows.has(model._key)
+            const hasOverride = model.nonStreamViaStream !== undefined
+            return (
+              <div key={model._key} className="bg-card">
+                {/* Primary row */}
+                <div className="grid items-center gap-2 px-3 py-2 md:grid-cols-[auto_minmax(0,1fr)_minmax(0,0.8fr)_auto_auto]">
+                  {/* Default radio */}
                   <input
                     type="radio"
                     name="defaultModel"
@@ -849,26 +932,91 @@ export function ModelsStep({
                     checked={form.defaultModel === model.id}
                     onChange={() => onSetDefaultModel(model.id)}
                     disabled={model.id.trim().length === 0}
-                    className="h-4 w-4 accent-primary"
+                    className="h-4 w-4 shrink-0 accent-primary"
+                    title={t('providers.drawer.fields.setDefault')}
                   />
-                  {t('providers.drawer.fields.setDefault')}
-                </label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-auto px-2 text-destructive"
-                  onClick={() => onRemoveModel(index)}
-                  disabled={form.models.length === 0}
-                >
-                  {t('providers.drawer.fields.removeModel')}
-                </Button>
+                  {/* Model ID */}
+                  <Input
+                    value={model.id}
+                    onChange={(event) => onModelIdChange(index, event.target.value)}
+                    placeholder={t('providers.drawer.fields.modelIdPlaceholder')}
+                    className="h-7 font-mono text-xs"
+                  />
+                  {/* Display label */}
+                  <Input
+                    value={model.label ?? ''}
+                    onChange={(event) => onModelChange(index, { label: event.target.value })}
+                    placeholder={t('providers.drawer.fields.modelLabelPlaceholder')}
+                    className="h-7 text-xs"
+                  />
+                  {/* Protocol override toggle */}
+                  <button
+                    type="button"
+                    onClick={() => toggleRow(model._key)}
+                    aria-label={t('providers.drawer.fields.modelNonStreamViaStream')}
+                    title={t('providers.drawer.fields.modelNonStreamViaStream')}
+                    className={cn(
+                      'flex h-7 w-7 items-center justify-center border transition-colors',
+                      hasOverride
+                        ? 'border-foreground/60 text-foreground'
+                        : 'border-border text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {isExpanded ? (
+                      <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                  </button>
+                  {/* Remove — distinct label from the header's provider 删除,
+                      so both users and E2E can tell row removal apart. */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-destructive"
+                    onClick={() => onRemoveModel(index)}
+                    disabled={form.models.length === 0}
+                  >
+                    {t('providers.drawer.fields.removeModel')}
+                  </Button>
+                </div>
+
+                {/* Expanded protocol override row */}
+                {isExpanded ? (
+                  <div className="border-t border-border px-3 pb-2 pt-2">
+                    <div className="flex items-center gap-3">
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {t('providers.drawer.fields.modelNonStreamViaStream')}
+                      </span>
+                      <Select
+                        value={
+                          model.nonStreamViaStream === undefined
+                            ? 'inherit'
+                            : model.nonStreamViaStream
+                              ? 'enabled'
+                              : 'disabled'
+                        }
+                        onValueChange={(value) => onModelNonStreamViaStreamChange(index, value)}
+                      >
+                        <SelectTrigger className="h-7 w-48 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inherit">{t('providers.drawer.fields.modelNonStreamViaStreamInherit')}</SelectItem>
+                          <SelectItem value="enabled">{t('providers.drawer.fields.modelNonStreamViaStreamEnabled')}</SelectItem>
+                          <SelectItem value="disabled">{t('providers.drawer.fields.modelNonStreamViaStreamDisabled')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            </div>
-          ))}
+            )
+          })}
 
           {form.models.length === 0 ? (
-            <div className="rounded-xl border border-warning/30 bg-warning-bg p-5">
+            <div className="border border-warning/30 bg-warning-bg p-4">
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-warning">
                   {t('providers.drawer.noModelsTitle')}
@@ -876,11 +1024,11 @@ export function ModelsStep({
                 <p className="text-xs leading-relaxed text-warning">
                   {t('providers.drawer.noModelsHint', { providerId: form.id || 'provider-id' })}
                 </p>
-                <div className="rounded-lg bg-secondary/50 p-2.5">
+                <div className="bg-secondary/50 p-2.5">
                   <p className="mb-1.5 text-xs font-medium text-foreground">
                     {t('providers.drawer.routeExample')}
                   </p>
-                  <code className="block rounded-lg border border-transparent bg-card px-2.5 py-1.5 font-mono text-xs text-foreground shadow-[var(--surface-shadow)]">
+                  <code className="block border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground">
                     &quot;claude-*&quot;: &quot;{(form.id || 'provider-id').trim() || 'provider-id'}:*&quot;
                   </code>
                 </div>
@@ -903,7 +1051,7 @@ export function ModelsStep({
             <p className="text-xs text-muted-foreground">{t('workbench.drawer.verifyHint')}</p>
           </div>
           {testVerification.available ? (
-            <div className="space-y-3 rounded-xl border border-transparent bg-card p-4 shadow-[var(--surface-shadow)]">
+            <div className="space-y-3 border border-border bg-card p-4">
               <Button
                 type="button"
                 variant="outline"
@@ -918,7 +1066,7 @@ export function ModelsStep({
               {testVerification.result ? <TestResultInline result={testVerification.result} /> : null}
             </div>
           ) : (
-            <p className="rounded-xl bg-secondary/50 px-4 py-3 text-xs text-muted-foreground">
+            <p className="bg-secondary/50 px-4 py-3 text-xs text-muted-foreground">
               {t('workbench.drawer.verifySaveFirst')}
             </p>
           )}

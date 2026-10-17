@@ -93,6 +93,16 @@ export default function ProvidersWorkbenchPage() {
     return window.localStorage.getItem(storageKeys.workbench.providerSelection)
   })
 
+  // Providers that should open straight in edit mode (freshly created, or an
+  // external edit intent like the no-model dialog). Cleared once the
+  // selection moves elsewhere so revisiting them later opens the profile.
+  const [autoEditProviderId, setAutoEditProviderId] = useState<string | null>(null)
+  useEffect(() => {
+    if (autoEditProviderId && selectedProviderId !== autoEditProviderId) {
+      setAutoEditProviderId(null)
+    }
+  }, [autoEditProviderId, selectedProviderId])
+
   useEffect(() => {
     if (!selectedProviderId) {
       window.localStorage.removeItem(storageKeys.workbench.providerSelection)
@@ -275,14 +285,14 @@ export default function ProvidersWorkbenchPage() {
               className={cn(
                 'motion-surface flex items-center gap-3 rounded-xl border p-4 text-left',
                 isActive
-                  ? 'border-primary/40 bg-primary/5'
+                  ? 'border-foreground bg-secondary'
                   : 'border-border bg-card hover:bg-muted/40'
               )}
             >
               <span
                 className={cn(
                   'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-                  isActive ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
+                  isActive ? 'bg-foreground text-background' : 'bg-secondary text-muted-foreground'
                 )}
               >
                 <Icon className="h-5 w-5" aria-hidden="true" />
@@ -314,6 +324,7 @@ export default function ProvidersWorkbenchPage() {
           onTest={(provider) => providers.initiateTestConnection(provider)}
           onRequestDelete={(provider) => setConfirmAction({ kind: 'provider', provider })}
           onDirtyChange={handlePanelDirtyChange}
+          autoEditProviderId={autoEditProviderId}
         />
       ) : (
         <RoutingWorkspace
@@ -350,6 +361,7 @@ export default function ProvidersWorkbenchPage() {
               return
             }
             setSelectedProviderId(providerId)
+            setAutoEditProviderId(providerId)
           })
         }}
       />
@@ -371,8 +383,10 @@ export default function ProvidersWorkbenchPage() {
         onClose={() => providers.setNoModelDialogProvider(null)}
         onEdit={(provider) => {
           providers.setNoModelDialogProvider(null)
-          // The panel is where models are edited now — select the provider.
+          // The panel is where models are edited now — select the provider
+          // and open it straight in edit mode.
           setSelectedProviderId(provider.id)
+          setAutoEditProviderId(provider.id)
         }}
       />
 

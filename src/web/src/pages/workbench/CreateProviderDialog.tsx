@@ -25,13 +25,24 @@ import {
 import { useApiQuery } from '@/hooks/useApiQuery'
 import {
   defaultAuthModeForType,
-  PROVIDER_TYPE_OPTIONS,
   PROVIDER_TYPE_PRESETS
 } from './ProviderDrawerSteps'
 
 /** Select value grammar: `preset:<catalogId>` | `manual:<type>` */
 const PRESET_PREFIX = 'preset:'
 const MANUAL_PREFIX = 'manual:'
+
+/** Manual templates: just the two protocol families — vendor specifics are
+ * the preset catalog's job. Aggregate stays as a third option because it is
+ * a provider kind, not a protocol template. */
+const MANUAL_TEMPLATE_OPTIONS: Array<{
+  value: NonNullable<ProviderConfig['type']>
+  labelKey: string
+}> = [
+  { value: 'openai', labelKey: 'providers.presets.manualOpenAiCompatible' },
+  { value: 'anthropic', labelKey: 'providers.presets.manualAnthropicCompatible' },
+  { value: 'aggregate', labelKey: 'providers.aggregate.typeLabel' }
+]
 
 interface CreateProviderDialogProps {
   open: boolean
@@ -167,7 +178,18 @@ export function CreateProviderDialog({
       // Mirror the edit path's serialize(): a default apiKey-mode for
       // non-anthropic types stays unset instead of being persisted.
       authMode: defaultAuthMode === 'apiKey' && type !== 'anthropic' ? undefined : defaultAuthMode,
-      ...(selectedPreset?.balanceAdapter ? { balanceAdapter: selectedPreset.balanceAdapter } : null)
+      ...(selectedPreset?.balanceAdapter ? { balanceAdapter: selectedPreset.balanceAdapter } : null),
+      // Dual-protocol presets pre-fill the vendor's other wire surface so
+      // both protocols are native from the start (keys are shared).
+      ...(selectedPreset && selectedPreset.endpoints.length > 0
+        ? {
+            endpoints: selectedPreset.endpoints.map((endpoint) => ({
+              id: endpoint.id,
+              protocol: endpoint.protocol,
+              baseUrl: endpoint.baseUrl
+            }))
+          }
+        : null)
     }
     if (selectedPreset && selectedPreset.defaultModels.length > 0) {
       payload.models = selectedPreset.defaultModels.map((id) => ({ id }))
@@ -221,9 +243,9 @@ export function CreateProviderDialog({
                 ) : null}
                 <SelectGroup>
                   <SelectLabel>{t('providers.presets.groupManual')}</SelectLabel>
-                  {PROVIDER_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value ?? 'custom'} value={`${MANUAL_PREFIX}${option.value ?? 'custom'}`}>
-                      {option.label}
+                  {MANUAL_TEMPLATE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={`${MANUAL_PREFIX}${option.value}`}>
+                      {t(option.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectGroup>

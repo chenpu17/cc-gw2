@@ -27,6 +27,8 @@ interface ProvidersMasterDetailProps {
   onRequestDelete: (provider: ProviderConfig) => void
   /** Draft dirtiness of the mounted detail panel (guarded navigation). */
   onDirtyChange?: (dirty: boolean) => void
+  /** Provider id that should land in edit mode (just created / edit intent). */
+  autoEditProviderId?: string | null
 }
 
 /**
@@ -41,7 +43,8 @@ export function ProvidersMasterDetail({
   onSelectProvider,
   onTest,
   onRequestDelete,
-  onDirtyChange
+  onDirtyChange,
+  autoEditProviderId
 }: ProvidersMasterDetailProps) {
   const { t } = useTranslation()
   const {
@@ -161,6 +164,13 @@ export function ProvidersMasterDetail({
             <ul className="max-h-[60vh] overflow-y-auto p-2 lg:max-h-[calc(100vh-320px)]">
               {filteredProviders.map((provider) => {
                 const active = provider.id === selectedProviderId
+                const testResult = providers.testResults[provider.id] ?? null
+                const testFailed = testResult !== null && !testResult.ok
+                const failTitle = testFailed
+                  ? testResult.message
+                    ? `${t('providers.masterDetail.testFailedShort')}: ${testResult.message}`
+                    : t('providers.masterDetail.testFailedShort')
+                  : undefined
                 return (
                   <li key={provider.id}>
                     <button
@@ -171,13 +181,20 @@ export function ProvidersMasterDetail({
                       className={cn(
                         'motion-surface w-full border border-transparent px-3 py-2.5 text-left',
                         active
-                          ? 'border-primary/40 bg-primary/5'
+                          ? 'border-foreground bg-secondary'
                           : 'hover:bg-muted/40'
                       )}
                     >
                       <span className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                          {provider.label || provider.id}
+                        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium">
+                          {testFailed ? (
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive"
+                              title={failTitle}
+                              aria-label={t('providers.masterDetail.testFailedShort')}
+                            />
+                          ) : null}
+                          <span className="truncate">{provider.label || provider.id}</span>
                         </span>
                         <Badge variant={active ? 'default' : 'secondary'} className="shrink-0 text-[10px]">
                           {providerTypeLabel(provider.type, t)}
@@ -212,6 +229,7 @@ export function ProvidersMasterDetail({
           onRequestDelete={onRequestDelete}
           onSubmit={providers.handleUpdateProvider}
           onDirtyChange={handleDirtyChange}
+          startInEdit={autoEditProviderId === selectedProvider.id}
         />
       ) : (
         <Card>

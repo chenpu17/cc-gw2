@@ -171,6 +171,10 @@ pub(crate) fn resolve_by_identifier(
     identifier: &str,
     providers: &[ProviderConfig],
     requested_model: Option<&str>,
+    // Request protocol — when known, bare model identifiers prefer providers
+    // that speak it natively before cross-protocol conversion candidates.
+    // `None` keeps pure config order (model catalog, aggregate member chains).
+    protocol: Option<ProviderProtocol>,
 ) -> Option<RouteTarget> {
     if let Some((provider_id, model_id)) = identifier.split_once(':') {
         let provider_id = provider_id.trim();
@@ -200,7 +204,20 @@ pub(crate) fn resolve_by_identifier(
         });
     }
 
-    for provider in providers {
+    // Bare model identifier. Explicit `providerId:modelId` targets above are
+    // user-pinned and never reordered.
+    let candidates: Vec<&ProviderConfig> = match protocol {
+        Some(protocol) => {
+            // Protocol-first: native speakers first, conversion fallbacks
+            // second; config order preserved within each pass.
+            let (native, converting): (Vec<_>, Vec<_>) = providers
+                .iter()
+                .partition(|provider| provider.serves_protocol_natively(protocol));
+            native.into_iter().chain(converting).collect()
+        }
+        None => providers.iter().collect(),
+    };
+    for provider in candidates {
         if let Some(resolved_model) = resolve_provider_model(provider, identifier) {
             return Some(RouteTarget {
                 provider: provider.clone(),
@@ -395,7 +412,7 @@ fn expand_route_plan(
             // `providerId:*` resolves to the aggregate model's own id, so a
             // member can reference "the same-named model on that provider".
             let Some(member_target) =
-                resolve_by_identifier(&member.target, providers, Some(&target.model_id))
+                resolve_by_identifier(&member.target, providers, Some(&target.model_id), None)
             else {
                 continue;
             };
@@ -462,8 +479,12 @@ fn resolve_route_inner(
             },
         };
     if let Some(mapped_identifier) = mapped_identifier {
-        if let Some(target) = resolve_by_identifier(&mapped_identifier, providers, requested_model)
-        {
+        if let Some(target) = resolve_by_identifier(
+            &mapped_identifier,
+            providers,
+            requested_model,
+            Some(protocol),
+        ) {
             return Ok((
                 expand_route_plan(target, providers, protocol)?,
                 RouteMatchReason::ModelRoute { via_alias },
@@ -473,9 +494,12 @@ fn resolve_route_inner(
 
     // 2) requested model resolves directly against a provider
     if let Some(requested_model) = requested_model {
-        if let Some(target) =
-            resolve_by_identifier(requested_model, providers, Some(requested_model))
-        {
+        if let Some(target) = resolve_by_identifier(
+            requested_model,
+            providers,
+            Some(requested_model),
+            Some(protocol),
+        ) {
             return Ok((
                 expand_route_plan(target, providers, protocol)?,
                 RouteMatchReason::DirectMatch,
@@ -486,7 +510,9 @@ fn resolve_route_inner(
     // 3) reasoning (thinking) default
     if thinking {
         if let Some(reasoning) = endpoint_config.defaults.reasoning.as_deref() {
-            if let Some(target) = resolve_by_identifier(reasoning, providers, requested_model) {
+            if let Some(target) =
+                resolve_by_identifier(reasoning, providers, requested_model, Some(protocol))
+            {
                 return Ok((
                     expand_route_plan(target, providers, protocol)?,
                     RouteMatchReason::ThinkingDefault,
@@ -500,7 +526,9 @@ fn resolve_route_inner(
     let threshold = endpoint_config.defaults.long_context_threshold;
     if token_estimate > threshold as usize {
         if let Some(background) = endpoint_config.defaults.background.as_deref() {
-            if let Some(target) = resolve_by_identifier(background, providers, requested_model) {
+            if let Some(target) =
+                resolve_by_identifier(background, providers, requested_model, Some(protocol))
+            {
                 return Ok((
                     expand_route_plan(target, providers, protocol)?,
                     RouteMatchReason::LongContextDefault {
@@ -514,7 +542,9 @@ fn resolve_route_inner(
 
     // 5) completion default
     if let Some(completion) = endpoint_config.defaults.completion.as_deref() {
-        if let Some(target) = resolve_by_identifier(completion, providers, requested_model) {
+        if let Some(target) =
+            resolve_by_identifier(completion, providers, requested_model, Some(protocol))
+        {
             return Ok((
                 expand_route_plan(target, providers, protocol)?,
                 RouteMatchReason::CompletionDefault,
@@ -522,11 +552,16 @@ fn resolve_route_inner(
         }
     }
 
-    // 6) global routing fallback
+    // 6) global routing fallback — same protocol-first preference: a native
+    // provider beats an earlier-configured one that would need conversion.
     if config.enable_routing_fallback.unwrap_or(false) {
+        let has_any_model = |provider: &&ProviderConfig| {
+            provider.default_model.is_some() || !provider.models.is_empty()
+        };
         let provider = providers
             .iter()
-            .find(|provider| provider.default_model.is_some() || !provider.models.is_empty())
+            .find(|provider| has_any_model(provider) && provider.serves_protocol_natively(protocol))
+            .or_else(|| providers.iter().find(has_any_model))
             .ok_or_else(|| {
                 anyhow::anyhow!("未配置任何模型，请在 Web UI 中为至少一个 Provider 添加模型。")
             })?;
@@ -1208,5 +1243,158 @@ mod tests {
 
         assert_eq!(plan.candidates.len(), 1);
         assert_eq!(plan.failover, None);
+    }
+
+    /// Same bare model on two providers: the one speaking the request protocol
+    /// natively wins even when a converting provider comes first in config.
+    #[test]
+    fn direct_match_prefers_protocol_native_provider() {
+        let mut openai_first = provider("openai-first", "shared-model");
+        let mut anthropic_native = provider("anthropic-native", "shared-model");
+        anthropic_native.provider_type = Some("anthropic".to_string());
+
+        let mut config = GatewayConfig::default();
+        // Config order deliberately favors the converting provider.
+        config.providers = vec![openai_first.clone(), anthropic_native.clone()];
+
+        // Anthropic request → anthropic-native provider, not openai-first.
+        let plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "model": "shared-model" }),
+            Some("shared-model"),
+            false,
+        )
+        .expect("resolve anthropic-native");
+        assert_eq!(plan.primary().provider_id, "anthropic-native");
+
+        // OpenAI-chat request → openai-first (native), config order wins.
+        let plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::OpenAi,
+            ProviderProtocol::OpenAiChatCompletions,
+            &json!({ "model": "shared-model" }),
+            Some("shared-model"),
+            false,
+        )
+        .expect("resolve openai-native");
+        assert_eq!(plan.primary().provider_id, "openai-first");
+
+        // Reversed config order, anthropic request: still the native one.
+        config.providers = vec![anthropic_native, openai_first];
+        let plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "model": "shared-model" }),
+            Some("shared-model"),
+            false,
+        )
+        .expect("resolve anthropic-native reversed");
+        assert_eq!(plan.primary().provider_id, "anthropic-native");
+    }
+
+    /// An extra anthropic endpoint makes an openai-primary provider native
+    /// for anthropic requests — it beats a config-order-earlier openai-only
+    /// provider offering the same model.
+    #[test]
+    fn endpoint_surface_counts_as_protocol_native() {
+        use crate::config::ProviderEndpointConfig;
+
+        let mut dual = provider("dual", "shared-model");
+        dual.endpoints = vec![ProviderEndpointConfig {
+            id: "anthropic-surface".to_string(),
+            label: None,
+            protocol: "anthropic".to_string(),
+            base_url: "https://dual-anthropic.example.com/api".to_string(),
+        }];
+
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("openai-only", "shared-model"), dual];
+
+        let plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "model": "shared-model" }),
+            Some("shared-model"),
+            false,
+        )
+        .expect("resolve via endpoint surface");
+        assert_eq!(plan.primary().provider_id, "dual");
+        // The native endpoint view overrides the primary surface.
+        assert_eq!(
+            plan.primary().provider.base_url,
+            "https://dual-anthropic.example.com/api"
+        );
+    }
+
+    /// Explicit `providerId:modelId` route targets are user-pinned: protocol
+    /// preference must not reroute them.
+    #[test]
+    fn explicit_route_target_is_not_protocol_rerouted() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("openai-pinned", "shared-model"), {
+            let mut native = provider("anthropic-native", "shared-model");
+            native.provider_type = Some("anthropic".to_string());
+            native
+        }];
+        config
+            .endpoint_routing
+            .get_mut("anthropic")
+            .unwrap()
+            .model_routes
+            .insert(
+                "shared-model".to_string(),
+                "openai-pinned:shared-model".to_string(),
+            );
+
+        let plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "model": "shared-model" }),
+            Some("shared-model"),
+            false,
+        )
+        .expect("resolve pinned target");
+        assert_eq!(plan.primary().provider_id, "openai-pinned");
+    }
+
+    /// The global fallback also prefers a protocol-native provider over a
+    /// config-order-earlier one that would need conversion.
+    #[test]
+    fn global_fallback_prefers_protocol_native_provider() {
+        let mut config = GatewayConfig::default();
+        let mut native = provider("anthropic-native", "native-model");
+        native.provider_type = Some("anthropic".to_string());
+        config.providers = vec![provider("openai-only", "other-model"), native];
+        config.enable_routing_fallback = Some(true);
+
+        let plan = resolve_route_plan(
+            &config,
+            GatewayEndpoint::Anthropic,
+            ProviderProtocol::AnthropicMessages,
+            &json!({ "messages": [] }),
+            None,
+            false,
+        )
+        .expect("resolve fallback");
+        assert_eq!(plan.primary().provider_id, "anthropic-native");
+        assert_eq!(plan.primary().model_id, "native-model");
+    }
+
+    /// Protocol-agnostic resolution (model catalog, aggregate member chains)
+    /// keeps pure config order.
+    #[test]
+    fn protocol_agnostic_resolution_keeps_config_order() {
+        let mut native = provider("anthropic-native", "shared-model");
+        native.provider_type = Some("anthropic".to_string());
+
+        let providers = vec![provider("openai-first", "shared-model"), native];
+        let target = resolve_by_identifier("shared-model", &providers, None, None)
+            .expect("resolve without protocol");
+        assert_eq!(target.provider_id, "openai-first");
     }
 }
