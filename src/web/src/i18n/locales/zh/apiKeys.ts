@@ -24,6 +24,7 @@ export default {
     hide: '隐藏密钥'
   },
   created: '创建时间',
+  createdValue: '创建于 {{date}}',
   lastUsed: '最后使用',
   requestCount: '请求次数',
   totalTokens: '总令牌数',
@@ -80,6 +81,7 @@ export default {
   },
   list: {
     title: '密钥列表',
+    count: '显示 {{shown}} / {{total}} 个密钥',
     emptyTitle: '先创建第一把 API 密钥',
     empty: '尚未创建 API 密钥，点击右上角按钮开始创建。',
     emptyFilteredTitle: '没有符合当前筛选条件的密钥',

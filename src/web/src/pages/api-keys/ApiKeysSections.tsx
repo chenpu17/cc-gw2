@@ -185,7 +185,10 @@ export function ApiKeysInventorySection({
             ]}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{`${filteredKeys.length}/${keys.length}`}</Badge>
+            {/* Bare "4/4" read as neither a count nor a state; spell it out. */}
+            <Badge variant="outline">
+              {t('apiKeys.list.count', { shown: filteredKeys.length, total: keys.length })}
+            </Badge>
           </div>
         </div>
       }
@@ -411,7 +414,9 @@ function CompactApiKeysTable({
                   </TableCell>
                   <TableCell className="py-3">
                     <div className="text-sm font-medium text-foreground">{formatDate(keySummary.lastUsedAt)}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{formatDate(keySummary.createdAt)}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {t('apiKeys.createdValue', { date: formatDate(keySummary.createdAt) })}
+                    </div>
                   </TableCell>
                   <TableCell className="py-3">
                     <div className="flex justify-end gap-1">

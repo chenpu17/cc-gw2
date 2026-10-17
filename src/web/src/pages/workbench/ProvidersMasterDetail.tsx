@@ -134,7 +134,7 @@ export function ProvidersMasterDetail({
                 </SelectContent>
               </Select>
               <Badge variant="secondary" className="shrink-0 px-2.5 py-1 text-[11px]">
-                {filteredProviders.length}
+                {t('providers.groupCount', { count: filteredProviders.length })}
               </Badge>
             </div>
           </div>

@@ -24,6 +24,7 @@ export default {
     hide: 'Hide key'
   },
   created: 'Created',
+  createdValue: 'Created {{date}}',
   lastUsed: 'Last Used',
   requestCount: 'Requests',
   totalTokens: 'Total Tokens',
@@ -80,6 +81,7 @@ export default {
   },
   list: {
     title: 'Key Inventory',
+    count: 'Showing {{shown}} of {{total}} keys',
     emptyTitle: 'Create your first API key',
     empty: 'No API keys found. Use the button above to create one.',
     emptyFilteredTitle: 'No keys match the current filters',
