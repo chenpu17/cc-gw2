@@ -19,8 +19,8 @@ interface StepNavProps {
 }
 
 const circleByStatus: Record<StepStatus, string> = {
-  complete: 'border-primary bg-primary text-primary-foreground',
-  current: 'border-primary bg-card text-primary ring-2 ring-primary/20',
+  complete: 'border-foreground bg-foreground text-background',
+  current: 'border-foreground bg-card text-foreground ring-2 ring-foreground/15',
   error: 'border-destructive bg-card text-destructive ring-2 ring-destructive/20',
   upcoming: 'border-border bg-card text-muted-foreground'
 }
@@ -43,7 +43,7 @@ export function StepNav({ steps, current, onSelect, className }: StepNavProps) {
       {steps.map((step, index) => {
         const clickable = onSelect && (step.status === 'complete' || step.status === 'current')
         const isLast = index === steps.length - 1
-        const connectorTone = step.status === 'complete' ? 'bg-primary/40' : 'bg-border'
+        const connectorTone = step.status === 'complete' ? 'bg-foreground/30' : 'bg-border'
 
         const circle = (
           <span

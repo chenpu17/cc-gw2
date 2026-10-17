@@ -122,7 +122,7 @@ export function ApiKeyFilter({
         title={t('logs.filters.apiKeyHint')}
         className={cn(
           'flex h-10 w-full items-center justify-between rounded-lg border border-input bg-background px-3 text-sm ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
-          selected.length > 0 && 'border-primary',
+          selected.length > 0 && 'border-foreground',
           open && 'ring-2 ring-ring ring-offset-2'
         )}
       >
@@ -158,7 +158,7 @@ export function ApiKeyFilter({
               type="button"
               onClick={() => onChange([])}
               disabled={selected.length === 0}
-              className="text-primary hover:underline disabled:opacity-40"
+              className="text-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground disabled:opacity-40"
             >
               {t('common.actions.reset')}
             </button>
@@ -171,8 +171,8 @@ export function ApiKeyFilter({
                 <label
                   key={key.id}
                   className={cn(
-                    'flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-primary/5',
-                    checked && 'bg-primary/10 text-primary'
+                    'flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-accent',
+                    checked && 'bg-secondary text-foreground'
                   )}
                 >
                   <input

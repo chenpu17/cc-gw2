@@ -206,8 +206,8 @@ export function ApiKeysInventorySection({
                 className={cn(
                   'inline-flex h-8 shrink-0 items-center rounded-full px-3.5 text-xs font-medium transition-all',
                   statusFilter === value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
+                    ? 'bg-foreground text-background'
+                    : 'text-muted-foreground hover:text-foreground'
                 )}
               >
                 {t(`apiKeys.filters.${value}`)}
@@ -466,8 +466,8 @@ function CompactApiKeysTable({
 
 function QuickStartCard({ description, icon, title }: { description: string; icon: ReactNode; title: string }) {
   return (
-    <div className="w-[220px] shrink-0 rounded-xl border border-border bg-secondary p-3 md:w-auto">
-      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-background text-primary sm:h-8 sm:w-8 sm:rounded-lg">
+    <div className="w-[220px] shrink-0 rounded-xl border border-border bg-card p-3 md:w-auto">
+      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-secondary text-foreground sm:h-8 sm:w-8 sm:rounded-lg">
         {icon}
       </div>
       <p className="mt-2 text-[12px] font-semibold leading-5 text-foreground sm:mt-2.5 sm:text-[13px]">{title}</p>

@@ -95,7 +95,7 @@ export function RoutingEndpointRail({
               data-testid="endpoint-row"
               className={cn(
                 'flex shrink-0 items-stretch border transition-colors lg:shrink',
-                isSelected ? 'border-primary/40 bg-primary/5' : 'border-border bg-card hover:bg-accent',
+                isSelected ? 'border-foreground bg-secondary' : 'border-border bg-card hover:bg-accent',
                 disabled ? 'opacity-60' : ''
               )}
             >
@@ -105,7 +105,7 @@ export function RoutingEndpointRail({
                 className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left"
               >
                 <span
-                  className={cn('h-1.5 w-1.5 shrink-0 rounded-full', isSelected ? 'bg-primary' : 'bg-muted-foreground/40')}
+                  className={cn('h-1.5 w-1.5 shrink-0 rounded-full', isSelected ? 'bg-foreground' : 'bg-muted-foreground/40')}
                   aria-hidden
                 />
                 <span className="min-w-0 flex-1">
@@ -152,7 +152,7 @@ export function RoutingEndpointRail({
           type="button"
           data-testid="create-endpoint"
           onClick={onCreate}
-          className="flex shrink-0 items-center justify-center border border-dashed border-border px-3 py-2 text-[11.5px] text-muted-foreground transition-colors hover:border-primary hover:text-primary lg:shrink"
+          className="flex shrink-0 items-center justify-center border border-dashed border-border px-3 py-2 text-[11.5px] text-muted-foreground transition-colors hover:border-foreground hover:text-foreground lg:shrink"
         >
           + {t('workbench.endpointRail.add')}
         </button>

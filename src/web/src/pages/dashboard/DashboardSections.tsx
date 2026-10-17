@@ -48,7 +48,7 @@ export function DashboardLoading() {
         ))}
       </div>
       <ChartSkeleton />
-      <div className="rounded-xl bg-card shadow-[var(--surface-shadow)]">
+      <div className="border border-border bg-card">
         <table className="w-full">
           <tbody>
             {Array.from({ length: 5 }).map((_, index) => (
@@ -832,7 +832,7 @@ export function SetupProgressStrip({ doneCount, total }: { doneCount: number; to
       <div className="h-1.5 min-w-24 flex-1 overflow-hidden rounded-full bg-border/60">
         <div className="h-1.5 rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
       </div>
-      <Link to="/setup" className="shrink-0 text-xs font-medium text-primary underline-offset-2 hover:underline">
+      <Link to="/setup" className="shrink-0 text-xs font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground">
         {t('dashboard.setupProgress.cta')}
       </Link>
     </div>
@@ -895,7 +895,7 @@ export function DashboardGettingStarted({
               </span>
               <h4 className="mt-2 text-sm font-semibold text-foreground">{step.title}</h4>
               <p className="mt-1.5 text-xs leading-6 text-muted-foreground">{step.description}</p>
-              <Button asChild variant="ghost" size="sm" className="mt-2 h-8 px-0 text-primary hover:bg-transparent hover:text-primary/80">
+              <Button asChild variant="ghost" size="sm" className="mt-2 h-8 px-0 text-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:bg-transparent hover:decoration-foreground">
                 <Link to={step.href}>{step.cta}</Link>
               </Button>
             </li>

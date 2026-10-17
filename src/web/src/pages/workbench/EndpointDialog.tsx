@@ -244,7 +244,7 @@ export function EndpointDialog({
                 {formData.paths.map((pathItem, index) => (
                   <div
                     key={`${pathItem.protocol}-${index}`}
-                    className="space-y-2 rounded-xl border border-transparent bg-card p-3 shadow-[var(--surface-shadow)]"
+                    className="space-y-2 border border-border bg-card p-3"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 space-y-2">
@@ -309,8 +309,8 @@ export function EndpointDialog({
             </div>
 
             {!endpoint ? (
-              <div className="rounded-xl bg-accent p-4">
-                <p className="text-sm text-primary">
+              <div className="rounded-xl bg-secondary p-4">
+                <p className="text-sm text-muted-foreground">
                   {t('modelManagement.endpointRoutingHint')}
                 </p>
               </div>

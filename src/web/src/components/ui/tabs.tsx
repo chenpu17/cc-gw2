@@ -27,7 +27,9 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      'inline-flex items-center justify-center whitespace-nowrap border-b-2 border-transparent px-3 pb-2.5 pt-2 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:font-semibold data-[state=inactive]:hover:text-foreground',
+      // Active tab is ink, never red: red is reserved for the primary action of
+      // a screen, so the tab indicator must not compete with it.
+      'inline-flex items-center justify-center whitespace-nowrap border-b-2 border-transparent px-3 pb-2.5 pt-2 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-foreground data-[state=active]:text-foreground data-[state=active]:font-semibold data-[state=inactive]:hover:text-foreground',
       className
     )}
     {...props}

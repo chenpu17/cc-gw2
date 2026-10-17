@@ -90,7 +90,7 @@ export function LogsPageActions({
                     key={column.id}
                     className={cn(
                       'flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-accent',
-                      checked && 'bg-primary/10 text-primary'
+                      checked && 'bg-secondary text-foreground'
                     )}
                   >
                     <input

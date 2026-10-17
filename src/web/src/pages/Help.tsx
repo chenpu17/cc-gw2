@@ -163,7 +163,7 @@ function StepList({ items, compact = false }: { items: string[]; compact?: boole
           )}
         >
           <span className={cn(
-            'flex shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground',
+            'flex shrink-0 items-center justify-center rounded-md bg-foreground text-xs font-semibold text-background',
             compact ? 'h-6 w-6 text-[11px]' : 'h-7 w-7'
           )}>
             {index + 1}
@@ -252,7 +252,7 @@ function TextBlock({ content }: { content: string }) {
         <ul className="space-y-1.5 rounded-md bg-secondary px-3 py-2">
           {bullets.map((line, index) => (
             <li key={`${line}-${index}`} className="flex gap-2 text-sm leading-6">
-              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground" />
               <span>{renderInlineRichText(line)}</span>
             </li>
           ))}
@@ -262,7 +262,7 @@ function TextBlock({ content }: { content: string }) {
         <ol className="space-y-1.5 rounded-md bg-secondary px-3 py-2">
           {ordered.map((item) => (
             <li key={`${item.index}-${item.text}`} className="flex gap-2.5 text-sm leading-6">
-              <span className="mt-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/15 px-1.5 text-[11px] font-semibold text-primary">
+              <span className="mt-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-secondary px-1.5 text-[11px] font-semibold text-foreground">
                 {item.index}
               </span>
               <span>{renderInlineRichText(item.text)}</span>
@@ -308,7 +308,7 @@ function FaqList({ items }: { items: Array<{ q: string; a: string }> }) {
         >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-medium text-foreground">
             <span>{item.q}</span>
-            <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground transition group-open:bg-primary/10 group-open:text-primary">
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground transition group-open:bg-secondary group-open:text-foreground">
               {index + 1}
             </span>
           </summary>

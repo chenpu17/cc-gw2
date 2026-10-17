@@ -221,8 +221,8 @@ export function ProbeModelsDialog({
                           'flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors',
                           imported
                             ? 'cursor-not-allowed opacity-60'
-                            : 'cursor-pointer hover:border-primary/20 hover:bg-accent/50',
-                          checked && 'border-primary/30 bg-primary/10'
+                            : 'cursor-pointer hover:border-foreground/30 hover:bg-accent/50',
+                          checked && 'border-foreground bg-secondary'
                         )}
                       >
                         <input

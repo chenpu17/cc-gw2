@@ -31,7 +31,7 @@ export function RoutingFlowBanner({
           {t('workbench.flow.endpointStep')} <span className="font-mono">{endpointPath}</span>
         </span>
         <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        <span className="border border-primary bg-primary/5 px-2.5 py-1 text-[11px] font-semibold text-primary">
+        <span className="border border-foreground bg-secondary px-2.5 py-1 text-[11px] font-semibold text-foreground">
           {t('workbench.flow.matchStep')}
         </span>
         <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />

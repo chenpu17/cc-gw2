@@ -70,12 +70,12 @@ export function EndpointSelector({
       <div className="rounded-lg border border-border bg-secondary px-3 py-3 text-xs text-muted-foreground">
         {hint}
       </div>
-      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-primary/20 hover:bg-accent/50">
+      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-foreground/30 hover:bg-accent/50">
         <input
           type="checkbox"
           checked={allSelected}
           onChange={handleToggleAll}
-          className="h-4 w-4 rounded border-input accent-primary"
+          className="h-4 w-4 rounded border-input accent-foreground"
         />
         <span className="text-sm font-medium">{t('apiKeys.allEndpoints')}</span>
       </label>
@@ -83,13 +83,13 @@ export function EndpointSelector({
         {available.map((endpoint) => (
           <label
             key={endpoint.id}
-            className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-primary/20 hover:bg-accent/50"
+            className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-foreground/30 hover:bg-accent/50"
           >
             <input
               type="checkbox"
               checked={!allSelected && selected.includes(endpoint.id)}
               onChange={() => handleToggle(endpoint.id)}
-              className="h-4 w-4 rounded border-input accent-primary"
+              className="h-4 w-4 rounded border-input accent-foreground"
             />
             <span className="text-sm">{endpoint.label}</span>
             <span className="text-xs text-muted-foreground">({endpoint.id})</span>

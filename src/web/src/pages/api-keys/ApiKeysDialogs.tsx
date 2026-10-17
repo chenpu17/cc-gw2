@@ -56,11 +56,11 @@ export function CreateApiKeyDialog({
           <DialogDescription>{t('apiKeys.createDescription')}</DialogDescription>
         </AppDialogHeader>
         <AppDialogBody className="space-y-4">
-          <div className="rounded-lg border border-primary/20 bg-accent px-4 py-3 text-xs text-primary">
+          <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">
             {t('apiKeys.selectEndpoints')}
           </div>
           <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-3 text-xs text-primary">
+            <div className="rounded-lg border border-border bg-secondary px-3 py-3 text-xs text-foreground">
               <p className="font-semibold">Restricted</p>
               <p className="mt-1 opacity-80">Select explicit endpoints before saving.</p>
             </div>

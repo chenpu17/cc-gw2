@@ -92,7 +92,7 @@ export function AggregateModelsStep(props: AggregateStepProps) {
             <div
               key={model._key}
               data-testid="aggregate-model-card"
-              className="rounded-xl border border-transparent bg-card p-4 shadow-[var(--surface-shadow)]"
+              className="border border-border bg-card p-3"
             >
               <div className="grid gap-4 md:grid-cols-2">
                 <Label className="flex flex-col gap-2 text-sm">
@@ -124,7 +124,7 @@ export function AggregateModelsStep(props: AggregateStepProps) {
 
               <Disclosure
                 summary={t('providers.aggregate.drawer.failoverTitle')}
-                className="mt-4 rounded-xl bg-secondary/50"
+                className="mt-3 bg-secondary/50"
                 summaryClassName="px-3 py-2 text-xs font-medium"
                 contentClassName="space-y-4 px-3 py-3"
               >

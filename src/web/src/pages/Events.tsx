@@ -353,7 +353,7 @@ function EventCard({ event }: { event: GatewayEvent }) {
           <Disclosure
             summary={t('events.details')}
             className="rounded-lg bg-secondary px-3 py-2 text-sm"
-            summaryClassName="px-0 py-0 text-xs font-medium text-primary hover:text-primary"
+            summaryClassName="px-0 py-0 text-xs font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground"
             contentClassName="mt-2.5"
           >
             <pre className="overflow-x-auto rounded-lg bg-secondary p-3 text-xs leading-6">

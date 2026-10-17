@@ -34,7 +34,7 @@ export function NoModelConfiguredDialog({
           </DialogDescription>
         </AppDialogHeader>
         <AppDialogBody className="space-y-4">
-          <div className="rounded-xl bg-accent p-4 text-sm text-primary">
+          <div className="rounded-xl bg-secondary p-4 text-sm text-muted-foreground">
             {t('providers.noModelDialog.description')}
           </div>
           <p className="text-sm text-muted-foreground">

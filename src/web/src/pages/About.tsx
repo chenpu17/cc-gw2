@@ -94,7 +94,7 @@ export default function AboutPage() {
   const infoItems = useMemo<InfoGridItem[]>(
     () => [
       { label: t('about.app.labels.name'), value: <span className="font-mono">cc-gw</span> },
-      { label: t('about.app.labels.version'), value: <span data-visual-volatile="true" className="font-mono text-primary">v{appVersion}</span> },
+      { label: t('about.app.labels.version'), value: <span data-visual-volatile="true" className="font-mono text-foreground">v{appVersion}</span> },
       { label: t('about.app.labels.buildTime'), value: <span data-visual-volatile="true">{buildTime}</span>, hint: t('about.app.hint.buildTime') },
       { label: t('about.app.labels.runtime'), value: <span className="font-mono">{statusQuery.data?.runtime ?? 'rust'}</span> },
       { label: t('about.app.labels.backendVersion'), value: <span data-visual-volatile="true" className="font-mono">{statusQuery.data?.backendVersion ?? '-'}</span> }
@@ -175,7 +175,7 @@ export default function AboutPage() {
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Build</p>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p data-visual-volatile="true" className="font-mono text-xl font-semibold text-primary">v{appVersion}</p>
+                <p data-visual-volatile="true" className="font-mono text-xl font-semibold text-foreground">v{appVersion}</p>
                 <p data-visual-volatile="true" className="text-xs text-muted-foreground">{buildTime}</p>
               </div>
               {versionCheck ? (
@@ -247,7 +247,7 @@ export default function AboutPage() {
         title={t('about.support.title')}
         description={
           <span className="space-y-1">
-            <span className="block text-sm font-medium text-primary">{t('about.support.subtitle')}</span>
+            <span className="block text-sm font-medium text-foreground">{t('about.support.subtitle')}</span>
             <span>{t('about.support.description')}</span>
           </span>
         }
@@ -255,7 +255,7 @@ export default function AboutPage() {
         <Card className="rounded-xl bg-card shadow-[var(--surface-shadow)]">
           <CardContent className="flex flex-col gap-4 pt-5 md:flex-row md:items-start md:justify-between">
             <div className="flex items-start gap-4 rounded-lg bg-secondary p-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-background text-foreground">
                 <LifeBuoy className="h-5 w-5" aria-hidden="true" />
               </div>
               <p className="max-w-2xl text-sm text-muted-foreground">{t('about.support.tip')}</p>

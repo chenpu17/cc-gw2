@@ -56,7 +56,7 @@ export function SettingsSectionNav({
                 <span className={cn(
                   'flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-semibold',
                   activeSection === section.id
-                    ? 'bg-primary text-primary-foreground'
+                    ? 'bg-foreground text-background'
                     : 'bg-secondary text-muted-foreground'
                 )}
                 >
@@ -409,7 +409,7 @@ export function SecuritySection({
                   <p className="text-[10px] font-semibold uppercase tracking-[0.34em] text-muted-foreground">{t('settings.auth.status')}</p>
                   <p className="mt-2 text-base font-semibold">{authSettings?.enabled ? t('settings.auth.statusEnabled') : t('settings.auth.statusDisabled')}</p>
                   {authSettings?.username ? (
-                    <div className="mt-3 rounded-lg bg-accent px-3 py-2 text-xs font-medium text-primary">{t('settings.auth.username')}: {authSettings.username}</div>
+                    <div className="mt-3 rounded-lg bg-background px-3 py-2 text-xs font-medium text-foreground">{t('settings.auth.username')}: {authSettings.username}</div>
                   ) : null}
                 </div>
                 <div className="rounded-xl bg-secondary px-4 py-3 text-xs text-muted-foreground">

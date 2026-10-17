@@ -88,7 +88,7 @@ export function EndpointConfigCard({
                     'h-6 border px-2 text-[10.5px] transition-colors',
                     already
                       ? 'border-border bg-secondary/40 text-muted-foreground/50'
-                      : 'border-border bg-card hover:border-primary hover:text-primary'
+                      : 'border-border bg-card hover:border-foreground hover:text-foreground'
                   )}
                 >
                   {model}

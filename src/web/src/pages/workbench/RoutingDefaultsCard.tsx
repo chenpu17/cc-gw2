@@ -29,11 +29,11 @@ export function RoutingDefaultsCard({
   const options = routing.providerModelOptions
 
   return (
-    <Card data-testid="routing-defaults-card" className="border-primary/40 bg-primary/5 shadow-none">
+    <Card data-testid="routing-defaults-card" className="border-foreground bg-secondary shadow-none">
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <h3 className="text-[13px] font-semibold text-primary">{t('workbench.defaults.title')}</h3>
+            <h3 className="text-[13px] font-semibold text-foreground">{t('workbench.defaults.title')}</h3>
             <p className="mt-0.5 text-[11px] text-muted-foreground">{t('workbench.defaults.cardSubtitle')}</p>
           </div>
           <Disclosure

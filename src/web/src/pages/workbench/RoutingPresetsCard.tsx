@@ -103,7 +103,7 @@ export function RoutingPresetsCard({
                       <button
                         type="button"
                         data-testid="apply-preset"
-                        className="text-[11px] font-semibold text-primary hover:underline disabled:opacity-50"
+                        className="text-[11px] font-semibold text-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground disabled:opacity-50"
                         onClick={() => routing.setPresetDiffDialog({ endpoint, preset })}
                         disabled={isApplying || isDeleting || writing}
                       >

@@ -46,8 +46,8 @@ export interface MetricCardProps {
 
 const sizeStyles: Record<Size, { wrap: string; value: string; label: string; body: string }> = {
   sm: { wrap: 'p-3.5', value: 'text-xl', label: 'text-[11px]', body: 'mt-1' },
-  md: { wrap: 'p-5', value: 'text-2xl', label: 'text-xs', body: 'mt-2' },
-  lg: { wrap: 'p-5', value: 'text-3xl', label: 'text-xs', body: 'mt-2.5' }
+  md: { wrap: 'p-5', value: 'text-xl', label: 'text-[11px]', body: 'mt-2' },
+  lg: { wrap: 'p-5', value: 'text-2xl', label: 'text-xs', body: 'mt-2.5' }
 }
 
 function buildSparkline(data: number[], stroke: string): ReactNode {
@@ -138,7 +138,7 @@ export function MetricCard({
         cardVariants({ variant: interactive ? 'interactive' : 'default' }),
         'motion-surface relative flex flex-col',
         styles.wrap,
-        featured && 'bg-primary/[0.03]',
+        featured && 'bg-secondary/60',
         className
       )}
       style={style}
@@ -163,7 +163,7 @@ export function MetricCard({
           className={cn('metric-number font-semibold tracking-tight text-foreground', styles.value)}
         >
           {renderedValue}
-          {suffix ? <span className="ml-0.5 text-sm font-medium text-muted-foreground">{suffix}</span> : null}
+          {suffix ? <span className="ml-1.5 text-sm font-medium text-muted-foreground">{suffix}</span> : null}
         </span>
         {delta ? <DeltaChip delta={delta} /> : null}
       </div>

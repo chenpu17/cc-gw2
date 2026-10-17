@@ -14,13 +14,13 @@ interface PageStateProps {
 
 const toneClasses: Record<NonNullable<PageStateProps['tone']>, string> = {
   default: 'border-border/30 bg-card',
-  primary: 'border-primary/10 bg-card',
+  primary: 'border-foreground/10 bg-card',
   danger: 'border-destructive/15 bg-card'
 }
 
 const iconToneClasses: Record<NonNullable<PageStateProps['tone']>, string> = {
-  default: 'bg-secondary text-primary',
-  primary: 'bg-primary/10 text-primary',
+  default: 'bg-secondary text-muted-foreground',
+  primary: 'bg-secondary text-foreground',
   danger: 'bg-destructive/10 text-destructive'
 }
 

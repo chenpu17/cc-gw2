@@ -12,7 +12,7 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-primary/10 text-primary',
+          'bg-secondary text-foreground',
         secondary:
           'border-transparent bg-secondary text-muted-foreground',
         destructive:
@@ -26,11 +26,11 @@ const badgeVariants = cva(
           'bg-warning-bg text-warning',
         info:
           'bg-info-bg text-info',
-        // collapsed into the single accent voice
+        // collapsed into the neutral voice — badges label, they don't act
         purple:
-          'bg-primary/10 text-primary',
+          'bg-secondary text-foreground',
         pink:
-          'bg-primary/10 text-primary'
+          'bg-secondary text-foreground'
       }
     },
     defaultVariants: {

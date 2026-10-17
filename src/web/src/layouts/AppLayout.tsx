@@ -224,7 +224,7 @@ function MobileTabBar({ onMore }: { onMore: () => void }) {
             end={item.path === '/'}
             className={cn(
               'flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors',
-              isActive ? 'text-primary' : 'text-muted-foreground'
+              isActive ? 'text-foreground' : 'text-muted-foreground'
             )}
             aria-current={isActive ? 'page' : undefined}
           >

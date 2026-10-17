@@ -81,7 +81,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold text-foreground">{t('logs.filtersTitle')}</p>
                 {activeFilters.length > 0 && (
-                  <Badge variant="outline" className="rounded-full border-transparent bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
+                  <Badge variant="outline" className="rounded-full border-transparent bg-secondary px-2.5 py-0.5 text-[11px] font-semibold text-foreground">
                     {t('common.filters.activeCount', { count: activeFilters.length })}
                   </Badge>
                 )}

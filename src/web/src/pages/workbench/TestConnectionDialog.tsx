@@ -45,7 +45,7 @@ export function TestConnectionDialog({
           </DialogDescription>
         </AppDialogHeader>
         <AppDialogBody className="space-y-4">
-          <div className="rounded-xl bg-accent p-4 text-sm text-primary">
+          <div className="rounded-xl bg-secondary p-4 text-sm text-muted-foreground">
             {t('providers.testDialog.description')}
           </div>
           <div className="space-y-4 rounded-xl bg-secondary/50 p-4">
@@ -64,8 +64,8 @@ export function TestConnectionDialog({
             </div>
             {usePreset ? (
               <div className="space-y-2">
-                <details className="rounded-xl border border-transparent bg-card p-2 text-xs shadow-[var(--surface-shadow)]">
-                  <summary className="cursor-pointer text-primary hover:underline">
+                <details className="border border-border bg-card p-2 text-xs">
+                  <summary className="cursor-pointer text-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground">
                     {t('providers.testDialog.presetPreviewSummary')}
                   </summary>
                   <div className="mt-2 space-y-1">
@@ -85,7 +85,7 @@ export function TestConnectionDialog({
             <div className="space-y-2 rounded-xl bg-secondary/50 p-4 text-xs">
               <p className="font-medium">{t('providers.testDialog.preservedInfo')}</p>
               {Object.entries(preservedExtras).map(([key, value]) => (
-                <code key={key} className="block rounded-lg border border-transparent bg-card px-2 py-1 shadow-[var(--surface-shadow)]">
+                <code key={key} className="block border border-border bg-card px-2 py-1">
                   {key}: {value}
                 </code>
               ))}

@@ -19,6 +19,9 @@ interface SegmentedControlProps<T extends string | number> {
 /**
  * Segmented toggle. Encapsulates the hand-rolled `bg-secondary p-1` pattern
  * used across range/density/view switches. Square under Modernist (zero radius).
+ *
+ * The active segment is ink (`bg-foreground`), never red: red is reserved for
+ * the primary action of a screen, so selection must not compete with it.
  */
 export function SegmentedControl<T extends string | number>({
   value,
@@ -46,8 +49,8 @@ export function SegmentedControl<T extends string | number>({
               'inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap px-3.5 text-xs font-medium transition-all',
               block ? 'flex-1' : 'shrink-0',
               active
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:text-foreground'
             )}
           >
             {option.icon}
