@@ -1,6 +1,9 @@
 export default {
   title: 'About',
   description: 'Review cc-gw version details, build metadata, and current runtime status.',
+  gateway: {
+    address: 'Gateway address'
+  },
   app: {
     title: 'Application',
     subtitle: 'Gateway build metadata at a glance.',
@@ -21,8 +24,6 @@ export default {
     loading: 'Fetching status...',
     empty: 'Unable to retrieve status information.',
     labels: {
-      host: 'Listen host',
-      port: 'Listen port',
       providers: 'Providers configured',
       active: 'Active requests',
       platform: 'Platform',

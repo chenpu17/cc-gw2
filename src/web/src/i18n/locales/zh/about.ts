@@ -1,6 +1,9 @@
 export default {
   title: '关于',
   description: '查看 cc-gw 的版本信息、构建元数据与运行状态。',
+  gateway: {
+    address: '网关地址'
+  },
   app: {
     title: '应用信息',
     subtitle: '版本与构建元数据一目了然。',
@@ -21,9 +24,7 @@ export default {
     loading: '正在获取运行状态...',
     empty: '未能获取状态信息。',
     labels: {
-      host: '监听地址',
-      port: '监听端口',
-      providers: '已配置 Provider',
+      providers: '已配置提供商',
       active: '活动请求',
       platform: '运行平台',
       pid: '进程 PID'

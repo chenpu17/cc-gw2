@@ -9,7 +9,6 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { useToast } from '@/providers/ToastProvider'
 import { requestJson, type ApiError } from '@/services/api'
 import { queryKeys } from '@/services/queryKeys'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import packageJson from '../../../../package.json' with { type: 'json' }
@@ -108,8 +107,6 @@ export default function AboutPage() {
     }
 
     return [
-      { label: t('about.status.labels.host'), value: statusQuery.data.host ?? '127.0.0.1' },
-      { label: t('about.status.labels.port'), value: <span data-visual-volatile="true">{statusQuery.data.port.toLocaleString()}</span> },
       { label: t('about.status.labels.providers'), value: statusQuery.data.providers.toLocaleString() },
       {
         label: t('about.status.labels.active'),
@@ -124,16 +121,6 @@ export default function AboutPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageToolbar
-        info={
-          <span className="rounded-lg bg-secondary px-2.5 py-1 text-xs text-muted-foreground" data-visual-volatile="true">
-            v{appVersion}
-          </span>
-        }
-        status={
-          <span className="rounded-lg bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
-            manual refresh only
-          </span>
-        }
         actions={
           <Button onClick={() => versionCheckMutation.mutate()} disabled={versionCheckMutation.isPending} size="sm">
             <Sparkles className={`mr-2 h-4 w-4${versionCheckMutation.isPending ? ' animate-spin' : ''}`} aria-hidden="true" />
@@ -142,62 +129,35 @@ export default function AboutPage() {
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
-        <Card className="overflow-hidden">
-          <CardContent className="p-5">
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-lg bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                <ServerCog className="h-3.5 w-3.5" aria-hidden="true" />
-                Runtime snapshot
-              </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div className="min-w-0 space-y-1">
-                  <p data-visual-volatile="true" className="metric-number truncate text-4xl font-semibold tracking-tight text-foreground">
-                  {statusQuery.data?.host ?? '127.0.0.1'}:{statusQuery.data?.port ?? '-'}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{t('about.description')}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs sm:w-56">
-                  <RuntimePill label={t('about.status.labels.providers')} value={statusQuery.data?.providers?.toLocaleString() ?? '-'} />
-                  <RuntimePill label={t('about.status.labels.active')} value={(statusQuery.data?.activeRequests ?? 0).toLocaleString()} />
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">{statusQuery.data?.runtime ?? 'rust'}</Badge>
-                <Badge variant="outline">{statusQuery.data?.platform ?? '-'}</Badge>
-              </div>
+      {/* The one fact no grid below carries: the address a client should be
+          pointed at. Host, port, runtime and platform each have their own
+          labelled cell in the grids, so repeating them here as pills would
+          only make the same number appear twice on one screen. */}
+      <Card className="overflow-hidden">
+        <CardContent className="space-y-4 p-5">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {t('about.gateway.address')}
+            </p>
+            <p data-visual-volatile="true" className="metric-number mt-1 truncate text-4xl font-semibold tracking-tight text-foreground">
+              http://{statusQuery.data?.host ?? '127.0.0.1'}:{statusQuery.data?.port ?? '-'}
+            </p>
+          </div>
+          {versionCheck ? (
+            <div className="rounded-lg bg-secondary px-4 py-3 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">
+                {versionCheck.updateAvailable
+                  ? t('about.update.available', { version: versionCheck.latestVersion })
+                  : t('about.update.current', { version: versionCheck.currentVersion })}
+              </p>
+              <p className="mt-1">
+                {t('about.update.channel', { channel: versionCheck.channel })}
+                {versionCheck.publishedAt ? ` · ${new Date(versionCheck.publishedAt).toLocaleString()}` : ''}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="overflow-hidden">
-          <CardContent className="p-5">
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Build</p>
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p data-visual-volatile="true" className="font-mono text-xl font-semibold text-foreground">v{appVersion}</p>
-                <p data-visual-volatile="true" className="text-xs text-muted-foreground">{buildTime}</p>
-              </div>
-              {versionCheck ? (
-                <div className="rounded-lg bg-secondary px-4 py-3 text-sm text-muted-foreground">
-                  <p className="font-medium text-foreground">
-                    {versionCheck.updateAvailable
-                      ? t('about.update.available', { version: versionCheck.latestVersion })
-                      : t('about.update.current', { version: versionCheck.currentVersion })}
-                  </p>
-                  <p className="mt-1">
-                    {t('about.update.channel', { channel: versionCheck.channel })}
-                    {versionCheck.publishedAt ? ` · ${new Date(versionCheck.publishedAt).toLocaleString()}` : ''}
-                  </p>
-                </div>
-              ) : null}
-              <div className="rounded-lg bg-secondary px-3.5 py-3 text-sm text-muted-foreground">
-                {t('about.support.tip')}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <PageSection title={t('about.app.title')} description={t('about.app.subtitle')}>
@@ -252,19 +212,17 @@ export default function AboutPage() {
           </span>
         }
       >
-        <Card className="rounded-xl bg-card shadow-[var(--surface-shadow)]">
-          <CardContent className="flex flex-col gap-4 pt-5 md:flex-row md:items-start md:justify-between">
-            <div className="flex items-start gap-4 rounded-lg bg-secondary p-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-background text-foreground">
-                <LifeBuoy className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <p className="max-w-2xl text-sm text-muted-foreground">{t('about.support.tip')}</p>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-4 rounded-lg bg-secondary p-4">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-background text-foreground">
+              <LifeBuoy className="h-5 w-5" aria-hidden="true" />
             </div>
-            <code className="inline-flex self-start rounded-lg bg-secondary px-3 py-2 text-xs font-medium">
-              ~/.cc-gw/config.json
-            </code>
-          </CardContent>
-        </Card>
+            <p className="max-w-2xl text-sm text-muted-foreground">{t('about.support.tip')}</p>
+          </div>
+          <code className="inline-flex self-start rounded-lg bg-secondary px-3 py-2 text-xs font-medium">
+            ~/.cc-gw/config.json
+          </code>
+        </div>
       </PageSection>
     </div>
   )
@@ -287,15 +245,6 @@ function InfoGrid({ items }: { items: InfoGridItem[] }) {
         </Card>
       ))}
     </dl>
-  )
-}
-
-function RuntimePill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-secondary px-3 py-2 text-right">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="metric-number mt-1 text-sm font-semibold text-foreground">{value}</p>
-    </div>
   )
 }
 
