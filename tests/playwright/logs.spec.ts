@@ -177,7 +177,7 @@ test('logs table controls respect column toggles, pagination, and export payload
   await page.keyboard.press('Escape')
   await expect(page.locator('th').filter({ hasText: 'Tokens' }).first()).toBeVisible()
 
-  // 「客户端」列：默认可见（识别出的 client_kind，无则 '-'），可隐藏
+  // 「客户端」列：默认可见（识别出的 client_kind，无则 '—'），可隐藏
   await expect(page.locator('th').filter({ hasText: '客户端' }).first()).toBeVisible()
   await page.getByRole('button', { name: '列设置' }).click()
   await columnPanel.getByRole('checkbox', { name: '客户端' }).click()

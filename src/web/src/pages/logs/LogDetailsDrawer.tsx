@@ -161,7 +161,7 @@ export function LogDetailsDrawer({
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={statusMeta?.variant}>
-                      {statusMeta?.label ?? '-'}
+                      {statusMeta?.label ?? '—'}
                     </Badge>
                     <Badge variant="outline">
                       {record.stream ? t('logs.stream.streaming') : t('logs.stream.single')}
@@ -173,22 +173,22 @@ export function LogDetailsDrawer({
                   <DetailStatCard label={t('logs.detail.info.latency')} value={formatLatency(record.latency_ms, t('common.units.ms'))} />
                   <DetailStatCard label={t('logs.detail.info.ttft')} value={formatLatency(record.ttft_ms, t('common.units.ms'))} />
                   <DetailStatCard label={t('logs.detail.info.tpot')} value={formatLatency(record.tpot_ms, t('common.units.msPerToken'))} />
-                  <DetailStatCard label={t('logs.detail.info.status')} value={statusMeta?.label ?? '-'} />
-                  <DetailStatCard label={t('logs.detail.info.errorSource')} value={errorSourceMeta?.label ?? '-'} />
+                  <DetailStatCard label={t('logs.detail.info.status')} value={statusMeta?.label ?? '—'} />
+                  <DetailStatCard label={t('logs.detail.info.errorSource')} value={errorSourceMeta?.label ?? '—'} />
                 </div>
 
                 <dl className="grid gap-x-4 gap-y-3 md:grid-cols-2 xl:grid-cols-4">
                   <DetailItem label={t('logs.detail.info.time')} value={formatDateTime(record.timestamp)} />
-                  <DetailItem label={t('logs.detail.info.sessionId')} value={record.session_id ?? '-'} />
-                  <DetailItem label={t('logs.detail.info.endpoint')} value={record.endpoint || '-'} />
+                  <DetailItem label={t('logs.detail.info.sessionId')} value={record.session_id ?? '—'} />
+                  <DetailItem label={t('logs.detail.info.endpoint')} value={record.endpoint || '—'} />
                   <DetailItem label={t('logs.detail.info.provider')} value={providerLabel} />
-                  <DetailItem label={t('logs.detail.info.client')} value={record.client_kind ?? '-'} />
-                  <DetailItem label={t('logs.detail.info.userAgent')} value={record.user_agent ?? '-'} />
+                  <DetailItem label={t('logs.detail.info.client')} value={record.client_kind ?? '—'} />
+                  <DetailItem label={t('logs.detail.info.userAgent')} value={record.user_agent ?? '—'} />
                   <DetailItem label={t('logs.detail.info.requestedModel')} value={record.client_model ?? t('logs.detail.info.noRequestedModel')} />
                   <DetailItem label={t('logs.detail.info.model')} value={record.model} />
                   <DetailItem label={t('logs.detail.info.stream')} value={formatStreamLabel(record.stream)} />
-                  <DetailItem label={t('logs.detail.info.status')} value={statusMeta?.label ?? '-'} />
-                  <DetailItem label={t('logs.detail.info.errorSource')} value={errorSourceMeta?.label ?? '-'} />
+                  <DetailItem label={t('logs.detail.info.status')} value={statusMeta?.label ?? '—'} />
+                  <DetailItem label={t('logs.detail.info.errorSource')} value={errorSourceMeta?.label ?? '—'} />
                 </dl>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -354,7 +354,7 @@ function DetailItem({ label, value }: { label: string; value: string | number | 
     <div className="min-w-0 space-y-1">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-all whitespace-pre-wrap text-sm font-medium leading-6 text-foreground">
-        {value ?? '-'}
+        {value ?? '—'}
       </dd>
     </div>
   )

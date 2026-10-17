@@ -77,21 +77,21 @@ export function ErrorDetailBlock({ detail, compact = false }: { detail: ErrorDet
                 {attempts.map((attempt, index) => (
                   <tr key={index} className="border-b border-border/50 last:border-b-0">
                     <td className="py-1 pr-3">
-                      <span className="font-medium">{attempt.provider ?? '-'}</span>
-                      <span className="text-muted-foreground"> / {attempt.model ?? '-'}</span>
+                      <span className="font-medium">{attempt.provider ?? '—'}</span>
+                      <span className="text-muted-foreground"> / {attempt.model ?? '—'}</span>
                     </td>
-                    <td className="py-1 pr-3 text-muted-foreground">{attempt.outcome ?? '-'}</td>
+                    <td className="py-1 pr-3 text-muted-foreground">{attempt.outcome ?? '—'}</td>
                     <td className="py-1 pr-3 text-right">
                       {attempt.status != null ? (
                         <span className={attempt.status >= 400 ? 'text-destructive' : 'text-foreground'}>
                           {attempt.status}
                         </span>
                       ) : (
-                        '-'
+                        '—'
                       )}
                     </td>
                     <td className="py-1 text-right text-muted-foreground">
-                      {attempt.latencyMs != null ? `${attempt.latencyMs} ms` : '-'}
+                      {attempt.latencyMs != null ? `${attempt.latencyMs} ms` : '—'}
                     </td>
                   </tr>
                 ))}

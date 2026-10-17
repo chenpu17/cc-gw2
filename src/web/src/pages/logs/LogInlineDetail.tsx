@@ -27,7 +27,7 @@ interface LogInlineDetailProps {
 }
 
 const TONE_FILL: Record<LogTraceTone, string> = {
-  accent: 'bg-primary',
+  accent: 'bg-foreground',
   ok: 'bg-success',
   warn: 'bg-warning',
   error: 'bg-destructive'
@@ -134,7 +134,7 @@ export function LogInlineDetail({ logId, providerLabelMap, apiKeyMap }: LogInlin
   const trace = buildLogTrace(record, providerLabel, t)
   const ms = t('common.units.ms')
   const metrics = [
-    { label: t('logs.detail.info.status'), value: statusMeta?.label ?? '-' },
+    { label: t('logs.detail.info.status'), value: statusMeta?.label ?? '—' },
     { label: t('logs.detail.info.latency'), value: formatLatency(record.latency_ms, ms) },
     { label: t('logs.detail.info.ttft'), value: formatLatency(record.ttft_ms, ms) },
     { label: t('logs.detail.info.inputTokens'), value: formatNumber(record.input_tokens) },

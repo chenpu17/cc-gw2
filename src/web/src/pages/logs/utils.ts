@@ -18,14 +18,14 @@ export function formatDateTime(timestamp: number): string {
 }
 
 export function formatNumber(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '-'
+  if (value === null || value === undefined) return '—'
   return value.toLocaleString()
 }
 
 /**
  * True when a successful request recorded no token counts because the
  * upstream never reported usage — distinct from a real zero. Rendered as
- * "-" plus a hint instead of a misleading "0".
+ * an em dash plus a hint instead of a misleading "0".
  */
 export function hasMissingUsage(
   record: Pick<LogRecord, 'input_tokens' | 'output_tokens' | 'status_code'>
@@ -77,7 +77,7 @@ export function parseErrorDetail(
 
 export function formatLatency(value: number | null | undefined, suffix: string): string {
   const formatted = formatNumber(value)
-  return formatted === '-' ? '-' : `${formatted} ${suffix}`
+  return formatted === '—' ? '—' : `${formatted} ${suffix}`
 }
 
 export function formatStreamLabel(stream: boolean): string {
@@ -231,7 +231,7 @@ export function buildLogTrace(
     atLabel: '0 ms',
     durLabel: null,
     detail: [
-      record.endpoint || '-',
+      record.endpoint || '—',
       record.stream ? t('logs.detail.trace.streamOn') : t('logs.detail.trace.streamOff')
     ].join(' · '),
     tone: 'accent',

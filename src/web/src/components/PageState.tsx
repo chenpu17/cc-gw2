@@ -9,6 +9,12 @@ interface PageStateProps {
   action?: ReactNode
   className?: string
   compact?: boolean
+  /**
+   * Single-row empty state for data regions (charts, tables, lists). Keeps the
+   * footprint proportional to its information — an empty chart is one line of
+   * text, not the largest object on the page.
+   */
+  inline?: boolean
   tone?: 'default' | 'primary' | 'danger'
 }
 
@@ -31,8 +37,32 @@ export function PageState({
   action,
   className,
   compact = false,
+  inline = false,
   tone = 'default'
 }: PageStateProps) {
+  if (inline) {
+    return (
+      <div
+        className={cn(
+          'flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1.5 rounded-lg border border-dashed px-4 py-3 text-center',
+          toneClasses[tone],
+          className
+        )}
+      >
+        {icon ? (
+          <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md', iconToneClasses[tone])}>
+            {icon}
+          </span>
+        ) : null}
+        <span className="text-sm font-medium text-foreground">{title}</span>
+        {description ? (
+          <span className="text-sm text-muted-foreground">{description}</span>
+        ) : null}
+        {action ? <span className="flex flex-wrap items-center gap-2">{action}</span> : null}
+      </div>
+    )
+  }
+
   return (
     <div
       className={cn(

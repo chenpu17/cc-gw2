@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { LogColumnId, RowDensity } from './shared'
 import { formatCost } from '@/utils/currency'
-import { formatDateTime, formatLatency, formatNumber, getLogStatusMeta, getSessionRowTone, hasMissingUsage } from './utils'
+import { formatDateTime, formatLatency, formatNumber, getLogStatusMeta, getSessionRowTone } from './utils'
 import { LogInlineDetail } from './LogInlineDetail'
 
 interface LogRowProps {
@@ -39,7 +39,7 @@ export function LogRow({
 }: LogRowProps) {
   const { t } = useTranslation()
   const providerLabel = providerLabelMap.get(record.provider) ?? record.provider
-  const endpointLabel = record.endpoint || '-'
+  const endpointLabel = record.endpoint || '—'
   const statusMeta = getLogStatusMeta(record, t)
   const requestedModel = record.client_model ?? t('logs.table.requestedModelFallback')
   const apiKeyMeta = record.api_key_id != null ? apiKeyMap.get(record.api_key_id) : undefined
@@ -105,7 +105,7 @@ export function LogRow({
         {visibleColumnSet.has('client') && (
           <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
             <div className="max-w-[110px] truncate" title={record.user_agent ?? record.client_kind ?? ''}>
-              {record.client_kind ?? '-'}
+              {record.client_kind ?? '—'}
             </div>
           </td>
         )}
@@ -125,29 +125,20 @@ export function LogRow({
           </td>
         )}
         {visibleColumnSet.has('tokens') && (
-          <td className={cn(cellPadding, 'text-right text-xs tabular-nums align-top')}>
-            <span className="inline-flex flex-col items-end gap-0.5">
+          <td className={cn(cellPadding, 'text-right text-xs tabular-nums')}>
+            {/* Both sides null = upstream sent no usage stats; unknown must read
+                differently from a real 0. */}
+            {record.input_tokens == null && record.output_tokens == null ? (
+              <span className="whitespace-nowrap text-muted-foreground/70">
+                {t('logs.table.tokensNoUsage')}
+              </span>
+            ) : (
               <span className="whitespace-nowrap">
                 {t('logs.table.columns.tokenIn')} {formatNumber(record.input_tokens)}
                 <span className="mx-1 text-muted-foreground/50">·</span>
                 {t('logs.table.columns.tokenOut')} {formatNumber(record.output_tokens)}
               </span>
-              {(() => {
-                if (hasMissingUsage(record)) {
-                  return (
-                    <span className="whitespace-nowrap text-[11px] text-muted-foreground/70">
-                      {t('logs.table.tokensNoUsage')}
-                    </span>
-                  )
-                }
-                const cacheTotal = (record.cache_read_tokens ?? 0) + (record.cache_creation_tokens ?? 0)
-                return cacheTotal > 0 ? (
-                  <span className="whitespace-nowrap text-[11px] text-muted-foreground/70">
-                    {t('logs.table.columns.tokenCache')} {formatNumber(cacheTotal)}
-                  </span>
-                ) : null
-              })()}
-            </span>
+            )}
           </td>
         )}
         {visibleColumnSet.has('cost') && (
@@ -162,20 +153,12 @@ export function LogRow({
           </td>
         )}
         {visibleColumnSet.has('duration') && (
-          <td className={cn(cellPadding, 'text-right text-xs tabular-nums align-top')}>
-            <span className="inline-flex flex-col items-end gap-0.5">
-              <span className="whitespace-nowrap">{formatLatency(record.latency_ms, 'ms')}</span>
-              {(record.ttft_ms != null || record.tpot_ms != null) && (
-                <span
-                  className="whitespace-nowrap text-[11px] text-muted-foreground/70"
-                  title={`${t('logs.table.columns.latencyTtft')} ${formatLatency(record.ttft_ms, 'ms')} · ${t('logs.table.columns.latencyTpot')} ${formatLatency(record.tpot_ms, 'ms/tk')}`}
-                >
-                  {t('logs.table.columns.latencyTtft')} {formatNumber(record.ttft_ms)}
-                  <span className="mx-1 text-muted-foreground/50">·</span>
-                  {t('logs.table.columns.latencyTpot')} {formatNumber(record.tpot_ms)}
-                </span>
-              )}
-            </span>
+          <td className={cn(cellPadding, 'text-right text-xs tabular-nums')} title={
+            (record.ttft_ms != null || record.tpot_ms != null)
+              ? `${t('logs.table.columns.latencyTtft')} ${formatLatency(record.ttft_ms, 'ms')} · ${t('logs.table.columns.latencyTpot')} ${formatLatency(record.tpot_ms, 'ms/tk')}`
+              : undefined
+          }>
+            <span className="whitespace-nowrap">{formatLatency(record.latency_ms, 'ms')}</span>
           </td>
         )}
         {visibleColumnSet.has('status') && (
@@ -188,7 +171,7 @@ export function LogRow({
         {visibleColumnSet.has('error') && (
           <td className={cn(cellPadding, 'text-xs text-muted-foreground')}>
             <div className="max-w-[100px] truncate" title={record.error ?? ''}>
-              {record.error ? record.error : '-'}
+              {record.error ? record.error : '—'}
             </div>
           </td>
         )}

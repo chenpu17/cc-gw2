@@ -652,8 +652,8 @@ export function UsageDistributionSection({
         />
       ) : rows.length === 0 ? (
         <PageState
-          compact
-          icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
+          inline
+          icon={<BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />}
           title={t('dashboard.usage.empty')}
         />
       ) : (
@@ -912,7 +912,7 @@ export function ModelMetricsTable({ models, loading, embedded }: { models: Model
   const body = loading ? (
     <PageLoadingState compact label={t('common.loadingShort')} />
   ) : models.length === 0 ? (
-    <PageState compact icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />} title={t('dashboard.modelTable.empty')} />
+    <PageState inline icon={<BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />} title={t('dashboard.modelTable.empty')} />
   ) : (
     <div className="overflow-auto">
       <Table>
@@ -987,7 +987,7 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
       {loading ? (
         <PageLoadingState compact label={t('dashboard.recent.loading')} />
       ) : records.length === 0 ? (
-        <PageState compact icon={<Activity className="h-5 w-5" aria-hidden="true" />} title={t('dashboard.recent.empty')} />
+        <PageState inline icon={<Activity className="h-3.5 w-3.5" aria-hidden="true" />} title={t('dashboard.recent.empty')} />
       ) : (
         <div className="overflow-auto">
           <Table>
@@ -1071,9 +1071,8 @@ function InlineChart({
       <p className="mb-2 text-xs font-medium text-muted-foreground">{title}</p>
       {empty ? (
         <PageState
-          compact
-          className="min-h-[160px]"
-          icon={<BarChart3 className="h-4 w-4" aria-hidden="true" />}
+          inline
+          icon={<BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />}
           title={t('dashboard.charts.empty')}
         />
       ) : (
@@ -1116,11 +1115,9 @@ function ChartCard({
           <PageLoadingState compact className="min-h-[220px]" label={t('common.loadingShort')} />
         ) : empty ? (
           <PageState
-            compact
-            className="min-h-[188px] rounded-xl border border-dashed border-border/45 bg-muted"
-            icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
+            inline
+            icon={<BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />}
             title={emptyText ?? t('dashboard.charts.empty')}
-            description={description}
           />
         ) : (
           <div className="pt-2">

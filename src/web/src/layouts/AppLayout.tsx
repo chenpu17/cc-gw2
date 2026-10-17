@@ -323,9 +323,12 @@ export function AppLayout() {
           </button>
 
           <div className="flex items-center gap-2">
+            {/* Live throughput, deliberately quieter than the sidebar's single
+                status pill — two identical pills for two different facts read
+                as one ambiguous signal. */}
             <span
               data-testid="header-rpm-badge"
-              className="hidden items-center gap-1.5 rounded-md bg-success-bg px-2 py-1.5 text-[11px] font-semibold text-success before:h-1.5 before:w-1.5 before:rounded-full before:bg-success before:animate-live-pulse sm:inline-flex"
+              className="hidden items-center gap-1.5 text-[11px] font-medium text-muted-foreground before:h-1.5 before:w-1.5 before:rounded-full before:bg-muted-foreground/50 before:animate-live-pulse sm:inline-flex"
             >
               {t('app.liveRpm', { count: rpm })}
             </span>
