@@ -413,7 +413,7 @@ export function AttentionAllClear({ connected, failed }: { connected: boolean; f
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18 }}
       data-testid="dashboard-all-clear"
-      className="flex h-8 flex-wrap items-center gap-x-2 gap-y-1 rounded-full bg-success-bg px-3 text-xs text-success"
+      className="flex h-8 flex-wrap items-center gap-x-2 gap-y-1 bg-success-bg px-3 text-xs text-success"
     >
       <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span className="font-medium">{t('dashboard.attention.allClear')}</span>
@@ -824,13 +824,13 @@ export function SetupProgressStrip({ doneCount, total }: { doneCount: number; to
   return (
     <div
       data-testid="dashboard-setup-progress"
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-full bg-secondary/60 px-4 py-2"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-secondary/60 px-4 py-2"
     >
       <span className="text-xs font-medium text-foreground">
         {t('dashboard.setupProgress.label', { done: doneCount, total })}
       </span>
-      <div className="h-1.5 min-w-24 flex-1 overflow-hidden rounded-full bg-border/60">
-        <div className="h-1.5 rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
+      <div className="h-1.5 min-w-24 flex-1 overflow-hidden bg-border/60">
+        <div className="h-1.5 bg-primary transition-all" style={{ width: `${percent}%` }} />
       </div>
       <Link to="/setup" className="shrink-0 text-xs font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground">
         {t('dashboard.setupProgress.cta')}

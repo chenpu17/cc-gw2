@@ -64,7 +64,7 @@ export default function HelpPage(): JSX.Element {
     <div className="space-y-4">
       <PageToolbar
         info={
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+          <span className="bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
             {t('help.meta.guides', { count: sections.length })}
           </span>
         }
@@ -262,7 +262,7 @@ function TextBlock({ content }: { content: string }) {
         <ol className="space-y-1.5 rounded-md bg-secondary px-3 py-2">
           {ordered.map((item) => (
             <li key={`${item.index}-${item.text}`} className="flex gap-2.5 text-sm leading-6">
-              <span className="mt-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-secondary px-1.5 text-[11px] font-semibold text-foreground">
+              <span className="mt-0.5 flex h-5 min-w-5 items-center justify-center bg-secondary px-1.5 text-[11px] font-semibold text-foreground">
                 {item.index}
               </span>
               <span>{renderInlineRichText(item.text)}</span>
@@ -308,7 +308,7 @@ function FaqList({ items }: { items: Array<{ q: string; a: string }> }) {
         >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-medium text-foreground">
             <span>{item.q}</span>
-            <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground transition group-open:bg-secondary group-open:text-foreground">
+            <span className="bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground transition group-open:bg-secondary group-open:text-foreground">
               {index + 1}
             </span>
           </summary>

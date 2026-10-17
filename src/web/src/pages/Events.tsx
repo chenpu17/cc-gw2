@@ -156,7 +156,7 @@ export default function EventsPage() {
     <div className="flex flex-col gap-5">
       <PageToolbar
         info={events.length > 0 ? (
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">{events.length} events</span>
+          <span className="bg-secondary px-2.5 py-1 text-xs text-muted-foreground">{events.length} events</span>
         ) : null}
         status={
           cursor === null ? (
@@ -323,12 +323,12 @@ function EventCard({ event }: { event: GatewayEvent }) {
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={LEVEL_VARIANT[event.level] || 'secondary'} className="rounded-full text-[10px]">
+              <Badge variant={LEVEL_VARIANT[event.level] || 'secondary'} className="text-[10px]">
                 {t(`events.levels.${event.level}` as const)}
               </Badge>
-              <Badge variant="outline" className="rounded-full text-[10px]">#{event.id}</Badge>
-              {event.mode ? <Badge variant="secondary" className="rounded-full text-[10px]">{event.mode}</Badge> : null}
-              {event.endpoint ? <Badge variant="outline" className="rounded-full text-[10px]">{event.endpoint}</Badge> : null}
+              <Badge variant="outline" className="text-[10px]">#{event.id}</Badge>
+              {event.mode ? <Badge variant="secondary" className="text-[10px]">{event.mode}</Badge> : null}
+              {event.endpoint ? <Badge variant="outline" className="text-[10px]">{event.endpoint}</Badge> : null}
             </div>
             <div className="min-w-0">
               <h3 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{event.title || t('events.defaultTitle')}</h3>
@@ -372,7 +372,7 @@ function EventMeta({ label, value }: { label: string; value: string | null }) {
   }
 
   return (
-    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-secondary/55 px-2.5 py-1 text-[11px] text-muted-foreground">
+    <div className="inline-flex max-w-full items-center gap-1.5 border border-border/60 bg-secondary/55 px-2.5 py-1 text-[11px] text-muted-foreground">
       <span className="font-medium">{label}:</span>
       <span className="truncate text-foreground" title={value}>{value}</span>
     </div>

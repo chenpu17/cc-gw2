@@ -81,7 +81,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold text-foreground">{t('logs.filtersTitle')}</p>
                 {activeFilters.length > 0 && (
-                  <Badge variant="outline" className="rounded-full border-transparent bg-secondary px-2.5 py-0.5 text-[11px] font-semibold text-foreground">
+                  <Badge variant="outline" className="border-transparent bg-secondary px-2.5 py-0.5 text-[11px] font-semibold text-foreground">
                     {t('common.filters.activeCount', { count: activeFilters.length })}
                   </Badge>
                 )}
@@ -90,7 +90,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             </div>
             <div className="flex items-center gap-1.5">
               {activeFilters.length > 0 && (
-                <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-8 rounded-full px-3 text-xs">
+                <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-8 px-3 text-xs">
                   {t('common.actions.reset')}
                 </Button>
               )}
@@ -98,7 +98,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
                 variant="ghost"
                 size="sm"
                 onClick={() => setFiltersExpanded((prev) => !prev)}
-                className="h-8 rounded-full px-3 text-xs"
+                className="h-8 px-3 text-xs"
               >
                 {filtersExpanded ? (
                   <>
@@ -125,7 +125,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
                       variant="outline"
                       role="button"
                       tabIndex={0}
-                      className="flex cursor-pointer items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground/90 transition hover:bg-secondary"
+                      className="flex cursor-pointer items-center gap-1 border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground/90 transition hover:bg-secondary"
                       onClick={f.onRemove}
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f.onRemove() } }}
                     >
@@ -153,7 +153,7 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  'h-7 rounded-full px-3 text-[11px] font-semibold transition-colors',
+                  'h-7 px-3 text-[11px] font-semibold transition-colors',
                   activeQuickView === view ? 'bg-card text-foreground shadow-[var(--surface-shadow)]' : 'text-muted-foreground'
                 )}
                 onClick={() => applyQuickView(view)}
@@ -256,7 +256,7 @@ function FilterSummary({
   value: string
 }) {
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground">
+    <div className="inline-flex items-center gap-1.5 border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground">
       <span>{label}</span>
       <span className="metric-number font-semibold text-foreground">{value}</span>
     </div>

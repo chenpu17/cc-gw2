@@ -133,7 +133,7 @@ export function ProvidersMasterDetail({
                   ))}
                 </SelectContent>
               </Select>
-              <Badge variant="secondary" className="shrink-0 rounded-full px-2.5 py-1 text-[11px]">
+              <Badge variant="secondary" className="shrink-0 px-2.5 py-1 text-[11px]">
                 {filteredProviders.length}
               </Badge>
             </div>

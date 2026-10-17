@@ -197,23 +197,16 @@ export function ApiKeysInventorySection({
             onChange={(event) => onFilterChange(event.target.value)}
             placeholder={t('apiKeys.filters.searchPlaceholder')}
           />
-          <div className="flex min-w-max items-center gap-1 overflow-x-auto rounded-full bg-background p-1 sm:justify-self-end">
-            {(['all', 'enabled', 'disabled'] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => onStatusFilterChange(value)}
-                className={cn(
-                  'inline-flex h-8 shrink-0 items-center rounded-full px-3.5 text-xs font-medium transition-all',
-                  statusFilter === value
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {t(`apiKeys.filters.${value}`)}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl<'all' | 'enabled' | 'disabled'>
+            value={statusFilter}
+            onChange={onStatusFilterChange}
+            className="min-w-max overflow-x-auto bg-background sm:justify-self-end"
+            options={[
+              { value: 'all', label: t('apiKeys.filters.all') },
+              { value: 'enabled', label: t('apiKeys.filters.enabled') },
+              { value: 'disabled', label: t('apiKeys.filters.disabled') }
+            ]}
+          />
         </div>
 
         {keys.length === 0 ? (
@@ -225,7 +218,7 @@ export function ApiKeysInventorySection({
             title={t('apiKeys.list.emptyTitle')}
             description={t('apiKeys.list.empty')}
             action={(
-              <Button size="sm" onClick={onCreateKey}>
+              <Button variant="outline" size="sm" onClick={onCreateKey}>
                 {t('apiKeys.createNew')}
               </Button>
             )}
