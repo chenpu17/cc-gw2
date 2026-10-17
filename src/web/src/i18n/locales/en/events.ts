@@ -8,6 +8,8 @@ export default {
     typePlaceholder: 'Filter by type (optional)'
   },
   live: 'Live',
+  pageCount_one: '{{count}} event on this page',
+  pageCount_other: '{{count}} events on this page',
   reconnecting: 'Disconnected, reconnecting…',
   failed: 'Connection failed — switch tabs or reload to retry',
   actions: {
@@ -18,9 +20,6 @@ export default {
     info: 'Info',
     warn: 'Warning',
     error: 'Error'
-  },
-  stats: {
-    total: 'Total'
   },
   empty: {
     title: 'No events recorded',

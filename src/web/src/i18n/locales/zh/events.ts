@@ -8,6 +8,7 @@ export default {
     typePlaceholder: '按事件类型过滤（可留空）'
   },
   live: '实时更新中',
+  pageCount: '本页 {{count}} 条',
   reconnecting: '连接中断，重连中…',
   failed: '连接失败 — 切换标签页或刷新以重试',
   actions: {
@@ -18,9 +19,6 @@ export default {
     info: '提示',
     warn: '警告',
     error: '错误'
-  },
-  stats: {
-    total: '总计'
   },
   empty: {
     title: '暂无事件记录',

@@ -42,12 +42,12 @@ test('events page supports live stream, level filtering, type filtering, and res
   await expect(page.getByTestId('events-filters-card')).toHaveCSS('position', 'static')
   await expect(page.getByText('Web login failed')).toBeVisible()
   await expect(page.getByText('Web login succeeded')).toBeVisible()
-  // 头部统计卡(后端 /api/events/stats 全量聚合)反映了上面的登录事件:
-  // web_auth_login_failure(warn)+ web_auth_login_success(info)
-  const statsGrid = page.getByTestId('events-stats-grid')
-  await expect(statsGrid.getByTestId('events-stat-warn')).toContainText(/[1-9]/)
-  await expect(statsGrid.getByTestId('events-stat-info')).toContainText(/[1-9]/)
-  await expect(statsGrid.getByTestId('events-stat-total')).toContainText(/[1-9]/)
+  // 级别筛选段上挂着 /api/events/stats 的全量计数(上面登录事件:
+  // web_auth_login_failure(warn) + web_auth_login_success(info))
+  const filtersCard = page.getByTestId('events-filters-card')
+  await expect(filtersCard.getByTestId('events-stat-warn')).toContainText(/[1-9]/)
+  await expect(filtersCard.getByTestId('events-stat-info')).toContainText(/[1-9]/)
+  await expect(filtersCard.getByTestId('events-stat-total')).toContainText(/[1-9]/)
   // SSE 实时流已连接
   await expect(page.getByText('实时更新中')).toBeVisible()
 
@@ -58,7 +58,7 @@ test('events page supports live stream, level filtering, type filtering, and res
       && url.pathname.endsWith('/api/events')
       && url.searchParams.get('level') === 'warn'
   })
-  await page.getByRole('button', { name: '警告', exact: true }).click()
+  await page.getByRole('button', { name: /警告/ }).click()
   await levelFilterResponse
 
   // 类型过滤改为枚举下拉
@@ -89,6 +89,6 @@ test('events page supports live stream, level filtering, type filtering, and res
       && url.pathname.endsWith('/api/events')
       && url.searchParams.get('level') === 'info'
   })
-  await page.getByRole('button', { name: '提示', exact: true }).click()
+  await page.getByRole('button', { name: /提示/ }).click()
   await infoFilterResponse
 })

@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'framer-motion'
 import { PageToolbar } from '@/components/PageToolbar'
-import { PageSection } from '@/components/PageSection'
 import { PageLoadingState, PageState } from '@/components/PageState'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useEventStream } from '@/hooks/useEventStream'
@@ -18,7 +17,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Disclosure } from '@/components/ui/disclosure'
-import { MetricCard } from '@/components/ui/metric-card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
   Select,
@@ -156,7 +154,9 @@ export default function EventsPage() {
     <div className="flex flex-col gap-5">
       <PageToolbar
         info={events.length > 0 ? (
-          <span className="bg-secondary px-2.5 py-1 text-xs text-muted-foreground">{events.length} events</span>
+          <span className="bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+            {t('events.pageCount', { count: events.length })}
+          </span>
         ) : null}
         status={
           cursor === null ? (
@@ -192,25 +192,22 @@ export default function EventsPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="events-stats-grid">
-        <MetricCard size="sm" dotClassName="bg-destructive" label={t('events.levels.error')} value={errorTotal.toLocaleString()} rawValue={errorTotal} valueTestId="events-stat-error" />
-        <MetricCard size="sm" dotClassName="bg-warning" label={t('events.levels.warn')} value={warnTotal.toLocaleString()} rawValue={warnTotal} valueTestId="events-stat-warn" />
-        <MetricCard size="sm" dotClassName="bg-muted-foreground" label={t('events.levels.info')} value={infoTotal.toLocaleString()} rawValue={infoTotal} valueTestId="events-stat-info" />
-        <MetricCard size="sm" dotClassName="bg-foreground" label={t('events.stats.total')} value={eventsTotal.toLocaleString()} rawValue={eventsTotal} valueTestId="events-stat-total" />
-      </div>
-
       <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center" data-testid="events-filters-card">
+        {/* Level filter doubles as the severity readout: the all-time counts
+            from /api/events/stats ride on the segments, so the page does not
+            need a separate row of stat cards repeating the same four levels. */}
         <SegmentedControl<LevelFilter>
           value={level}
           onChange={(value) => {
             setCursor(null)
             setLevel(value)
           }}
+          className="min-w-max overflow-x-auto"
           options={[
-            { value: '', label: t('events.filters.allLevels') },
-            { value: 'info', label: t('events.levels.info') },
-            { value: 'warn', label: t('events.levels.warn') },
-            { value: 'error', label: t('events.levels.error') }
+            { value: '', label: <LevelOption label={t('events.filters.allLevels')} count={eventsTotal} testId="events-stat-total" /> },
+            { value: 'info', label: <LevelOption label={t('events.levels.info')} count={infoTotal} testId="events-stat-info" /> },
+            { value: 'warn', label: <LevelOption label={t('events.levels.warn')} count={warnTotal} testId="events-stat-warn" /> },
+            { value: 'error', label: <LevelOption label={t('events.levels.error')} count={errorTotal} testId="events-stat-error" /> }
           ]}
           aria-label={t('events.filters.title')}
         />
@@ -245,63 +242,76 @@ export default function EventsPage() {
         ) : null}
       </div>
 
-      <PageSection
-        title={t('events.title')}
-        description={cursor ? t('events.actions.older') : t('events.actions.newest')}
-      >
-        {isLoading ? (
-          <PageLoadingState label={t('common.loading')} />
-        ) : eventsQuery.isError ? (
-          <PageState
-            icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
-            tone="danger"
-            title={t('common.status.error')}
-            description={t('events.toast.loadFailure', { message: eventsQuery.error?.message ?? t('common.unknownError') })}
-            action={(
-              <Button variant="outline" size="sm" onClick={() => void eventsQuery.refetch()}>
-                {t('common.actions.refresh')}
-              </Button>
-            )}
-          />
-        ) : events.length === 0 ? (
-          <PageState
-            icon={<ShieldAlert className="h-5 w-5" aria-hidden="true" />}
-            tone="primary"
-            title={activeFilters.length > 0 ? t('events.empty.filteredTitle') : t('events.empty.title')}
-            description={activeFilters.length > 0 ? t('events.empty.filteredSubtitle') : t('events.empty.subtitle')}
-            action={
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                {activeFilters.length > 0 ? (
-                  <Button variant="outline" size="sm" onClick={handleResetFilters}>
-                    {t('common.actions.reset')}
-                  </Button>
-                ) : null}
-                <Button asChild variant="ghost" size="sm">
-                  <Link to="/logs">{t('events.empty.actions.logs')}</Link>
+      {/* No section wrapper: the page h1 above already names this list, and the
+          toolbar status already says which page of it you are on. */}
+      {isLoading ? (
+        <PageLoadingState label={t('common.loading')} />
+      ) : eventsQuery.isError ? (
+        <PageState
+          icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
+          tone="danger"
+          title={t('common.status.error')}
+          description={t('events.toast.loadFailure', { message: eventsQuery.error?.message ?? t('common.unknownError') })}
+          action={(
+            <Button variant="outline" size="sm" onClick={() => void eventsQuery.refetch()}>
+              {t('common.actions.refresh')}
+            </Button>
+          )}
+        />
+      ) : events.length === 0 ? (
+        <PageState
+          icon={<ShieldAlert className="h-5 w-5" aria-hidden="true" />}
+          tone="primary"
+          title={activeFilters.length > 0 ? t('events.empty.filteredTitle') : t('events.empty.title')}
+          description={activeFilters.length > 0 ? t('events.empty.filteredSubtitle') : t('events.empty.subtitle')}
+          action={
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {activeFilters.length > 0 ? (
+                <Button variant="outline" size="sm" onClick={handleResetFilters}>
+                  {t('common.actions.reset')}
                 </Button>
-              </div>
-            }
-          />
-        ) : (
-          <div className="grid gap-3">
-            <AnimatePresence initial={false}>
-              {events.map((event) => (
-                <motion.div
-                  key={event.id}
-                  layout
-                  initial={{ opacity: 0, y: -12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18 }}
-                >
-                  <EventCard event={event} />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        )}
-      </PageSection>
+              ) : null}
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/logs">{t('events.empty.actions.logs')}</Link>
+              </Button>
+            </div>
+          }
+        />
+      ) : (
+        <div className="grid gap-3">
+          <AnimatePresence initial={false}>
+            {events.map((event) => (
+              <motion.div
+                key={event.id}
+                layout
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+              >
+                <EventCard event={event} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
+  )
+}
+
+/**
+ * Segment label for the level filter: the level name plus its all-time count.
+ * The count inherits the segment's colour via opacity so it stays legible on
+ * both the idle and the ink-filled active segment.
+ */
+function LevelOption({ label, count, testId }: { label: string; count: number; testId: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {label}
+      <span className="tabular-nums opacity-60" data-testid={testId}>
+        {count.toLocaleString()}
+      </span>
+    </span>
   )
 }
 
