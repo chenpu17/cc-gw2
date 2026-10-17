@@ -125,15 +125,13 @@ export function LogsTableCard(props: LogsTableCardProps) {
               {t('logs.actions.visibleCount', { count: visibleColumnCount - 2 })}
             </p>
           </div>
-          <div className="hidden md:flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">Wide Table</Badge>
-            <Badge variant="outline" className="bg-background">
-              {rowDensity === 'compact' ? t('logs.table.density.compact') : t('logs.table.density.comfortable')}
-            </Badge>
-            {showScrollHint ? (
-              <Badge variant="warning">Scroll for more</Badge>
-            ) : null}
-          </div>
+          {showScrollHint ? (
+            <div className="hidden md:flex">
+              <Badge variant="outline" className="bg-background text-muted-foreground">
+                {rowDensity === 'compact' ? t('logs.table.density.compact') : t('logs.table.density.comfortable')}
+              </Badge>
+            </div>
+          ) : null}
         </div>
         <div className="relative hidden md:block">
           <div ref={tableScrollRef} className="overflow-x-auto">
@@ -222,7 +220,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
           )}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4 bg-secondary/50 p-4 border-t border-border">
-          <div className="flex items-center gap-2 rounded-full bg-secondary px-3 py-2">
+          <div className="flex items-center gap-2 border border-border bg-secondary px-3 py-1.5">
             <span className="text-sm text-muted-foreground">{t('logs.table.pagination.perPage')}</span>
             <Select value={pageSize.toString()} onValueChange={(v) => setPageSize(Number(v))}>
               <SelectTrigger className="h-8 w-[80px] bg-background">
@@ -237,7 +235,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center gap-2 rounded-full bg-secondary px-2 py-2">
+          <div className="flex items-center gap-2 border border-border bg-secondary px-2 py-1.5">
             <Button variant="outline" size="sm" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
               {t('logs.table.pagination.previous')}
             </Button>
