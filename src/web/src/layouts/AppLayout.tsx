@@ -306,7 +306,8 @@ export function AppLayout() {
           <div key={location.pathname} className="flex min-w-0 flex-1 animate-fade-in items-baseline gap-2">
             <span className="hidden shrink-0 text-xs text-muted-foreground/60 sm:inline">{groupLabel}</span>
             <span aria-hidden className="hidden shrink-0 text-xs text-muted-foreground/40 sm:inline">/</span>
-            <h1 className="truncate text-sm font-semibold text-foreground">{activeTitle}</h1>
+            {/* Breadcrumb only — the page's single <h1> lives in PageToolbar. */}
+            <span className="truncate text-xs text-muted-foreground">{activeTitle}</span>
           </div>
 
           <button
