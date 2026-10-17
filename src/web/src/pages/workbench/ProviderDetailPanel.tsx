@@ -261,7 +261,7 @@ export function ProviderDetailPanel({
               {t('providers.profile.cancelEdit')}
             </Button>
           ) : (
-            <Button type="button" size="sm" data-testid="provider-edit" onClick={() => setMode('edit')}>
+            <Button type="button" variant="outline" size="sm" data-testid="provider-edit" onClick={() => setMode('edit')}>
               {t('providers.profile.edit')}
             </Button>
           )}
@@ -332,7 +332,7 @@ export function ProviderDetailPanel({
             >
               {t('providers.masterDetail.discard')}
             </Button>
-            <Button type="button" size="sm" data-testid="provider-save" onClick={() => void handleSave()} disabled={saving}>
+            <Button type="button" variant="outline" size="sm" data-testid="provider-save" onClick={() => void handleSave()} disabled={saving}>
               {saving ? t('common.actions.saving') : t('providers.masterDetail.save')}
             </Button>
           </div>

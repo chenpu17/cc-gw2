@@ -83,7 +83,7 @@ export function RoutingRulesList({
             title={t('workbench.routing.emptyTitle')}
             description={t('workbench.routing.emptyDescription')}
             action={
-              <Button size="sm" onClick={() => routing.handleAddRoute(endpoint)} disabled={savingRoute}>
+              <Button variant="outline" size="sm" onClick={() => routing.handleAddRoute(endpoint)} disabled={savingRoute}>
                 {t('workbench.routing.addFirst')}
               </Button>
             }
@@ -124,6 +124,7 @@ export function RoutingRulesList({
               {t('common.actions.reset')}
             </Button>
             <Button
+              variant="outline"
               size="sm"
               data-testid="save-routes"
               onClick={() => void routing.handleSaveRoutes(endpoint)}

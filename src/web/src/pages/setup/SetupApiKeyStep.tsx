@@ -38,7 +38,7 @@ export function SetupApiKeyStep({ state }: { state: SetupState }) {
           {createdKey.key}
         </div>
         <div>
-          <Button type="button" onClick={() => void copyCreatedKey(createdKey.key)}>
+          <Button type="button" variant="outline" onClick={() => void copyCreatedKey(createdKey.key)}>
             <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
             {t('common.actions.copy')}
           </Button>

@@ -102,6 +102,7 @@ export function RoutingDefaultsCard({
             />
           </div>
           <Button
+            variant="outline"
             size="sm"
             data-testid="save-defaults"
             onClick={() => void routing.handleSaveDefaults(endpoint)}

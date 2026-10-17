@@ -107,7 +107,7 @@ export function LogsPageActions({
           </PopoverContent>
         </Popover>
 
-        <Button onClick={onExport} disabled={exporting} className="w-full sm:w-auto">
+        <Button variant="outline" onClick={onExport} disabled={exporting} className="w-full sm:w-auto">
           <Download className="mr-2 h-4 w-4" />
           {exporting ? t('logs.actions.exporting') : t('logs.actions.export')}
         </Button>
