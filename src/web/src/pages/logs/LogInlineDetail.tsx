@@ -6,6 +6,7 @@ import type { ApiKeySummary } from '@/types/apiKeys'
 import { Button } from '@/components/ui/button'
 import { PageState } from '@/components/PageState'
 import { Skeleton } from '@/components/Skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { useLogDetailState } from './useLogDetailState'
 import { ErrorDetailBlock } from './ErrorDetailBlock'
@@ -211,32 +212,25 @@ export function LogInlineDetail({ logId, providerLabelMap, apiKeyMap }: LogInlin
         ) : null}
 
         <div className="border border-border bg-card">
-          <div className="flex gap-0.5 border-b border-border bg-secondary/50 p-1.5" role="tablist">
-            {payloadSections.map((section) => {
-              const isActive = section.key === activeSection?.key
-              return (
-                <button
-                  key={section.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setActiveKey(section.key)}
-                  className={cn(
-                    'px-2.5 py-1 text-[10.5px] font-medium transition-colors',
-                    isActive ? 'bg-card text-foreground' : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
+          <Tabs value={activeSection?.key} onValueChange={setActiveKey}>
+            <TabsList className="w-full justify-start overflow-x-auto">
+              {payloadSections.map((section) => (
+                <TabsTrigger key={section.key} value={section.key} className="px-2.5 text-[10.5px]">
                   {section.title}
-                </button>
-              )
-            })}
-          </div>
-          <pre
-            data-testid={`log-payload-${activeSection?.key ?? 'none'}`}
-            className="m-0 max-h-[172px] overflow-auto whitespace-pre-wrap p-3 font-mono text-[10.5px] leading-[1.65] text-muted-foreground"
-          >
-            {activeSection?.display.text || t('logs.detail.payload.emptyRequest')}
-          </pre>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            {payloadSections.map((section) => (
+              <TabsContent key={section.key} value={section.key} className="mt-0">
+                <pre
+                  data-testid={`log-payload-${section.key}`}
+                  className="m-0 max-h-[172px] overflow-auto whitespace-pre-wrap p-3 font-mono text-[10.5px] leading-[1.65] text-muted-foreground"
+                >
+                  {section.display.text || t('logs.detail.payload.emptyRequest')}
+                </pre>
+              </TabsContent>
+            ))}
+          </Tabs>
         </div>
 
         <div className="flex flex-wrap gap-2">
