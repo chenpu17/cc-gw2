@@ -118,17 +118,9 @@ export function BasicsSection({
       className="bg-card shadow-[var(--surface-shadow)]"
     >
       <CardContent className="pt-6">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold">{t('settings.sections.basics')}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{t('settings.description')}</p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <MiniInfoCard label={t('settings.fields.retention')} value={form.logRetentionDays} />
-            <MiniInfoCard label={t('settings.fields.logExportTimeout')} value={`${form.logExportTimeoutSeconds}s`} />
-            <MiniInfoCard label={t('settings.fields.bodyLimit')} value={`${form.bodyLimitMb} MB`} />
-          </div>
-        </div>
+        {/* Title only: this card is the page, so its description was the page
+            subtitle repeated 60px below itself. */}
+        <h3 className="mb-4 text-sm font-semibold">{t('settings.sections.basics')}</h3>
         <div className="grid gap-5 md:grid-cols-2">
           <div className="space-y-2">
             <Label>{t('settings.fields.port')}</Label>
@@ -846,15 +838,6 @@ export function StickySettingsSaveBar({
           {saving ? t('common.actions.saving') : t('common.actions.save')}
         </Button>
       </div>
-    </div>
-  )
-}
-
-function MiniInfoCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-secondary px-3 py-2 text-center">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
   )
 }

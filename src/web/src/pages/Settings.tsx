@@ -28,9 +28,9 @@ export default function SettingsPage() {
             {t('settings.overview.unsavedCount', { count: dirtyCount })}
           </span>
         ) : null}
-        status={state.config ? (
+        status={state.protocolChangesPending ? (
           <span className="text-xs text-muted-foreground">
-            {state.protocolChangesPending ? t('settings.protocol.restartWarning') : t('common.status.success')}
+            {t('settings.protocol.restartWarning')}
           </span>
         ) : null}
         actions={null}
