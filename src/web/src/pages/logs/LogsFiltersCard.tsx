@@ -3,14 +3,15 @@ import { useTranslation } from 'react-i18next'
 import type { ApiKeySummary } from '@/types/apiKeys'
 import type { CustomEndpointsResponse } from '@/types/endpoints'
 import type { ProviderSummary } from '@/services/gateway'
-import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ApiKeyFilter } from './ApiKeyFilter'
+import { QUICK_VIEWS } from './shared'
 import type { DateInput, QuickView, StatusFilter } from './shared'
 
 interface LogsFiltersCardProps {
@@ -138,22 +139,16 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             </div>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-secondary px-2 py-1.5">
-            {(['all', 'errors', 'today', 'anthropic', 'openai'] as QuickView[]).map((view) => (
-              <Button
-                key={view}
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  'h-7 px-3 text-[11px] font-semibold transition-colors',
-                  activeQuickView === view ? 'bg-card text-foreground shadow-[var(--surface-shadow)]' : 'text-muted-foreground'
-                )}
-                onClick={() => applyQuickView(view)}
-              >
-                {t(`logs.quickViews.${view}` as const)}
-              </Button>
-            ))}
-          </div>
+          <SegmentedControl<QuickView>
+            value={activeQuickView}
+            onChange={applyQuickView}
+            className="flex-wrap"
+            aria-label={t('logs.filtersTitle')}
+            options={QUICK_VIEWS.map((view) => ({
+              value: view,
+              label: t(`logs.quickViews.${view}` as const)
+            }))}
+          />
         </div>
         {filtersExpanded && (
           <div className="mt-3 grid gap-3 rounded-xl bg-secondary p-3 md:grid-cols-2 xl:grid-cols-4 animate-in fade-in slide-in-from-top-2 duration-200">

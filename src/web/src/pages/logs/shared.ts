@@ -5,6 +5,8 @@ export const PAGE_SIZE_OPTIONS = [20, 50, 100]
 export type StatusFilter = 'all' | 'success' | 'error'
 export type RowDensity = 'comfortable' | 'compact'
 export type QuickView = 'all' | 'errors' | 'today' | 'anthropic' | 'openai'
+/** Display order of the quick-view segmented control. */
+export const QUICK_VIEWS: QuickView[] = ['all', 'errors', 'today', 'anthropic', 'openai']
 export type LogColumnId =
   | 'endpoint'
   | 'provider'

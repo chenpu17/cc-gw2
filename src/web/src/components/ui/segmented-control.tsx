@@ -8,7 +8,9 @@ export interface SegmentedControlOption<T> {
 }
 
 interface SegmentedControlProps<T extends string | number> {
-  value: T
+  /** `null` = no segment active — legitimate when the current state is a
+   *  custom combination that none of the presets describe. */
+  value: T | null
   onChange: (value: T) => void
   options: readonly SegmentedControlOption<T>[]
   className?: string
