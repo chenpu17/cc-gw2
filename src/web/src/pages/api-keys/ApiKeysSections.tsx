@@ -431,7 +431,7 @@ function CompactApiKeysTable({
                         <Shield className="h-3.5 w-3.5" aria-hidden="true" />
                       </Button>
                       <Button
-                        variant={keySummary.enabled ? 'outline' : 'default'}
+                        variant="outline"
                         size="sm"
                         onClick={() => onToggleEnabled(keySummary.id, keySummary.enabled)}
                         className="h-8 px-2.5 text-xs"
@@ -631,7 +631,7 @@ function ApiKeyCard({
               {keySummary.isWildcard ? t('apiKeys.maxConcurrency') : t('apiKeys.editEndpoints')}
             </Button>
             <Button
-              variant={keySummary.enabled ? 'outline' : 'default'}
+              variant="outline"
               size="sm"
               onClick={() => onToggleEnabled(keySummary.id, keySummary.enabled)}
               className="w-full lg:w-auto"
