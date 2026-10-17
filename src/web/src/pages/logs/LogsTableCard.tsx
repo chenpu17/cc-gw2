@@ -10,9 +10,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import { LogCard } from './LogCard'
 import { LogRow } from './LogRow'
 import { PAGE_SIZE_OPTIONS, type LogColumnId, type RowDensity } from './shared'
+
+/** Shared header-cell metrics; each `th` appends its own alignment. */
+const TH = 'whitespace-nowrap px-3 py-2.5 text-xs font-semibold text-muted-foreground'
 
 interface LogsTableCardProps {
   tableScrollRef: RefObject<HTMLDivElement>
@@ -122,7 +126,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
             <p className="text-xs text-muted-foreground">
               <span className="metric-number">{t('logs.summary.total', { value: total.toLocaleString() })}</span>
               <span className="mx-1.5 text-muted-foreground/50">·</span>
-              {t('logs.actions.visibleCount', { count: visibleColumnCount - 2 })}
+              {t('logs.table.visibleColumns', { count: visibleColumnCount })}
             </p>
           </div>
           {showScrollHint ? (
@@ -138,21 +142,24 @@ export function LogsTableCard(props: LogsTableCardProps) {
             <table className="w-full min-w-[1180px] text-sm">
               <thead className="border-b border-border/50 bg-secondary/50">
                 <tr>
-                  <th className="sticky left-0 z-20 bg-secondary px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {/* No `uppercase`: these headers are Chinese in zh and Title
+                      Case in en, so forcing caps only mangled the ASCII half
+                      of a mixed-language row (PROVIDER next to 端点). */}
+                  <th className={cn(TH, 'sticky left-0 z-20 bg-secondary text-left')}>
                     {t('logs.table.columns.time')}
                   </th>
-                  {visibleColumnSet.has('endpoint') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.endpoint')}</th>}
-                  {visibleColumnSet.has('provider') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.provider')}</th>}
-                  {visibleColumnSet.has('client') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.client')}</th>}
-                  {visibleColumnSet.has('requestedModel') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.requestedModel')}</th>}
-                  {visibleColumnSet.has('routedModel') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.routedModel')}</th>}
-                  {visibleColumnSet.has('apiKey') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.apiKey')}</th>}
-                  {visibleColumnSet.has('tokens') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.tokens')}</th>}
-                  {visibleColumnSet.has('cost') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.cost')}</th>}
-                  {visibleColumnSet.has('duration') && <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.duration')}</th>}
-                  {visibleColumnSet.has('status') && <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.status')}</th>}
-                  {visibleColumnSet.has('error') && <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('logs.table.columns.error')}</th>}
-                  <th className="sticky right-0 z-20 bg-secondary px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {visibleColumnSet.has('endpoint') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.endpoint')}</th>}
+                  {visibleColumnSet.has('provider') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.provider')}</th>}
+                  {visibleColumnSet.has('client') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.client')}</th>}
+                  {visibleColumnSet.has('requestedModel') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.requestedModel')}</th>}
+                  {visibleColumnSet.has('routedModel') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.routedModel')}</th>}
+                  {visibleColumnSet.has('apiKey') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.apiKey')}</th>}
+                  {visibleColumnSet.has('tokens') && <th className={cn(TH, 'text-right')}>{t('logs.table.columns.tokens')}</th>}
+                  {visibleColumnSet.has('cost') && <th className={cn(TH, 'text-right')}>{t('logs.table.columns.cost')}</th>}
+                  {visibleColumnSet.has('duration') && <th className={cn(TH, 'text-right')}>{t('logs.table.columns.duration')}</th>}
+                  {visibleColumnSet.has('status') && <th className={cn(TH, 'text-center')}>{t('logs.table.columns.status')}</th>}
+                  {visibleColumnSet.has('error') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.error')}</th>}
+                  <th className={cn(TH, 'sticky right-0 z-20 bg-secondary text-center')}>
                     {t('logs.table.columns.actions')}
                   </th>
                 </tr>

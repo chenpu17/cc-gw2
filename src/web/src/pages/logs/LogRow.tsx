@@ -91,7 +91,9 @@ export function LogRow({
                 aria-hidden="true"
               />
             </button>
-            <span className="metric-number">{formatDateTime(record.timestamp)}</span>
+            {/* `whitespace-nowrap`: a wrapped timestamp made every row three
+                lines tall in an otherwise single-line table. */}
+            <span className="metric-number whitespace-nowrap">{formatDateTime(record.timestamp)}</span>
           </div>
         </td>
         {visibleColumnSet.has('endpoint') && (

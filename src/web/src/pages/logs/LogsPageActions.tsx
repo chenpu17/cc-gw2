@@ -67,12 +67,9 @@ export function LogsPageActions({
           </PopoverTrigger>
           <PopoverContent align="end" className="w-64 p-3">
             <div className="mb-3 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold">{t('logs.actions.columns')}</p>
-                <p className="text-xs text-muted-foreground">
-                  {t('logs.actions.visibleCount', { count: visibleColumns.length })}
-                </p>
-              </div>
+              {/* No "N columns visible" echo here: the checkboxes below already
+                  say which ones, and the table card reports the real total. */}
+              <p className="text-sm font-semibold">{t('logs.actions.columns')}</p>
               <Button
                 variant="ghost"
                 size="sm"

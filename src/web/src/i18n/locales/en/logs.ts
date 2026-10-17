@@ -28,7 +28,6 @@ export default {
   },
   actions: {
     columns: 'Columns',
-    visibleCount: '{{count}} columns visible',
     manualRefresh: 'Manual refresh',
     autoRefresh: 'Auto refresh',
     refreshing: 'Refreshing...',
@@ -54,6 +53,7 @@ export default {
     apiKeyUnknown: 'Unknown key',
     tokensNoUsage: 'no usage from upstream',
     costUnpricedHint: 'Unpriced: no price matched this model',
+    visibleColumns: '{{count}} columns shown',
     columns: {
       time: 'Time',
       endpoint: 'Endpoint',
