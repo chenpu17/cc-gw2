@@ -130,7 +130,6 @@ filters: {
       requestedModel: '请求模型',
       noRequestedModel: '未指定',
       model: '路由模型',
-      stream: 'Stream',
       latency: '耗时',
       status: '状态',
       inputTokens: '输入 Tokens',
@@ -165,11 +164,7 @@ filters: {
       }
     },
     summary: {
-      route: '{{from}} → {{to}}',
-      latency: '耗时：{{value}}',
-      ttft: 'TTFT：{{value}}',
-      tpot: 'TPOT：{{value}}',
-      stream: 'Stream：{{value}}'
+      route: '{{from}} → {{to}}'
     },
     payload: {
       title: 'Payloads',

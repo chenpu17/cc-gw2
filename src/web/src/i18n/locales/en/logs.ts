@@ -130,7 +130,6 @@ export default {
       requestedModel: 'Requested model',
       noRequestedModel: 'Not specified',
       model: 'Routed model',
-      stream: 'Stream',
       latency: 'Latency',
       status: 'Status',
       inputTokens: 'Input Tokens',
@@ -166,11 +165,7 @@ export default {
       }
     },
     summary: {
-      route: '{{from}} → {{to}}',
-      latency: 'Latency: {{value}}',
-      ttft: 'TTFT: {{value}}',
-      tpot: 'TPOT: {{value}}',
-      stream: 'Stream: {{value}}'
+      route: '{{from}} → {{to}}'
     },
     payload: {
       title: 'Payloads',

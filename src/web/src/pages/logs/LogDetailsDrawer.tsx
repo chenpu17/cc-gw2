@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLogDetailState } from './useLogDetailState'
 import { ErrorDetailBlock } from './ErrorDetailBlock'
 import { formatCost } from '@/utils/currency'
-import { buildPayloadDisplay, formatDateTime, formatLatency, formatNumber, formatStreamLabel, hasMissingUsage, parseErrorDetail } from './utils'
+import { buildPayloadDisplay, formatDateTime, formatLatency, formatNumber, hasMissingUsage, parseErrorDetail } from './utils'
 import type { PayloadDisplay } from './utils'
 
 interface LogDetailsDrawerProps {
@@ -147,16 +147,6 @@ export function LogDetailsDrawer({
                           to: record.model
                         })}
                       </span>
-                      <span className="text-muted-foreground">
-                        {t('logs.detail.summary.latency', {
-                          value: formatLatency(record.latency_ms, t('common.units.ms'))
-                        })}
-                      </span>
-                      {record.ttft_ms !== null ? (
-                        <span className="text-muted-foreground">
-                          TTFT: {formatLatency(record.ttft_ms, t('common.units.ms'))}
-                        </span>
-                      ) : null}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -169,11 +159,12 @@ export function LogDetailsDrawer({
                   </div>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-5">
+                {/* Status and stream live in the badges above; this row is
+                    latency + why-it-failed, so it does not repeat them. */}
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <DetailStatCard label={t('logs.detail.info.latency')} value={formatLatency(record.latency_ms, t('common.units.ms'))} />
                   <DetailStatCard label={t('logs.detail.info.ttft')} value={formatLatency(record.ttft_ms, t('common.units.ms'))} />
                   <DetailStatCard label={t('logs.detail.info.tpot')} value={formatLatency(record.tpot_ms, t('common.units.msPerToken'))} />
-                  <DetailStatCard label={t('logs.detail.info.status')} value={statusMeta?.label ?? '—'} />
                   <DetailStatCard label={t('logs.detail.info.errorSource')} value={errorSourceMeta?.label ?? '—'} />
                 </div>
 
@@ -186,9 +177,6 @@ export function LogDetailsDrawer({
                   <DetailItem label={t('logs.detail.info.userAgent')} value={record.user_agent ?? '—'} />
                   <DetailItem label={t('logs.detail.info.requestedModel')} value={record.client_model ?? t('logs.detail.info.noRequestedModel')} />
                   <DetailItem label={t('logs.detail.info.model')} value={record.model} />
-                  <DetailItem label={t('logs.detail.info.stream')} value={formatStreamLabel(record.stream)} />
-                  <DetailItem label={t('logs.detail.info.status')} value={statusMeta?.label ?? '—'} />
-                  <DetailItem label={t('logs.detail.info.errorSource')} value={errorSourceMeta?.label ?? '—'} />
                 </dl>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -199,28 +187,34 @@ export function LogDetailsDrawer({
                 </div>
 
                 {/* Cost breakdown (billing, v0.16): total + four components in
-                    the display currency; fully unpriced → all dashes. */}
+                    the display currency. Unpriced → the four components would
+                    all be dashes, so show the total alone and let the hint
+                    below explain why. */}
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" data-testid="log-cost-breakdown">
                   <DetailStatCard
                     label={t('logs.detail.cost.title')}
                     value={formatCost(record.cost, record.cost_currency)}
                   />
-                  <DetailStatCard
-                    label={t('logs.detail.cost.input')}
-                    value={formatCost(record.cost_breakdown?.input ?? null, record.cost_currency)}
-                  />
-                  <DetailStatCard
-                    label={t('logs.detail.cost.output')}
-                    value={formatCost(record.cost_breakdown?.output ?? null, record.cost_currency)}
-                  />
-                  <DetailStatCard
-                    label={t('logs.detail.cost.cacheRead')}
-                    value={formatCost(record.cost_breakdown?.cacheRead ?? null, record.cost_currency)}
-                  />
-                  <DetailStatCard
-                    label={t('logs.detail.cost.cacheCreation')}
-                    value={formatCost(record.cost_breakdown?.cacheCreation ?? null, record.cost_currency)}
-                  />
+                  {record.cost != null ? (
+                    <>
+                      <DetailStatCard
+                        label={t('logs.detail.cost.input')}
+                        value={formatCost(record.cost_breakdown?.input ?? null, record.cost_currency)}
+                      />
+                      <DetailStatCard
+                        label={t('logs.detail.cost.output')}
+                        value={formatCost(record.cost_breakdown?.output ?? null, record.cost_currency)}
+                      />
+                      <DetailStatCard
+                        label={t('logs.detail.cost.cacheRead')}
+                        value={formatCost(record.cost_breakdown?.cacheRead ?? null, record.cost_currency)}
+                      />
+                      <DetailStatCard
+                        label={t('logs.detail.cost.cacheCreation')}
+                        value={formatCost(record.cost_breakdown?.cacheCreation ?? null, record.cost_currency)}
+                      />
+                    </>
+                  ) : null}
                 </div>
                 {record.cost == null && !hasMissingUsage(record) ? (
                   <p className="text-xs text-muted-foreground/70">{t('logs.detail.cost.unpricedHint')}</p>
