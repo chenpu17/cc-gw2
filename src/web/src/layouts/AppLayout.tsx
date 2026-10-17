@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { MoreHorizontal, Search } from 'lucide-react'
-import { getActiveNavigationRoute, navGroups, navigationRoutes } from '@/app/routes'
+import { navGroups, navigationRoutes } from '@/app/routes'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { cn } from '@/lib/utils'
@@ -23,16 +23,6 @@ function isNavigationItemActive(pathname: string, item: (typeof navigationRoutes
 
 /** mobile bottom tab bar: the four core destinations + a "more" drawer entry */
 const mobileTabPaths = ['/', '/logs', '/providers', '/api-keys']
-
-function groupLabelKeyForPath(pathname: string): string {
-  for (const group of navGroups) {
-    const hit = navigationRoutes.some(
-      (route) => group.paths.includes(route.path) && isNavigationItemActive(pathname, route)
-    )
-    if (hit) return group.labelKey
-  }
-  return navGroups[0].labelKey
-}
 
 function GatewayBrandMark({ compact }: { compact?: boolean }) {
   return (
@@ -270,10 +260,6 @@ export function AppLayout() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const activeItem = useMemo(() => getActiveNavigationRoute(location.pathname), [location.pathname])
-  const activeTitle = t(activeItem.nav.titleKey ?? activeItem.nav.labelKey)
-  const groupLabel = t(groupLabelKeyForPath(location.pathname))
-
   const handleLogout = async () => {
     if (loggingOut) return
     setLoggingOut(true)
@@ -303,12 +289,10 @@ export function AppLayout() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header — mockup height:56px, solid panel bg (flat, no frosted) */}
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
-          <div key={location.pathname} className="flex min-w-0 flex-1 animate-fade-in items-baseline gap-2">
-            <span className="hidden shrink-0 text-xs text-muted-foreground/60 sm:inline">{groupLabel}</span>
-            <span aria-hidden className="hidden shrink-0 text-xs text-muted-foreground/40 sm:inline">/</span>
-            {/* Breadcrumb only — the page's single <h1> lives in PageToolbar. */}
-            <span className="truncate text-xs text-muted-foreground">{activeTitle}</span>
-          </div>
+          {/* No breadcrumb: the sidebar already marks the active item and its
+              group, and the page's own <h1> (PageToolbar) names the screen one
+              line below. Repeating it here was a third copy of the same fact. */}
+          <div className="min-w-0 flex-1" />
 
           <button
             type="button"
