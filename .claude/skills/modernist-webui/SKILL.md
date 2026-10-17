@@ -105,6 +105,45 @@ Variant discipline:
 - **Badge:** `default | secondary | outline | success | warning | destructive | info` (`purple`/`pink` collapse to a primary tint). `success` renders gray with a `live-pulse` dot. Status badges are **never green**.
 - **Card:** always via `cardVariants({ variant })`; never add `shadow-*`.
 
+### Control families — pick by semantics, not by taste
+
+Every "choose one" control belongs to exactly one of these families. Reaching for a
+different one is how the same interaction ends up looking like three different things.
+
+| Semantics | Control | Selected state |
+|---|---|---|
+| **View state** — pick one of a small set (filter / density / range / dimension) | `SegmentedControl` | `bg-foreground text-background` (ink) |
+| **Boolean** on/off, including persisted config | `Switch` | ink track (`data-[state=checked]:bg-foreground`) |
+| **Parallel panels** / peer views | `Tabs` | `border-b-2 border-foreground` |
+| **Form field** value (type, protocol, auth mode) | checkbox / radio / chip group | `border-foreground` / `bg-secondary` |
+| **Pick an entity from a list** (navigation) | selection surface | `border-foreground bg-secondary` |
+
+`SegmentedControl` accepts `value: T | null` — `null` means *no segment active*, which is
+correct when the current state is a custom combination none of the presets describe.
+Never fake it by highlighting a segment that isn't true.
+
+Two rules that follow from the families:
+- **Never hand-roll a tab strip.** A payload/panel switcher is `Tabs` + `TabsList` +
+  `TabsTrigger` (+ `TabsContent`), the same component in a table row and in a drawer.
+- **A toggle button must not carry status color.** If a row already shows an
+  enabled/disabled `Badge`, the adjacent action button stays `variant="outline"` in
+  *both* states — `variant={on ? 'outline' : 'default'}` clones the screen's one red
+  across every off row and reads as the primary action.
+
+### Pagination — two species, two placements
+
+Position follows the data source, vocabulary follows the placement. Do not move one to
+match the other; do match the shape.
+
+| List kind | Placement | Vocabulary |
+|---|---|---|
+| Table with a known total (**offset**) | Card footer; left = page size, right = `[< prev] page N / M [next >]` | `previous` / `next` / `page N of M` / `per page` |
+| Live-appending stream with **unknown total** (cursor) | Page header toolbar; one bordered strip holding `[< newest] N on this page [older >]` | `newest` / `older` |
+
+Both use the same strip: `flex items-center gap-2 border border-border bg-secondary px-2 py-1.5`,
+direction `ChevronLeft`/`ChevronRight` **outside** the label, and the page readout in the
+middle on `metric-number`.
+
 ### Custom primitives (the signature pieces)
 
 **`PageSection`** — the universal content container. Card with an optional header:
@@ -167,6 +206,8 @@ Props: `eyebrow / title / description / actions / children`. Header is `flex sm:
 - CSS gradients / glass on UI surfaces, frosted sidebars, `backdrop-blur`. (Gradients inside an SVG **logo asset** are exempt.)
 - A second accent hue (blue/purple buttons, multicolor charts beyond the 5-step palette).
 - Decorative motion beyond 160ms surface transitions.
+- Hand-rolling a control that already has a family: `role="tablist"` divs instead of `Tabs`, ghost-button rows instead of `SegmentedControl`, a bespoke pill group instead of a chip group. If none of the families fit, say so in the PR — don't quietly invent a sixth.
+- `variant={someState ? 'outline' : 'default'}` on a row action. Primary red is the screen's submit action; a per-row conditional makes it multiply.
 
 > **Scope:** this contract governs the console app (`src/web/src/`, mounted at `#root`). The marketing landing page (`src/web/src/landing/`, a separate entry point on `#landing-root`) has its own rounded aesthetic and is intentionally exempt.
 

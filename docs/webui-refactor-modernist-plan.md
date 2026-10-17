@@ -135,3 +135,81 @@
 ---
 
 设计稿文件:`WebUI 系统全面重构.zip`(项目根);解压临时副本 `/tmp/webui-redesign/`。
+
+---
+
+## 14. 一致性收尾约定（控件族 / 分页 / 术语）
+
+前 13 节是「从旧 UI 迁到 Modernist」的账。本节记录迁移完成后、控制台里仍然存在的
+**同一种交互有多种表达**问题，以及定下来的规则。规则本体同步写进
+`.claude/skills/modernist-webui/SKILL.md`（"Control families" 与 "Pagination" 两小节）。
+
+### 14.1 控件族（按语义选，不按手感选）
+
+| 语义 | 控件 | 选中态 |
+|---|---|---|
+| 视图态：小集合里选一个（筛选 / 密度 / 范围 / 维度） | `SegmentedControl` | `bg-foreground text-background` |
+| 布尔开 / 关（含持久化配置） | `Switch` | ink track |
+| 并列面板 / 同级视图切换 | `Tabs` | `border-b-2 border-foreground` |
+| 表单字段选值 | checkbox / radio / chip group | `border-foreground` / `bg-secondary` |
+| 从实体列表里选一项（导航） | selection surface | `border-foreground bg-secondary` |
+
+`SegmentedControl` 的 `value` 放宽为 `T | null`：`null` = 无选中段，用于「当前状态是
+自定义组合、任何预设都不描述」的情形，不要靠高亮一个不成立的段来回避。
+
+本轮把两处手搓实现收回组件族：
+
+| 位置 | 原状 | 现状 |
+|---|---|---|
+| `pages/logs/LogsFiltersCard.tsx` 日志快捷筛选 | 5 个 ghost `Button`，选中态 `bg-card`（全站仅此一处） | `SegmentedControl<QuickView>` |
+| `pages/logs/LogInlineDetail.tsx` payload 切换 | 手搓 `role="tablist"` pill tablist | `Tabs`/`TabsList`/`TabsTrigger`/`TabsContent`，与 `LogDetailsDrawer.tsx` 的同一切换器统一 |
+
+**明确不改**（它们各自属于别的族，不是「不一致」）：
+`ProvidersWorkbench.tsx` 视图选择卡（带计数与说明的顶层视图选择器 → selection surface 族）、
+`ProviderDrawerSteps.tsx` 的提供商类型 chip（表单字段选值 → chip group 族）。
+
+### 14.2 按钮不得承载状态色
+
+`ApiKeysSections.tsx` 的「启用 / 禁用」曾是 `variant={enabled ? 'outline' : 'default'}` ——
+每一行被禁用的密钥都渲染成主色红，一屏能出现十几个红按钮，把「红色只给提交型动作，
+且同屏最多一个」直接冲掉。**状态由旁边的「已启用 / 已禁用」Badge 读出，按钮只表达动作**，
+故两态统一 `variant="outline"`。这也解释了为什么这里不改成 `Switch`：会与 Badge 重复读数。
+
+### 14.3 分页：两种物种，两种位置，同一种形状
+
+位置跟随数据源，用词跟随位置。**不要为了「统一」把 offset 表格的页脚分页搬到页头。**
+
+| 列表类型 | 位置 | 用词 |
+|---|---|---|
+| 已知总数的表格（offset） | 卡片页脚；左「每页条数」，右 `[< 上一页] 第 N / M 页 [下一页 >]` | 上一页 / 下一页 / 第 N / M 页 / 每页 |
+| 未知总数的游标流（实时追加） | 页头工具栏；一条带边框的组：`[< 最新] 本页 N 条 [更早 >]` | 最新 / 更早 |
+
+两者共用同一条组：`flex items-center gap-2 border border-border bg-secondary px-2 py-1.5`，
+方向 `ChevronLeft`/`ChevronRight` 放在**文字外侧**，页码/条数读数居中走 `metric-number`。
+本轮给日志页脚补了方向箭头，并把事件页的 `本页 N 条` 从工具栏 `info` 槽移入导航组。
+
+### 14.4 中文术语统一为「提供商」
+
+中文界面里此前并存四种写法：英文 `Provider`（约 45 条 live 词条）、「供应商」（约 14 条）、
+「提供商」（约 13 条）、「服务商」（1 条）。统一为**提供商**。
+
+决定性理由：`providers.actions.add`（新增提供商）、工作台页签（模型提供商）、日志列名
+（提供商）已是「提供商」，且 **9 个 Playwright spec 依赖「新增提供商」这个按钮名**。
+
+**不动**：`providerId:modelId` / `providerId:*` / `provider:model` 等用户实际输入的字面量
+（故 `转发到（Provider:模型）` 归一为 `转发到（provider:model）`，与兄弟键
+`转发目标（provider:model）` 及 en 文案一致，而不是改成 `提供商:模型`——那不是合法输入）；
+「上游 / upstream」概念；en 文案。
+
+顺带修掉使用指南里已失效的页名：`模型供应商 / Models` → `模型与路由 / Providers & Routing`，
+`"路由管理"` → `"路由"`（对齐 `nav.providers` 与工作台的 routing 页签）。
+
+### 14.5 失效词条清理
+
+术语审计暴露一批含旧术语的死键。**先删再改名**，改名 diff 就只剩 live 词条。
+每个键删除前重新 grep 确认无引用 —— 本仓库存在 `` t(`logs.quickViews.${view}`) `` 这类
+动态键名，误删会渲染成裸键名。已删除：`nav.models`/`nav.routing`、
+`providers.{count, card.providerDefault, quickAddHuawei.*, aggregate.drawer.typeHint, drawer.{createTitle, editTitle, summary.*, fields.type, hints.auth, hints.customProvider, hints.checkUrl}}`、
+`dashboard.labels.providers`、`settings.routing.{description, descriptionByEndpoint.*}`、
+`modelManagement.{guide.*, overview.*, providersSemantics.*, routing.selectTarget}`、
+`workbench.{routingGuide.*, defaults.description, detail.*}`。
