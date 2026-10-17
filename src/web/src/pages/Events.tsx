@@ -153,11 +153,6 @@ export default function EventsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageToolbar
-        info={events.length > 0 ? (
-          <span className="bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
-            {t('events.pageCount', { count: events.length })}
-          </span>
-        ) : null}
         status={
           cursor === null ? (
             <span
@@ -180,14 +175,23 @@ export default function EventsPage() {
                 {t('common.actions.refresh')}
               </Button>
             ) : null}
-            <Button variant="outline" size="sm" disabled={!cursor} onClick={() => setCursor(null)}>
-              <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" />
-              {t('events.actions.newest')}
-            </Button>
-            <Button variant="outline" size="sm" disabled={!nextCursor} onClick={() => setCursor(nextCursor)}>
-              {t('events.actions.older')}
-              <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
-            </Button>
+            {/* Same group as the logs footer pagination: bordered strip, the
+                page readout between the two direction buttons. */}
+            <div className="flex items-center gap-2 border border-border bg-secondary px-2 py-1.5">
+              <Button variant="outline" size="sm" disabled={!cursor} onClick={() => setCursor(null)}>
+                <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" />
+                {t('events.actions.newest')}
+              </Button>
+              {events.length > 0 ? (
+                <span className="metric-number px-1 text-sm text-muted-foreground">
+                  {t('events.pageCount', { count: events.length })}
+                </span>
+              ) : null}
+              <Button variant="outline" size="sm" disabled={!nextCursor} onClick={() => setCursor(nextCursor)}>
+                {t('events.actions.older')}
+                <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
           </div>
         }
       />

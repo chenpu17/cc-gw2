@@ -1,5 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react'
-import { AlertTriangle, FileText } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, ChevronRight, FileText } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { ApiKeySummary } from '@/types/apiKeys'
@@ -244,6 +244,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
           </div>
           <div className="flex items-center gap-2 border border-border bg-secondary px-2 py-1.5">
             <Button variant="outline" size="sm" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
+              <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" />
               {t('logs.table.pagination.previous')}
             </Button>
             <span className="metric-number px-1 text-sm text-muted-foreground">
@@ -259,6 +260,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
               disabled={totalPages === 0 || page >= totalPages}
             >
               {t('logs.table.pagination.next')}
+              <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         </div>
