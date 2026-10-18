@@ -188,9 +188,12 @@
 方向 `ChevronLeft`/`ChevronRight` 放在**文字外侧**，页码/条数读数居中走 `metric-number`。
 本轮给日志页脚补了方向箭头，并把事件页的 `本页 N 条` 从工具栏 `info` 槽移入导航组。
 
-### 14.4 中文术语统一为「提供商」
+### 14.4 中文术语统一为「提供商」（**Web 文案**）
 
-中文界面里此前并存四种写法：英文 `Provider`（约 45 条 live 词条）、「供应商」（约 14 条）、
+**本节范围是 `src/web/src/i18n/locales/zh/`**，即控制台前端自己的文案。Rust 侧面向用户的
+中文串不在本轮范围内，见本节末尾「遗留项」。
+
+Web 文案里此前并存四种写法：英文 `Provider`（约 45 条 live 词条）、「供应商」（约 14 条）、
 「提供商」（约 13 条）、「服务商」（1 条）。统一为**提供商**。
 
 决定性理由：`providers.actions.add`（新增提供商）、工作台页签（模型提供商）、日志列名
@@ -203,6 +206,23 @@
 
 顺带修掉使用指南里已失效的页名：`模型供应商 / Models` → `模型与路由 / Providers & Routing`，
 `"路由管理"` → `"路由"`（对齐 `nav.providers` 与工作台的 routing 页签）。
+
+**遗留项（本轮明确未动）**：Rust 侧仍有 **30 条 live** 面向用户的中文串内嵌英文 `Provider`
+（另有 5 条测试断言随它们走），会以三种形式出现在控制台里——配置校验错误 toast、余额/路由
+失败的 `gateway_events.title`、以及 API 错误响应体：
+
+| 文件 | 条数 | 例 |
+|---|---|---|
+| `cc-gw-core/src/config.rs` | 19 | `Provider {} 的 RPM 限额不能超过 {MAX_RPM_LIMIT}`、`Provider ID 不能为空` |
+| `cc-gw-core/src/routing.rs` | 4 | `未配置任何模型提供商，请先在 Web UI 中添加 Provider。`（半句已改，半句未改） |
+| `cc-gw-server/src/admin_routes.rs` | 4 | `Provider {id} 余额刷新失败` → 渲染成 **Events 页一行标题** |
+| `cc-gw-core/src/balance.rs` | 2 | `Provider {} 未配置余额适配器，无法查询余额` |
+| `cc-gw-server/src/proxy_routes.rs` | 1 | `已自动切换到 Provider {}（共 {} 次尝试）` |
+
+唯一的「供应商」残留是 `admin_routes.rs:776`（`该供应商的地址无法推导模型列表端点`）。
+不改的原因：超出本轮「控制台 UI」范围，且部分串是 API 错误响应体，客户端可能在匹配这些文本；
+要改需连带移动 `config.rs` 内联测试模块里的 5 条断言。**改中文串时不要顺手改
+`ProviderConfig` / `ProviderProtocol` 等类型名**——那是代码标识符，不是文案。
 
 ### 14.5 失效词条清理
 
