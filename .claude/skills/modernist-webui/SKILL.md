@@ -125,6 +125,10 @@ Never fake it by highlighting a segment that isn't true.
 Two rules that follow from the families:
 - **Never hand-roll a tab strip.** A payload/panel switcher is `Tabs` + `TabsList` +
   `TabsTrigger` (+ `TabsContent`), the same component in a table row and in a drawer.
+  *Carve-out:* a **top-level view selector** whose options carry counts or descriptions is
+  a selection surface, not a tab strip — it legitimately uses `role="tablist"` + `role="tab"`
+  buttons (`src/web/src/pages/ProvidersWorkbench.tsx`). The test: tabs swap panels *inside*
+  the current page; a view selector replaces the page's whole content.
 - **A toggle button must not carry status color.** If a row already shows an
   enabled/disabled `Badge`, the adjacent action button stays `variant="outline"` in
   *both* states — `variant={on ? 'outline' : 'default'}` clones the screen's one red
@@ -206,7 +210,11 @@ Props: `eyebrow / title / description / actions / children`. Header is `flex sm:
 - CSS gradients / glass on UI surfaces, frosted sidebars, `backdrop-blur`. (Gradients inside an SVG **logo asset** are exempt.)
 - A second accent hue (blue/purple buttons, multicolor charts beyond the 5-step palette).
 - Decorative motion beyond 160ms surface transitions.
-- Hand-rolling a control that already has a family: `role="tablist"` divs instead of `Tabs`, ghost-button rows instead of `SegmentedControl`, a bespoke pill group instead of a chip group. If none of the families fit, say so in the PR — don't quietly invent a sixth.
+- Hand-rolling a control that already has a family: `role="tablist"` divs *for a panel
+  switcher* instead of `Tabs`, ghost-button rows instead of `SegmentedControl`, a bespoke
+  pill group instead of a chip group. (A top-level view selector is a selection surface,
+  not a tab strip — see the carve-out above.) If none of the families fit, say so in the
+  PR — don't quietly invent a sixth.
 - `variant={someState ? 'outline' : 'default'}` on a row action. Primary red is the screen's submit action; a per-row conditional makes it multiply.
 
 > **Scope:** this contract governs the console app (`src/web/src/`, mounted at `#root`). The marketing landing page (`src/web/src/landing/`, a separate entry point on `#landing-root`) has its own rounded aesthetic and is intentionally exempt.
