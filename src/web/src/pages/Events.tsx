@@ -350,8 +350,10 @@ function EventCard({ event }: { event: GatewayEvent }) {
             </div>
           </div>
           <div className="shrink-0 space-y-0.5 text-xs text-muted-foreground lg:text-right">
-            <p>{formatTimestamp(event.createdAt)}</p>
-            <p>{formatRelativeTime(event.createdAt)}</p>
+            {/* Both read "now" for an event seeded moments earlier — masked so
+                the baseline does not drift on every run. */}
+            <p data-visual-volatile="true">{formatTimestamp(event.createdAt)}</p>
+            <p data-visual-volatile="true">{formatRelativeTime(event.createdAt)}</p>
           </div>
         </div>
 

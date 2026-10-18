@@ -413,8 +413,10 @@ function CompactApiKeysTable({
                     {keySummary.maxConcurrency ? String(keySummary.maxConcurrency) : '—'}
                   </TableCell>
                   <TableCell className="py-3">
-                    <div className="text-sm font-medium text-foreground">{formatDate(keySummary.lastUsedAt)}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
+                    {/* Second-granularity `toLocaleString()` of a value that is
+                        "now" for a freshly-seeded key — masked for visual tests. */}
+                    <div data-visual-volatile="true" className="text-sm font-medium text-foreground">{formatDate(keySummary.lastUsedAt)}</div>
+                    <div data-visual-volatile="true" className="mt-1 text-xs text-muted-foreground">
                       {t('apiKeys.createdValue', { date: formatDate(keySummary.createdAt) })}
                     </div>
                   </TableCell>
@@ -433,6 +435,7 @@ function CompactApiKeysTable({
                       <Button
                         variant="outline"
                         size="sm"
+                        data-testid="api-key-toggle"
                         onClick={() => onToggleEnabled(keySummary.id, keySummary.enabled)}
                         className="h-8 px-2.5 text-xs"
                       >
@@ -614,13 +617,13 @@ function ApiKeyCard({
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {t('apiKeys.created')}
                 </span>
-                <p className="font-medium">{formatDate(keySummary.createdAt)}</p>
+                <p data-visual-volatile="true" className="font-medium">{formatDate(keySummary.createdAt)}</p>
               </div>
               <div className="space-y-1">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {t('apiKeys.lastUsed')}
                 </span>
-                <p className="font-medium">{formatDate(keySummary.lastUsedAt)}</p>
+                <p data-visual-volatile="true" className="font-medium">{formatDate(keySummary.lastUsedAt)}</p>
               </div>
             </div>
           </div>
@@ -633,6 +636,7 @@ function ApiKeyCard({
             <Button
               variant="outline"
               size="sm"
+              data-testid="api-key-toggle"
               onClick={() => onToggleEnabled(keySummary.id, keySummary.enabled)}
               className="w-full lg:w-auto"
             >
