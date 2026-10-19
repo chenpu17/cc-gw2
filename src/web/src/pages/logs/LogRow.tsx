@@ -92,8 +92,9 @@ export function LogRow({
               />
             </button>
             {/* `whitespace-nowrap`: a wrapped timestamp made every row three
-                lines tall in an otherwise single-line table. */}
-            <span className="metric-number whitespace-nowrap">{formatDateTime(record.timestamp)}</span>
+                lines tall in an otherwise single-line table. Volatile: the
+                value is second-granularity, so it differs on every run. */}
+            <span data-visual-volatile="true" className="metric-number whitespace-nowrap">{formatDateTime(record.timestamp)}</span>
           </div>
         </td>
         {visibleColumnSet.has('endpoint') && (
@@ -160,7 +161,7 @@ export function LogRow({
               ? `${t('logs.table.columns.latencyTtft')} ${formatLatency(record.ttft_ms, 'ms')} · ${t('logs.table.columns.latencyTpot')} ${formatLatency(record.tpot_ms, 'ms/tk')}`
               : undefined
           }>
-            <span className="whitespace-nowrap">{formatLatency(record.latency_ms, 'ms')}</span>
+            <span data-visual-volatile="true" className="whitespace-nowrap">{formatLatency(record.latency_ms, 'ms')}</span>
           </td>
         )}
         {visibleColumnSet.has('status') && (

@@ -715,7 +715,9 @@ export function ConfigFileSection({
             {t('common.actions.copy')}
           </Button>
         </div>
-        <code className="block break-all rounded-lg bg-secondary px-4 py-3 text-xs font-mono text-muted-foreground">
+        {/* The data dir is a per-run temp dir under the e2e harness, so the
+            path is volatile — masked for visual tests. */}
+        <code data-visual-volatile="true" className="block break-all rounded-lg bg-secondary px-4 py-3 text-xs font-mono text-muted-foreground">
           {configPath || t('settings.file.unknown')}
         </code>
         <div className="rounded-lg bg-secondary px-4 py-3 text-xs text-muted-foreground">

@@ -133,7 +133,7 @@ export function StatusBand({
         <MetricCard
           size="md"
           label={t('dashboard.labels.cpu')}
-          value={formatPercent(status?.cpuUsagePercent)}
+          value={<span data-visual-volatile="true">{formatPercent(status?.cpuUsagePercent)}</span>}
           valueTestId="dashboard-spotlight-value-cpu"
         />
       </div>
@@ -396,7 +396,8 @@ export function AttentionFeed({
                   <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{event.message}</p>
                 ) : null}
               </div>
-              <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted-foreground/70">
+              {/* Second-granularity, so it differs on every visual run. */}
+              <span data-visual-volatile="true" className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted-foreground/70">
                 {new Date(event.createdAt).toLocaleTimeString()}
               </span>
             </motion.li>
@@ -699,7 +700,8 @@ export function UsageDistributionSection({
                       formatCost(row.cost, costCurrency)
                     )}
                   </TableCell>
-                  <TableCell className="text-right">{formatLatencyValue(row.avgLatencyMs, t('common.units.ms'))}</TableCell>
+                  {/* Measured, so it differs on every visual run. */}
+                  <TableCell className="text-right"><span data-visual-volatile="true">{formatLatencyValue(row.avgLatencyMs, t('common.units.ms'))}</span></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -785,7 +787,7 @@ export function InfraDisclosure({
         </span>
       }
       badge={
-        <span className="text-xs tabular-nums text-muted-foreground">
+        <span data-visual-volatile="true" className="text-xs tabular-nums text-muted-foreground">
           {dbSizeDisplay} · {memoryDisplay}
         </span>
       }
@@ -939,9 +941,9 @@ export function ModelMetricsTable({ models, loading, embedded }: { models: Model
                 </div>
               </TableCell>
               <TableCell className="text-right font-medium">{item.requests.toLocaleString()}</TableCell>
-              <TableCell className="text-right">{formatLatencyValue(item.avgLatencyMs, t('common.units.ms'))}</TableCell>
-              <TableCell className="text-right">{formatLatencyValue(item.avgTtftMs, t('common.units.ms'))}</TableCell>
-              <TableCell className="text-right">{formatLatencyValue(item.avgTpotMs, t('common.units.msPerToken'), { maximumFractionDigits: 2 })}</TableCell>
+              <TableCell className="text-right"><span data-visual-volatile="true">{formatLatencyValue(item.avgLatencyMs, t('common.units.ms'))}</span></TableCell>
+              <TableCell className="text-right"><span data-visual-volatile="true">{formatLatencyValue(item.avgTtftMs, t('common.units.ms'))}</span></TableCell>
+              <TableCell className="text-right"><span data-visual-volatile="true">{formatLatencyValue(item.avgTpotMs, t('common.units.msPerToken'), { maximumFractionDigits: 2 })}</span></TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -1013,7 +1015,7 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
                   <TableRow key={item.id}>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-xs font-medium">{new Date(item.timestamp).toLocaleString()}</span>
+                        <span data-visual-volatile="true" className="text-xs font-medium">{new Date(item.timestamp).toLocaleString()}</span>
                         <span className="text-[11px] text-muted-foreground">#{item.id}</span>
                       </div>
                     </TableCell>
@@ -1042,7 +1044,7 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
                         {item.error ? <span className="truncate text-destructive">{item.error}</span> : null}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right font-medium">{formatLatencyValue(item.latency_ms, t('common.units.ms'))}</TableCell>
+                    <TableCell className="text-right font-medium"><span data-visual-volatile="true">{formatLatencyValue(item.latency_ms, t('common.units.ms'))}</span></TableCell>
                     <TableCell>
                       <Badge variant={itemStatus.variant} className="min-w-14 justify-center">
                         {itemStatus.label}

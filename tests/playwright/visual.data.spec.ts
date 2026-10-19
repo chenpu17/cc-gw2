@@ -4,7 +4,7 @@
  * before navigating, so dashboard / logs show populated metrics, charts and
  * rows rather than empty-state shells (covered by visual.spec.ts).
  */
-import { visualTest as test, expect, expectPageSnapshot, waitForVisualReady } from './visual-helpers'
+import { visualTest as test, expect, expectPageSnapshot, hideVolatileVisualValues, waitForVisualReady } from './visual-helpers'
 import { createGatewayHarness } from './harness'
 
 const harness = createGatewayHarness()
@@ -53,6 +53,7 @@ test.describe('@data seeded data-state', () => {
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
     // Let the daily-metrics / model-usage queries settle after first paint.
     await page.waitForTimeout(500)
+    await hideVolatileVisualValues(page)
     await expectPageSnapshot(page, 'data-dashboard.png', { fullPage: true })
   })
 
@@ -61,6 +62,7 @@ test.describe('@data seeded data-state', () => {
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
     await expect(page.locator('tbody tr').first()).toBeVisible()
     await page.waitForTimeout(300)
+    await hideVolatileVisualValues(page)
     await expectPageSnapshot(page, 'data-logs.png', { fullPage: true })
   })
 
@@ -68,6 +70,7 @@ test.describe('@data seeded data-state', () => {
     await page.goto(`${harness.baseUrl()}/ui/events`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
     await page.waitForTimeout(300)
+    await hideVolatileVisualValues(page)
     await expectPageSnapshot(page, 'data-events.png', { fullPage: true })
   })
 })
