@@ -16,13 +16,20 @@ const authHarness = createGatewayHarness({
     password: 'secret123',
   },
 })
+// The events page renders the *whole* event log, so its baseline would encode
+// how many events the earlier tests in this file happened to record (and would
+// silently change if one of them were edited). Its own harness keeps the log to
+// exactly what this test seeds.
+const eventsHarness = createGatewayHarness()
 
 test.beforeAll(async () => {
   await harness.start()
   await authHarness.start()
+  await eventsHarness.start()
 })
 
 test.afterAll(async () => {
+  await eventsHarness.stop()
   await authHarness.stop()
   await harness.stop()
 })
@@ -132,14 +139,11 @@ test('settings visual shell stays aligned with redesign baseline', async ({ page
 test('events visual shell stays aligned with redesign baseline', async ({ page, request }) => {
   // Seed one event (creating an API key records an `api_key_created` event) so
   // the pager strip's page-count readout renders. With zero events it is
-  // absent, which left its position in the strip untested.
-  //
-  // The count itself is not asserted: earlier tests in this file also record
-  // events (the api-keys test toggles a key twice), so the total depends on
-  // run scope. The seeded name is the order-independent proof the card is up.
-  await request.post(`${harness.baseUrl()}/api/keys`, { data: { name: 'Visual Event Seed' } })
+  // absent, which left its position in the strip untested. On this harness's
+  // empty log that is the *only* event, so the counts are deterministic too.
+  await request.post(`${eventsHarness.baseUrl()}/api/keys`, { data: { name: 'Visual Event Seed' } })
 
-  await page.goto(`${harness.baseUrl()}/ui/events`)
+  await page.goto(`${eventsHarness.baseUrl()}/ui/events`)
   await waitForVisualReady(page, h1(page))
   // Two matches by design: the card's message and its API-key meta chip.
   await expect(page.getByText('Visual Event Seed').first()).toBeVisible()
