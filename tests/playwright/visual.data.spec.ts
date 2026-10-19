@@ -66,9 +66,16 @@ test.describe('@data seeded data-state', () => {
     await expectPageSnapshot(page, 'data-logs.png', { fullPage: true })
   })
 
-  test('events with seeded entries', async ({ page }) => {
+  test('events with seeded entries', async ({ page, request }) => {
+    // Traffic requests only record *request logs*; gateway events come from
+    // system actions. Without this seed the page renders its empty state, so
+    // the baseline would cover no event card at all.
+    await request.post(`${harness.baseUrl()}/api/keys`, { data: { name: 'Data State Event Seed' } })
+
     await page.goto(`${harness.baseUrl()}/ui/events`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
+    // Two matches by design: the card's message and its API-key meta chip.
+    await expect(page.getByText('Data State Event Seed').first()).toBeVisible()
     await page.waitForTimeout(300)
     await hideVolatileVisualValues(page)
     await expectPageSnapshot(page, 'data-events.png', { fullPage: true })
