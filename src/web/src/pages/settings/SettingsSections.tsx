@@ -124,7 +124,9 @@ export function BasicsSection({
         <div className="grid gap-5 md:grid-cols-2">
           <div className="space-y-2">
             <Label>{t('settings.fields.port')}</Label>
-            <Input type="number" min={1} max={65535} value={form.port} onChange={(e) => onInputChange('port')(e.target.value)} aria-invalid={Boolean(errors.port)} />
+            {/* The harness binds an ephemeral port, so the value changes every
+                run — masked for visual tests (text only: keep the input's box). */}
+            <Input type="number" min={1} max={65535} value={form.port} data-visual-volatile="text" onChange={(e) => onInputChange('port')(e.target.value)} aria-invalid={Boolean(errors.port)} />
             {errors.port ? <p className="text-xs text-destructive">{errors.port}</p> : null}
           </div>
 
@@ -262,7 +264,8 @@ export function ProtocolSection({
             <div className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>{t('settings.protocol.http.port')}</Label>
-                <Input type="number" min={1} max={65535} value={form.httpPort} onChange={(e) => onSetForm((previous) => ({ ...previous, httpPort: e.target.value }))} aria-invalid={Boolean(errors.httpPort)} />
+                {/* Inherits the ephemeral root port — masked, see the Basics port field. */}
+                <Input type="number" min={1} max={65535} value={form.httpPort} data-visual-volatile="text" onChange={(e) => onSetForm((previous) => ({ ...previous, httpPort: e.target.value }))} aria-invalid={Boolean(errors.httpPort)} />
                 {errors.httpPort ? <p className="text-xs text-destructive">{errors.httpPort}</p> : null}
               </div>
               <div className="space-y-2">

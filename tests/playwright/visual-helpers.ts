@@ -80,9 +80,20 @@ export async function expectPageSnapshot(page: Page, name: string, options: Snap
   })
 }
 
-/** Hide elements flagged `[data-visual-volatile="true"]` (timestamps, ids, etc). */
+/**
+ * Mask elements flagged `data-visual-volatile` (timestamps, ids, ports…).
+ *
+ * `"true"` hides the element outright — right for a text node, which has no box
+ * styling of its own to lose. `"text"` only makes the glyphs transparent and
+ * keeps the element's border/fill in frame: use it for `<input>` values, where
+ * hiding the element would punch a hole in the card *and* drop the input's own
+ * rendering out of the regression net.
+ */
 export async function hideVolatileVisualValues(page: Page): Promise<void> {
   await page.addStyleTag({
-    content: '[data-visual-volatile="true"] { visibility: hidden !important; }',
+    content: [
+      '[data-visual-volatile="true"] { visibility: hidden !important; }',
+      '[data-visual-volatile="text"] { color: transparent !important; }',
+    ].join('\n'),
   })
 }

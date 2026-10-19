@@ -56,6 +56,8 @@ function toRgb(value: string): [number, number, number] {
 test('dashboard visual shell stays aligned with redesign baseline', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/`)
   await waitForVisualReady(page, h1(page))
+  // The runtime address carries the harness's ephemeral port.
+  await hideVolatileVisualValues(page)
   await expectPageSnapshot(page, 'dashboard-page.png', { fullPage: true })
 })
 
@@ -122,6 +124,8 @@ test('api keys visual shell stays aligned with redesign baseline', async ({ page
 test('settings visual shell stays aligned with redesign baseline', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/ui/settings`)
   await waitForVisualReady(page, h1(page))
+  // Two port fields default to the harness's ephemeral port.
+  await hideVolatileVisualValues(page)
   await expectPageSnapshot(page, 'settings-page.png', { fullPage: true })
 })
 

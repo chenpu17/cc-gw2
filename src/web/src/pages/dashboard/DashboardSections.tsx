@@ -84,7 +84,11 @@ export function StatusBand({
           data-testid="dashboard-runtime-address"
           className="metric-number text-sm font-semibold tracking-tight text-foreground"
         >
-          {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
+          {/* The port is whatever the harness happened to bind, so it differs
+              on every run — masked for visual tests. */}
+          <span data-visual-volatile="true">
+            {(status?.host ?? '0.0.0.0')}:{status?.port ?? '-'}
+          </span>
         </span>
         <span className="text-xs text-muted-foreground">
           {t('dashboard.status.providers', { value: status?.providers ?? 0 })}
