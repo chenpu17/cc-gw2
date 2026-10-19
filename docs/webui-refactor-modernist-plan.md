@@ -102,6 +102,8 @@
 
 **新增**:`routing-endpoint-selector`、`routing-rules-table`、`routing-hit-simulator`、`routing-templates`、`log-row-expanded`、`log-trace-timeline`、`command-palette`、`command-palette-trigger`、`header-rpm-badge`、`dashboard-insights`、`dashboard-model-distribution`、`api-keys-usage-chart`。
 
+**测试基础设施**(产品代码里的锚点,勿改名):`app-shell`(`AppLayout.tsx` 视口高度外壳)、`app-scroll`(真正的滚动容器)。视觉套件的整页截图靠它们注入 unroll,见 §15。
+
 ## 12. P0 实施清单(✅ 已实施:typecheck + build 绿)
 
 原子改动(必须同 PR):
@@ -233,3 +235,74 @@ Web 文案里此前并存四种写法：英文 `Provider`（约 45 条 live 词�
 `dashboard.labels.providers`、`settings.routing.{description, descriptionByEndpoint.*}`、
 `modelManagement.{guide.*, overview.*, providersSemantics.*, routing.selectTarget}`、
 `workbench.{routingGuide.*, defaults.description, detail.*}`。
+
+---
+
+## 15. 视觉捕获机制（整页截图）
+
+### 15.1 问题
+
+视觉套件里的 `expectPageSnapshot(page, name, { fullPage: true })` 曾经**从来没截到过整页**。
+根因是滚动权不在 document 手上：
+
+- `styles/global.css:91-95` — `html, body, #root { height: 100%; overflow-x: hidden }`。
+  带 `overflow-x: hidden` 的元素按 CSS Overflow 规范另一轴计算值变成 `auto`，
+  于是 `#root` 自己就是一个钉在视口高度的 scroll box。
+- `layouts/AppLayout.tsx:270` — 外壳 `flex h-screen overflow-hidden`。
+- `layouts/AppLayout.tsx:349` — 真正的滚动容器 `overflow-y-auto`（`data-testid="app-scroll"`）。
+
+Playwright 的 `_fullPageSize` 只读 `max(body.scrollHeight, documentElement.scrollHeight)`，
+而折叠线以下的像素全在内层容器的 scroll box 里，两个数都不超过视口——`fullPage: true`
+静默退化成视口截图。
+
+### 15.2 修法：测试期注入 unroll
+
+`tests/playwright/visual-helpers.ts` 的 `unrollForFullPage()` 在快照前用
+`page.addStyleTag` 注入（与 `hideVolatileVisualValues` 同一机制）：
+
+```css
+html, body, #root { height: auto !important; }
+[data-testid="app-shell"] { height: auto !important; min-height: 100vh !important; }
+[data-testid="app-scroll"] { overflow: visible !important; }
+```
+
+四条约束，缺一条都会失效：
+
+1. `html/body/#root { height: auto }` 必需——只解外壳高度没用，`#root` 仍会裁掉。
+   **保留 `overflow-x: hidden`**，只覆盖 height。
+2. `min-height: 100vh` 保住的是一屏地板：否则 help / 空 logs 这类短页会截出比视口还矮的
+   图，侧边栏 `border-r` 半路断掉。
+3. 外壳**保留 `overflow: hidden`**（不要改成 `visible`）：它作为最近的 scrollport，
+   让 `StickySettingsSaveBar` 的 `sticky bottom-4` 仍按内容流位置渲染。
+   高度已是 auto，裁不到任何东西。
+4. `app-scroll { overflow: visible }` 是保险，彻底去掉内层滚动。
+
+`expectPageSnapshot` 在 `fullPage: true` 时自动调用 unroll，调用点不可能漏。随后
+`assertDocumentOwnsScroll()` 做 tripwire：若 testid 改名或祖先重新钳制高度，
+用例会**显式失败**，而不是悄悄退回视口截图。基线高度另用 `sips -g pixelHeight` 核对。
+
+**不要加 settle 等待，更不要 dispatch `resize`**：Playwright 比对前会循环到连续两张
+截图一致（15 s 内），ECharts 首帧动画会被吸收；而 resize 会让 `echarts-for-react`
+重新 `setOption` 并重启动画，凭空制造不确定性。`captureBeyondViewport` 路径也不改视口，
+`vh` 单位仍是 1200（desktop）/ 844（narrow）。
+
+### 15.3 哪些页面保持视口截图
+
+工作台两页（`model-management-page.png` / `routing-workbench-page.png`）**不**开 fullPage：
+它们的栏位靠 `RoutingEndpointRail.tsx:81` 的 `lg:h-full`、`ProvidersMasterDetail.tsx:164`
+的 `lg:max-h-[calc(100vh-320px)]` 撑满视口，取消内层滚动会把它们压成内容高度，截出来的
+图不再代表用户在 1440×1200 下的真实渲染。`landing`（独立入口，本就是 document 滚动）、
+`login`（`min-h-screen` 居中）、以及全部 overlay（对话框本就该是视口截图）同理不动。
+
+### 15.4 代价与配套
+
+- **容差相对变宽松**：图高约 3 倍后，同一 `maxDiffPixelRatio: 0.015` 在绝对像素上更宽松。
+  缓解：新增易变值用 `data-visual-volatile` 掩掉；单控件样式回归靠精确断言（见 api-keys
+  用例里的按钮颜色断言）而不是快照容差。**不要**为探测方便调低默认容差——亚像素 AA 噪声
+  会把它打翻；需要时用 `VISUAL_MAX_DIFF_PIXEL_RATIO` 环境变量临时覆盖。
+- **易变值必须掩**：秒级时间戳、进程指标、临时端口路径在整页后才会进画面。
+  约定 `data-visual-volatile="true"` → `visibility: hidden`（保留盒与列宽）；
+  `"text"` → `color: transparent`（输入框）。`@data` 套件调用
+  `hideVolatileVisualValues` 才会生效——新增用例别忘。
+- **`pnpm test:e2e:web:update-snapshots` 必须带 `=all`**：裸 `--update-snapshots`
+  等于 `changed`，对「仍在容差内判过」的过期基线**什么都不写**，是假阴性的来源。

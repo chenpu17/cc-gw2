@@ -179,6 +179,7 @@ Props: `eyebrow / title / description / actions / children`. Header is `flex sm:
 - **Grids:** responsive `grid gap-4 lg:grid-cols-2` (or `sm:grid-cols-2 lg:grid-cols-4` for metric rows). Use `MiniInfoCard` for compact centered label/value readouts.
 - **Collapsible detail** → `Disclosure`, collapsed by default, with a tabular badge (`dbSize · mem`) on the summary.
 - **Dense data** → `table` + `tabular-nums`; volatile values masked with `[data-visual-volatile]` for visual tests.
+- **Full-page visual capture** → the console scrolls inside an inner container, not the document, so `fullPage: true` degenerates to a viewport shot unless the test injects an unroll (see `unrollForFullPage` in `tests/playwright/visual-helpers.ts`). If you add or rename the viewport-height shell or the scrolling container, keep `data-testid="app-shell"` / `"app-scroll"` — the unroll and its tripwire target them.
 
 ---
 
