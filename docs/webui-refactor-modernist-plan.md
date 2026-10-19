@@ -249,7 +249,7 @@ Web 文案里此前并存四种写法：英文 `Provider`（约 45 条 live 词�
   带 `overflow-x: hidden` 的元素按 CSS Overflow 规范另一轴计算值变成 `auto`，
   于是 `#root` 自己就是一个钉在视口高度的 scroll box。
 - `layouts/AppLayout.tsx:270` — 外壳 `flex h-screen overflow-hidden`。
-- `layouts/AppLayout.tsx:349` — 真正的滚动容器 `overflow-y-auto`（`data-testid="app-scroll"`）。
+- `layouts/AppLayout.tsx:351` — 真正的滚动容器 `overflow-y-auto`（`data-testid="app-scroll"`）。
 
 Playwright 的 `_fullPageSize` 只读 `max(body.scrollHeight, documentElement.scrollHeight)`，
 而折叠线以下的像素全在内层容器的 scroll box 里，两个数都不超过视口——`fullPage: true`
@@ -306,3 +306,19 @@ html, body, #root { height: auto !important; }
   `hideVolatileVisualValues` 才会生效——新增用例别忘。
 - **`pnpm test:e2e:web:update-snapshots` 必须带 `=all`**：裸 `--update-snapshots`
   等于 `changed`，对「仍在容差内判过」的过期基线**什么都不写**，是假阴性的来源。
+
+### 15.5 已知盲区（独立复核确认，均不阻塞当前基线）
+
+- **tripwire 只看 `app-scroll` 这一层**。若某个被截页面把正文放进自己的
+  `max-h-* overflow-y-auto` 容器（目前唯一实例是设置页定价表，位于默认折叠的
+  Disclosure 内；api-keys 的对话框不参与整页截图），`app-scroll` 会正常撑开、
+  tripwire 全绿，而该容器的下半截不会进基线。新增此类容器时要么让它随内容撑开，
+  要么把该区域移出捕获状态；需要时再给 tripwire 加「可见后代滚动容器必须不裁剪」的扫描。
+- **窄屏的固定 `MobileTabBar` 会遮挡一条带**：Chromium 把 `position: fixed` 元素画在
+  初始视口位置，1520px 高的窄屏整页图里它落在 y≈800–880，遮住下方约 64px 内容。
+  这是确定性的，不会引起漂移，但那一条带的像素不参与比对——不要在那里放需要被
+  视觉回归网保护的内容。
+- **日期粒度内容无法用 `[data-visual-volatile]` 掩**：`data-dashboard` 的图表 x 轴
+  标签是 canvas 绘制（DOM 掩码管不到），insights 的「最忙的一天」也来自当天数据。
+  跨天运行时会有 ~0.01% 的字形差，落在 1.5% 容差内静默通过——基线不是按日期冻结的，
+  判断「是否真回归」时别被这一项干扰。
