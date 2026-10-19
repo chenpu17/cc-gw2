@@ -122,7 +122,7 @@ test('api keys visual shell stays aligned with redesign baseline', async ({ page
     const fill = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor)
     expect(toRgb(fill), 'disabled-key toggle must not use the primary accent').not.toEqual(PRIMARY_ACCENT)
 
-    await expectPageSnapshot(page, 'api-keys-page.png')
+    await expectPageSnapshot(page, 'api-keys-page.png', { fullPage: true })
   } finally {
     await toggleWildcard(true)
   }
@@ -161,7 +161,7 @@ test('about visual shell stays aligned with redesign baseline', async ({ page })
   await page.goto(`${harness.baseUrl()}/ui/about`)
   await waitForVisualReady(page, h1(page))
   await hideVolatileVisualValues(page)
-  await expectPageSnapshot(page, 'about-page.png')
+  await expectPageSnapshot(page, 'about-page.png', { fullPage: true })
 })
 
 test('login visual shell stays aligned with redesign baseline', async ({ page }) => {
