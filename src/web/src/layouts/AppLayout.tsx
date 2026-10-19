@@ -267,7 +267,7 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div data-testid="app-shell" className="flex h-screen overflow-hidden bg-background">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-4 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
@@ -346,7 +346,9 @@ export function AppLayout() {
           tabIndex={-1}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-20 pt-4 md:pb-4 lg:px-6">
+          {/* data-testid: the visual suite injects CSS here to hand scroll
+              ownership back to the document for full-page captures. */}
+          <div data-testid="app-scroll" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-20 pt-4 md:pb-4 lg:px-6">
             <div className="mx-auto flex w-full max-w-[1280px] flex-1 flex-col">
               <Outlet />
             </div>

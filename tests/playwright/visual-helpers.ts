@@ -65,18 +65,84 @@ export async function waitForVisualReady(page: Page, anchor: Locator): Promise<v
 }
 
 export interface SnapshotOptions {
-  /** Capture the full scrollable page (logs/settings/events/dashboard). */
+  /** Capture the whole page, below the fold included (injects the unroll below). */
   fullPage?: boolean
   /** Per-pixel diff tolerance override; defaults to 0.015 (1.5%). */
   maxDiffPixelRatio?: number
 }
 
+/**
+ * Hand scroll ownership back to the document.
+ *
+ * The console pins itself to the viewport and scrolls an inner div:
+ * `global.css` sets `height: 100%` on html/body/#root, `AppLayout` wraps
+ * everything in an `h-screen overflow-hidden` shell, and the page content
+ * scrolls inside `data-testid="app-scroll"`. Playwright's fullPage size is
+ * `max(body.scrollHeight, documentElement.scrollHeight)`, so it never exceeds
+ * the viewport and `fullPage: true` silently degenerates to a viewport capture
+ * — everything below the fold never reaches a baseline.
+ *
+ * Relaxing that one constraint (test-only, injected — same precedent as
+ * `hideVolatileVisualValues`) makes the document as tall as its content, which
+ * is what `fullPage` always meant.
+ */
+const FULL_PAGE_UNROLL_CSS = [
+  // Required, not cosmetic: all three carry `overflow-x: hidden`, which
+  // computes the other axis to `auto` — each is a viewport-pinned clipping
+  // box, and `#root` in particular would swallow the taller shell where
+  // Playwright's full-page measurement cannot see it.
+  'html, body, #root { height: auto !important; }',
+  // `min-height` keeps the old full-viewport floor for short pages (a page
+  // shorter than the viewport would otherwise cut the sidebar's border-r
+  // partway down). `overflow: hidden` stays: the shell remains the nearest
+  // scrollport, so `sticky` children still render at their flow position.
+  '[data-testid="app-shell"] { height: auto !important; min-height: 100vh !important; }',
+  '[data-testid="app-scroll"] { overflow: visible !important; }',
+].join('\n')
+
+export async function unrollForFullPage(page: Page): Promise<void> {
+  await page.addStyleTag({ content: FULL_PAGE_UNROLL_CSS })
+}
+
+/**
+ * Tripwire so the unroll can never silently regress to viewport-sized
+ * baselines: a renamed testid or an ancestor re-pinned to `height: 100%`
+ * fails loudly here instead of quietly shrinking the capture back to one
+ * viewport.
+ */
+export async function assertDocumentOwnsScroll(page: Page): Promise<void> {
+  const metrics = await page.evaluate(() => {
+    const scroll = document.querySelector('[data-testid="app-scroll"]') as HTMLElement | null
+    return {
+      hasScroll: Boolean(scroll),
+      clientHeight: scroll?.clientHeight ?? -1,
+      scrollHeight: scroll?.scrollHeight ?? -1,
+      docHeight: document.documentElement.scrollHeight,
+    }
+  })
+  expect(metrics.hasScroll, 'app-scroll testid missing (AppLayout.tsx)').toBe(true)
+  expect(
+    metrics.scrollHeight,
+    'app-scroll still clips its content: fullPage would capture only the viewport',
+  ).toBeLessThanOrEqual(metrics.clientHeight + 1)
+  expect(
+    metrics.docHeight,
+    'document scroller does not span the app content',
+  ).toBeGreaterThanOrEqual(metrics.scrollHeight)
+}
+
 export async function expectPageSnapshot(page: Page, name: string, options: SnapshotOptions = {}): Promise<void> {
+  if (options.fullPage) {
+    await unrollForFullPage(page)
+    await assertDocumentOwnsScroll(page)
+  }
   await expect(page).toHaveScreenshot(name, {
     animations: 'disabled',
     caret: 'hide',
     fullPage: options.fullPage ?? false,
-    maxDiffPixelRatio: options.maxDiffPixelRatio ?? 0.015,
+    // The env override exists only for drift probing (`VISUAL_MAX_DIFF_PIXEL_RATIO=0.000001`);
+    // the default is unchanged.
+    maxDiffPixelRatio: options.maxDiffPixelRatio ?? Number(process.env.VISUAL_MAX_DIFF_PIXEL_RATIO ?? 0.015),
   })
 }
 
