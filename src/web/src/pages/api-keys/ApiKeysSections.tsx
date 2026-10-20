@@ -310,7 +310,7 @@ function CompactApiKeysTable({
   const { t } = useTranslation()
 
   return (
-    <Card className="overflow-hidden">
+    <Card variant="solid" className="overflow-hidden">
       <div className="overflow-x-auto">
         <Table className="min-w-[980px]">
           <TableHeader>

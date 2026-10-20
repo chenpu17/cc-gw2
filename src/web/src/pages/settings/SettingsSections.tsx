@@ -637,7 +637,7 @@ export function BillingSection({
                 {t('billing.builtin.loadError', { message: pricesQuery.error?.message ?? '' })}
               </p>
             ) : (
-              <div className="max-h-[320px] overflow-auto rounded-lg border border-border">
+              <div className="max-h-[320px] overflow-auto rounded-lg border border-border bg-card">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-secondary text-left uppercase tracking-wider text-muted-foreground">
                     <tr>

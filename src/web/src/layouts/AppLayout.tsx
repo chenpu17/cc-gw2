@@ -201,7 +201,7 @@ function MobileTabBar({ onMore }: { onMore: () => void }) {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-border bg-card pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-border bg-card/[var(--surface-alpha)] surface-blur pb-[env(safe-area-inset-bottom)] md:hidden"
       aria-label={t('nav.more')}
     >
       {tabs.map((item) => {
@@ -276,19 +276,19 @@ export function AppLayout() {
       </a>
 
       {/* Compact sidebar (md–lg) */}
-      <aside className="hidden w-14 shrink-0 flex-col border-r border-border bg-card md:flex lg:hidden">
+      <aside className="hidden w-14 shrink-0 flex-col border-r border-border bg-card/[var(--surface-alpha)] surface-blur md:flex lg:hidden">
         <SidebarContent compact />
       </aside>
 
       {/* Full sidebar (lg+) — mockup width:236px */}
-      <aside className="hidden w-[236px] shrink-0 flex-col border-r border-border bg-card lg:flex">
+      <aside className="hidden w-[236px] shrink-0 flex-col border-r border-border bg-card/[var(--surface-alpha)] surface-blur lg:flex">
         <SidebarContent />
       </aside>
 
       {/* Main area */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header — mockup height:56px, solid panel bg (flat, no frosted) */}
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/[var(--surface-alpha)] surface-blur px-4 lg:px-6">
           {/* No breadcrumb: the sidebar already marks the active item and its
               group, and the page's own <h1> (PageToolbar) names the screen one
               line below. Repeating it here was a third copy of the same fact. */}
@@ -368,7 +368,7 @@ export function AppLayout() {
           />
           <div
             id="mobile-nav"
-            className="fixed inset-y-0 left-0 w-[236px] bg-card shadow-[var(--surface-shadow-lg)] animate-in slide-in-from-left duration-200"
+            className="fixed inset-y-0 left-0 w-[236px] bg-card/[var(--surface-alpha)] surface-blur shadow-[var(--surface-shadow-lg)] animate-in slide-in-from-left duration-200"
           >
             <SidebarContent onNavigate={() => setMobileNavOpen(false)} />
           </div>

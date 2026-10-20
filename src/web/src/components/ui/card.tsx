@@ -4,11 +4,14 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const cardVariants = cva(
-  'rounded-xl border border-border bg-card text-card-foreground shadow-[var(--surface-shadow)] transition-all duration-160 ease-surface',
+  // glass 族经 --surface-alpha 得到半透明表面 + surface-blur;solid 变体给密集
+  // 表格等必须保持不透明读性的容器使用(twMerge 会让 bg-card 覆盖 base 的 alpha 版)。
+  'rounded-xl border border-border bg-card/[var(--surface-alpha)] surface-blur text-card-foreground shadow-[var(--surface-shadow)] transition-all duration-160 ease-surface',
   {
     variants: {
       variant: {
         default: '',
+        solid: 'bg-card',
         elevated: 'shadow-[var(--surface-shadow-lg)]',
         outline: 'border border-border bg-background shadow-none',
         ghost: 'border-0 bg-transparent shadow-none',

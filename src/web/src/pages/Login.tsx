@@ -162,7 +162,7 @@ export default function LoginPage() {
 
 function FeatureCard({ description, icon, title }: { description: string; icon: ReactNode; title: string }) {
   return (
-    <div className="rounded-lg bg-card px-4 py-4 shadow-[var(--surface-shadow)]">
+    <div className="rounded-lg bg-card/[var(--surface-alpha)] surface-blur px-4 py-4 shadow-[var(--surface-shadow)]">
       <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-foreground">{icon}</div>
       <p className="mt-3 text-sm font-semibold text-foreground">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>

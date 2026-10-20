@@ -18,7 +18,7 @@ const Command = React.forwardRef<
   <CommandPrimitive
     ref={ref}
     className={cn(
-      'flex h-full w-full flex-col overflow-hidden bg-card text-foreground',
+      'flex h-full w-full flex-col overflow-hidden bg-transparent text-foreground',
       className
     )}
     {...props}
@@ -39,7 +39,7 @@ const CommandDialog = ({ open, onOpenChange, title, children }: CommandDialogPro
       <DialogPrimitive.Content
         aria-describedby={undefined}
         className={cn(
-          'fixed left-[50%] top-[18%] z-50 flex max-h-[62vh] w-[calc(100%-2rem)] max-w-xl translate-x-[-50%] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-[var(--surface-shadow-lg)]',
+          'fixed left-[50%] top-[18%] z-50 flex max-h-[62vh] w-[calc(100%-2rem)] max-w-xl translate-x-[-50%] flex-col overflow-hidden rounded-lg border border-border bg-card/[var(--surface-alpha)] surface-blur shadow-[var(--surface-shadow-lg)]',
           'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95 data-[state=open]:slide-in-from-top-[12%] data-[state=closed]:slide-out-to-top-[12%]'
         )}
       >

@@ -118,7 +118,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
   )
 
   return (
-    <Card className="overflow-hidden bg-card shadow-[var(--surface-shadow)]">
+    <Card variant="solid" className="overflow-hidden bg-card shadow-[var(--surface-shadow)]">
       <CardContent className="p-0">
         <div className="flex flex-wrap items-center justify-between gap-3 bg-secondary/50 px-4 py-3 border-b border-border">
           <div className="space-y-1">
