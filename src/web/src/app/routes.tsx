@@ -2,12 +2,12 @@ import { lazy } from 'react'
 import type { LazyExoticComponent, ComponentType } from 'react'
 import { Navigate } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
-import { AlertTriangle, BarChart3, Cog, FileText, Key, Layers, LifeBuoy, Settings } from 'lucide-react'
+import { AlertTriangle, BarChart3, Cog, FileText, Key, LifeBuoy, Route, Settings } from 'lucide-react'
 
 const DashboardPage = lazy(() => import('@/pages/Dashboard'))
 const LogsPage = lazy(() => import('@/pages/Logs'))
 const EventsPage = lazy(() => import('@/pages/Events'))
-const ProvidersWorkbenchPage = lazy(() => import('@/pages/ProvidersWorkbench'))
+const RoutingPage = lazy(() => import('@/pages/RoutingPage'))
 const ApiKeysPage = lazy(() => import('@/pages/ApiKeys'))
 const SettingsPage = lazy(() => import('@/pages/Settings'))
 const SetupPage = lazy(() => import('@/pages/Setup'))
@@ -19,8 +19,10 @@ function RedirectToProviders() {
   return <Navigate to="/providers" replace />
 }
 
+// Interim shim: /providers lands on the (new) routing page until the split
+// providers page lands in the next commit. Never reachable as a final state.
 function RedirectToRouting() {
-  return <Navigate to="/providers?tab=routing" replace />
+  return <Navigate to="/routing" replace />
 }
 
 interface AppRouteNavMeta {
@@ -63,14 +65,7 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
   },
   {
     path: '/providers',
-    element: ProvidersWorkbenchPage,
-    nav: {
-      icon: Layers,
-      labelKey: 'nav.providers',
-      titleKey: 'workbench.title',
-      descriptionKey: 'workbench.description',
-      matchPaths: ['/providers', '/models', '/routing']
-    }
+    element: RedirectToRouting
   },
   {
     path: '/models',
@@ -78,7 +73,13 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
   },
   {
     path: '/routing',
-    element: RedirectToRouting
+    element: RoutingPage,
+    nav: {
+      icon: Route,
+      labelKey: 'nav.routing',
+      titleKey: 'workbench.routingTitle',
+      descriptionKey: 'workbench.routingDescription'
+    }
   },
   {
     path: '/events',

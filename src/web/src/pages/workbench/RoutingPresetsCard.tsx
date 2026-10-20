@@ -9,19 +9,22 @@ import type { RoutingPreset } from '@/types/providers'
 import type { RoutingState } from './useRoutingState'
 
 /**
- * Column-2 routing-presets card. Always visible (no "高级" disclosure) per the
- * mockup. Save the current rule set as a named template, or apply/delete an
- * existing one. Apply opens the PresetDiffDialog (hosted by the page); delete
- * goes through the page-level confirm dialog.
+ * Routing-presets card. Default: standalone Card in the workspace. With
+ * `embedded`: bare section hosted inside RoutingPresetsDialog — the dialog
+ * header carries title/description, so only input + save + preset list remain.
+ * Apply opens the PresetDiffDialog (hosted by the page); delete goes through
+ * the page-level confirm dialog.
  */
 export function RoutingPresetsCard({
   routing,
   endpoint,
-  onRequestDeletePreset
+  onRequestDeletePreset,
+  embedded = false
 }: {
   routing: RoutingState
   endpoint: string
   onRequestDeletePreset: (endpoint: string, preset: RoutingPreset) => void
+  embedded?: boolean
 }) {
   const { t } = useTranslation()
   const presets = routing.presetsByEndpoint[endpoint] ?? []
@@ -32,30 +35,27 @@ export function RoutingPresetsCard({
   const deletingPreset = routing.deletingPreset?.endpoint === endpoint ? routing.deletingPreset.name : null
   const writing = routing.writingEndpoint === endpoint
 
-  return (
-    <Card data-testid="routing-presets-card" className="shadow-[var(--surface-shadow)]">
-      <CardContent className="space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-[13px] font-semibold">{t('modelManagement.presets.title')}</h3>
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="save-preset"
-            onClick={() => void routing.handleSavePreset(endpoint)}
-            disabled={savingPreset || writing}
-          >
-            {savingPreset ? t('modelManagement.presets.saving') : t('modelManagement.presets.save')}
-          </Button>
-        </div>
-        <p className="text-[11px] text-muted-foreground">{t('modelManagement.presets.description')}</p>
+  const body = (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
         <Input
           data-testid="preset-name-input"
           value={presetName}
           onChange={(event) => routing.handlePresetNameChange(endpoint, event.target.value)}
           placeholder={t('modelManagement.presets.namePlaceholder')}
           disabled={savingPreset}
-          className="h-8 text-xs"
+          className="h-8 flex-1 text-xs"
         />
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="save-preset"
+          onClick={() => void routing.handleSavePreset(endpoint)}
+          disabled={savingPreset || writing}
+        >
+          {savingPreset ? t('modelManagement.presets.saving') : t('modelManagement.presets.save')}
+        </Button>
+      </div>
         {presetError ? <p className="text-xs text-destructive">{presetError}</p> : null}
         {presets.length === 0 ? (
           <p className="py-2 text-center text-[11px] text-muted-foreground">{t('modelManagement.presets.empty')}</p>
@@ -126,6 +126,19 @@ export function RoutingPresetsCard({
             </div>
           </TooltipProvider>
         )}
+    </div>
+  )
+
+  if (embedded) {
+    return <div data-testid="routing-presets-card">{body}</div>
+  }
+
+  return (
+    <Card data-testid="routing-presets-card" className="shadow-[var(--surface-shadow)]">
+      <CardContent className="space-y-3 p-4">
+        <h3 className="text-[13px] font-semibold">{t('modelManagement.presets.title')}</h3>
+        <p className="text-[11px] text-muted-foreground">{t('modelManagement.presets.description')}</p>
+        {body}
       </CardContent>
     </Card>
   )

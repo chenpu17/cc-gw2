@@ -1,12 +1,10 @@
 export default {
-  title: 'Providers & Routing Workbench',
-  description: 'Manage model providers, endpoint routing rules and custom endpoints in one place.',
-  viewSwitch: {
-    label: 'Workbench view',
-    providers: 'Providers',
-    providersDesc: 'Manage upstream model services',
-    routing: 'Routing',
-    routingDesc: 'Decide where requests are forwarded'
+  routingTitle: 'Routing',
+  routingDescription: 'Configure per-endpoint route rules, default forwarding and the hit simulator.',
+  templates: 'Templates',
+  endpointSwitcher: {
+    label: 'Endpoint',
+    ruleCount: '{{count}}'
   },
   flow: {
     title: 'Request flow',
@@ -15,12 +13,6 @@ export default {
     matchStep: 'Route rule match',
     targetStep: 'Forward target',
     fallbackNote: 'Unmatched requests use the default'
-  },
-  endpointRail: {
-    title: 'Endpoints',
-    subtitle: 'Each endpoint has its own rule set',
-    add: 'New endpoint',
-    ruleCount: '{{count}}'
   },
   endpointConfig: {
     title: 'Endpoint config'
@@ -57,14 +49,6 @@ export default {
     saveSuccess: 'Default forwarding saved.',
     saveFailure: 'Failed to save default forwarding: {{message}}'
   },
-  specific: {
-    title: 'Route specific models (optional)',
-    description: 'Only requests for these model names hit the rules below — they take priority over default forwarding.'
-  },
-  advanced: {
-    title: 'Advanced',
-    wildcardHint: 'Rules support * wildcards; the most specific match wins.'
-  },
   routing: {
     rulesTitle: 'Route rules',
     rulesSubtitle: 'Matched top-to-bottom, * wildcards supported; drag the left handle to set priority',
@@ -76,21 +60,10 @@ export default {
     addFirst: 'Add your first rule'
   },
   list: {
-    emptyHint: 'Add an upstream model service first (Anthropic, OpenAI, or a compatible endpoint), then map client models to it in the Routing view.'
+    emptyHint: 'Add an upstream model service first (Anthropic, OpenAI, or a compatible endpoint), then map client models to it on the Routing page.'
   },
   endpoints: {
-    create: 'New endpoint',
-    editRoute: 'Routes',
-    defaultUnset: 'Not set',
-    table: {
-      name: 'Name',
-      protocol: 'Protocol',
-      paths: 'Paths',
-      rules: 'Rules',
-      defaultTarget: 'Default',
-      status: 'Status',
-      actions: 'Actions'
-    }
+    create: 'New endpoint'
   },
   testResult: {
     title: 'Latest test',

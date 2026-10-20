@@ -1,12 +1,10 @@
 export default {
-  title: '模型与路由工作台',
-  description: '统一管理模型提供商、端点路由规则与自定义端点。',
-  viewSwitch: {
-    label: '工作台视图',
-    providers: '提供商',
-    providersDesc: '管理上游模型服务',
-    routing: '路由',
-    routingDesc: '决定请求转发到哪个服务'
+  routingTitle: '路由',
+  routingDescription: '配置各端点的路由规则、默认转发与命中模拟。',
+  templates: '模板',
+  endpointSwitcher: {
+    label: '端点',
+    ruleCount: '{{count}} 条'
   },
   flow: {
     title: '请求流向',
@@ -15,12 +13,6 @@ export default {
     matchStep: '路由规则匹配',
     targetStep: '转发目标',
     fallbackNote: '未命中规则时走默认转发'
-  },
-  endpointRail: {
-    title: '端点',
-    subtitle: '每个端点一套独立规则',
-    add: '新建端点',
-    ruleCount: '{{count}} 条'
   },
   endpointConfig: {
     title: '端点配置'
@@ -57,14 +49,6 @@ export default {
     saveSuccess: '默认转发已保存。',
     saveFailure: '默认转发保存失败：{{message}}'
   },
-  specific: {
-    title: '指定模型走特定服务（可选）',
-    description: '只有当客户端请求这些模型名时才命中，优先级高于默认转发。'
-  },
-  advanced: {
-    title: '高级',
-    wildcardHint: '规则支持 * 通配符，匹配度更高的优先。'
-  },
   routing: {
     rulesTitle: '路由规则',
     rulesSubtitle: '从上往下匹配，支持 * 通配符；拖动左侧手柄调整优先级',
@@ -76,21 +60,10 @@ export default {
     addFirst: '添加第一条规则'
   },
   list: {
-    emptyHint: '先添加一个上游模型服务（如 Anthropic、OpenAI 或兼容端点），再去路由视图把客户端模型映射过去。'
+    emptyHint: '先添加一个上游模型服务（如 Anthropic、OpenAI 或兼容端点），再去「路由」页把客户端模型映射过去。'
   },
   endpoints: {
-    create: '新建端点',
-    editRoute: '路由',
-    defaultUnset: '未设置',
-    table: {
-      name: '名称',
-      protocol: '协议',
-      paths: '路径',
-      rules: '规则数',
-      defaultTarget: '默认转发',
-      status: '状态',
-      actions: '操作'
-    }
+    create: '新建端点'
   },
   testResult: {
     title: '最近一次测试',
