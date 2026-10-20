@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ChevronRight } from 'lucide-react'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -25,7 +26,7 @@ interface OptionGroup {
   muted?: boolean
 }
 
-const RECENT_LIMIT = 6
+const RECENT_LIMIT = 3
 
 export function TargetCombobox({
   value,
@@ -46,6 +47,10 @@ export function TargetCombobox({
   const listboxId = useId()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  // Browse mode (empty search) drills down provider-first: providers render as
+  // collapsible rows and only the expanded one lists its models. One at a time
+  // keeps the panel scannable; typing a search bypasses the drill-down.
+  const [expandedProviderKey, setExpandedProviderKey] = useState<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const suppressImmediateReopenRef = useRef(false)
   const [recentTargets, setRecentTargets] = usePersistentState<string[]>(
@@ -76,7 +81,36 @@ export function TargetCombobox({
       .includes(normalizedSearch)
   }
 
-  const groups = useMemo<OptionGroup[]>(() => {
+  // All options indexed by provider (insertion order preserved), plus the
+  // provider-less/custom leftovers. Shared by both modes.
+  const { providerGroups, customOptions } = useMemo(() => {
+    const groups = new Map<string, OptionGroup>()
+    const custom: TargetOption[] = []
+    for (const option of options) {
+      if (option.kind === 'custom' || !option.providerId) {
+        custom.push(option)
+        continue
+      }
+      const key = `provider:${option.providerId}`
+      const existing = groups.get(key)
+      if (existing) {
+        existing.options.push(option)
+      } else {
+        groups.set(key, {
+          key,
+          label: option.providerLabel ?? option.providerId,
+          options: [option]
+        })
+      }
+    }
+    return { providerGroups: [...groups.values()], customOptions: custom }
+  }, [options])
+
+  const isSearching = search.trim().length > 0
+
+  // Search mode: flat filtered groups (recent + per-provider matches + custom),
+  // like the pre-drill-down list — typing is the power path.
+  const searchGroups = useMemo<OptionGroup[]>(() => {
     const normalizedSearch = search.trim().toLowerCase()
     const filteredOptions = options.filter((option) => matchesSearch(option, normalizedSearch))
     const recentOptions = recentTargets
@@ -94,20 +128,19 @@ export function TargetCombobox({
       })
     }
 
-    const providerGroups = new Map<string, OptionGroup>()
-    const customOptions: TargetOption[] = []
+    const filteredCustom: TargetOption[] = []
+    const matchedProviders = new Map<string, OptionGroup>()
     for (const option of filteredOptions) {
       if (option.kind === 'custom' || !option.providerId) {
-        customOptions.push(option)
+        filteredCustom.push(option)
         continue
       }
-
       const key = `provider:${option.providerId}`
-      const existing = providerGroups.get(key)
+      const existing = matchedProviders.get(key)
       if (existing) {
         existing.options.push(option)
       } else {
-        providerGroups.set(key, {
+        matchedProviders.set(key, {
           key,
           label: option.providerLabel ?? option.providerId,
           options: [option]
@@ -115,12 +148,12 @@ export function TargetCombobox({
       }
     }
 
-    nextGroups.push(...providerGroups.values())
-    if (customOptions.length > 0) {
+    nextGroups.push(...matchedProviders.values())
+    if (filteredCustom.length > 0) {
       nextGroups.push({
         key: 'custom',
         label: t('modelManagement.targetPicker.custom'),
-        options: customOptions,
+        options: filteredCustom,
         muted: true
       })
     }
@@ -128,7 +161,7 @@ export function TargetCombobox({
     return nextGroups
   }, [optionByValue, options, recentTargets, search, t])
 
-  const filteredCount = groups.reduce((sum, group) => sum + group.options.length, 0)
+  const filteredCount = searchGroups.reduce((sum, group) => sum + group.options.length, 0)
 
   const selectOption = (nextValue: string) => {
     onChange(nextValue)
@@ -164,6 +197,57 @@ export function TargetCombobox({
     return option.modelLabel ?? option.label
   }
 
+  const renderOptionRow = (group: OptionGroup, option: TargetOption, indent = false) => (
+    <button
+      key={`${group.key}-${option.value}`}
+      type="button"
+      role="option"
+      aria-selected={option.value === value.trim()}
+      className={cn(
+        'flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        indent && 'pl-7',
+        option.value === value.trim() && 'bg-accent text-accent-foreground'
+      )}
+      onMouseDown={(event) => {
+        event.preventDefault()
+      }}
+      onClick={() => selectOption(option.value)}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium">
+          {primaryLabel(option)}
+        </span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {option.value}
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1">
+        {option.isDefault ? (
+          <Badge variant="secondary" className="text-[10px]">
+            {t('modelManagement.targetPicker.default')}
+          </Badge>
+        ) : null}
+        <Badge variant={option.kind === 'passthrough' ? 'outline' : 'secondary'} className="text-[10px]">
+          {kindLabel(option)}
+        </Badge>
+      </span>
+    </button>
+  )
+
+  const renderGroupHeader = (group: OptionGroup) => (
+    <div className={cn(
+      'sticky top-0 z-10 flex items-center justify-between bg-popover px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground',
+      group.muted && 'opacity-80'
+    )}>
+      <span className="truncate">{group.label}</span>
+      <span>{group.options.length}</span>
+    </div>
+  )
+
+  const recentBrowseOptions = recentTargets
+    .map((target) => optionByValue.get(target) ?? { value: target, label: target, kind: 'custom' as const })
+    .slice(0, RECENT_LIMIT)
+
   return (
     <Popover
       open={open}
@@ -174,6 +258,7 @@ export function TargetCombobox({
         setOpen(nextOpen)
         if (nextOpen) {
           setSearch('')
+          setExpandedProviderKey(null)
         }
       }}
     >
@@ -231,63 +316,92 @@ export function TargetCombobox({
             autoComplete="off"
           />
           <div className="text-xs text-muted-foreground">
-            {search.trim()
+            {isSearching
               ? t('modelManagement.targetPicker.matchCount', { count: filteredCount })
               : t('modelManagement.targetPicker.helper')}
           </div>
         </div>
-        {filteredCount === 0 ? (
+        {isSearching && filteredCount === 0 ? (
           <div className="px-3 py-4 text-center text-xs text-muted-foreground">{t('common.noMatches')}</div>
         ) : (
           <div id={listboxId} role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1.5">
-            {groups.map((group) => (
-              <div key={group.key} className="py-1">
-                <div className={cn(
-                  'sticky top-0 z-10 flex items-center justify-between bg-popover px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground',
-                  group.muted && 'opacity-80'
-                )}>
-                  <span className="truncate">{group.label}</span>
-                  <span>{group.options.length}</span>
+            {isSearching ? (
+              searchGroups.map((group) => (
+                <div key={group.key} className="py-1">
+                  {renderGroupHeader(group)}
+                  <div className="space-y-1">
+                    {group.options.map((option) => renderOptionRow(group, option))}
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  {group.options.map((option) => (
-                    <button
-                      key={`${group.key}-${option.value}`}
-                      type="button"
-                      role="option"
-                      aria-selected={option.value === value.trim()}
-                      className={cn(
-                        'flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                        option.value === value.trim() && 'bg-accent text-accent-foreground'
+              ))
+            ) : (
+              <>
+                {recentBrowseOptions.length > 0 ? (
+                  <div className="py-1">
+                    {renderGroupHeader({
+                      key: 'recent',
+                      label: t('modelManagement.targetPicker.recent'),
+                      options: recentBrowseOptions
+                    })}
+                    <div className="space-y-1">
+                      {recentBrowseOptions.map((option) =>
+                        renderOptionRow({ key: 'recent', label: '', options: [] }, option)
                       )}
-                      onMouseDown={(event) => {
-                        event.preventDefault()
-                      }}
-                      onClick={() => selectOption(option.value)}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">
-                          {primaryLabel(option)}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {option.value}
-                        </span>
-                      </span>
-                      <span className="flex shrink-0 items-center gap-1">
-                        {option.isDefault ? (
-                          <Badge variant="secondary" className="text-[10px]">
-                            {t('modelManagement.targetPicker.default')}
-                          </Badge>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="py-1">
+                  {providerGroups.map((group) => {
+                    const expanded = expandedProviderKey === group.key
+                    return (
+                      <div key={group.key}>
+                        <button
+                          type="button"
+                          aria-expanded={expanded}
+                          className={cn(
+                            'flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                            expanded && 'bg-accent text-accent-foreground'
+                          )}
+                          onMouseDown={(event) => {
+                            event.preventDefault()
+                          }}
+                          onClick={() => setExpandedProviderKey(expanded ? null : group.key)}
+                        >
+                          <ChevronRight
+                            className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-90')}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 flex-1 truncate font-medium">{group.label}</span>
+                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                            {t('modelManagement.targetPicker.modelCount', { count: group.options.length })}
+                          </span>
+                        </button>
+                        {expanded ? (
+                          <div className="space-y-1 pb-1">
+                            {group.options.map((option) => renderOptionRow(group, option, true))}
+                          </div>
                         ) : null}
-                        <Badge variant={option.kind === 'passthrough' ? 'outline' : 'secondary'} className="text-[10px]">
-                          {kindLabel(option)}
-                        </Badge>
-                      </span>
-                    </button>
-                  ))}
+                      </div>
+                    )
+                  })}
                 </div>
-              </div>
-            ))}
+                {customOptions.length > 0 ? (
+                  <div className="py-1">
+                    {renderGroupHeader({
+                      key: 'custom',
+                      label: t('modelManagement.targetPicker.custom'),
+                      options: customOptions,
+                      muted: true
+                    })}
+                    <div className="space-y-1">
+                      {customOptions.map((option) =>
+                        renderOptionRow({ key: 'custom', label: '', options: [] }, option)
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         )}
       </PopoverContent>

@@ -1,12 +1,14 @@
 export default {
   targetPicker: {
-    helper: 'Type a provider, model name, or ID to filter quickly.',
+    helper: 'Type a provider, model name, or ID to filter quickly — or pick a provider first, then expand its models.',
     searchPlaceholder: 'Search provider, model, or ID',
     matchCount_one: '{{count}} matching target',
     matchCount_other: '{{count}} matching targets',
     recent: 'Recent',
     custom: 'Custom / Saved',
     model: 'Model',
+    modelCount_one: '{{count}} model',
+    modelCount_other: '{{count}} models',
     passthrough: 'Pass-through',
     customValue: 'Custom',
     default: 'Default'

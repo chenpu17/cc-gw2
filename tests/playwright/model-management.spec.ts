@@ -165,8 +165,12 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   await presetsDialog.getByRole('button', { name: 'Close' }).click()
   await expect(presetsDialog).not.toBeVisible()
 
+  // 这次不搜索，走浏览模式钻取：点供应商节点展开，再选该供应商的透传项
+  // （覆盖「先供应商 → 再模型」的渐进式选择路径）
   await workspace.getByPlaceholder('如 kimi:kimi-k2-0905-preview').click()
-  await page.getByPlaceholder('搜索提供商、模型名或 ID').fill('透传')
+  const providerNode = page.getByRole('button', { name: new RegExp(`${providerId}.*个模型`) })
+  await expect(providerNode).toBeVisible()
+  await providerNode.click()
   await page.getByRole('option', { name: new RegExp(`${providerId}.*透传原始模型`) }).click()
   await workspace.getByTestId('save-routes').click()
   await expect(page.getByText('模型路由已更新。').first()).toBeVisible()

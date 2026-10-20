@@ -1,11 +1,12 @@
 export default {
   targetPicker: {
-    helper: '可输入提供商、模型名或 ID 快速筛选。',
+    helper: '可输入提供商、模型名或 ID 快速筛选；也可以先选提供商，再展开选模型。',
     searchPlaceholder: '搜索提供商、模型名或 ID',
     matchCount: '找到 {{count}} 个匹配目标',
     recent: '最近使用',
     custom: '自定义 / 已保存',
     model: '模型',
+    modelCount: '{{count}} 个模型',
     passthrough: '透传',
     customValue: '自定义',
     default: '默认'
