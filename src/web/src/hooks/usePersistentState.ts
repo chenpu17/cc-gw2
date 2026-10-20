@@ -24,7 +24,14 @@ export function usePersistentState<T>(
       return fallback
     }
 
-    const raw = window.localStorage.getItem(key)
+    // 存储整体被禁用时,访问 window.localStorage 本身就会抛(返回 null),
+    // 与"键不存在返回 null"一样落回初始值。
+    let raw: string | null
+    try {
+      raw = window.localStorage.getItem(key)
+    } catch {
+      return fallback
+    }
     if (raw === null) {
       return fallback
     }

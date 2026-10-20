@@ -92,9 +92,14 @@ function resolveInitialLanguage(): 'zh' | 'en' {
     return 'zh'
   }
 
-  const stored = window.localStorage.getItem(storageKeys.language)
-  if (stored === 'zh' || stored === 'en') {
-    return stored
+  // 存储被禁用时访问 window.localStorage 会抛 —— 与键不存在一样落回 zh。
+  try {
+    const stored = window.localStorage.getItem(storageKeys.language)
+    if (stored === 'zh' || stored === 'en') {
+      return stored
+    }
+  } catch {
+    return 'zh'
   }
 
   return 'zh'
@@ -106,7 +111,11 @@ function persistLanguage(language: string) {
   }
 
   const normalized = language.toLowerCase().startsWith('zh') ? 'zh' : 'en'
-  window.localStorage.setItem(storageKeys.language, normalized)
+  try {
+    window.localStorage.setItem(storageKeys.language, normalized)
+  } catch {
+    // 存储不可用:语言仅在当前会话生效
+  }
 }
 
 if (!i18n.isInitialized) {
