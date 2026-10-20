@@ -197,6 +197,18 @@ struct PresetNameBody {
     name: Option<String>,
 }
 
+/// Apply-preset response. Typed (not `json!`) so `config` serializes through
+/// GatewayConfig's own serde impl: `json!` funnels the value through
+/// `serde_json::Map` (BTreeMap), which alphabetizes every nested object key.
+/// The web console keeps server responses as its local config draft baseline
+/// and compares them with `JSON.stringify` — a key-order flip reads as a
+/// phantom unsaved-draft diff there.
+#[derive(Debug, Serialize)]
+struct ApplyPresetResponse {
+    success: bool,
+    config: GatewayConfig,
+}
+
 #[derive(Debug, Deserialize)]
 struct ProviderTestBody {
     headers: Option<HashMap<String, String>>,

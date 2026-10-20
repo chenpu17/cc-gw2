@@ -1285,8 +1285,11 @@ pub(super) async fn api_routing_presets_apply(
             config.model_routes = preset.model_routes;
         }
         match replace_config(&state, config.clone()) {
-            Ok(()) => Json(json!({ "success": true, "config": config.sanitize_for_web() }))
-                .into_response(),
+            Ok(()) => Json(ApplyPresetResponse {
+                success: true,
+                config: config.sanitize_for_web(),
+            })
+            .into_response(),
             Err(error) => (
                 StatusCode::BAD_REQUEST,
                 Json(json!({ "error": error.to_string() })),
@@ -1335,7 +1338,11 @@ pub(super) async fn api_routing_presets_apply(
         custom_endpoint.routing = Some(routing.clone());
         let updated = config.sanitize_for_web();
         match replace_config(&state, config) {
-            Ok(()) => Json(json!({ "success": true, "config": updated })).into_response(),
+            Ok(()) => Json(ApplyPresetResponse {
+                success: true,
+                config: updated,
+            })
+            .into_response(),
             Err(error) => (
                 StatusCode::BAD_REQUEST,
                 Json(json!({ "error": error.to_string() })),
