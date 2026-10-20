@@ -1,5 +1,7 @@
 export const storageKeys = {
   themeMode: 'cc-gw-theme',
+  // 风格家族(data-skin 轴),与明暗模式(cc-gw-theme)相互独立
+  skin: 'cc-gw-skin',
   language: 'cc-gw-language',
   dashboard: {
     endpointFilter: 'cc-gw.dashboard.endpoint-filter',
