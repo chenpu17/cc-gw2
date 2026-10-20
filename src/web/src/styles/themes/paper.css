@@ -42,7 +42,7 @@
   --surface-blur: none;
 
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
-  --font-heading: "Source Serif 4", Georgia, "Noto Sans SC", serif;
+  --font-heading: "Source Serif 4", Georgia, "Noto Sans SC", "PingFang SC", serif;
   --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
   --font-heading-weight: 600;
   --font-heading-tracking: 0em;
@@ -87,4 +87,14 @@
   --surface-border: #4a5054;
   --surface-alpha: 1;
   --surface-blur: none;
+  /* 暗色不变量(结构 + 字体)—— Rule B 完整集:即使未来有人向基础 dark 块(Rule C 禁止)
+     加入结构变量,本族 dark 也不被渗透。值与本族 light 块一致。 */
+  --radius: 6px;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
+  --font-heading: "Source Serif 4", Georgia, "Noto Sans SC", "PingFang SC", serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 600;
+  --font-heading-tracking: 0em;
+
 }

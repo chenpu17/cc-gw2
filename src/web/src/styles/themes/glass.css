@@ -45,7 +45,7 @@
   --surface-blur: blur(18px) saturate(1.4);
 
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
-  --font-heading: "Inter", "Noto Sans SC", system-ui, sans-serif;
+  --font-heading: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
   --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
   --font-heading-weight: 700;
   --font-heading-tracking: -0.014em;
@@ -90,6 +90,16 @@
   --surface-border: #322d5c;
   --surface-alpha: 0.62;
   --surface-blur: blur(20px) saturate(1.5);
+  /* 暗色不变量(结构 + 字体)—— Rule B 完整集:即使未来有人向基础 dark 块(Rule C 禁止)
+     加入结构变量,本族 dark 也不被渗透。值与本族 light 块一致。 */
+  --radius: 1rem;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
+  --font-heading: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 700;
+  --font-heading-tracking: -0.014em;
+
 }
 
 /* 渐变背景 — 毛玻璃的底色。面板半透明,层次来自背景光斑。 */

@@ -44,7 +44,7 @@
   --surface-blur: none;
 
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
-  --font-heading: "Inter", "Noto Sans SC", system-ui, sans-serif;
+  --font-heading: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
   --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
   --font-heading-weight: 600;
   --font-heading-tracking: -0.011em;
