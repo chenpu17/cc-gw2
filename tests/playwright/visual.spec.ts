@@ -41,7 +41,7 @@ function h1(page: Page) {
 }
 
 /** The primary accent token, as `getComputedStyle` would report it in RGB. */
-const PRIMARY_ACCENT: [number, number, number] = [236, 48, 19] // --primary #ec3013
+const PRIMARY_ACCENT: [number, number, number] = [94, 106, 210] // --primary #5e6ad2 (minimal light)
 
 /**
  * Normalize a computed color to RGB. The Tailwind tokens go through relative

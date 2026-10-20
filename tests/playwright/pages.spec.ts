@@ -77,6 +77,19 @@ test('theme and language switchers open menus', async ({ page }) => {
   await page.getByTestId('theme-switcher-trigger').click({ force: true })
   await expect(page.getByRole('menuitem', { name: '亮色' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: '跟随系统' })).toBeVisible()
+  // 风格家族分组:五个可选项
+  for (const family of ['极简', '经典', '纸张', '玻璃', 'Modernist']) {
+    await expect(page.getByRole('menuitem', { name: family })).toBeVisible()
+  }
+  // 点击切族 → data-skin 立即生效 → reload 后持久化 → 切回默认
+  await page.getByRole('menuitem', { name: '纸张' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-skin', 'paper')
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-skin', 'paper')
+  await page.getByTestId('theme-switcher-trigger').click({ force: true })
+  await page.getByRole('menuitem', { name: '极简' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-skin', 'minimal')
+
   await page.goto(`${harness.baseUrl()}/ui/`)
   await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
   await page.getByTestId('language-switcher-trigger').click({ force: true })

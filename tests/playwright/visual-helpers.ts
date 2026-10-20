@@ -7,39 +7,48 @@ export type VisualLocale = 'zh' | 'en'
 /**
  * Visual-regression `test` controller.
  *
- * Forces the app locale to match the running project's `metadata.locale`. The
- * app's i18n (`src/web/src/i18n/index.ts`) ignores `navigator.language` and
- * reads `localStorage['cc-gw-language']` exactly once at module init, defaulting
- * to zh — and persists whatever it resolved back to storage. Playwright's
- * `context.locale`/`colorScheme` use options therefore have no effect, and a
- * pre-paint `context.addInitScript` races with that init often enough to render
- * zh (which then self-persists, corrupting later reloads). Half of en captures
- * came out zh, so baselines were non-deterministic.
+ * Pins BOTH visual axes to the baseline family, deterministically:
  *
- * Fix: override the `page` fixture so every `page.goto` for a non-default
- * locale re-writes the storage key AFTER first paint and reloads once. The
- * second load re-inits i18n against the correct value — deterministic. zh is
- * the default, so it needs no enforcement.
+ * 1. Locale. The app's i18n (`src/web/src/i18n/index.ts`) ignores
+ *    `navigator.language` and reads `localStorage['cc-gw-language']` exactly
+ *    once at module init, defaulting to zh — and persists whatever it resolved
+ *    back to storage. Playwright's `context.locale`/`colorScheme` use options
+ *    therefore have no effect, and a pre-paint `context.addInitScript` races
+ *    with that init often enough to render zh (which then self-persists,
+ *    corrupting later reloads). Half of en captures came out zh, so baselines
+ *    were non-deterministic.
+ *
+ * 2. Theme family + color mode. The app persists `cc-gw-theme` and
+ *    `cc-gw-skin` on every load (`usePersistentState` writes on mount), and
+ *    the switcher UI writes them on click. Baselines must always render
+ *    light + minimal regardless of what a previous test or a future default
+ *    flip leaves in storage.
+ *
+ * Fix for all three: override the `page` fixture so every `page.goto`
+ * re-writes the storage keys AFTER first paint and reloads once. The second
+ * load re-inits the app against the pinned values — deterministic. (zh +
+ * light + minimal are also the app defaults, so for them the reload merely
+ * re-renders the same thing; the pin is insurance, not a behavior change.)
  */
 export const visualTest = base.extend<{ page: Page }>({
   page: async ({ page }, use, testInfo) => {
     const locale = currentLocale(testInfo)
-    if (locale !== 'zh') {
-      const realGoto = page.goto.bind(page) as Page['goto']
-      const enforcedGoto: Page['goto'] = async (url, options) => {
-        const response = await realGoto(url, options)
-        await page.evaluate((lng) => {
-          try {
-            window.localStorage.setItem('cc-gw-language', lng)
-          } catch {
-            // storage may be unavailable on about:blank — ignore
-          }
-        }, locale)
-        await page.reload()
-        return response
-      }
-      page.goto = enforcedGoto
+    const realGoto = page.goto.bind(page) as Page['goto']
+    const pinnedGoto: Page['goto'] = async (url, options) => {
+      const response = await realGoto(url, options)
+      await page.evaluate((lng) => {
+        try {
+          window.localStorage.setItem('cc-gw-language', lng)
+          window.localStorage.setItem('cc-gw-theme', 'light')
+          window.localStorage.setItem('cc-gw-skin', 'minimal')
+        } catch {
+          // storage may be unavailable on about:blank — ignore
+        }
+      }, locale)
+      await page.reload()
+      return response
     }
+    page.goto = pinnedGoto
     await use(page)
   },
 })
