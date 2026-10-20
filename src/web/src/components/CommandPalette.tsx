@@ -1,9 +1,9 @@
 import { Fragment, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Languages, Moon, Sun } from 'lucide-react'
+import { Languages, Moon, Palette, Sun } from 'lucide-react'
 import { navGroups, navigationRoutes } from '@/app/routes'
-import { useTheme } from '@/providers/ThemeProvider'
+import { SKINS, useTheme } from '@/providers/ThemeProvider'
 import {
   CommandDialog,
   CommandEmpty,
@@ -27,7 +27,7 @@ export interface CommandPaletteProps {
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
-  const { resolved, setMode } = useTheme()
+  const { resolved, setMode, skin, setSkin } = useTheme()
 
   const groups = useMemo(
     () =>
@@ -51,6 +51,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   }
 
   const toggleTheme = () => setMode(resolved === 'dark' ? 'light' : 'dark')
+  const nextSkin = () => setSkin(SKINS[(SKINS.indexOf(skin) + 1) % SKINS.length])
   const switchLanguage = () => {
     const next = i18n.language.startsWith('zh') ? 'en' : 'zh'
     void i18n.changeLanguage(next)
@@ -89,6 +90,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               <Moon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             )}
             <span className="flex-1">{t('app.commandPalette.toggleTheme')}</span>
+          </CommandItem>
+          <CommandItem value={t('app.commandPalette.nextSkin')} onSelect={() => run(nextSkin)}>
+            <Palette className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="flex-1">{t('app.commandPalette.nextSkin')}</span>
           </CommandItem>
           <CommandItem value={t('app.commandPalette.switchLanguage')} onSelect={() => run(switchLanguage)}>
             <Languages className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />

@@ -12,6 +12,7 @@ export default {
     empty: '没有匹配项',
     actions: '快速操作',
     toggleTheme: '切换浅色 / 深色主题',
+    nextSkin: '切换界面风格',
     switchLanguage: '切换中 / 英文'
   }
 }

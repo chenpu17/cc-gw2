@@ -12,6 +12,7 @@ export default {
     empty: 'No matching results',
     actions: 'Quick actions',
     toggleTheme: 'Toggle light / dark theme',
+    nextSkin: 'Switch appearance',
     switchLanguage: 'Switch Chinese / English'
   }
 }

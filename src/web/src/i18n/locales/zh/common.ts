@@ -38,6 +38,15 @@ export default {
   },
   theme: {
     label: '主题',
+    skinGroupLabel: '界面风格',
+    modeGroupLabel: '明暗模式',
+    families: {
+      minimal: '极简',
+      classic: '经典',
+      paper: '纸张',
+      glass: '玻璃',
+      modernist: 'Modernist'
+    },
     light: '亮色',
     dark: '暗色',
     system: '跟随系统'

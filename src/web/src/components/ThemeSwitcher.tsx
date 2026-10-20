@@ -1,13 +1,23 @@
-import { Moon, Sun, Monitor } from 'lucide-react'
+import { AppWindow, BookOpen, Droplets, Minus, Monitor, Moon, Square, Sun } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useTheme } from '@/providers/ThemeProvider'
+import { SKINS, useTheme, type Skin } from '@/providers/ThemeProvider'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+
+const skins: Array<{ skin: Skin; icon: typeof Sun }> = [
+  { skin: 'minimal', icon: Minus },
+  { skin: 'classic', icon: AppWindow },
+  { skin: 'paper', icon: BookOpen },
+  { skin: 'glass', icon: Droplets },
+  { skin: 'modernist', icon: Square }
+]
 
 const modes: Array<{ mode: 'light' | 'dark' | 'system'; labelKey: string; icon: typeof Sun }> = [
   { mode: 'light', labelKey: 'common.theme.light', icon: Sun },
@@ -16,7 +26,7 @@ const modes: Array<{ mode: 'light' | 'dark' | 'system'; labelKey: string; icon: 
 ]
 
 export function ThemeSwitcher() {
-  const { mode, setMode, resolved } = useTheme()
+  const { mode, setMode, resolved, skin, setSkin } = useTheme()
   const { t } = useTranslation()
 
   const currentMode = modes.find(m => m.mode === mode)
@@ -36,6 +46,22 @@ export function ThemeSwitcher() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuLabel>{t('common.theme.skinGroupLabel')}</DropdownMenuLabel>
+        {skins.map((item) => {
+          const ItemIcon = item.icon
+          return (
+            <DropdownMenuItem
+              key={item.skin}
+              onClick={() => setSkin(item.skin)}
+              className={item.skin === skin ? 'bg-accent' : ''}
+            >
+              <ItemIcon className="mr-2 h-4 w-4" aria-hidden="true" />
+              {t(`common.theme.families.${item.skin}`)}
+            </DropdownMenuItem>
+          )
+        })}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>{t('common.theme.modeGroupLabel')}</DropdownMenuLabel>
         {modes.map((item) => {
           const ItemIcon = item.icon
           const isSelected = item.mode === mode

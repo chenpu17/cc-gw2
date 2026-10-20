@@ -38,6 +38,15 @@ export default {
   },
   theme: {
     label: 'Theme',
+    skinGroupLabel: 'Appearance',
+    modeGroupLabel: 'Color mode',
+    families: {
+      minimal: 'Minimal',
+      classic: 'Classic',
+      paper: 'Paper',
+      glass: 'Glass',
+      modernist: 'Modernist'
+    },
     light: 'Light',
     dark: 'Dark',
     system: 'System'
