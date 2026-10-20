@@ -71,7 +71,10 @@ test('dashboard visual shell stays aligned with redesign baseline', async ({ pag
 test('landing visual shell stays aligned with product-site baseline', async ({ page }) => {
   await page.goto(`${harness.baseUrl()}/`)
   await waitForVisualReady(page, h1(page))
-  await expectPageSnapshot(page, 'landing-page.png')
+  // landing 基线是主题钉住机制的绊线（docs/webui-theme-system.md）：skin 渗透或
+  // 字体栈漂移都会立刻体现在像素上，零容差才拦得住 —— 1.5% 的全局默认恰好容得下
+  // 一整个 hero 字形漂移（实测 1.33%），会让中毒基线永远"通过"而不被重写。
+  await expectPageSnapshot(page, 'landing-page.png', { maxDiffPixelRatio: 0 })
 })
 
 test('logs visual shell stays aligned with redesign baseline', async ({ page }) => {
