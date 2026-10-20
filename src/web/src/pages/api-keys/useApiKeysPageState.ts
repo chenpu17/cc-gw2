@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type EChartOption } from '@/components/EChart'
+import { useChartTheme } from '@/components/chartTheme'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useAppMutation } from '@/hooks/useAppMutation'
 import { usePersistentState } from '@/hooks/usePersistentState'
@@ -21,6 +22,8 @@ import { RANGE_OPTIONS, useAvailableEndpoints } from './shared'
 export function useApiKeysPageState() {
   const { t } = useTranslation()
   const { pushToast } = useToast()
+  // canvas 无法解析 var() —— 图表色必须经 useChartTheme 取解析后的 hex
+  const chart = useChartTheme()
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
   const [newKeyDescription, setNewKeyDescription] = useState('')
@@ -183,11 +186,11 @@ export function useApiKeysPageState() {
           name: t('apiKeys.analytics.requestsSeries'),
           type: 'bar',
           data: usage.map((item) => item.requests),
-          itemStyle: { color: 'var(--primary)' }
+          itemStyle: { color: chart.palette[0] }
         }
       ]
     }
-  }, [t, usage])
+  }, [t, usage, chart])
 
   const tokensChartOption = useMemo<EChartOption>(() => {
     const categories = usage.map((item) => item.apiKeyName ?? t('apiKeys.analytics.unknownKey'))
@@ -204,19 +207,19 @@ export function useApiKeysPageState() {
           name: t('apiKeys.analytics.tokens.input'),
           type: 'bar',
           stack: 'tokens',
-          itemStyle: { color: '#22c55e' },
+          itemStyle: { color: chart.palette[0] },
           data: usage.map((item) => item.inputTokens)
         },
         {
           name: t('apiKeys.analytics.tokens.output'),
           type: 'bar',
           stack: 'tokens',
-          itemStyle: { color: '#0ea5e9' },
+          itemStyle: { color: chart.palette[2] },
           data: usage.map((item) => item.outputTokens)
         }
       ]
     }
-  }, [t, usage])
+  }, [t, usage, chart])
 
   const resetCreateForm = useCallback(() => {
     setNewKeyName('')

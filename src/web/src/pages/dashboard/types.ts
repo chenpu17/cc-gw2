@@ -95,15 +95,6 @@ export interface DatabaseInfo {
 export const LIVE_REFRESH_MS = 15_000
 export const TREND_REFRESH_MS = 60_000
 
-export const METRIC_COLORS = {
-  requests: '#2563eb',
-  input: '#059669',
-  output: '#ea580c',
-  cacheRead: '#7c3aed',
-  cacheCreation: '#e11d48',
-  latency: '#0891b2'
-} as const
-
 export function formatLatencyValue(
   value: number | null | undefined,
   suffix: string,
