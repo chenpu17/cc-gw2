@@ -1,6 +1,11 @@
 /*
  * Modernist Web UI — design-token layer (drop-in).
- * Source: cc-gw2/src/web/src/styles/global.css
+ * Source: cc-gw2/src/web/src/styles/themes/modernist.css (tokens)
+ *         + cc-gw2/src/web/src/styles/global.css (base rules).
+ * cc-gw2 itself is now a multi-family system (data-skin × data-theme; see
+ * docs/webui-theme-system.md) — this file is the standalone single-family
+ * Modernist variant: same values, bound to :root/.dark instead of
+ * [data-skin="modernist"].
  *
  * Drop this at src/styles/global.css and import it once at the app entry.
  * Requires: Tailwind v3 + tailwindcss-animate, Archivo + Noto Sans SC fonts.
@@ -52,6 +57,14 @@
     --surface-border: #d7d3d3;
 
     --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+    --surface-alpha: 1;
+    --surface-blur: none;
+
+    --font-sans: "Archivo", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
+    --font-heading: "Archivo", "Noto Sans SC", system-ui, sans-serif;
+    --font-mono: "Archivo", "SF Mono", ui-monospace, monospace;
+    --font-heading-weight: 800;
+    --font-heading-tracking: -0.015em;
   }
 
   .dark,
@@ -90,6 +103,8 @@
     --surface-shadow: none;
     --surface-shadow-lg: none;
     --surface-border: #605d5d;
+    --surface-alpha: 1;
+    --surface-blur: none;
   }
 }
 
@@ -105,7 +120,7 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: "Archivo", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
+    font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
@@ -115,8 +130,9 @@
 
   /* Modernist headings: Archivo 800 */
   h1, h2, h3, h4 {
-    font-weight: 800;
-    letter-spacing: -0.015em;
+    font-family: var(--font-heading);
+    font-weight: var(--font-heading-weight);
+    letter-spacing: var(--font-heading-tracking);
   }
 }
 
@@ -154,9 +170,18 @@
 }
 
 .metric-number {
-  font-family: "Archivo", "SF Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+}
+
+/* Frosted-glass surface hook — inert under Modernist (--surface-blur: none
+   creates no backdrop-filter and no stacking context). Kept so components
+   copied from cc-gw2 (bg-*/[var(--surface-alpha)] + surface-blur) render
+   identically: opaque, flat. */
+.surface-blur {
+  -webkit-backdrop-filter: var(--surface-blur, none);
+  backdrop-filter: var(--surface-blur, none);
 }
 
 /* Touch targets */

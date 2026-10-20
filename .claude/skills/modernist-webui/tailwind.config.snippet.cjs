@@ -17,9 +17,11 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ['"Archivo"', '"Noto Sans SC"', '"PingFang SC"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
-        heading: ['"Archivo"', '"Noto Sans SC"', 'system-ui', 'sans-serif'],
-        mono: ['"Archivo"', '"SF Mono"', 'ui-monospace', 'monospace']
+        // var() refs resolve inside global.css tokens; literals are fallbacks
+        // for the token ever going missing (kept in sync with cc-gw2 config).
+        sans: ['var(--font-sans, "Archivo", "Noto Sans SC", "PingFang SC", system-ui, sans-serif)'],
+        heading: ['var(--font-heading, "Archivo", "Noto Sans SC", system-ui, sans-serif)'],
+        mono: ['var(--font-mono, "Archivo", "SF Mono", ui-monospace, monospace)']
       },
       screens: {
         'xs': '475px'

@@ -69,7 +69,7 @@ First E2E run needs `pnpm exec playwright install --with-deps chromium`.
 
 ### Frontend Conventions
 
-- **Design system is "Modernist"** (sharp corners, single red accent, no shadows/gradients): enforced by the `modernist-webui` skill (`.claude/skills/modernist-webui/`); token source of truth is `src/web/src/styles/global.css` + `src/web/tailwind.config.cjs`. Any UI work must conform — invoke the skill when adding/polishing UI.
+- **Multi-family theme system** (authoritative doc: `docs/webui-theme-system.md`): two orthogonal axes on `<html>` — `data-skin` (`minimal` **default** / `classic` / `paper` / `glass` / `modernist`) × `data-theme`+`.dark` (light/dark). Token source of truth is `src/web/src/styles/themes/` (one file per family; the `index.css` barrel order IS the cascade contract — see Rule A/B/C there) + `src/web/src/styles/global.css` + `src/web/tailwind.config.cjs`. Adding/polishing UI must work under every family: colors only via tokens, chart colors only via `useChartTheme` (canvas can't resolve `var()`), translucency only via `bg-*/[var(--surface-alpha)]` + `surface-blur` (tokens stay opaque hex), dense table containers use Card `variant="solid"`. The `modernist-webui` skill (`.claude/skills/modernist-webui/`) applies to the **Modernist family only** (sharp corners, single red, no green, no glass) — invoke it when touching that family or porting the design elsewhere.
 - **i18n**: messages split per feature in `src/web/src/i18n/locales/{zh,en}/<feature>.ts` — update **both** locales together. English plurals use i18next `_one`/`_other` key suffixes (e.g. `routeCount_one`), never `{one, other}` object form.
 - **API layer**: `src/web/src/services/` (axios) + TanStack Query hooks (`useApiQuery`, `useAppMutation`). Error handling uses `toApiError(error).message` — not `instanceof Error`.
 - UI component primitives: Radix UI + shadcn-style components in `src/web/src/components/ui/`; charts via echarts-for-react.
@@ -78,7 +78,7 @@ First E2E run needs `pnpm exec playwright install --with-deps chromium`.
 
 - `tests/playwright/harness.ts` spawns the **built Rust binary** (`target/release` → `target/debug`) with an isolated temp `CC_GW_HOME`, a free port, and a built-in stub upstream provider — tests never touch the developer's real `~/.cc-gw`.
 - Playwright projects: `desktop-zh` is canonical and runs every spec; `desktop-en`/`narrow-zh`/`narrow-en` only match `visual*.spec.ts`. Tags `@overlay-only` and `@data` run exclusively under `desktop-zh`.
-- Visual baselines are darwin-local artifacts (CI never compares them); snapshot filenames encode the project name.
+- Visual baselines are darwin-local artifacts (CI never compares them); snapshot filenames encode the project name. Every visual `goto` pins `cc-gw-theme: light` + `cc-gw-skin: minimal` (plus locale) via the `visual-helpers.ts` fixture — baselines always render the default family regardless of storage pollution.
 
 ### Database Tables (core)
 

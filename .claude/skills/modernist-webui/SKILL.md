@@ -15,11 +15,16 @@ allowed-tools:
 A portable, opinionated **visual** design system extracted from the cc-gw2 web console.
 Tech-agnostic at the token layer; components assume React + Tailwind v3 + shadcn/ui.
 
-> Source of truth in this repo: `src/web/src/styles/global.css` (tokens) +
-> `src/web/tailwind.config.cjs` (mapping). The `global.css` and
-> `tailwind.config.snippet.cjs` sitting next to this SKILL.md are functionally
-> identical copies (every token value, selector, and rule matches; comments
-> translated to English) — drop them into a new project verbatim.
+> Source of truth in this repo: `src/web/src/styles/themes/modernist.css`
+> (tokens) + `src/web/src/styles/global.css` (base rules) +
+> `src/web/tailwind.config.cjs` (mapping). cc-gw2 itself is now a
+> **multi-family theme system** (`data-skin` × `data-theme`, five families;
+> see `docs/webui-theme-system.md`) — Modernist is one selectable family, and
+> **this skill's rules apply to the Modernist family only**. The `global.css`
+> and `tailwind.config.snippet.cjs` sitting next to this SKILL.md are the
+> standalone single-family drop-in variants (same values as
+> `themes/modernist.css`, bound to `:root`/`.dark`; comments in English) —
+> drop them into a new project verbatim.
 
 ---
 
@@ -218,7 +223,15 @@ Props: `eyebrow / title / description / actions / children`. Header is `flex sm:
   PR — don't quietly invent a sixth.
 - `variant={someState ? 'outline' : 'default'}` on a row action. Primary red is the screen's submit action; a per-row conditional makes it multiply.
 
-> **Scope:** this contract governs the console app (`src/web/src/`, mounted at `#root`). The marketing landing page (`src/web/src/landing/`, a separate entry point on `#landing-root`) has its own rounded aesthetic and is intentionally exempt.
+> **Scope:** within cc-gw2, this contract governs the **Modernist family**
+> (`[data-skin="modernist"]`) — the console's default family is now Minimal
+> (Linear-style), which intentionally uses rounded corners, conventional
+> status colors, shadows, and (for the Glass family) translucency. The
+> marketing landing page pins the Modernist *tokens* via `landing.html`
+> (`data-skin="modernist"`) but its markup keeps its own rounded aesthetic
+> and stays exempt from the component rules below; its baselines are the
+> tripwire that the pin holds. When applying this system to a fresh project,
+> the contract is absolute.
 
 ---
 

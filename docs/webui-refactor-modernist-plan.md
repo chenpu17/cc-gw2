@@ -322,3 +322,13 @@ html, body, #root { height: auto !important; }
   标签是 canvas 绘制（DOM 掩码管不到），insights 的「最忙的一天」也来自当天数据。
   跨天运行时会有 ~0.01% 的字形差，落在 1.5% 容差内静默通过——基线不是按日期冻结的，
   判断「是否真回归」时别被这一项干扰。
+
+## 16. 后续:多家族主题系统
+
+本文档描述的 Modernist 重构完成后,控制台进一步引入了**双轴多家族主题系统**
+(`data-skin` 风格家族 × `data-theme` 明暗):Minimal(Linear 风,现为默认族)、
+Classic、Paper、Glass、Modernist(本文档的设计系统,降级为可选家族之一,
+`landing.html` 钉住)。Modernist 的 token 从 `global.css` 平移至
+`styles/themes/modernist.css`;本文档中涉及的 token 值与「无绿/无玻璃/直角」
+等规则,现在仅约束 Modernist 族。参见 `docs/webui-theme-system.md` 与
+`.claude/skills/modernist-webui/SKILL.md` 的范围修订。
