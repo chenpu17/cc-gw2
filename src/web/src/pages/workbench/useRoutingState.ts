@@ -441,6 +441,13 @@ export function useRoutingState(base: WorkbenchConfigState) {
         ...previous,
         [endpoint]: nextRoutes[endpoint] ?? []
       }))
+      // The server seeds a fresh custom endpoint's defaults when apply creates
+      // its routing block; keep the draft in sync (see syncDefaultsDraftAfterWrite).
+      syncDefaultsDraftAfterWrite(
+        endpoint,
+        getSavedDefaultsFromConfig(config!, customEndpoints, endpoint),
+        getSavedDefaultsFromConfig(updatedConfig, customEndpoints, endpoint)
+      )
       setPresetsByEndpoint(buildPresetsMap(updatedConfig, customEndpoints))
       if (endpoint !== 'anthropic' && endpoint !== 'openai') {
         await queryClient.invalidateQueries({ queryKey: queryKeys.customEndpoints.all() })
@@ -717,6 +724,24 @@ export function useRoutingState(base: WorkbenchConfigState) {
     }
   })
 
+  /** Route/preset writes can change an endpoint's saved defaults behind the
+   *  draft's back: saving routes (or applying a preset) on a fresh custom
+   *  endpoint seeds its routing defaults from the global defaults. If the
+   *  draft was pristine (identical to the pre-write saved value), adopt the
+   *  newly persisted value so isDefaultsDirtyByEndpoint doesn't report a
+   *  phantom edit; a user-edited draft is kept and stays honestly dirty. */
+  const syncDefaultsDraftAfterWrite = (
+    endpoint: string,
+    previousSaved: DefaultsConfig,
+    nextSaved: DefaultsConfig
+  ) => {
+    setDefaultsByEndpoint((previous) => {
+      const current = previous[endpoint]
+      if (current && JSON.stringify(current) !== JSON.stringify(previousSaved)) return previous
+      return { ...previous, [endpoint]: nextSaved }
+    })
+  }
+
   const handleSaveRoutes = async (endpoint: string) => {
     if (!ensureConfig()) return
     if (writingRef.current) return
@@ -774,6 +799,13 @@ export function useRoutingState(base: WorkbenchConfigState) {
           }
         })
         await queryClient.invalidateQueries({ queryKey: queryKeys.customEndpoints.all() })
+        // config still holds the pre-write state here; the server just seeded
+        // (or preserved) the endpoint's defaults via routing above.
+        syncDefaultsDraftAfterWrite(
+          endpoint,
+          getSavedDefaultsFromConfig(config!, customEndpoints, endpoint),
+          routing.defaults
+        )
       } else {
         const nextConfig: GatewayConfig = {
           ...config!,
