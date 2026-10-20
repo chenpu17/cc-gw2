@@ -3,30 +3,37 @@ import type { CustomEndpoint } from '@/types/endpoints'
 import type { GatewayConfig } from '@/types/providers'
 import { EndpointConfigCard } from './EndpointConfigCard'
 import { RoutingDefaultsCard } from './RoutingDefaultsCard'
+import { RoutingEndpointRail } from './RoutingEndpointRail'
 import { RoutingFlowBanner } from './RoutingFlowBanner'
 import { RoutingRulesList } from './RoutingRulesList'
 import { RoutingSimulator } from './RoutingSimulator'
 import type { RoutingState } from './useRoutingState'
 
 /**
- * Routing page workspace: two columns. Main (2fr) = default forwarding +
- * draggable model-route rules; side (1fr, sticky) = hit simulator + endpoint
- * config. Endpoint switching and presets live in the page toolbar (switcher
- * Select / templates dialog) — the old col-1 rail and permanent presets card
- * are gone.
+ * Routing page workspace. lg+: three columns — endpoint rail (1), main
+ * (2fr) = default forwarding + draggable model-route rules, side (1fr,
+ * sticky) = hit simulator + endpoint config. Below lg the rail is hidden and
+ * the toolbar Select (EndpointSwitcher) is the fallback. Templates stay a
+ * toolbar dialog on every viewport.
  */
 export function RoutingWorkspace({
   routing,
   config,
   customEndpoints,
+  routeCounts,
   selectedEndpointId,
-  onSelectEndpoint
+  onSelectEndpoint,
+  onEditEndpoint,
+  onDeleteEndpoint
 }: {
   routing: RoutingState
   config: GatewayConfig | null
   customEndpoints: CustomEndpoint[]
+  routeCounts: Record<string, number>
   selectedEndpointId: string | null
   onSelectEndpoint: (endpointId: string) => void
+  onEditEndpoint: (endpoint: CustomEndpoint) => void
+  onDeleteEndpoint: (endpoint: CustomEndpoint) => void
 }) {
   useTranslation()
   const endpoint = selectedEndpointId ?? routing.endpointTabs[0]?.key ?? 'anthropic'
@@ -45,7 +52,16 @@ export function RoutingWorkspace({
   return (
     <div data-testid="routing-workspace" className="flex flex-col gap-3.5">
       <RoutingFlowBanner endpointPath={endpointPath} defaultTarget={defaults?.completion ?? null} />
-      <div className="grid items-start gap-3.5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid items-start gap-3.5 lg:grid-cols-[210px_minmax(0,2fr)_minmax(0,1fr)]">
+        <RoutingEndpointRail
+          tabs={routing.endpointTabs}
+          customEndpoints={customEndpoints}
+          routeCounts={routeCounts}
+          selectedEndpointId={selectedEndpointId}
+          onSelect={onSelectEndpoint}
+          onEditEndpoint={onEditEndpoint}
+          onDeleteEndpoint={onDeleteEndpoint}
+        />
         <div className="flex flex-col gap-3.5">
           <RoutingDefaultsCard routing={routing} endpoint={endpoint} />
           <RoutingRulesList routing={routing} endpoint={endpoint} tabInfo={tabInfo} />

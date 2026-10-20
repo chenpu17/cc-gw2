@@ -64,8 +64,7 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await endpointDialog.getByRole('button', { name: '创建' }).click()
     await expect(page.getByText('端点创建成功')).toBeVisible()
 
-    await page.getByTestId('routing-endpoint-switcher').click()
-    await page.getByRole('option', { name: new RegExp(ENDPOINT_LABEL) }).click()
+    await page.getByTestId('routing-endpoint-row').filter({ hasText: ENDPOINT_LABEL }).locator('button').first().click()
     const workspace = page.getByTestId('routing-workspace')
     await workspace.getByTestId('add-route').click()
     await workspace.getByTestId('route-rule-source').fill(SOURCE_MODEL)
@@ -180,9 +179,9 @@ test.describe.serial('@overlay-only overlay open states', () => {
   test('endpoint dialog — edit mode', async ({ page }) => {
     await page.goto(`${harness.baseUrl()}/ui/routing`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
-    await page.getByTestId('routing-endpoint-switcher').click()
-    await page.getByRole('option', { name: new RegExp(ENDPOINT_LABEL) }).click()
-    await page.getByTestId('endpoint-edit').click()
+    const editEndpointRow = page.getByTestId('routing-endpoint-row').filter({ hasText: ENDPOINT_LABEL })
+    await editEndpointRow.locator('button').first().click()
+    await editEndpointRow.getByTestId('endpoint-edit').click()
     await expect(page.getByRole('dialog', { name: '编辑端点' })).toBeVisible()
     await page.waitForTimeout(200)
     await expectPageSnapshot(page, 'overlay-endpoint-dialog-edit.png')
@@ -193,8 +192,7 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
     // Re-select the seeded endpoint, then open the templates dialog so the
     // preset row mounts (presets are per-endpoint and live in the dialog).
-    await page.getByTestId('routing-endpoint-switcher').click()
-    await page.getByRole('option', { name: new RegExp(ENDPOINT_LABEL) }).click()
+    await page.getByTestId('routing-endpoint-row').filter({ hasText: ENDPOINT_LABEL }).locator('button').first().click()
     await page.getByRole('button', { name: '模板' }).click()
     const presetsDialog = page.getByRole('dialog', { name: '路由模板' })
     const presetRow = presetsDialog.getByTestId('preset-row').filter({ hasText: 'overlay-preset' })
@@ -209,8 +207,7 @@ test.describe.serial('@overlay-only overlay open states', () => {
   test('confirm dialog — delete preset', async ({ page }) => {
     await page.goto(`${harness.baseUrl()}/ui/routing`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
-    await page.getByTestId('routing-endpoint-switcher').click()
-    await page.getByRole('option', { name: new RegExp(ENDPOINT_LABEL) }).click()
+    await page.getByTestId('routing-endpoint-row').filter({ hasText: ENDPOINT_LABEL }).locator('button').first().click()
     await page.getByRole('button', { name: '模板' }).click()
     const presetsDialog = page.getByRole('dialog', { name: '路由模板' })
     const presetRow = presetsDialog.getByTestId('preset-row').filter({ hasText: 'overlay-preset' })

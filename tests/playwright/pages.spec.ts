@@ -34,13 +34,11 @@ test('web console pages load and navigation works', async ({ page }) => {
   await expect(page).toHaveURL(/\/ui\/routing$/)
   await expect(page.getByRole('heading', { name: '路由', level: 1 })).toBeVisible()
   await expect(page.getByRole('button', { name: '新建端点' }).first()).toBeVisible()
-  // 旧「管理端点」入口已随端点 rail 退役，只留切换器旁的编辑/删除
+  // 旧「管理端点」入口已退役；端点的编辑/删除挂在左栏 rail 自定义行行内
   await expect(page.getByRole('button', { name: '管理端点' })).toHaveCount(0)
-  // 端点切换器：选中内置端点后 URL 带 endpoint 参数（不再开弹窗）。
-  // 默认已选 Anthropic，Radix Select 重复选同一项不触发 onValueChange，
-  // 所以选另一内置端点 OpenAI 来验证选中即同步 URL。
-  await page.getByTestId('routing-endpoint-switcher').click()
-  await page.getByRole('option', { name: /OpenAI/ }).click()
+  // 端点导航栏：点击内置端点 OpenAI 行，选中即同步 URL（默认已选
+  // Anthropic，重复点同一行无变化，所以换另一内置端点来验证）。
+  await page.getByTestId('routing-endpoint-row').filter({ hasText: 'OpenAI' }).locator('button').first().click()
   await expect(page).toHaveURL(/\/ui\/routing\?endpoint=openai$/)
   const workspace = page.getByTestId('routing-workspace')
   await expect(workspace).toBeVisible()

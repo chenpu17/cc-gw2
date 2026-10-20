@@ -6,6 +6,11 @@ export default {
     label: 'Endpoint',
     ruleCount: '{{count}}'
   },
+  endpointRail: {
+    title: 'Endpoints',
+    subtitle: 'Each endpoint has its own rule set',
+    ruleCount: '{{count}}'
+  },
   flow: {
     title: 'Request flow',
     clientStep: 'Client model',

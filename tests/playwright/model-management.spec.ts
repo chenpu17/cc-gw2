@@ -130,9 +130,13 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   expect(createdEndpoint.label).toBe(endpointLabel)
   expect(createdEndpoint.paths[0].path).toBe('/playwright/v1/chat/completions')
 
-  // 新端点经工具栏切换器选中（旧端点表格已随端点 rail 退役）
-  await page.getByTestId('routing-endpoint-switcher').click()
-  await page.getByRole('option', { name: new RegExp(endpointLabel) }).click()
+  // 新端点经左栏端点导航栏选中（桌面端点选择走 rail 行）
+  await page
+    .getByTestId('routing-endpoint-row')
+    .filter({ hasText: endpointLabel })
+    .locator('button')
+    .first()
+    .click()
   const workspace = page.getByTestId('routing-workspace')
   await expect(workspace).toBeVisible()
   await expect(workspace.getByTestId('add-route')).toBeVisible()
@@ -181,18 +185,25 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   routedEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(routedEndpoint.routing.modelRoutes[sourceModel]).toBe(targetModel)
 
-  // 端点编辑：切换器选中自定义端点后，点切换器旁的「编辑」
+  // 端点编辑：左栏选中自定义端点后，点该行行内的「编辑」
   await presetsDialog.getByRole('button', { name: 'Close' }).click()
   await expect(presetsDialog).not.toBeVisible()
-  await page.getByTestId('routing-endpoint-switcher').click()
-  await page.getByRole('option', { name: new RegExp(endpointLabel) }).click()
-  await page.getByTestId('endpoint-edit').click()
+  const editEndpointRow = page.getByTestId('routing-endpoint-row').filter({ hasText: endpointLabel })
+  await editEndpointRow.locator('button').first().click()
+  await editEndpointRow.getByTestId('endpoint-edit').click()
   const endpointEditDialog = page.getByRole('dialog', { name: '编辑端点' })
   await endpointEditDialog.getByPlaceholder('如 我的自定义 API').fill(updatedEndpointLabel)
   await endpointEditDialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByText('端点更新成功')).toBeVisible()
-  // 重命名后端点 id 不变保持选中；切换器随 custom-endpoints 失效刷新 label
-  await expect(page.getByTestId('routing-endpoint-switcher')).toContainText(updatedEndpointLabel)
+  // 重命名后端点 id 不变保持选中；rail 行随 custom-endpoints 失效刷新 label
+  // （aria-current 在行内的选中按钮上）
+  await expect(
+    page
+      .getByTestId('routing-endpoint-row')
+      .filter({ hasText: updatedEndpointLabel })
+      .locator('button')
+      .first()
+  ).toHaveAttribute('aria-current', 'true')
 
   const updatedEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(updatedEndpoint.label).toBe(updatedEndpointLabel)
@@ -276,8 +287,12 @@ test('model management supports provider edit, delete, route reset, and preset d
   await endpointDialog.getByRole('button', { name: '创建' }).click()
   await expect(page.getByText('端点创建成功')).toBeVisible()
 
-  await page.getByTestId('routing-endpoint-switcher').click()
-  await page.getByRole('option', { name: /Edit Endpoint/ }).click()
+  await page
+    .getByTestId('routing-endpoint-row')
+    .filter({ hasText: 'Edit Endpoint' })
+    .locator('button')
+    .first()
+    .click()
   const workspace = page.getByTestId('routing-workspace')
   await expect(workspace).toBeVisible()
   await workspace.getByTestId('add-route').click()
@@ -346,8 +361,12 @@ test('routing rules can be reordered by dragging the grip handle', async ({ page
   await endpointDialog.getByRole('button', { name: '创建' }).click()
   await expect(page.getByText('端点创建成功')).toBeVisible()
 
-  await page.getByTestId('routing-endpoint-switcher').click()
-  await page.getByRole('option', { name: /Drag Endpoint/ }).click()
+  await page
+    .getByTestId('routing-endpoint-row')
+    .filter({ hasText: 'Drag Endpoint' })
+    .locator('button')
+    .first()
+    .click()
   const workspace = page.getByTestId('routing-workspace')
   await expect(workspace).toBeVisible()
 

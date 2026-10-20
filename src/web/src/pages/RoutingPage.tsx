@@ -176,8 +176,11 @@ export default function RoutingPage() {
         routing={routing}
         config={base.config}
         customEndpoints={base.customEndpoints}
+        routeCounts={endpointRouteCounts}
         selectedEndpointId={selectedEndpointId}
         onSelectEndpoint={handleSelectEndpoint}
+        onEditEndpoint={handleOpenEditEndpoint}
+        onDeleteEndpoint={(endpoint) => setConfirmAction({ kind: 'endpoint', endpoint })}
       />
 
       <RoutingPresetsDialog

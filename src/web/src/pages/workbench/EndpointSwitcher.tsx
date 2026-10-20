@@ -6,11 +6,11 @@ import type { CustomEndpoint } from '@/types/endpoints'
 import type { ManagementTab } from './shared'
 
 /**
- * Toolbar endpoint selector replacing the old 200px col-1 rail: the workspace
- * is a two-column grid now, so endpoint switching lives in the page toolbar as
- * a Select (custom endpoints can grow unboundedly, so a fixed segmented control
- * would overflow). Custom endpoints keep their edit/delete affordances as icon
- * buttons beside the trigger — same behavior the rail rows had inline.
+ * Narrow-viewport endpoint selector: on lg+ the workspace's col-1 endpoint
+ * rail (RoutingEndpointRail) is the primary navigation, so this Select is
+ * hidden there; below lg the rail wouldn't fit and this takes over. Custom
+ * endpoints keep their edit/delete affordances as icon buttons beside the
+ * trigger — same behavior the rail rows have inline.
  */
 export function EndpointSwitcher({
   tabs,
@@ -37,7 +37,7 @@ export function EndpointSwitcher({
     : tabs.find((tab) => tab.key === selectedEndpointId)?.label ?? selectedEndpointId
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5 lg:hidden">
       <Select value={selectedEndpointId} onValueChange={onSelect}>
         <SelectTrigger
           data-testid="routing-endpoint-switcher"

@@ -6,6 +6,11 @@ export default {
     label: '端点',
     ruleCount: '{{count}} 条'
   },
+  endpointRail: {
+    title: '端点',
+    subtitle: '每个端点一套独立规则',
+    ruleCount: '{{count}} 条'
+  },
   flow: {
     title: '请求流向',
     clientStep: '客户端模型',
