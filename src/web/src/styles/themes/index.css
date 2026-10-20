@@ -1,0 +1,14 @@
+/* 主题家族 barrel — 文件顺序即级联契约,勿重排。
+   详见 docs/webui-theme-system.md。三条规则:
+   Rule A:家族 light 块([data-skin="x"])定义完整变量集(结构 + 全部颜色)。
+   Rule B:家族 dark 块([data-skin="x"][data-theme="dark"], (0,2,0))定义全部
+          颜色 + 表面变量(shadow/alpha/blur),盖过基础 dark 块。
+   Rule C:基础 dark 块(minimal.css 的 :root[data-theme="dark"], .dark)只放
+          颜色、不放结构变量 —— 它以 (0,2,0) 匹配任意 skin,若含结构变量会
+          以更高优先级压过其他家族 light 块的 (0,1,0) 造成渗透。
+   未知/缺失 data-skin → 只有 :root 与基础 dark 命中 → 优雅落回默认族 minimal。 */
+@import './minimal.css';
+@import './classic.css';
+@import './paper.css';
+@import './glass.css';
+@import './modernist.css';

@@ -1,0 +1,109 @@
+/* Glass — 毛玻璃风格家族。渐变背景 + 半透明模糊面板,紫 accent。
+   可读性规则:--card/--popover 永远是不透明 hex,半透明只通过
+   `bg-card/[var(--surface-alpha)]` 修饰符生效(withAlpha 包装会丢弃
+   token 自身 alpha);密集数据表格的容器卡片用 Card variant="solid" 保持不透明。 */
+
+/* ── Glass · light ──────────────────────────────────────────────── */
+[data-skin="glass"] {
+  --background: #f4f5fb;
+  --foreground: #1c1b2e;
+  --card: #ffffff;
+  --card-foreground: #1c1b2e;
+  --popover: #ffffff;
+  --popover-foreground: #1c1b2e;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --secondary: #ececf6;
+  --secondary-foreground: #2a2842;
+  --muted: #ececf6;
+  --muted-foreground: #67648a;
+  --accent: #e6e5f5;
+  --accent-foreground: #1c1b2e;
+  --destructive: #e11d48;
+  --destructive-foreground: #ffffff;
+  --border: #dcd9ec;
+  --input: #dcd9ec;
+  --ring: #7c3aed;
+  --radius: 1rem;
+
+  --success: #059669;   --success-bg: #d9f3ea;
+  --warning: #d97706;   --warning-bg: #fbeed8;
+  --error: #e11d48;     --error-bg: #fce7ee;
+  --info: #0284c7;      --info-bg: #dcf0fb;
+
+  --chart-1: #7c3aed;
+  --chart-2: #a78bfa;
+  --chart-3: #c4b5fd;
+  --chart-4: #64748b;
+  --chart-5: #94a3b8;
+
+  --surface-shadow: 0 8px 32px rgb(124 58 237 / 0.14);
+  --surface-shadow-lg: 0 16px 48px rgb(124 58 237 / 0.20);
+  --surface-border: #d6d2ea;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 0.78;
+  --surface-blur: blur(18px) saturate(1.4);
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
+  --font-heading: "Inter", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 700;
+  --font-heading-tracking: -0.014em;
+}
+
+/* ── Glass · dark(主打模式;Rule B 允许结构覆盖)─────────────────── */
+[data-skin="glass"][data-theme="dark"],
+[data-skin="glass"].dark {
+  --background: #0e0c1d;
+  --foreground: #eceaf8;
+  --card: #191632;
+  --card-foreground: #eceaf8;
+  --popover: #1d1a3a;
+  --popover-foreground: #eceaf8;
+  --primary: #a78bfa;
+  --primary-foreground: #17123a;
+  --secondary: #241f45;
+  --secondary-foreground: #e6e4f5;
+  --muted: #241f45;
+  --muted-foreground: #9d9ab8;
+  --accent: #2a2550;
+  --accent-foreground: #eceaf8;
+  --destructive: #fb7185;
+  --destructive-foreground: #2a0d16;
+  --border: #322d5c;
+  --input: #322d5c;
+  --ring: #a78bfa;
+
+  --success: #34d399;   --success-bg: #0e2b22;
+  --warning: #fbbf24;   --warning-bg: #2e2410;
+  --error: #fb7185;     --error-bg: #341620;
+  --info: #7dd3fc;      --info-bg: #0f2740;
+
+  --chart-1: #a78bfa;
+  --chart-2: #c4b5fd;
+  --chart-3: #ddd6fe;
+  --chart-4: #9d9ab8;
+  --chart-5: #5f5c78;
+
+  --surface-shadow: 0 8px 32px rgb(0 0 0 / 0.30);
+  --surface-shadow-lg: 0 16px 48px rgb(0 0 0 / 0.45);
+  --surface-border: #322d5c;
+  --surface-alpha: 0.62;
+  --surface-blur: blur(20px) saturate(1.5);
+}
+
+/* 渐变背景 — 毛玻璃的底色。面板半透明,层次来自背景光斑。 */
+[data-skin="glass"] body {
+  background-image:
+    radial-gradient(52rem 36rem at 8% -8%, rgb(124 58 237 / 0.16), transparent 60%),
+    radial-gradient(46rem 30rem at 100% 0%, rgb(14 165 233 / 0.14), transparent 55%),
+    radial-gradient(40rem 30rem at 50% 110%, rgb(244 114 182 / 0.12), transparent 60%);
+  background-attachment: fixed;
+}
+[data-skin="glass"][data-theme="dark"] body,
+[data-skin="glass"].dark body {
+  background-image:
+    radial-gradient(52rem 36rem at 8% -8%, rgb(124 58 237 / 0.28), transparent 60%),
+    radial-gradient(46rem 30rem at 100% 0%, rgb(34 211 238 / 0.16), transparent 55%),
+    radial-gradient(40rem 30rem at 50% 110%, rgb(99 102 241 / 0.22), transparent 60%);
+}

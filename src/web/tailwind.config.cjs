@@ -18,9 +18,10 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ['"Archivo"', '"Noto Sans SC"', '"PingFang SC"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
-        heading: ['"Archivo"', '"Noto Sans SC"', 'system-ui', 'sans-serif'],
-        mono: ['"Archivo"', '"SF Mono"', 'ui-monospace', 'monospace']
+        // 字体随主题家族(--font-* 由 styles/themes/*.css 定义,var 内置兜底栈)
+        sans: ['var(--font-sans, "Archivo", "Noto Sans SC", "PingFang SC", system-ui, sans-serif)'],
+        heading: ['var(--font-heading, "Archivo", "Noto Sans SC", system-ui, sans-serif)'],
+        mono: ['var(--font-mono, "Archivo", "SF Mono", ui-monospace, monospace)']
       },
       screens: {
         'xs': '475px'

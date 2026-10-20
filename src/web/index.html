@@ -4,13 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no" />
     <meta name="format-detection" content="telephone=no" />
+    <script>
+      // 首帧前应用主题(防 FOUC)。与 ThemeProvider 同一套键:
+      //   cc-gw-theme = light|dark|system(明暗),cc-gw-skin = 风格家族。
+      // 未知 skin 值落回 :root(minimal),boot 后由 ThemeProvider 清洗。
+      (function () {
+        try {
+          var root = document.documentElement
+          var mode = localStorage.getItem('cc-gw-theme')
+          if (mode !== 'light' && mode !== 'dark') mode = 'system'
+          var dark = mode === 'dark' ||
+            (mode === 'system' && window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          root.dataset.theme = dark ? 'dark' : 'light'
+          root.classList.toggle('dark', dark)
+          var skin = localStorage.getItem('cc-gw-skin')
+          if (skin) root.dataset.skin = skin
+        } catch (e) { /* storage 不可用:保持 HTML 上的默认属性 */ }
+      })()
+    </script>
     <link rel="icon" type="image/svg+xml" href="/cc-gw-mark.svg" />
     <link rel="apple-touch-icon" href="/cc-gw-mark.svg" />
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Noto+Sans+SC:wght@400;500;700;900&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&family=Source+Serif+4:wght@600;700&display=swap"
       rel="stylesheet"
     />
     <title>cc-gw 控制台</title>

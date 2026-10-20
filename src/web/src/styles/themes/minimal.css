@@ -1,0 +1,89 @@
+/* Minimal — Linear 风格家族(默认)。
+   低饱和 zinc 中性 + 靛蓝 accent,暗色为主打模式。常规语义色(允许绿色)。 */
+
+/* ── Minimal · light(默认家族,占 :root)────────────────────────── */
+:root,
+[data-skin="minimal"] {
+  --background: #fafafa;
+  --foreground: #191a1c;
+  --card: #ffffff;
+  --card-foreground: #191a1c;
+  --popover: #ffffff;
+  --popover-foreground: #191a1c;
+  --primary: #5e6ad2;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #2a2b2d;
+  --muted: #f4f4f5;
+  --muted-foreground: #666871;
+  --accent: #ededf0;
+  --accent-foreground: #191a1c;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --border: #e4e5e8;
+  --input: #e4e5e8;
+  --ring: #5e6ad2;
+  --radius: 8px;
+
+  --success: #30a46c;   --success-bg: #e3f5ea;
+  --warning: #ffb224;   --warning-bg: #fdf3d8;
+  --error: #e5484d;     --error-bg: #fdeaea;
+  --info: #0091ff;      --info-bg: #e2f1ff;
+
+  --chart-1: #5e6ad2;
+  --chart-2: #7b84dc;
+  --chart-3: #b4b9ec;
+  --chart-4: #6b6d76;
+  --chart-5: #a3a5ad;
+
+  --surface-shadow: 0 1px 2px rgb(16 17 20 / 0.05);
+  --surface-shadow-lg: 0 10px 28px rgb(16 17 20 / 0.10);
+  --surface-border: #e4e5e8;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 1;
+  --surface-blur: none;
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
+  --font-heading: "Inter", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 600;
+  --font-heading-tracking: -0.011em;
+}
+
+/* ── 基础 dark 块(级联契约 Rule C:只放颜色,不放结构变量)──────────
+   匹配任意 skin 的暗色兜底;各家族 dark 块(0,2,0)必须定义全部颜色变量盖过它。 */
+:root[data-theme="dark"],
+.dark {
+  --background: #101013;
+  --foreground: #f4f5f6;
+  --card: #17181b;
+  --card-foreground: #f4f5f6;
+  --popover: #1c1d21;
+  --popover-foreground: #f4f5f6;
+  --primary: #7c86ff;
+  --primary-foreground: #0f1013;
+  --secondary: #212226;
+  --secondary-foreground: #e9eaec;
+  --muted: #212226;
+  --muted-foreground: #9294a0;
+  --accent: #26272d;
+  --accent-foreground: #f4f5f6;
+  --destructive: #ff6369;
+  --destructive-foreground: #ffffff;
+  --border: #26272c;
+  --input: #26272c;
+  --ring: #7c86ff;
+
+  --success: #46c88a;   --success-bg: #12241b;
+  --warning: #ffc94d;   --warning-bg: #2a2110;
+  --error: #ff6369;     --error-bg: #331a1c;
+  --info: #58a6ff;      --info-bg: #10233c;
+
+  --chart-1: #7c86ff;
+  --chart-2: #a3aaff;
+  --chart-3: #d0d3ff;
+  --chart-4: #9294a0;
+  --chart-5: #5c5e69;
+
+  --surface-border: #26272c;
+}

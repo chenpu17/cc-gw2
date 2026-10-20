@@ -1,0 +1,90 @@
+/* Paper — Notion 暖纸风格家族。米白底、暖灰文字、圆润容器,衬线标题。 */
+
+/* ── Paper · light ──────────────────────────────────────────────── */
+[data-skin="paper"] {
+  --background: #f7f6f3;
+  --foreground: #37352f;
+  --card: #ffffff;
+  --card-foreground: #37352f;
+  --popover: #ffffff;
+  --popover-foreground: #37352f;
+  --primary: #b4552d;
+  --primary-foreground: #fffaf6;
+  --secondary: #f1f0ec;
+  --secondary-foreground: #37352f;
+  --muted: #eeece7;
+  --muted-foreground: #787774;
+  --accent: #efeeeb;
+  --accent-foreground: #37352f;
+  --destructive: #b34a32;
+  --destructive-foreground: #fff6f2;
+  --border: #e7e5e0;
+  --input: #e7e5e0;
+  --ring: #b4552d;
+  --radius: 6px;
+
+  --success: #5b8340;   --success-bg: #e9f0e1;
+  --warning: #a9740a;   --warning-bg: #f7efd8;
+  --error: #b34a32;     --error-bg: #f8e8e2;
+  --info: #57789a;      --info-bg: #e5edf4;
+
+  --chart-1: #b4552d;
+  --chart-2: #cf7d55;
+  --chart-3: #e5ab8b;
+  --chart-4: #787774;
+  --chart-5: #a5a39d;
+
+  --surface-shadow: 0 1px 2px rgb(55 53 47 / 0.06);
+  --surface-shadow-lg: 0 6px 20px rgb(55 53 47 / 0.10);
+  --surface-border: #e7e5e0;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 1;
+  --surface-blur: none;
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
+  --font-heading: "Source Serif 4", Georgia, "Noto Sans SC", serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 600;
+  --font-heading-tracking: 0em;
+}
+
+/* ── Paper · dark(完整集,Rule B)────────────────────────────────── */
+[data-skin="paper"][data-theme="dark"],
+[data-skin="paper"].dark {
+  --background: #2f3437;
+  --foreground: #e8e7e3;
+  --card: #373c3f;
+  --card-foreground: #e8e7e3;
+  --popover: #3b4144;
+  --popover-foreground: #e8e7e3;
+  --primary: #e0855f;
+  --primary-foreground: #2b1a12;
+  --secondary: #3f4446;
+  --secondary-foreground: #e8e7e3;
+  --muted: #3f4446;
+  --muted-foreground: #9b9a97;
+  --accent: #42474a;
+  --accent-foreground: #e8e7e3;
+  --destructive: #e5756a;
+  --destructive-foreground: #2d1512;
+  --border: #4a5054;
+  --input: #4a5054;
+  --ring: #e0855f;
+
+  --success: #8bb774;   --success-bg: #2c3a28;
+  --warning: #d9b25c;   --warning-bg: #3a3018;
+  --error: #e5756a;     --error-bg: #3d2420;
+  --info: #8aa9c6;      --info-bg: #26323d;
+
+  --chart-1: #e0855f;
+  --chart-2: #ecab8c;
+  --chart-3: #f5cdb8;
+  --chart-4: #9b9a97;
+  --chart-5: #6f6e6b;
+
+  --surface-shadow: 0 1px 2px rgb(55 53 47 / 0.06);
+  --surface-shadow-lg: 0 6px 20px rgb(55 53 47 / 0.10);
+  --surface-border: #4a5054;
+  --surface-alpha: 1;
+  --surface-blur: none;
+}
