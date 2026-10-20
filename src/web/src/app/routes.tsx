@@ -1,12 +1,13 @@
 import { lazy } from 'react'
 import type { LazyExoticComponent, ComponentType } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
-import { AlertTriangle, BarChart3, Cog, FileText, Key, LifeBuoy, Route, Settings } from 'lucide-react'
+import { AlertTriangle, BarChart3, Cog, FileText, Key, Layers, LifeBuoy, Route, Settings } from 'lucide-react'
 
 const DashboardPage = lazy(() => import('@/pages/Dashboard'))
 const LogsPage = lazy(() => import('@/pages/Logs'))
 const EventsPage = lazy(() => import('@/pages/Events'))
+const ProvidersPage = lazy(() => import('@/pages/ProvidersPage'))
 const RoutingPage = lazy(() => import('@/pages/RoutingPage'))
 const ApiKeysPage = lazy(() => import('@/pages/ApiKeys'))
 const SettingsPage = lazy(() => import('@/pages/Settings'))
@@ -19,10 +20,19 @@ function RedirectToProviders() {
   return <Navigate to="/providers" replace />
 }
 
-// Interim shim: /providers lands on the (new) routing page until the split
-// providers page lands in the next commit. Never reachable as a final state.
-function RedirectToRouting() {
-  return <Navigate to="/routing" replace />
+/**
+ * Compat shim for the old combined workbench URL: `/providers?tab=routing`
+ * (and its legacy `tab=endpoints` alias) now live at `/routing`, carrying the
+ * selected endpoint over. Anything else renders the providers page.
+ */
+function ProvidersRouteCompat() {
+  const [searchParams] = useSearchParams()
+  const tab = searchParams.get('tab')
+  if (tab === 'routing' || tab === 'endpoints') {
+    const endpoint = searchParams.get('endpoint')
+    return <Navigate to={endpoint ? `/routing?endpoint=${encodeURIComponent(endpoint)}` : '/routing'} replace />
+  }
+  return <ProvidersPage />
 }
 
 interface AppRouteNavMeta {
@@ -65,7 +75,14 @@ export const protectedAppRoutes: AppRouteDefinition[] = [
   },
   {
     path: '/providers',
-    element: RedirectToRouting
+    element: ProvidersRouteCompat,
+    nav: {
+      icon: Layers,
+      labelKey: 'nav.providers',
+      titleKey: 'providers.title',
+      descriptionKey: 'providers.description',
+      matchPaths: ['/providers', '/models']
+    }
   },
   {
     path: '/models',
@@ -159,7 +176,7 @@ export interface NavGroupDef {
  */
 export const navGroups: NavGroupDef[] = [
   { labelKey: 'nav.group.overview', paths: ['/', '/logs', '/events'] },
-  { labelKey: 'nav.group.configure', paths: ['/providers', '/api-keys'] },
+  { labelKey: 'nav.group.configure', paths: ['/providers', '/routing', '/api-keys'] },
   { labelKey: 'nav.group.system', paths: ['/settings', '/about'] }
 ]
 

@@ -1,4 +1,6 @@
 export default {
+  title: 'Providers',
+  description: 'Manage upstream model services, API keys and balances.',
   emptyState: 'No providers yet. Click "Add provider" to get started.',
   emptyStateSub: 'Click the button above to add your first provider.',
   emptyFiltered: 'No providers match the current filters.',

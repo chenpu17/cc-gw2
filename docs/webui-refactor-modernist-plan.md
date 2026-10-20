@@ -43,7 +43,7 @@
 1. **语义色翻转必须与 badge 去硬编码同 PR**(R2,风险最高)。`--success` 改深灰 + `badge.tsx` 去 `bg-emerald-100` 等硬编码必须捆绑,否则新旧绿/红并存致误读。
 2. **零圆角非单旋钮**。`rounded-xl`(121 处)是硬编码,token 改 0 抓不到——必须补 `borderRadius.xl/2xl/3xl` 映射。规则:**一维指示点=圆,二维容器=方**。
 3. **dashboard spotlight 精确 7 个**(`dashboard.spec.ts:97 toHaveCount(7)`):StatusBand 3(active/rpm/cpu)+ InfraDisclosure 4(ingress/egress/database/memory)。→ **InfraDisclosure 必须保持折叠**(`</details>`/CSS 隐藏,不能条件渲染,否则计数掉到 3);**勿引入 `dashboard-runtime-strip`**(断言 `toHaveCount(0)`)。
-4. **14 个 testid 冻结不改名**(DOM 可变 id 不动);路由 path 不变(routing 在 `/providers?tab=routing`,跨页深链用 query param)。
+4. **14 个 testid 冻结不改名**(DOM 可变 id 不动);~~路由 path 不变(routing 在 `/providers?tab=routing`,跨页深链用 query param)~~ **2026-10-20 起由用户决策取代**:路由拆为独立 `/routing` 页,`/providers?tab=routing` 重定向兼容。
 5. **shadcn `accent` ≠ Modernist accent**。shadcn `accent`=hover 浅底(neutral-100),红色走 `primary`。保留 shadcn 语义,写进 PR 注释。
 
 ## 5. 后端缺口
@@ -98,7 +98,7 @@
 
 ## 11. testid 契约
 
-**冻结 14 个(勿改名)**:`api-key-card`、`dashboard-all-clear`、`dashboard-overview-panel`、`dashboard-runtime-address`、`dashboard-setup-progress`、`dashboard-spotlight-grid`、`dashboard-today-grid`、`endpoint-row`、`events-filters-card`、`language-switcher-trigger`、`logs-filters-card`、`provider-row`、`route-editor-dialog`、`theme-switcher-trigger`。约定 `{page}-{region}`。
+**冻结 14 个(勿改名)**:`api-key-card`、`dashboard-all-clear`、`dashboard-overview-panel`、`dashboard-runtime-address`、`dashboard-setup-progress`、`dashboard-spotlight-grid`、`dashboard-today-grid`、`endpoint-row`、`events-filters-card`、`language-switcher-trigger`、`logs-filters-card`、`provider-row`、`route-editor-dialog`、`theme-switcher-trigger`。约定 `{page}-{region}`。**2026-10-20 注**:已消失/退役——`endpoint-row`、`provider-row`、`route-editor-dialog`(路由拆分后端点选择改 `routing-endpoint-switcher`)。
 
 **新增**:`routing-endpoint-selector`、`routing-rules-table`、`routing-hit-simulator`、`routing-templates`、`log-row-expanded`、`log-trace-timeline`、`command-palette`、`command-palette-trigger`、`header-rpm-badge`、`dashboard-insights`、`dashboard-model-distribution`、`api-keys-usage-chart`。
 

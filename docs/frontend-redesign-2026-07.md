@@ -14,7 +14,7 @@
 
 ### /models + /routing 合并为 /providers
 
-原「模型供应商」与「路由管理」两个页面合并为单页工作台 `/providers`（`src/web/src/pages/ProvidersWorkbench.tsx` + `src/web/src/pages/workbench/*`）。旧路径 `/ui/models`、`/ui/routing` 通过 `<Navigate>` 301 到 `/ui/providers`，书签与深链不受影响。
+原「模型供应商」与「路由管理」两个页面合并为单页工作台 `/providers`（`src/web/src/pages/ProvidersWorkbench.tsx` + `src/web/src/pages/workbench/*`）。**（2026-10-20 起已被拆分取代:** 提供商 `/providers` 与路由 `/routing` 重新分为两页,本节布局描述仅存档。**）**旧路径 `/ui/models`、`/ui/routing` 通过 `<Navigate>` 301 到 `/ui/providers`，书签与深链不受影响。
 
 工作台布局：
 

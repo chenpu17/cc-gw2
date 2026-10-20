@@ -1,4 +1,6 @@
 export default {
+  title: '提供商',
+  description: '管理上游模型服务、API 密钥与余额。',
   emptyState: '暂无提供商，请点击“新增提供商”以开始配置。',
   emptyStateSub: '点击上方按钮添加您的第一个提供商。',
   emptyFiltered: '当前筛选条件下没有匹配的提供商。',

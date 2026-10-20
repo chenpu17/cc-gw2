@@ -15,12 +15,8 @@ import {
  * saves, deletion (including route cleanup) and connection testing with the
  * latest result kept per provider.
  */
-export function useProvidersState(
-  base: WorkbenchConfigState,
-  deps?: { sanitizeDraftsForProvider?: (providerId: string) => void }
-) {
+export function useProvidersState(base: WorkbenchConfigState) {
   const { t, pushToast, config, setConfig, configQuery, customEndpoints, ensureConfig } = base
-  const { sanitizeDraftsForProvider } = deps ?? {}
 
   const [providerSearch, setProviderSearch] = useState('')
   const [providerTypeFilter, setProviderTypeFilter] = useState<string>('all')
@@ -354,10 +350,6 @@ export function useProvidersState(
     try {
       await gatewayApi.saveConfig(nextConfig)
       setConfig(nextConfig)
-      // Drop route drafts pointing at the deleted provider; the merge effect
-      // would otherwise keep them (they are dirty) and a later save could
-      // persist a dangling route. Saved routes were sanitized in nextConfig.
-      sanitizeDraftsForProvider?.(provider.id)
       pushToast({
         title: t('providers.toast.deleteSuccess', { name: provider.label || provider.id }),
         variant: 'success'

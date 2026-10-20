@@ -46,7 +46,7 @@ First E2E run needs `pnpm exec playwright install --with-deps chromium`.
   - `cc-gw-core`: config, routing, protocol conversion (`convert.rs`), streaming (`stream.rs`), storage/migrations (`storage.rs`), API keys, events, observability, provider/model types
   - `cc-gw-server`: Axum HTTP server — route modules: `proxy_routes` (the proxy path), `admin_routes` (`/api/*`), `auth_routes`/`auth.rs` (web console login), `dashboard_routes`, `ui_routes` (SPA + landing static serving), `web_middleware`
 - **pnpm workspace**: 
-  - `src/web/`: React 18 + Vite + Tailwind web console. Pages under `src/web/src/pages/`; `pages/workbench` is the provider/routing workbench at `/providers` (the old `/models` + `/routing` pages redirect here); `pages/setup` is the cold-start wizard.
+  - `src/web/`: React 18 + Vite + Tailwind web console. Pages under `src/web/src/pages/`; `pages/ProvidersPage.tsx` (provider CRUD/keys/balance at `/providers`) and `pages/RoutingPage.tsx` (per-endpoint route rules/defaults/hit simulator at `/routing`) are separate pages sharing `pages/workbench/` components (old `/ui/models` and `/ui/providers?tab=routing` redirect to the new pages); `pages/setup` is the cold-start wizard.
   - `src/cli/`: Node.js CLI (`start`/`stop`/`restart`/`status`/`version`); resolves the Rust binary via platform native npm package → `CC_GW_SERVER_BIN` → `bin/<platform>-<arch>/` → `target/release|debug` → `cargo run` fallback chain.
   - `packages/native/*`: platform-specific Rust binary wrapper packages for npm distribution (darwin-arm64, linux-x64/arm64 musl, win32-x64 static CRT).
 
