@@ -21,7 +21,7 @@ test('provider RPM limit fields render and persist via provider panel', async ({
   const providerId = `rpm-ui-${Date.now()}`
 
   await page.goto(`${baseUrl}/ui/providers`)
-  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '提供商', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const createDialog = page.getByRole('dialog', { name: '新增提供商' })
@@ -157,7 +157,7 @@ test('RPM limit set via WebUI panel throttles real client traffic', async ({ pag
   const providerId = `rpm-live-${Date.now()}`
 
   await page.goto(`${baseUrl}/ui/providers`)
-  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '提供商', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const createDialog = page.getByRole('dialog', { name: '新增提供商' })

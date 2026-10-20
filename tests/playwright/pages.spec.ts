@@ -23,27 +23,35 @@ test('web console pages load and navigation works', async ({ page }) => {
   await expect(page).toHaveURL(/\/ui\/logs$/)
   await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
 
-  // /models 与 /routing 已合并为 /providers 工作台
-  await page.getByRole('link', { name: '模型与路由' }).first().click()
+  // 「模型与路由」拆为 提供商 /providers + 路由 /routing 两个独立页
+  await page.getByRole('link', { name: '提供商' }).first().click()
   await expect(page).toHaveURL(/\/ui\/providers$/)
-  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
-  // 默认进入「提供商」视图
+  await expect(page.getByRole('heading', { name: '提供商', level: 1 })).toBeVisible()
   await expect(page.getByRole('button', { name: '新增提供商' })).toBeVisible()
   await expect(page.getByText('配置导览')).toHaveCount(0)
-  // 端点与路由规则在「路由」视图中：主体是端点表格，工具栏提供「新建端点」
-  await page.getByRole('tab', { name: '路由' }).click()
-  await expect(page).toHaveURL(/\/ui\/providers\?tab=routing$/)
+
+  await page.getByRole('link', { name: '路由' }).first().click()
+  await expect(page).toHaveURL(/\/ui\/routing$/)
+  await expect(page.getByRole('heading', { name: '路由', level: 1 })).toBeVisible()
   await expect(page.getByRole('button', { name: '新建端点' }).first()).toBeVisible()
+  // 旧「管理端点」入口已随端点 rail 退役，只留切换器旁的编辑/删除
   await expect(page.getByRole('button', { name: '管理端点' })).toHaveCount(0)
-  // 端点 rail：点击内置端点选中它（URL 带上 endpoint 参数，不再开弹窗）
-  await page.locator('[data-testid="endpoint-row"]').filter({ hasText: 'Anthropic' }).first().click()
-  await expect(page).toHaveURL(/\/ui\/providers\?tab=routing&endpoint=anthropic$/)
+  // 端点切换器：选中内置端点后 URL 带 endpoint 参数（不再开弹窗）。
+  // 默认已选 Anthropic，Radix Select 重复选同一项不触发 onValueChange，
+  // 所以选另一内置端点 OpenAI 来验证选中即同步 URL。
+  await page.getByTestId('routing-endpoint-switcher').click()
+  await page.getByRole('option', { name: /OpenAI/ }).click()
+  await expect(page).toHaveURL(/\/ui\/routing\?endpoint=openai$/)
   const workspace = page.getByTestId('routing-workspace')
   await expect(workspace).toBeVisible()
-  // 三栏内联：规则、模板、命中模拟 常驻可见（不再折叠进「高级」Disclosure）
+  // 两栏内联：规则与命中模拟常驻；模板移入「模板」工具栏弹窗
   await expect(workspace.getByTestId('routing-rules-card')).toBeVisible()
-  await expect(workspace.getByTestId('routing-presets-card')).toBeVisible()
   await expect(workspace.getByTestId('routing-hit-simulator')).toBeVisible()
+  await page.getByRole('button', { name: '模板' }).click()
+  const presetsDialog = page.getByRole('dialog', { name: '路由模板' })
+  await expect(presetsDialog.getByTestId('routing-presets-card')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(presetsDialog).not.toBeVisible()
 
   await page.getByRole('link', { name: '事件' }).click()
   await expect(page).toHaveURL(/\/ui\/events$/)
@@ -98,21 +106,27 @@ test('theme and language switchers open menus', async ({ page }) => {
 })
 
 test('deep links and language preference survive reloads under /ui basename', async ({ page }) => {
-  // 旧路径 /ui/models 会重定向到 /ui/providers
+  // 旧路径 /ui/models 会重定向到 /ui/providers（提供商页）
   await page.goto(`${harness.baseUrl()}/ui/models`)
   await expect(page).toHaveURL(/\/ui\/providers$/)
-  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '提供商', level: 1 })).toBeVisible()
 
   await page.reload()
   await expect(page).toHaveURL(/\/ui\/providers$/)
-  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '提供商', level: 1 })).toBeVisible()
 
+  // 旧合并页 ?tab=routing 深链重定向到独立 /routing 页（端点参数透传）
+  await page.goto(`${harness.baseUrl()}/ui/providers?tab=routing&endpoint=anthropic`)
+  await expect(page).toHaveURL(/\/ui\/routing\?endpoint=anthropic$/)
+  await expect(page.getByRole('heading', { name: '路由', level: 1 })).toBeVisible()
+
+  await page.goto(`${harness.baseUrl()}/ui/providers`)
   await page.getByTestId('language-switcher-trigger').click({ force: true })
   await page.getByRole('menuitem', { name: 'English' }).click()
-  await expect(page.getByRole('heading', { name: 'Providers & Routing Workbench', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Providers', level: 1 })).toBeVisible()
 
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Providers & Routing Workbench', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Providers', level: 1 })).toBeVisible()
 
   await page.goto(`${harness.baseUrl()}/ui/not-found`)
   await expect(page).toHaveURL(/\/ui\/?$/)

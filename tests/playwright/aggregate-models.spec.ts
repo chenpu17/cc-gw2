@@ -130,7 +130,7 @@ test('aggregate provider can be configured via the drawer and serves traffic', a
   const baseUrl = harness.baseUrl()
 
   await page.goto(`${baseUrl}/ui/providers`)
-  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '提供商', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const createDialog = page.getByRole('dialog', { name: '新增提供商' })

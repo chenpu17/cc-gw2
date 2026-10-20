@@ -89,8 +89,8 @@ test('providers workbench visual shell stays aligned with redesign baseline', as
   await expectPageSnapshot(page, 'model-management-page.png')
 })
 
-test('routing workbench visual shell stays aligned with redesign baseline', async ({ page }) => {
-  await page.goto(`${harness.baseUrl()}/ui/providers?tab=routing`)
+test('routing page visual shell stays aligned with redesign baseline', async ({ page }) => {
+  await page.goto(`${harness.baseUrl()}/ui/routing`)
   await waitForVisualReady(page, h1(page))
   // Wait for the routing simulator to resolve a hit (target line contains →)
   // so we don't capture a loading skeleton.

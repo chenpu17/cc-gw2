@@ -43,7 +43,7 @@ test('preset template create fills the detail panel and config', async ({ page, 
   const baseUrl = harness.baseUrl()
 
   await page.goto(`${baseUrl}/ui/providers`)
-  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '提供商', level: 1 })).toBeVisible()
 
   await page.getByRole('button', { name: '新增提供商' }).first().click()
   const createDialog = page.getByRole('dialog', { name: '新增提供商' })
@@ -357,8 +357,8 @@ test('unsaved draft guards SPA route leave and incomplete rows count as dirty', 
   await leaveDialog.getByRole('button', { name: '放弃修改并离开' }).click()
   await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
 
-  // 回到工作台：草稿已清（无保存页脚），端点行未落库
-  await page.getByRole('link', { name: '模型与路由' }).first().click()
+  // 回到提供商页：草稿已清（无保存页脚），端点行未落库
+  await page.getByRole('link', { name: '提供商' }).first().click()
   await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
   const panelAfter = page.getByTestId('provider-detail-panel')
   await expect(panelAfter).toBeVisible()
@@ -368,13 +368,14 @@ test('unsaved draft guards SPA route leave and incomplete rows count as dirty', 
   await expect(panelAfter.getByTestId('surface-endpoint-row')).toHaveCount(0)
 })
 
-test('browser back to the routing tab guards the dirty provider draft', async ({ page }) => {
+test('browser back to the routing page guards the dirty provider draft', async ({ page }) => {
   const baseUrl = harness.baseUrl()
 
-  // 从路由视图经侧栏进入 providers 视图：同一 pathname，仅 tab search 变化
-  await page.goto(`${baseUrl}/ui/providers?tab=routing`)
-  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
-  await page.getByRole('link', { name: '模型与路由' }).first().click()
+  // 从 /routing 页经侧栏进入提供商页：拆页后 pathname 变化，providers 页
+  // 的路由守卫覆盖这次导航
+  await page.goto(`${baseUrl}/ui/routing`)
+  await expect(page.getByRole('heading', { name: '路由', level: 1 })).toBeVisible()
+  await page.getByRole('link', { name: '提供商' }).first().click()
   await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
@@ -385,8 +386,7 @@ test('browser back to the routing tab guards the dirty provider draft', async ({
     .fill(`http://127.0.0.1:${harness.stubPort}`)
   await expect(panel.getByTestId('provider-save')).toBeVisible()
 
-  // 浏览器后退到 ?tab=routing 是 POP：不经过视图标签点击，必须由路由
-  // 守卫拦截（此前只比较 pathname，同路径 search 变化直接卸载面板）
+  // 浏览器后退到 /routing 是 POP：不经过侧栏点击，必须由路由守卫拦截
   await page.goBack()
   const leaveDialog = page.getByRole('dialog', { name: '放弃未保存的修改？' })
   await expect(leaveDialog).toBeVisible()
@@ -395,12 +395,12 @@ test('browser back to the routing tab guards the dirty provider draft', async ({
   await expect(panel).toBeVisible()
   await expect(panel.getByTestId('provider-save')).toBeVisible()
 
-  // 确认后回到路由视图，草稿丢弃
+  // 确认后回到 /routing 页，草稿丢弃
   await page.goBack()
   await expect(leaveDialog).toBeVisible()
   await leaveDialog.getByRole('button', { name: '放弃修改并离开' }).click()
   await expect(page.getByTestId('provider-detail-panel')).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: '模型与路由工作台', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '路由', level: 1 })).toBeVisible()
 })
 
 test('creating a provider guards the previous dirty draft', async ({ page, request }) => {

@@ -54,8 +54,8 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await panel.getByTestId('provider-save').click()
     await expect(page.getByText(`已更新提供商：${PROVIDER_ID}`)).toBeVisible()
 
-    // Endpoint + route + preset on the routing view
-    await page.getByRole('tab', { name: '路由' }).click()
+    // Endpoint + route + preset on the routing page
+    await page.getByRole('link', { name: '路由' }).click()
     await page.getByRole('button', { name: '新建端点' }).first().click()
     const endpointDialog = page.getByRole('dialog', { name: '创建端点' })
     await endpointDialog.getByPlaceholder('如 custom-api').fill(ENDPOINT_ID)
@@ -64,7 +64,8 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await endpointDialog.getByRole('button', { name: '创建' }).click()
     await expect(page.getByText('端点创建成功')).toBeVisible()
 
-    await page.locator('[data-testid="endpoint-row"]').filter({ hasText: ENDPOINT_LABEL }).click()
+    await page.getByTestId('routing-endpoint-switcher').click()
+    await page.getByRole('option', { name: new RegExp(ENDPOINT_LABEL) }).click()
     const workspace = page.getByTestId('routing-workspace')
     await workspace.getByTestId('add-route').click()
     await workspace.getByTestId('route-rule-source').fill(SOURCE_MODEL)
@@ -74,9 +75,14 @@ test.describe.serial('@overlay-only overlay open states', () => {
     await workspace.getByTestId('save-routes').click()
     await expect(page.getByText('模型路由已更新。').first()).toBeVisible()
 
-    await workspace.getByTestId('preset-name-input').fill('overlay-preset')
-    await workspace.getByTestId('save-preset').click()
+    // 路由模板保存在「模板」工具栏弹窗内
+    await page.getByRole('button', { name: '模板' }).click()
+    const presetsDialog = page.getByRole('dialog', { name: '路由模板' })
+    await presetsDialog.getByTestId('preset-name-input').fill('overlay-preset')
+    await presetsDialog.getByTestId('save-preset').click()
     await expect(page.getByText('已保存模板 "overlay-preset"。')).toBeVisible()
+    await presetsDialog.getByRole('button', { name: 'Close' }).click()
+    await expect(presetsDialog).not.toBeVisible()
 
     // Generate a request log through the gateway (stub provider returns 200)
     for (let i = 0; i < 3; i += 1) {
@@ -163,7 +169,7 @@ test.describe.serial('@overlay-only overlay open states', () => {
   })
 
   test('endpoint dialog — create mode', async ({ page }) => {
-    await page.goto(`${harness.baseUrl()}/ui/providers?tab=routing`)
+    await page.goto(`${harness.baseUrl()}/ui/routing`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
     await page.getByRole('button', { name: '新建端点' }).first().click()
     await expect(page.getByRole('dialog', { name: '创建端点' })).toBeVisible()
@@ -172,40 +178,49 @@ test.describe.serial('@overlay-only overlay open states', () => {
   })
 
   test('endpoint dialog — edit mode', async ({ page }) => {
-    await page.goto(`${harness.baseUrl()}/ui/providers?tab=routing`)
+    await page.goto(`${harness.baseUrl()}/ui/routing`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
-    const row = page.locator('[data-testid="endpoint-row"]').filter({ hasText: ENDPOINT_LABEL })
-    await row.getByRole('button', { name: '编辑' }).click()
+    await page.getByTestId('routing-endpoint-switcher').click()
+    await page.getByRole('option', { name: new RegExp(ENDPOINT_LABEL) }).click()
+    await page.getByTestId('endpoint-edit').click()
     await expect(page.getByRole('dialog', { name: '编辑端点' })).toBeVisible()
     await page.waitForTimeout(200)
     await expectPageSnapshot(page, 'overlay-endpoint-dialog-edit.png')
   })
 
   test('preset diff dialog — apply', async ({ page }) => {
-    await page.goto(`${harness.baseUrl()}/ui/providers?tab=routing`)
+    await page.goto(`${harness.baseUrl()}/ui/routing`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
-    // Re-select the seeded endpoint so the workspace + preset row mount.
-    await page.locator('[data-testid="endpoint-row"]').filter({ hasText: ENDPOINT_LABEL }).click()
-    const workspace = page.getByTestId('routing-workspace')
-    const presetRow = workspace.getByTestId('preset-row').filter({ hasText: 'overlay-preset' })
+    // Re-select the seeded endpoint, then open the templates dialog so the
+    // preset row mounts (presets are per-endpoint and live in the dialog).
+    await page.getByTestId('routing-endpoint-switcher').click()
+    await page.getByRole('option', { name: new RegExp(ENDPOINT_LABEL) }).click()
+    await page.getByRole('button', { name: '模板' }).click()
+    const presetsDialog = page.getByRole('dialog', { name: '路由模板' })
+    const presetRow = presetsDialog.getByTestId('preset-row').filter({ hasText: 'overlay-preset' })
     await presetRow.getByTestId('apply-preset').click()
     await expect(page.getByRole('dialog', { name: '应用模板确认' })).toBeVisible()
     await page.waitForTimeout(200)
     await expectPageSnapshot(page, 'overlay-preset-diff.png')
+    // Cancel — keep the routes untouched for other suites.
+    await page.keyboard.press('Escape')
   })
 
   test('confirm dialog — delete preset', async ({ page }) => {
-    await page.goto(`${harness.baseUrl()}/ui/providers?tab=routing`)
+    await page.goto(`${harness.baseUrl()}/ui/routing`)
     await waitForVisualReady(page, page.getByRole('heading', { level: 1 }))
-    await page.locator('[data-testid="endpoint-row"]').filter({ hasText: ENDPOINT_LABEL }).click()
-    const workspace = page.getByTestId('routing-workspace')
-    const presetRow = workspace.getByTestId('preset-row').filter({ hasText: 'overlay-preset' })
+    await page.getByTestId('routing-endpoint-switcher').click()
+    await page.getByRole('option', { name: new RegExp(ENDPOINT_LABEL) }).click()
+    await page.getByRole('button', { name: '模板' }).click()
+    const presetsDialog = page.getByRole('dialog', { name: '路由模板' })
+    const presetRow = presetsDialog.getByTestId('preset-row').filter({ hasText: 'overlay-preset' })
     await presetRow.getByTestId('delete-preset').click()
     await expect(page.getByRole('dialog', { name: '删除' })).toBeVisible()
     await page.waitForTimeout(200)
     await expectPageSnapshot(page, 'overlay-confirm-delete-preset.png')
     // Cancel — keep the preset so other suites stay stable.
     await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog', { name: '删除' })).toHaveCount(0)
   })
 
   test('api key dialog — create', async ({ page, request }) => {
