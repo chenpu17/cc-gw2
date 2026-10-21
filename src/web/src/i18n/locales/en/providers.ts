@@ -436,6 +436,8 @@ export default {
     manualOpenAiCompatible: 'OpenAI compatible',
     manualAnthropicCompatible: 'Anthropic compatible',
     noModelProbeNote: 'This service has no model-list endpoint; fill in models manually after creation.',
+    endpointsHint: 'This vendor also serves the protocol endpoints below (keys shared with the primary). They are saved with the provider and can be edited.',
+    endpointBaseUrl: '{{protocol}} endpoint base URL',
     createAction: 'Create',
     catalog: {
       'opencode-zen': 'Anthropic-compatible endpoint with curated models for coding agents (often includes a free tier).',

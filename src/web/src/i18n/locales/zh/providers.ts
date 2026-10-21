@@ -426,6 +426,8 @@ export default {
     manualOpenAiCompatible: 'OpenAI 兼容',
     manualAnthropicCompatible: 'Anthropic 兼容',
     noModelProbeNote: '该服务无模型列表接口，创建后请手动填写模型。',
+    endpointsHint: '该厂商同时提供以下协议端点（与主端点共享密钥），创建时一并保存，可按需修改。',
+    endpointBaseUrl: '{{protocol}} 端点 Base URL',
     createAction: '创建'
   },
   confirm: {

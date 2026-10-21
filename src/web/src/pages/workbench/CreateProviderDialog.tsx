@@ -25,6 +25,7 @@ import {
 import { useApiQuery } from '@/hooks/useApiQuery'
 import {
   defaultAuthModeForType,
+  PROVIDER_ENDPOINT_PROTOCOL_OPTIONS,
   PROVIDER_TYPE_PRESETS
 } from './ProviderDrawerSteps'
 
@@ -71,9 +72,14 @@ export function CreateProviderDialog({
   const [providerId, setProviderId] = useState('')
   const [label, setLabel] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
-  const [error, setError] = useState<{ field: 'id' | 'baseUrl' | null; message: string } | null>(
-    null
-  )
+  // Dual-protocol presets: editable Base URL per extra protocol endpoint,
+  // seeded from the catalog and stored by endpoint id.
+  const [endpointUrls, setEndpointUrls] = useState<Record<string, string>>({})
+  const [error, setError] = useState<{
+    field: 'id' | 'baseUrl' | 'endpointUrl' | null
+    endpointId?: string
+    message: string
+  } | null>(null)
   const [saving, setSaving] = useState(false)
 
   const presetsQuery = useApiQuery<ProviderPresetsResponse>(
@@ -88,6 +94,7 @@ export function CreateProviderDialog({
     setProviderId('')
     setLabel('')
     setBaseUrl('')
+    setEndpointUrls({})
     setError(null)
     setSaving(false)
   }
@@ -106,6 +113,7 @@ export function CreateProviderDialog({
       const preset = presets.find((item) => item.id === value.slice(PRESET_PREFIX.length))
       if (preset) {
         setBaseUrl(preset.baseUrl)
+        setEndpointUrls(Object.fromEntries(preset.endpoints.map((endpoint) => [endpoint.id, endpoint.baseUrl])))
         return
       }
     }
@@ -113,6 +121,7 @@ export function CreateProviderDialog({
       const type = value.slice(MANUAL_PREFIX.length) as ProviderConfig['type']
       setBaseUrl(PROVIDER_TYPE_PRESETS[type ?? 'custom']?.baseUrl ?? '')
     }
+    setEndpointUrls({})
   }
 
   const handleProviderIdChange = (value: string) => {
@@ -164,6 +173,20 @@ export function CreateProviderDialog({
         setError({ field: 'baseUrl', message: t('providers.drawer.errors.baseUrlInvalid') })
         return
       }
+      for (const endpoint of selectedPreset?.endpoints ?? []) {
+        const trimmedEndpointUrl = (endpointUrls[endpoint.id] ?? endpoint.baseUrl).trim()
+        try {
+          // eslint-disable-next-line no-new
+          new URL(trimmedEndpointUrl)
+        } catch {
+          setError({
+            field: 'endpointUrl',
+            endpointId: endpoint.id,
+            message: t('providers.endpoints.errors.baseUrlInvalid')
+          })
+          return
+        }
+      }
     }
 
     const type: ProviderConfig['type'] = selectedPreset
@@ -179,14 +202,15 @@ export function CreateProviderDialog({
       // non-anthropic types stays unset instead of being persisted.
       authMode: defaultAuthMode === 'apiKey' && type !== 'anthropic' ? undefined : defaultAuthMode,
       ...(selectedPreset?.balanceAdapter ? { balanceAdapter: selectedPreset.balanceAdapter } : null),
-      // Dual-protocol presets pre-fill the vendor's other wire surface so
-      // both protocols are native from the start (keys are shared).
+      // Dual-protocol presets carry the vendor's other wire surface so both
+      // protocols are native from the start (keys are shared); the URLs are
+      // editable above and default to the catalog entries.
       ...(selectedPreset && selectedPreset.endpoints.length > 0
         ? {
             endpoints: selectedPreset.endpoints.map((endpoint) => ({
               id: endpoint.id,
               protocol: endpoint.protocol,
-              baseUrl: endpoint.baseUrl
+              baseUrl: (endpointUrls[endpoint.id] ?? endpoint.baseUrl).trim()
             }))
           }
         : null)
@@ -299,6 +323,36 @@ export function CreateProviderDialog({
               />
             </Label>
           )}
+
+          {selectedPreset && selectedPreset.endpoints.length > 0 && !isAggregate ? (
+            <div className="space-y-2">
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t('providers.presets.endpointsHint')}
+              </p>
+              {selectedPreset.endpoints.map((endpoint) => {
+                const protocolLabel =
+                  PROVIDER_ENDPOINT_PROTOCOL_OPTIONS.find((option) => option.value === endpoint.protocol)?.label ??
+                  endpoint.protocol
+                return (
+                  <Label key={endpoint.id} className="flex flex-col gap-2 text-sm">
+                    <span className="text-xs text-muted-foreground">
+                      {t('providers.presets.endpointBaseUrl', { protocol: protocolLabel })}
+                    </span>
+                    <Input
+                      value={endpointUrls[endpoint.id] ?? endpoint.baseUrl}
+                      onChange={(event) =>
+                        setEndpointUrls((previous) => ({ ...previous, [endpoint.id]: event.target.value }))
+                      }
+                      aria-invalid={
+                        error?.field === 'endpointUrl' && error.endpointId === endpoint.id
+                      }
+                      aria-describedby={error ? 'create-provider-error' : undefined}
+                    />
+                  </Label>
+                )
+              })}
+            </div>
+          ) : null}
 
           {error ? (
             <p id="create-provider-error" className="text-xs text-destructive" aria-live="polite">
