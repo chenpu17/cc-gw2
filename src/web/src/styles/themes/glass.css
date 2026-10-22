@@ -117,3 +117,19 @@
     radial-gradient(46rem 30rem at 100% 0%, rgb(34 211 238 / 0.16), transparent 55%),
     radial-gradient(40rem 30rem at 50% 110%, rgb(99 102 241 / 0.22), transparent 60%);
 }
+
+/* 应用外壳自带不透明 bg-background,会遮住 body 上的光斑;控制台内把同一组
+   渐变画在 .app-canvas 上(body 版本仍服务 Login/Setup 等无外壳页面)。 */
+[data-skin="glass"] .app-canvas {
+  background-image:
+    radial-gradient(52rem 36rem at 8% -8%, rgb(124 58 237 / 0.16), transparent 60%),
+    radial-gradient(46rem 30rem at 100% 0%, rgb(14 165 233 / 0.14), transparent 55%),
+    radial-gradient(40rem 30rem at 50% 110%, rgb(244 114 182 / 0.12), transparent 60%);
+}
+[data-skin="glass"][data-theme="dark"] .app-canvas,
+[data-skin="glass"].dark .app-canvas {
+  background-image:
+    radial-gradient(52rem 36rem at 8% -8%, rgb(124 58 237 / 0.28), transparent 60%),
+    radial-gradient(46rem 30rem at 100% 0%, rgb(34 211 238 / 0.16), transparent 55%),
+    radial-gradient(40rem 30rem at 50% 110%, rgb(99 102 241 / 0.22), transparent 60%);
+}

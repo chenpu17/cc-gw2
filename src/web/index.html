@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN" data-theme="light" data-skin="minimal">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no" />
@@ -19,7 +19,10 @@
           root.dataset.theme = dark ? 'dark' : 'light'
           root.classList.toggle('dark', dark)
           var skin = localStorage.getItem('cc-gw-skin')
-          if (skin) root.dataset.skin = skin
+          // Always materialize the axis: unknown/stale values simply match no
+          // family block and fall back to :root (minimal) until ThemeProvider
+          // sanitizes the stored value after boot.
+          root.dataset.skin = skin || 'minimal'
         } catch (e) { /* storage 不可用:保持 HTML 上的默认属性 */ }
       })()
     </script>

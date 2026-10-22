@@ -89,6 +89,14 @@
   --surface-border: #26272e;
 }
 
+/* minimal 自身的暗色结构补齐(不违反 Rule C:基础 dark 块仍只放颜色)。
+   light 配方的低透明度黑影在暗底上不可见,这里换成更深的两层阴影。 */
+[data-skin="minimal"][data-theme="dark"],
+[data-skin="minimal"].dark {
+  --surface-shadow: 0 1px 2px rgb(0 0 0 / 0.42), 0 2px 8px rgb(0 0 0 / 0.28);
+  --surface-shadow-lg: 0 18px 44px rgb(0 0 0 / 0.5);
+}
+
 /* 画布光晕(应用外壳自带不透明底色,渐变必须画在 .app-canvas 上) */
 [data-skin="minimal"] .app-canvas {
   background-image: linear-gradient(180deg, #fbfbfe 0%, #f3f3f8 100%);

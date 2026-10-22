@@ -45,21 +45,21 @@ export function useChartTheme(): ChartTheme {
     // resolved + skin are the dependencies that trigger a re-read after either axis flips
     void resolved
     void skin
-    const foreground = cssVar('--foreground', '#191a1c')
-    const muted = cssVar('--muted-foreground', '#666871')
-    const border = cssVar('--border', '#e4e5e8')
+    const foreground = cssVar('--foreground', '#17181b')
+    const muted = cssVar('--muted-foreground', '#64656f')
+    const border = cssVar('--border', '#e3e4ea')
     const card = cssVar('--card', '#ffffff')
 
     return {
       palette: [
         cssVar('--chart-1', '#5e6ad2'),
         cssVar('--chart-2', '#7b84dc'),
-        cssVar('--chart-3', '#b4b9ec'),
+        cssVar('--chart-3', '#a9aeea'),
         cssVar('--chart-4', '#6b6d76'),
         cssVar('--chart-5', '#a3a5ad')
       ],
-      success: cssVar('--success', '#30a46c'),
-      warning: cssVar('--warning', '#ffb224'),
+      success: cssVar('--success', '#2f9e63'),
+      warning: cssVar('--warning', '#b7791f'),
       error: cssVar('--error', '#e5484d'),
       axis: muted,
       splitLine: border,

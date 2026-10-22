@@ -10,7 +10,7 @@
   --card-foreground: #0a1614;
   --popover: #ffffff;
   --popover-foreground: #0a1614;
-  --primary: #008f6b;
+  --primary: #007d5d;
   --primary-foreground: #ffffff;
   --secondary: #e9f4f0;
   --secondary-foreground: #10312b;
@@ -22,7 +22,7 @@
   --destructive-foreground: #ffffff;
   --border: #d3e4df;
   --input: #d3e4df;
-  --ring: #008f6b;
+  --ring: #007d5d;
   --radius: 4px;
 
   --success: #0b8a5f;   --success-bg: #ddf5e8;

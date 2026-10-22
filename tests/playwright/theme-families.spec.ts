@@ -17,8 +17,8 @@ test.afterAll(async () => {
  * 断言 themes/*.css 十个 token 块的级联契约(见
  * src/web/src/styles/themes/index.css 头注释 Rule A/B/C):
  * - 每个家族 light 块是完整集(颜色 + 结构);
- * - dark 下颜色换族、结构变量仍属本族 —— 基础 dark 块只放 minimal 的颜色,
- *   不得把任何结构变量渗透给其他家族(圆角是这一渗透最灵敏的哨兵);
+ * - dark 下颜色换族、结构变量(圆角/字体/缓动)仍属本族 —— 基础 dark 块只放
+ *   minimal 的颜色,不得把结构变量渗透给其他家族;
  * - 存储里的未知 skin 值由 ThemeProvider 清洗回默认族;
  * - 玻璃机制(--surface-blur)只在其家族产生 backdrop-filter。
  *
@@ -39,14 +39,29 @@ const FAMILIES: FamilyExpectation[] = [
   { skin: 'paper', lightPrimary: '#b4552d', radius: '6px', darkBackground: '#2f3437', darkPrimary: '#e0855f' },
   { skin: 'glass', lightPrimary: '#7c3aed', radius: '1rem', darkBackground: '#0e0c1d', darkPrimary: '#a78bfa' },
   { skin: 'modernist', lightPrimary: '#ec3013', radius: '0px', darkBackground: '#201e1d', darkPrimary: '#ff563c' },
-  { skin: 'neon', lightPrimary: '#008f6b', radius: '4px', darkBackground: '#050b09', darkPrimary: '#35f0a3' },
+  { skin: 'neon', lightPrimary: '#007d5d', radius: '4px', darkBackground: '#050b09', darkPrimary: '#35f0a3' },
   { skin: 'aurora', lightPrimary: '#6d4afc', radius: '14px', darkBackground: '#07081a', darkPrimary: '#9b86ff' },
-  { skin: 'sakura', lightPrimary: '#cf3f74', radius: '12px', darkBackground: '#1b1117', darkPrimary: '#f472b6' },
+  { skin: 'sakura', lightPrimary: '#c23367', radius: '12px', darkBackground: '#1b1117', darkPrimary: '#f472b6' },
   { skin: 'ocean', lightPrimary: '#0e7490', radius: '6px', darkBackground: '#06141b', darkPrimary: '#38bdf8' }
 ]
 
 /** Families that opt into `--surface-blur` (backdrop-filter). */
 const BLUR_SKINS = new Set(['glass', 'aurora'])
+
+/**
+ * Structural tokens that must survive the light→dark flip unchanged. Shadows,
+ * `--surface-alpha` and `--surface-blur` are deliberately excluded: Rule B lets
+ * each family tune those for dark (deeper shadows, denser glass).
+ */
+const INVARIANT_STRUCTURAL_TOKENS = [
+  '--radius',
+  '--font-sans',
+  '--font-heading',
+  '--font-mono',
+  '--font-heading-weight',
+  '--font-heading-tracking',
+  '--ease-surface'
+]
 
 function normalizeToken(value: string): string {
   return value.trim().toLowerCase().replace(/^\.(\d)/, '0.$1')
@@ -82,13 +97,22 @@ for (const family of FAMILIES) {
   })
 
   test(`dark: ${family.skin} 颜色换暗族,结构仍属本族`, async ({ page }) => {
+    // Light first: it is the structural baseline the dark block must preserve.
+    await seedAndReload(page, { 'cc-gw-theme': 'light', 'cc-gw-skin': family.skin })
+    const lightStructural = await Promise.all(
+      INVARIANT_STRUCTURAL_TOKENS.map((token) => rootToken(page, token))
+    )
+
     await seedAndReload(page, { 'cc-gw-theme': 'dark', 'cc-gw-skin': family.skin })
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await expect(page.locator('html')).toHaveClass(/dark/)
     expect(normalizeToken(await rootToken(page, '--background'))).toBe(family.darkBackground)
     expect(normalizeToken(await rootToken(page, '--primary'))).toBe(family.darkPrimary)
-    // Rule B/C 守卫:基础 dark 块只有颜色,圆角不得被其他家族渗透
-    expect(normalizeToken(await rootToken(page, '--radius'))).toBe(family.radius)
+    // Rule B/C 守卫:基础 dark 块只有颜色,结构变量不得被渗透或串族
+    const darkStructural = await Promise.all(
+      INVARIANT_STRUCTURAL_TOKENS.map((token) => rootToken(page, token))
+    )
+    expect(darkStructural).toEqual(lightStructural)
   })
 }
 
@@ -99,18 +123,33 @@ test('存储里的未知 skin 值被清洗回默认族', async ({ page }) => {
   expect(normalizeToken(await rootToken(page, '--radius'))).toBe('10px')
 })
 
-test('blur 机制只在声明的家族开启 backdrop-filter,其余家族无', async ({ page }) => {
+test('blur 机制只在声明的家族开启 backdrop-filter,明暗一致', async ({ page }) => {
   const headerFilter = () =>
     page.evaluate(
       () => getComputedStyle(document.querySelector('[data-testid="app-shell"] header')!).backdropFilter
     )
-  for (const family of FAMILIES) {
-    await seedAndReload(page, { 'cc-gw-theme': 'light', 'cc-gw-skin': family.skin })
-    const filter = await headerFilter()
-    if (BLUR_SKINS.has(family.skin)) {
-      expect(filter, `${family.skin} should blur`).toContain('blur')
-    } else {
-      expect(filter, `${family.skin} should stay opaque`).toBe('none')
+  for (const theme of ['light', 'dark'] as const) {
+    for (const family of FAMILIES) {
+      await seedAndReload(page, { 'cc-gw-theme': theme, 'cc-gw-skin': family.skin })
+      const filter = await headerFilter()
+      if (BLUR_SKINS.has(family.skin)) {
+        expect(filter, `${family.skin}/${theme} should blur`).toContain('blur')
+      } else {
+        expect(filter, `${family.skin}/${theme} should stay opaque`).toBe('none')
+      }
     }
+  }
+})
+
+test('家族画布效果画在 .app-canvas 上而不是被外壳遮住的 body', async ({ page }) => {
+  const canvasImage = () =>
+    page.evaluate(
+      () => getComputedStyle(document.querySelector('[data-testid="app-shell"]')!).backgroundImage
+    )
+  // Families with a signature canvas: minimal glow, neon grid, aurora/ocean/
+  // sakura gradients, glass spotlights.
+  for (const skin of ['minimal', 'neon', 'aurora', 'sakura', 'ocean', 'glass']) {
+    await seedAndReload(page, { 'cc-gw-theme': 'light', 'cc-gw-skin': skin })
+    expect(await canvasImage(), `${skin} canvas background`).not.toBe('none')
   }
 })

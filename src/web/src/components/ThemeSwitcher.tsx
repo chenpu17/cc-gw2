@@ -1,4 +1,4 @@
-import { AppWindow, BookOpen, Droplets, Flower2, Minus, Monitor, Moon, Sparkles, Square, Sun, Waves, Zap } from 'lucide-react'
+import { AppWindow, BookOpen, Droplets, Flower2, Minus, Monitor, Moon, Sparkles, Square, Sun, Waves, Zap, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SKINS, useTheme, type Skin } from '@/providers/ThemeProvider'
 import { Button } from '@/components/ui/button'
@@ -12,17 +12,22 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 
-const skins: Array<{ skin: Skin; icon: typeof Sun }> = [
-  { skin: 'minimal', icon: Minus },
-  { skin: 'classic', icon: AppWindow },
-  { skin: 'paper', icon: BookOpen },
-  { skin: 'glass', icon: Droplets },
-  { skin: 'modernist', icon: Square },
-  { skin: 'neon', icon: Zap },
-  { skin: 'aurora', icon: Sparkles },
-  { skin: 'sakura', icon: Flower2 },
-  { skin: 'ocean', icon: Waves }
-]
+/**
+ * Record (not an array) so a newly added `Skin` fails to compile until it gets
+ * an icon, and the menu order always follows the canonical `SKINS` list used
+ * by the ⌘K family cycle.
+ */
+const SKIN_ICONS: Record<Skin, LucideIcon> = {
+  minimal: Minus,
+  classic: AppWindow,
+  paper: BookOpen,
+  glass: Droplets,
+  modernist: Square,
+  neon: Zap,
+  aurora: Sparkles,
+  sakura: Flower2,
+  ocean: Waves
+}
 
 const modes: Array<{ mode: 'light' | 'dark' | 'system'; labelKey: string; icon: typeof Sun }> = [
   { mode: 'light', labelKey: 'common.theme.light', icon: Sun },
@@ -53,12 +58,12 @@ export function ThemeSwitcher() {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>{t('common.theme.skinGroupLabel')}</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={skin} onValueChange={(value) => setSkin(value as Skin)}>
-          {skins.map((item) => {
-            const ItemIcon = item.icon
+          {SKINS.map((skinId) => {
+            const ItemIcon = SKIN_ICONS[skinId]
             return (
-              <DropdownMenuRadioItem key={item.skin} value={item.skin}>
+              <DropdownMenuRadioItem key={skinId} value={skinId}>
                 <ItemIcon className="mr-2 h-4 w-4" aria-hidden="true" />
-                {t(`common.theme.families.${item.skin}`)}
+                {t(`common.theme.families.${skinId}`)}
               </DropdownMenuRadioItem>
             )
           })}

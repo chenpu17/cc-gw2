@@ -19,7 +19,7 @@
 家族 dark 块与基础 dark 块为 (0,2,0),靠"后定义的同优先级获胜"实现覆盖:
 
 1. **Rule A** — 家族 light 块(`[data-skin="x"]`)定义**完整变量集**:
-   结构变量(`--radius`、`--surface-shadow(-lg)`、`--surface-border`、
+   结构变量(`--radius`、`--surface-shadow(-lg)`、
    `--ease-surface`、`--surface-alpha`、`--surface-blur`、`--font-*`、
    `--font-heading-weight/tracking`)+ 全部颜色。
 2. **Rule B** — 家族 dark 块(`[data-skin="x"][data-theme="dark"],
@@ -29,6 +29,8 @@
    .dark`)**只放 minimal 的颜色,不放结构变量**。它以 (0,2,0) 匹配任意
    skin——若含结构变量,会压过其他家族 light 块的 (0,1,0) 造成渗透。
    minimal 自身的结构变量由 `:root, [data-skin="minimal"]` light 块提供。
+   唯一的颜色类例外是 `--surface-border`(浮层/提示边框色),它允许出现在
+   基础 dark 块;几何/字体/表面效果变量仍严禁出现。
 
 `data-skin` 缺失或非法(含 pre-paint 阶段的陈旧存储值)→ 无家族块命中 →
 落回 `:root` + 基础 dark = **默认族 minimal**;boot 后 `ThemeProvider` 把
@@ -81,9 +83,11 @@ landing 页走独立入口,不受影响。
 
 ## 防 FOUC
 
-`index.html` 内联 pre-paint 脚本(先于样式表)读 `cc-gw-theme` /
-`cc-gw-skin`,system 模式经 `matchMedia` 解析,首帧前设置两个属性;storage
-不可用时保持 HTML 上的默认属性。`landing.html` 钉死
+`index.html` 的 `<html>` 自带默认属性 `data-theme="light"
+data-skin="minimal"`,内联 pre-paint 脚本(先于样式表)读 `cc-gw-theme` /
+`cc-gw-skin`,system 模式经 `matchMedia` 解析,首帧前**总是**覆写两个属性
+(storage 无值时写回默认族);非法 skin 值不匹配任何家族块,自动落回
+`:root`,boot 后由 `ThemeProvider` 清洗存储值。`landing.html` 钉死
 `data-theme="light" data-skin="modernist"` —— 营销页不参与换肤,其视觉基线
 是钉住的回归绊线(必须零 diff)。
 
@@ -106,8 +110,9 @@ ECharts 无法解析 `var()`(canvas)。所有图表颜色必须经 `useChartThem
 ## 测试
 
 - `theme-families.spec.ts`(core 套件):9 族 × 亮/暗哨兵矩阵(`--primary`、
-  `--radius`、`--background`)、Rule B/C 渗透守卫、脏 skin 清洗、glass 与
-  aurora 的 backdrop-filter 开关。计算值经 `normalizeToken` 归一(minifier
+  `--radius`、`--background`)、Rule B/C 渗透守卫(暗色下逐项比对 light 的
+  结构变量)、脏 skin 清洗、glass 与 aurora 的 backdrop-filter 开关
+  (亮/暗都测)、`.app-canvas` 画布效果存在性。计算值经 `normalizeToken` 归一(minifier
   丢前导零:`0.625rem` → `.625rem`)。
 - 视觉基线:**light + minimal** 钉值,由 `visual-helpers.ts` 在每次 goto 后
   写入 storage 并 reload(与 locale 钉值同一机制,防自持久化污染)。

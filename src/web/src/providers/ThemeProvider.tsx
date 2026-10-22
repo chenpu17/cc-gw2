@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { storageKeys } from '@/services/storageKeys'
 
@@ -31,11 +31,8 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined)
 
-function resolvePreferred(mode: ThemeMode): 'light' | 'dark' {
-  if (mode === 'system') {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  }
-  return mode
+function systemPrefersDark(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
 function applyTheme(mode: 'light' | 'dark') {
@@ -67,7 +64,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     deserialize: (raw) => ((SKINS as readonly string[]).includes(raw) ? (raw as Skin) : DEFAULT_SKIN)
   })
 
-  const resolved = useMemo(() => (typeof window !== 'undefined' ? resolvePreferred(mode) : 'light'), [mode])
+  // System mode must live in state, not only on <html>: charts, the command
+  // palette and anything else reading `resolved` would otherwise keep the old
+  // value after the OS flips light/dark.
+  const [systemDark, setSystemDark] = useState(systemPrefersDark)
+
+  const resolved = useMemo<'light' | 'dark'>(
+    () => (mode === 'system' ? (systemDark ? 'dark' : 'light') : mode),
+    [mode, systemDark]
+  )
 
   // Apply synchronously during render (parent renders before children) so
   // descendants reading CSS variables — e.g. useChartTheme — always see the
@@ -80,14 +85,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === 'undefined') return
     const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = (event: MediaQueryListEvent) => {
-      if (mode === 'system') {
-        applyTheme(event.matches ? 'dark' : 'light')
-      }
-    }
+    const handler = (event: MediaQueryListEvent) => setSystemDark(event.matches)
+    // Re-sync in case the OS preference changed between the initial render and
+    // the listener being attached.
+    setSystemDark(media.matches)
     media.addEventListener('change', handler)
     return () => media.removeEventListener('change', handler)
-  }, [mode])
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
