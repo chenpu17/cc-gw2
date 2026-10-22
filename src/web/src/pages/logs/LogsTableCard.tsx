@@ -168,9 +168,9 @@ export function LogsTableCard(props: LogsTableCardProps) {
                   {visibleColumnSet.has('requestedModel') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.requestedModel')}</th>}
                   {visibleColumnSet.has('routedModel') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.routedModel')}</th>}
                   {visibleColumnSet.has('apiKey') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.apiKey')}</th>}
-                  {visibleColumnSet.has('tokens') && <th className={cn(TH, 'text-right')}>{t('logs.table.columns.tokens')}</th>}
+                  {visibleColumnSet.has('tokens') && <th className={cn(TH, 'text-right')} title={t('logs.table.tokensHeaderHint')}>{t('logs.table.columns.tokens')}</th>}
                   {visibleColumnSet.has('cost') && <th className={cn(TH, 'text-right')}>{t('logs.table.columns.cost')}</th>}
-                  {visibleColumnSet.has('duration') && <th className={cn(TH, 'text-right')}>{t('logs.table.columns.duration')}</th>}
+                  {visibleColumnSet.has('duration') && <th className={cn(TH, 'text-right')} title={t('logs.table.durationHeaderHint')}>{t('logs.table.columns.duration')}</th>}
                   {visibleColumnSet.has('status') && <th className={cn(TH, 'text-center')}>{t('logs.table.columns.status')}</th>}
                   {visibleColumnSet.has('error') && <th className={cn(TH, 'text-left')}>{t('logs.table.columns.error')}</th>}
                   <th className={cn(TH, 'sticky right-0 z-20 bg-secondary text-center')}>

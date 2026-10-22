@@ -52,7 +52,7 @@ export function LogCard({ record, providerLabelMap, onSelect, costCurrency }: Lo
         <span>{formatLatency(record.latency_ms, t('common.units.ms'))}</span>
         {record.ttft_ms != null ? (
           <span>
-            {t('logs.table.columns.latencyTtft')} {formatNumber(record.ttft_ms)}
+            {t('logs.table.columns.latencyTtft')} {formatLatency(record.ttft_ms, t('common.units.ms'))}
           </span>
         ) : null}
         {record.tpot_ms != null ? (

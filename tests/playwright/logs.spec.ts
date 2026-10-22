@@ -272,7 +272,7 @@ test('logs table auto-hides low-priority columns as the content area narrows', a
   expect(valid.status()).toBe(200)
   await pollForAnyLog(request, baseUrl)
 
-  // 1000px viewport → content column ≈716px, deep into the hide steps.
+  // 1000px viewport → content column ≈910px, below the 920px step.
   await page.setViewportSize({ width: 1000, height: 900 })
   await page.goto(`${baseUrl}/ui/logs`)
   await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
@@ -290,12 +290,43 @@ test('logs table auto-hides low-priority columns as the content area narrows', a
   const firstRowCells = await page.locator('tbody tr[data-log-id]').first().locator('td').count()
   expect(firstRowCells).toBe(headerCells)
 
-  // Widening restores the full set (canonical 1440 desktop).
+  // Just above the md breakpoint the sidebar is collapsed and the desktop
+  // table is still rendered (~770px container). It must keep hiding columns
+  // instead of treating that container width as "mobile".
+  await page.setViewportSize({ width: 860, height: 900 })
+  await expect(page.getByText(/窄屏已隐藏 5 列/)).toBeVisible()
+
+  // Widening restores the full set (canonical 1440 desktop) and the table fits
+  // the content column without horizontal scrolling.
   await page.setViewportSize({ width: 1440, height: 900 })
   await expect(page.getByText(/窄屏已隐藏 \d+ 列/)).toHaveCount(0)
   for (const label of ['错误信息', '客户端', '密钥', '请求模型', '路由模型']) {
     await expect(page.locator('th').filter({ hasText: label }).first()).toBeVisible()
   }
+  const zhWidths = await page.evaluate(() => {
+    const table = document.querySelector('table')
+    return table ? { scroll: table.scrollWidth, client: table.parentElement?.clientWidth ?? 0 } : null
+  })
+  expect(zhWidths).not.toBeNull()
+  expect(zhWidths!.scroll).toBeLessThanOrEqual(zhWidths!.client + 1)
+
+  // English headers/values are wider than Chinese, so the same width that fits
+  // all 13 zh columns needs an auto-hidden column in en. The exact count is
+  // content-dependent (it grows as more columns are needed), so assert the
+  // en-localized badge and the structural outcome instead of a fixed number.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.evaluate(() => window.localStorage.setItem('cc-gw-language', 'en'))
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Request Logs', level: 1 })).toBeVisible()
+  const hiddenBadge = page.getByText(/^\d+ columns? hidden$/)
+  await expect(hiddenBadge).toBeVisible()
+  await expect(page.locator('th').filter({ hasText: 'Error' })).toHaveCount(0)
+  const enWidths = await page.evaluate(() => {
+    const table = document.querySelector('table')
+    return table ? { scroll: table.scrollWidth, client: table.parentElement?.clientWidth ?? 0 } : null
+  })
+  expect(enWidths).not.toBeNull()
+  expect(enWidths!.scroll).toBeLessThanOrEqual(enWidths!.client + 1)
 })
 
 test('logs table assigns the same color marker to rows from the same session', async ({ page, request }) => {

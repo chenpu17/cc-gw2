@@ -62,6 +62,8 @@ export default {
     autoHiddenHint: '窗口较窄，已自动隐藏：{{columns}}',
     autoHiddenNote: '窗口过窄时，部分次要列会自动隐藏。',
     narrowHiddenPill: '窄屏隐藏',
+    tokensHeaderHint: '第一行：输入 · 输出；第二行：缓存读 · 缓存写（悬停查看完整标签）',
+    durationHeaderHint: '总耗时；第二行依次为 TTFT 与 TPOT（ms / 每 Token 毫秒）',
     columns: {
       time: '时间',
       endpoint: '端点',

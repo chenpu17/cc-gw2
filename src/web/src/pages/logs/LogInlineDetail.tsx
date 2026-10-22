@@ -141,7 +141,7 @@ export function LogInlineDetail({ logId, providerLabelMap, apiKeyMap }: LogInlin
     { label: t('logs.detail.info.tpot'), value: formatLatency(record.tpot_ms, t('common.units.msPerToken')) },
     { label: t('logs.detail.info.inputTokens'), value: formatNumber(record.input_tokens) },
     { label: t('logs.detail.info.outputTokens'), value: formatNumber(record.output_tokens) },
-    { label: t('logs.detail.info.cacheReadTokens'), value: formatNumber(record.cache_read_tokens) },
+    { label: t('logs.detail.info.cacheReadTokens'), value: formatNumber(record.cache_read_tokens ?? record.cached_tokens) },
     { label: t('logs.detail.info.cacheCreationTokens'), value: formatNumber(record.cache_creation_tokens) },
     { label: t('logs.detail.info.cost'), value: formatCost(record.cost, record.cost_currency) }
   ]
