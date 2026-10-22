@@ -26,6 +26,8 @@ export default {
     saving: '保存中...',
     cancel: '取消',
     copy: '复制',
+    copied: '已复制',
+    copyFailed: '复制失败',
     download: '下载',
     testConnection: '测试连接',
     testingConnection: '测试中...',
@@ -34,7 +36,8 @@ export default {
     compact: '释放数据库空间',
     compacting: '整理中...',
     checkUpdates: '检查更新',
-    logout: '退出登录'
+    logout: '退出登录',
+    dismiss: '关闭通知'
   },
   theme: {
     label: '主题',
@@ -70,6 +73,11 @@ export default {
   noMatches: '无匹配项',
   unknownError: '未知错误',
   requestFailed: '请求失败，请稍后再试',
+  errorBoundary: {
+    title: '页面渲染出错',
+    description: '界面遇到了未处理的问题。刷新页面通常可以恢复；如果反复出现，请查看浏览器控制台。',
+    reload: '刷新页面'
+  },
   filters: {
     activeCount: '{{count}} 个筛选条件',
     collapse: '收起筛选',

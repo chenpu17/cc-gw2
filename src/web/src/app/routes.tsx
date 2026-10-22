@@ -171,13 +171,14 @@ export interface NavGroupDef {
 }
 
 /**
- * Sidebar + command-palette grouping of nav routes. Routes outside any group
- * (e.g. /help) are reachable by URL only, consistent across both surfaces.
+ * Sidebar + command-palette grouping of nav routes. Every routable page must
+ * appear in one group: ungrouped pages are URL-only, which left /help with no
+ * discoverable entry at all.
  */
 export const navGroups: NavGroupDef[] = [
   { labelKey: 'nav.group.overview', paths: ['/', '/logs', '/events'] },
   { labelKey: 'nav.group.configure', paths: ['/providers', '/routing', '/api-keys'] },
-  { labelKey: 'nav.group.system', paths: ['/settings', '/about'] }
+  { labelKey: 'nav.group.system', paths: ['/settings', '/help', '/about'] }
 ]
 
 export function getActiveNavigationRoute(pathname: string) {

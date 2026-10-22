@@ -1,6 +1,6 @@
 export default {
-  title: '安全事件',
-  description: '查看校验防护与系统检测记录，及时发现异常访问。',
+  title: '系统事件',
+  description: '查看网关运行、上游调用与安全校验记录，及时发现异常。',
   filters: {
     title: '筛选条件',
     allLevels: '全部级别',

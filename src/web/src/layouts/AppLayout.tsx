@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { MoreHorizontal, Search } from 'lucide-react'
@@ -194,7 +194,15 @@ function SidebarContent({ compact, onNavigate }: { compact?: boolean; onNavigate
   )
 }
 
-function MobileTabBar({ onMore }: { onMore: () => void }) {
+function MobileTabBar({
+  onMore,
+  moreButtonRef,
+  moreExpanded
+}: {
+  onMore: () => void
+  moreButtonRef?: RefObject<HTMLButtonElement>
+  moreExpanded?: boolean
+}) {
   const { t } = useTranslation()
   const location = useLocation()
   const tabs = navigationRoutes.filter((r) => mobileTabPaths.includes(r.path))
@@ -202,7 +210,7 @@ function MobileTabBar({ onMore }: { onMore: () => void }) {
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-border bg-card/[var(--surface-alpha)] surface-blur pb-[env(safe-area-inset-bottom)] md:hidden"
-      aria-label={t('nav.more')}
+      aria-label={t('nav.primary')}
     >
       {tabs.map((item) => {
         const Icon = item.nav.icon
@@ -224,8 +232,11 @@ function MobileTabBar({ onMore }: { onMore: () => void }) {
         )
       })}
       <button
+        ref={moreButtonRef}
         type="button"
         onClick={onMore}
+        aria-haspopup="dialog"
+        aria-expanded={moreExpanded}
         className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted-foreground transition-colors"
       >
         <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
@@ -243,10 +254,58 @@ export function AppLayout() {
   const { authEnabled, username, logout } = useAuth()
   const [loggingOut, setLoggingOut] = useState(false)
   const rpm = useHeaderRpm()
+  const mobileMoreButtonRef = useRef<HTMLButtonElement>(null)
+  const mobileNavRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setMobileNavOpen(false)
   }, [location.pathname])
+
+  // Minimal focus management for the mobile drawer: Esc closes it, Tab cycles
+  // inside it, background scrolling is locked, and focus returns to the
+  // "More" tab on close. Without this, keyboard/SR users tabbed into the page
+  // behind the open overlay.
+  useEffect(() => {
+    if (!mobileNavOpen) return
+    const drawer = mobileNavRef.current
+    if (!drawer) return
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const focusables = () =>
+      Array.from(
+        drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')
+      ).filter((element) => element.offsetParent !== null)
+
+    focusables()[0]?.focus()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMobileNavOpen(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusables()
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+      previouslyFocused?.focus?.()
+    }
+  }, [mobileNavOpen])
 
   // ⌘K / Ctrl+K opens the command palette from anywhere.
   useEffect(() => {
@@ -357,16 +416,26 @@ export function AppLayout() {
       </div>
 
       {/* Mobile bottom tab bar */}
-      <MobileTabBar onMore={() => setMobileNavOpen(true)} />
+      <MobileTabBar
+        onMore={() => setMobileNavOpen(true)}
+        moreButtonRef={mobileMoreButtonRef}
+        moreExpanded={mobileNavOpen}
+      />
 
       {/* Mobile "more" drawer */}
       {mobileNavOpen && (
-        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
+        <div
+          className="fixed inset-0 z-40 md:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('nav.more')}
+        >
           <div
             className="fixed inset-0 bg-background/95"
             onClick={() => setMobileNavOpen(false)}
           />
           <div
+            ref={mobileNavRef}
             id="mobile-nav"
             className="fixed inset-y-0 left-0 w-[236px] bg-card/[var(--surface-alpha)] surface-blur shadow-[var(--surface-shadow-lg)] animate-in slide-in-from-left duration-200"
           >

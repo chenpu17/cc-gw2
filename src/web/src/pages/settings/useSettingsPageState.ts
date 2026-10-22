@@ -7,7 +7,7 @@ import { useToast } from '@/providers/ToastProvider'
 import { gatewayApi } from '@/services/gateway'
 import { settingsApi } from '@/services/settings'
 import { copyToClipboard } from '@/utils/clipboard'
-import { type ApiError } from '@/services/api'
+import { type ApiError, toApiError } from '@/services/api'
 import { queryKeys } from '@/services/queryKeys'
 import { formatBytes, type DatabaseInfo } from '@/pages/dashboard/types'
 import type { ConfigInfoResponse, GatewayConfig, WebAuthStatusResponse } from '@/types/providers'
@@ -124,8 +124,6 @@ export function useSettingsPageState() {
   const [config, setConfig] = useState<GatewayConfig | null>(null)
   const [configPath, setConfigPath] = useState('')
   const [form, setForm] = useState<FormState>({
-    port: '',
-    host: '',
     logRetentionDays: '',
     logExportTimeoutSeconds: '60',
     storeRequestPayloads: true,
@@ -223,9 +221,7 @@ export function useSettingsPageState() {
       'httpsHost',
       'httpsKeyPath',
       'httpsCertPath',
-      'httpsCaPath',
-      'port',
-      'host'
+      'httpsCaPath'
     ]
 
     return protocolFields.some((field) => form[field] !== initialForm[field])
@@ -264,7 +260,7 @@ export function useSettingsPageState() {
   }, [authQuery.error, authQuery.isError, pushToast, t])
 
   const handleInputChange = useCallback(
-    (field: 'port' | 'host' | 'logRetentionDays' | 'logExportTimeoutSeconds' | 'bodyLimitMb') =>
+    (field: 'logRetentionDays' | 'logExportTimeoutSeconds' | 'bodyLimitMb') =>
       (value: string) => {
         setForm((previous) => ({ ...previous, [field]: value }))
       },
@@ -278,11 +274,12 @@ export function useSettingsPageState() {
       nextErrors.protocol = t('settings.validation.protocolRequired')
     }
 
-    if (form.httpEnabled) {
-      const httpPortValue = Number(form.httpPort)
-      if (!Number.isFinite(httpPortValue) || httpPortValue < 1 || httpPortValue > 65535) {
-        nextErrors.httpPort = t('settings.validation.httpPort')
-      }
+    // The listen-port field stays visible (and is persisted) even when HTTP is
+    // disabled, so validate it unconditionally — otherwise an HTTPS-only save
+    // can persist http.port = 0 and later bind an ephemeral port.
+    const httpPortValue = Number(form.httpPort)
+    if (!Number.isFinite(httpPortValue) || httpPortValue < 1 || httpPortValue > 65535) {
+      nextErrors.httpPort = t('settings.validation.httpPort')
     }
 
     if (form.httpsEnabled) {
@@ -296,10 +293,6 @@ export function useSettingsPageState() {
       }
     }
 
-    const portValue = Number(form.port)
-    if (!Number.isFinite(portValue) || portValue < 1 || portValue > 65535) {
-      nextErrors.port = t('settings.validation.port')
-    }
     const retentionValue = Number(form.logRetentionDays)
     if (!Number.isFinite(retentionValue) || retentionValue < 1 || retentionValue > 365) {
       nextErrors.logRetentionDays = t('settings.validation.retention')
@@ -384,7 +377,6 @@ export function useSettingsPageState() {
 
     setSaving(true)
     try {
-      const portValue = Number(form.port)
       const retentionValue = Number(form.logRetentionDays)
       const logExportTimeoutValue = Number(form.logExportTimeoutSeconds)
       const bodyLimitValue = Number(form.bodyLimitMb)
@@ -404,8 +396,10 @@ export function useSettingsPageState() {
           certPath: form.httpsCertPath.trim(),
           caPath: form.httpsCaPath.trim() || undefined
         },
-        port: portValue,
-        host: form.host.trim() || undefined,
+        // Root port/host are legacy compatibility mirrors of the effective
+        // HTTP listener; the server binds from http.* only.
+        port: Number(form.httpPort),
+        host: form.httpHost.trim() || undefined,
         logRetentionDays: retentionValue,
         logExportTimeoutSeconds: Math.min(Math.max(Math.round(logExportTimeoutValue), 5), 600),
         storeRequestPayloads: form.storeRequestPayloads,
@@ -460,7 +454,7 @@ export function useSettingsPageState() {
       void configQuery.refetch()
     } catch (error) {
       pushToast({
-        title: t('settings.toast.saveFailure', { message: error instanceof Error ? error.message : 'unknown' }),
+        title: t('settings.toast.saveFailure', { message: toApiError(error).message }),
         variant: 'error'
       })
     } finally {

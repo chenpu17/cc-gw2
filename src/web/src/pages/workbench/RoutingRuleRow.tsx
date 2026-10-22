@@ -40,7 +40,9 @@ export function RoutingRuleRow({
       data-id={entry.id}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        'flex items-center gap-2 border border-border bg-card p-2',
+        // Narrow: two rows (source / target) so neither input collapses to a
+        // sliver; sm+ returns to the single-line row.
+        'grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 border border-border bg-card p-2 sm:flex sm:gap-2',
         isDragging && 'z-10 opacity-60 shadow-[var(--surface-shadow-lg)]'
       )}
     >
@@ -49,7 +51,7 @@ export function RoutingRuleRow({
         type="button"
         data-testid="route-rule-grip"
         aria-label={t('workbench.routing.dragHandle')}
-        className="flex h-7 w-4 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        className="row-span-2 flex h-7 w-4 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground hover:text-foreground active:cursor-grabbing sm:row-span-1"
         {...attributes}
         {...listeners}
       >
@@ -65,8 +67,14 @@ export function RoutingRuleRow({
         disabled={savingRoute}
         className="h-8 min-w-0 flex-1 text-xs"
       />
-      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      <div data-testid="route-rule-target" className="min-w-0 flex-[1.15]">
+      <ArrowRight
+        className="col-start-2 row-start-2 h-3.5 w-3.5 shrink-0 text-muted-foreground sm:col-auto sm:row-auto"
+        aria-hidden
+      />
+      <div
+        data-testid="route-rule-target"
+        className="col-start-3 row-start-2 min-w-0 sm:col-auto sm:row-auto sm:flex-[1.15]"
+      >
         <TargetCombobox
           value={entry.target}
           onChange={(value) => onRouteChange(entry.id, 'target', value)}
@@ -80,7 +88,7 @@ export function RoutingRuleRow({
         variant="ghost"
         size="icon"
         data-testid="route-rule-delete"
-        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+        className="col-start-4 row-span-2 h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive sm:col-auto sm:row-span-1"
         onClick={() => onRemoveRoute(entry.id)}
         disabled={savingRoute}
         aria-label={t('common.delete')}

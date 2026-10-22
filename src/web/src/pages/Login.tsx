@@ -39,6 +39,10 @@ export default function LoginPage() {
     }
   }, [authEnabled, fallbackTarget, isAuthenticated, loading, navigate])
 
+  useEffect(() => {
+    document.title = `${t('login.title')} · cc-gw`
+  }, [t])
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setFormError(null)
@@ -80,7 +84,7 @@ export default function LoginPage() {
         <div className="hidden lg:block">
           <div className="max-w-lg space-y-6">
             <div className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1 text-xs font-semibold text-foreground">
-              Secure Gateway Control
+              {t('login.badge')}
             </div>
             <div className="space-y-3">
               <h1 className="text-4xl font-semibold tracking-tight text-foreground">
@@ -98,7 +102,7 @@ export default function LoginPage() {
               />
               <FeatureCard
                 icon={<LockKeyhole className="h-5 w-5" aria-hidden="true" />}
-                title="Session protected"
+                title={t('login.sessionProtected')}
                 description={t('help.note')}
               />
             </div>
@@ -140,7 +144,7 @@ export default function LoginPage() {
               </div>
 
               {formError || error ? (
-                <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                <div role="alert" className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
                   {formError || error}
                 </div>
               ) : null}

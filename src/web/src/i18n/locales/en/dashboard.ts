@@ -1,5 +1,6 @@
 export default {
   description: 'Monitor request volume and runtime health at a glance.',
+  refreshFailed: 'Refresh failed; showing the last successful data: {{message}}',
   labels: {
     activeClientAddresses: 'Active client addresses',
     activeClientSessions: 'Active sessions',
@@ -55,6 +56,7 @@ export default {
     unpricedHint_other: '{{count}} requests unpriced',
     cacheHitHint: 'Hit rate {{value}}%',
     errorCountHint: '{{value}} errors',
+    viewErrors: 'View failed requests',
     yesterdayHint: 'Same time yesterday: {{value}}',
     avgLatency: 'Average Latency',
     systemResources: 'System Resources'
@@ -152,6 +154,7 @@ export default {
   recent: {
     title: 'Recent Requests',
     subtitle: 'Showing the latest {{count}} records',
+    viewAll: 'View all logs',
     loading: 'Loading...',
     empty: 'No recent requests',
     routePlaceholder: 'Not specified',
@@ -185,13 +188,13 @@ export default {
     subtitle: 'Connect a provider, confirm routing, create an API key, then send your first request — the dashboard will come alive.',
     startWizard: 'Start guided setup',
     step1Title: 'Connect a provider',
-    step1Desc: 'Add at least one upstream model service under Model Providers.',
+    step1Desc: 'Add at least one upstream model service on the Providers page.',
     step1DescDone: '{{count}} provider(s) detected — continue to the next step.',
-    step1Cta: 'Open Providers & Routing',
+    step1Cta: 'Open Providers',
     step2Title: 'Confirm default routing',
-    step2Desc: 'Make sure an endpoint or default route is configured so clients can connect reliably.',
+    step2Desc: 'Set default forwarding and model rules for an endpoint on the Routing page so clients can connect reliably.',
     step2DescDone: '{{count}} custom endpoint(s) exist — review the default mappings.',
-    step2Cta: 'Open Providers & Routing',
+    step2Cta: 'Open Routing',
     step3Title: 'Send your first request',
     step3Desc: 'Create an API key and send a request from your usual client to start seeing logs, routing, and latency data.',
     step3Cta: 'Open API Keys'

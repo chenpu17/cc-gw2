@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ArrowLeft } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { PageState } from '@/components/PageState'
@@ -21,6 +23,9 @@ import type { ProvidersState } from './useProvidersState'
 interface ProvidersMasterDetailProps {
   providers: ProvidersState
   configPending: boolean
+  /** Config load failure — rendered as an error state, never as "no providers". */
+  configError?: string | null
+  onRetryConfig?: () => void
   selectedProviderId: string | null
   onSelectProvider: (providerId: string) => void
   onTest: (provider: ProviderConfig) => void
@@ -39,6 +44,8 @@ interface ProvidersMasterDetailProps {
 export function ProvidersMasterDetail({
   providers,
   configPending,
+  configError,
+  onRetryConfig,
   selectedProviderId,
   onSelectProvider,
   onTest,
@@ -69,6 +76,21 @@ export function ProvidersMasterDetail({
     [onDirtyChange]
   )
 
+  // Below lg the rail and the panel can't sit side by side, so the page acts
+  // as a two-step drill-down: list → detail (with a back button). Start on the
+  // list even when a selection was persisted, so mobile users can switch
+  // providers.
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
+  const firstSelectionRef = useRef(true)
+  useEffect(() => {
+    if (firstSelectionRef.current) {
+      firstSelectionRef.current = false
+      return
+    }
+    if (selectedProviderId) setMobileDetailOpen(true)
+    else setMobileDetailOpen(false)
+  }, [selectedProviderId])
+
   // Closing the tab / reloading with an unsaved draft deserves the browser's
   // own leave-confirmation prompt.
   useEffect(() => {
@@ -87,6 +109,7 @@ export function ProvidersMasterDetail({
       return
     }
     onSelectProvider(providerId)
+    setMobileDetailOpen(true)
   }
 
   const selectedProvider = providers.providers.find(
@@ -110,7 +133,21 @@ export function ProvidersMasterDetail({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-      <Card className="h-fit overflow-hidden lg:sticky lg:top-4">
+      {configError ? (
+        <PageState
+          className="lg:col-span-2"
+          tone="danger"
+          title={t('common.status.error')}
+          description={configError}
+          action={onRetryConfig ? (
+            <Button variant="outline" onClick={onRetryConfig}>
+              {t('common.actions.refresh')}
+            </Button>
+          ) : undefined}
+        />
+      ) : (
+        <>
+      <Card className={cn('h-fit overflow-hidden lg:sticky lg:top-4', mobileDetailOpen && selectedProvider ? 'hidden lg:block' : '')}>
         <CardContent className="p-0">
           <div className="space-y-2 border-b border-border bg-secondary/50 px-3 py-3">
             <Input
@@ -212,35 +249,49 @@ export function ProvidersMasterDetail({
         </CardContent>
       </Card>
 
-      {configPending ? (
-        <Card>
-          <CardContent className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
-            {t('common.loading')}
-          </CardContent>
-        </Card>
-      ) : selectedProvider ? (
-        <ProviderDetailPanel
-          key={selectedProvider.id}
-          provider={selectedProvider}
-          allProviders={providers.providers}
-          testResult={providers.testResults[selectedProvider.id] ?? null}
-          testing={providers.testingProviderId === selectedProvider.id}
-          onTest={onTest}
-          onRequestDelete={onRequestDelete}
-          onSubmit={providers.handleUpdateProvider}
-          onDirtyChange={handleDirtyChange}
-          startInEdit={autoEditProviderId === selectedProvider.id}
-        />
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <PageState
-              title={t('providers.masterDetail.emptyDetailTitle')}
-              description={t('providers.masterDetail.emptyDetailHint')}
-            />
-          </CardContent>
-        </Card>
-      )}
+      <div className={cn('min-w-0', mobileDetailOpen ? 'block' : 'hidden lg:block')}>
+        {selectedProvider ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mb-2 lg:hidden"
+            onClick={() => setMobileDetailOpen(false)}
+          >
+            <ArrowLeft className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            {t('providers.masterDetail.backToList')}
+          </Button>
+        ) : null}
+        {configPending ? (
+          <Card>
+            <CardContent className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
+              {t('common.loading')}
+            </CardContent>
+          </Card>
+        ) : selectedProvider ? (
+          <ProviderDetailPanel
+            key={selectedProvider.id}
+            provider={selectedProvider}
+            allProviders={providers.providers}
+            testResult={providers.testResults[selectedProvider.id] ?? null}
+            testing={providers.testingProviderId === selectedProvider.id}
+            onTest={onTest}
+            onRequestDelete={onRequestDelete}
+            onSubmit={providers.handleUpdateProvider}
+            onDirtyChange={handleDirtyChange}
+            startInEdit={autoEditProviderId === selectedProvider.id}
+          />
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <PageState
+                title={t('providers.masterDetail.emptyDetailTitle')}
+                description={t('providers.masterDetail.emptyDetailHint')}
+              />
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       <ConfirmDialog
         open={!!pendingSelect}
@@ -252,10 +303,15 @@ export function ProvidersMasterDetail({
         confirmLabel={t('providers.masterDetail.unsavedConfirm')}
         cancelLabel={t('common.actions.cancel')}
         onConfirm={() => {
-          if (pendingSelect) onSelectProvider(pendingSelect)
+          if (pendingSelect) {
+            onSelectProvider(pendingSelect)
+            setMobileDetailOpen(true)
+          }
           setPendingSelect(null)
         }}
       />
+        </>
+      )}
     </div>
   )
 }

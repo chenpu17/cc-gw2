@@ -385,6 +385,7 @@ export default {
   masterDetail: {
     emptyDetailTitle: '选择一个提供商',
     emptyDetailHint: '从左侧列表选择提供商查看与编辑，或点击上方「新增提供商」创建。',
+    backToList: '返回列表',
     modelsMeta: '{{count}} 个模型',
     keysMeta: '{{count}} 个密钥',
     noKeysMeta: '未配置密钥',
@@ -432,6 +433,8 @@ export default {
   },
   confirm: {
     delete: '确认删除提供商「{{name}}」？',
-    deleteImpact: '将同时清理 {{count}} 条引用该提供商的路由规则。'
+    deleteImpact: '将同时清理 {{count}} 条引用该提供商的路由规则。',
+    deleteDefaultsImpact: '将同时清空 {{count}} 个指向该提供商的默认转发目标。',
+    deleteAggregateImpact: '将同时从 {{count}} 个聚合模型成员中移除该提供商。'
   }
 }

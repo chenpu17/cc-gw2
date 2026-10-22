@@ -1,6 +1,6 @@
 export default {
-  title: 'Security Events',
-  description: 'Review validation defenses and system alerts to spot suspicious traffic.',
+  title: 'System Events',
+  description: 'Review gateway, upstream, and security records to spot problems early.',
   filters: {
     title: 'Filters',
     allLevels: 'All levels',

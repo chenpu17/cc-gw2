@@ -69,7 +69,7 @@ export function SettingsSectionNav({
         </Card>
       </nav>
 
-      <div className="xl:hidden">
+      <div className="min-w-0 xl:hidden">
         <div className="overflow-x-auto pb-1">
           <div className="flex w-max gap-2 px-1">
           {SETTINGS_SECTIONS.map((section) => (
@@ -105,7 +105,7 @@ export function BasicsSection({
   defaultsSummary: string | null
   errors: FormErrors
   form: FormState
-  onInputChange: (field: 'port' | 'host' | 'logRetentionDays' | 'logExportTimeoutSeconds' | 'bodyLimitMb') => (value: string) => void
+  onInputChange: (field: 'logRetentionDays' | 'logExportTimeoutSeconds' | 'bodyLimitMb') => (value: string) => void
   onSetForm: Dispatch<SetStateAction<FormState>>
   sectionRef?: Ref<HTMLDivElement>
 }) {
@@ -124,15 +124,16 @@ export function BasicsSection({
         <div className="grid gap-5 md:grid-cols-2">
           <div className="space-y-2">
             <Label>{t('settings.fields.port')}</Label>
-            {/* The harness binds an ephemeral port, so the value changes every
-                run — masked for visual tests (text only: keep the input's box). */}
-            <Input type="number" min={1} max={65535} value={form.port} data-visual-volatile="text" onChange={(e) => onInputChange('port')(e.target.value)} aria-invalid={Boolean(errors.port)} />
-            {errors.port ? <p className="text-xs text-destructive">{errors.port}</p> : null}
+            {/* The HTTP listener is the only real listener; this field edits
+                http.port. The old root `port` was a dead duplicate that the
+                server never read. */}
+            <Input type="number" min={1} max={65535} value={form.httpPort} data-visual-volatile="text" onChange={(e) => onSetForm((previous) => ({ ...previous, httpPort: e.target.value }))} aria-invalid={Boolean(errors.httpPort)} />
+            {errors.httpPort ? <p className="text-xs text-destructive">{errors.httpPort}</p> : null}
           </div>
 
           <div className="space-y-2">
             <Label>{t('settings.fields.host')}</Label>
-            <Input value={form.host} onChange={(e) => onInputChange('host')(e.target.value)} placeholder={t('settings.fields.hostPlaceholder')} />
+            <Input value={form.httpHost} onChange={(e) => onSetForm((previous) => ({ ...previous, httpHost: e.target.value }))} placeholder={t('settings.fields.hostPlaceholder')} />
           </div>
 
           <div className="space-y-2">
@@ -261,17 +262,12 @@ export function ProtocolSection({
           </div>
 
           {form.httpEnabled ? (
-            <div className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>{t('settings.protocol.http.port')}</Label>
-                {/* Inherits the ephemeral root port — masked, see the Basics port field. */}
-                <Input type="number" min={1} max={65535} value={form.httpPort} data-visual-volatile="text" onChange={(e) => onSetForm((previous) => ({ ...previous, httpPort: e.target.value }))} aria-invalid={Boolean(errors.httpPort)} />
-                {errors.httpPort ? <p className="text-xs text-destructive">{errors.httpPort}</p> : null}
-              </div>
-              <div className="space-y-2">
-                <Label>{t('settings.protocol.http.host')}</Label>
-                <Input value={form.httpHost} onChange={(e) => onSetForm((previous) => ({ ...previous, httpHost: e.target.value }))} placeholder="127.0.0.1" />
-              </div>
+            <div className="mt-4 border-t border-border pt-4">
+              <p className="text-xs text-muted-foreground">
+                {t('settings.protocol.http.listener', {
+                  address: `${form.httpHost || '127.0.0.1'}:${form.httpPort || '4100'}`
+                })}
+              </p>
             </div>
           ) : null}
         </div>

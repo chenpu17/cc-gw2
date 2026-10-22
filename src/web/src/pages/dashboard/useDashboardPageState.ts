@@ -197,7 +197,10 @@ export function useDashboardPageState() {
 
   const isRefreshing = summaryQuery.isFetching || customEndpointsQuery.isFetching
   const isBootstrapping = summaryQuery.isPending
-  const bootstrapError = summaryQuery.error?.message ?? null
+  // A failed REFETCH must not evict the cached dashboard: React Query keeps the
+  // last good data, so only a failure with no data at all is fatal.
+  const bootstrapError = summaryQuery.data ? null : summaryQuery.error?.message ?? null
+  const refreshError = summaryQuery.data ? summaryQuery.error?.message ?? null : null
 
   const [trendMode, setTrendMode] = usePersistentState<'traffic' | 'cost'>(
     storageKeys.dashboard.trendMode,
@@ -436,6 +439,7 @@ export function useDashboardPageState() {
     fastestTtftModel,
     handleRefresh,
     bootstrapError,
+    refreshError,
     isBootstrapping,
     isRefreshing,
     liveConnected: liveEvents.connected,

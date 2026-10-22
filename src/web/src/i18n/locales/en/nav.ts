@@ -13,5 +13,6 @@ export default {
     configure: 'Configure',
     system: 'System'
   },
-  more: 'More'
+  more: 'More',
+  primary: 'Primary navigation'
 }

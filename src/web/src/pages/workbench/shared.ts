@@ -354,3 +354,50 @@ export function countProviderRouteReferences(
 ): number {
   return findRoutesForProvider(config, customEndpoints, providerId).length
 }
+
+export interface ProviderReferenceSummary {
+  routes: number
+  /** Default forwarding slots (completion/reasoning/background) pointing at it. */
+  defaults: number
+  /** Aggregate-model membership entries pointing at it. */
+  aggregateMembers: number
+}
+
+/** Everything deleting a provider will implicitly rewrite in the config. */
+export function summarizeProviderReferences(
+  config: GatewayConfig | null,
+  customEndpoints: ManagedEndpointLike[],
+  providerId: string
+): ProviderReferenceSummary {
+  if (!config) return { routes: 0, defaults: 0, aggregateMembers: 0 }
+
+  const endpointIds = [
+    'anthropic',
+    'openai',
+    ...mapManagedEndpoints(config, customEndpoints).map((endpoint) => endpoint.id)
+  ]
+
+  let defaults = 0
+  for (const endpoint of endpointIds) {
+    const saved = getSavedDefaultsFromConfig(config, customEndpoints, endpoint)
+    for (const target of [saved.completion, saved.reasoning, saved.background]) {
+      if (target && routeTargetMatchesProvider(target, providerId)) defaults += 1
+    }
+  }
+
+  let aggregateMembers = 0
+  for (const provider of config.providers ?? []) {
+    if (provider.type !== 'aggregate') continue
+    for (const model of provider.models ?? []) {
+      for (const member of model.members ?? []) {
+        if (routeTargetMatchesProvider(member.target, providerId)) aggregateMembers += 1
+      }
+    }
+  }
+
+  return {
+    routes: countProviderRouteReferences(config, customEndpoints, providerId),
+    defaults,
+    aggregateMembers
+  }
+}

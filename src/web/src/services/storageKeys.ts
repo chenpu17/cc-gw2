@@ -16,6 +16,8 @@ export const storageKeys = {
     providerFilter: 'cc-gw.logs.provider-filter',
     endpointFilter: 'cc-gw.logs.endpoint-filter',
     modelFilter: 'cc-gw.logs.model-filter',
+    clientKindFilter: 'cc-gw.logs.client-kind-filter',
+    sessionFilter: 'cc-gw.logs.session-filter',
     statusFilter: 'cc-gw.logs.status-filter',
     fromDate: 'cc-gw.logs.from-date',
     toDate: 'cc-gw.logs.to-date',

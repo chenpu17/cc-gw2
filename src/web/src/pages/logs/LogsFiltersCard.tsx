@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ApiKeyFilter } from './ApiKeyFilter'
-import { QUICK_VIEWS } from './shared'
+import { QUICK_VIEWS, CLIENT_KIND_OPTIONS } from './shared'
 import type { DateInput, QuickView, StatusFilter } from './shared'
 
 interface LogsFiltersCardProps {
@@ -29,6 +29,10 @@ interface LogsFiltersCardProps {
   setSelectedApiKeys: (value: number[]) => void
   modelFilter: string
   setModelFilter: (value: string) => void
+  clientKindFilter: string
+  setClientKindFilter: (value: string) => void
+  sessionFilter: string
+  setSessionFilter: (value: string) => void
   statusFilter: StatusFilter
   setStatusFilter: (value: StatusFilter) => void
   fromDate: DateInput
@@ -58,6 +62,10 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
     setSelectedApiKeys,
     modelFilter,
     setModelFilter,
+    clientKindFilter,
+    setClientKindFilter,
+    sessionFilter,
+    setSessionFilter,
     statusFilter,
     setStatusFilter,
     fromDate,
@@ -206,6 +214,23 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             </div>
 
             <div className="space-y-2">
+              <Label>{t('logs.filters.clientKind')}</Label>
+              <Select value={clientKindFilter} onValueChange={setClientKindFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('logs.filters.clientKindAll')}</SelectItem>
+                  {CLIENT_KIND_OPTIONS.map((kind) => (
+                    <SelectItem key={kind} value={kind}>
+                      {t(`dashboard.usage.clientKinds.${kind}`, { defaultValue: kind })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label>{t('logs.filters.status')}</Label>
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
                 <SelectTrigger>
@@ -227,6 +252,20 @@ export function LogsFiltersCard(props: LogsFiltersCardProps) {
             <div className="space-y-2">
               <Label>{t('logs.filters.endDate')}</Label>
               <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            </div>
+
+            {/* Sessions tie one client conversation's turns together; the id
+                is opaque, so this is a paste-in exact match rather than a
+                picker. */}
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="logs-session-filter">{t('logs.filters.session')}</Label>
+              <Input
+                id="logs-session-filter"
+                value={sessionFilter}
+                onChange={(e) => setSessionFilter(e.target.value)}
+                placeholder={t('logs.filters.sessionPlaceholder')}
+                className="font-mono"
+              />
             </div>
           </div>
         )}

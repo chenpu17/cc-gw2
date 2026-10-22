@@ -5,7 +5,8 @@ import { storageKeys } from '@/services/storageKeys'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 
@@ -39,15 +40,16 @@ export function LanguageSwitcher() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {languages.map((lang) => (
-          <DropdownMenuItem
-            key={lang.code}
-            onClick={() => handleLanguageChange(lang.code)}
-            className={lang.code === currentLang ? 'bg-accent' : ''}
-          >
-            {lang.nativeName}
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuRadioGroup
+          value={currentLang}
+          onValueChange={(value) => handleLanguageChange(value as 'zh' | 'en')}
+        >
+          {languages.map((lang) => (
+            <DropdownMenuRadioItem key={lang.code} value={lang.code}>
+              {lang.nativeName}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

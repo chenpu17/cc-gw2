@@ -22,6 +22,28 @@ export type LogColumnId =
 
 export type DateInput = string
 
+/**
+ * Client kinds the gateway can infer (see `infer_client_kind` in the Rust
+ * server). Labels reuse `dashboard.usage.clientKinds` so the logs filter and
+ * the dashboard client card never disagree about what a kind is called.
+ */
+export const CLIENT_KIND_OPTIONS = [
+  'claude-code',
+  'codex',
+  'opencode',
+  'gemini-cli',
+  'cline',
+  'roo-code',
+  'cursor',
+  'crush',
+  'aider',
+  'kilo-code',
+  'droid',
+  'copilot',
+  'anthropic-compatible',
+  'openai-compatible'
+] as const
+
 export const DEFAULT_VISIBLE_COLUMNS: LogColumnId[] = [
   'endpoint',
   'provider',

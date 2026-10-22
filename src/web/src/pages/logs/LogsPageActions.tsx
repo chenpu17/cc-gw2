@@ -47,10 +47,10 @@ export function LogsPageActions({
 
   return (
     <div className="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-center">
-      <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:w-auto xl:flex-nowrap">
+      <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-row sm:flex-wrap sm:items-center xl:w-auto xl:flex-nowrap">
         <SegmentedControl
           block
-          className="w-full overflow-x-auto sm:w-auto"
+          className="col-span-2 w-full overflow-x-auto sm:w-auto"
           value={rowDensity}
           onChange={onSetDensity}
           options={[

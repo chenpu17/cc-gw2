@@ -81,6 +81,15 @@ export default function DashboardPage() {
         />
       ) : (
         <>
+          {state.refreshError ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning">
+              <span>{t('dashboard.refreshFailed', { message: state.refreshError })}</span>
+              <Button variant="outline" size="sm" onClick={() => void state.handleRefresh()} disabled={state.isRefreshing}>
+                {t('common.actions.refresh')}
+              </Button>
+            </div>
+          ) : null}
+
           {/* Cold-start guide: visible until provider + route + API key + first request are all done */}
           {!state.setupComplete ? (
             <DashboardGettingStarted
@@ -92,7 +101,13 @@ export default function DashboardPage() {
           {/* Layer 1 — live status */}
           <StatusBand status={state.status} recentThroughput={state.recentThroughput} />
 
-          <TodaySummaryBand overview={state.overview} />
+          {/* Anything that needs attention goes directly under the status band —
+              it is the one section users must not have to scroll for. */}
+          {state.attentionEvents.length > 0 ? (
+            <AttentionFeed connected={state.liveConnected} failed={state.liveFailed} events={state.attentionEvents} />
+          ) : null}
+
+          <TodaySummaryBand overview={state.overview} endpointFilter={state.endpointFilter} />
 
           <ClientActivityBand status={state.status} entries={state.clientActivity} />
 
@@ -136,12 +151,15 @@ export default function DashboardPage() {
             status={state.status}
           />
 
-          <RecentRequestsTable records={state.recentLogs} loading={state.summaryPending} />
+          <RecentRequestsTable
+            records={state.recentLogs}
+            loading={state.summaryPending}
+            endpointFilter={state.endpointFilter}
+          />
 
-          {/* Layer 3 — attention: full feed while warn/error events exist, slim all-clear strip otherwise */}
-          {state.attentionEvents.length > 0 ? (
-            <AttentionFeed connected={state.liveConnected} failed={state.liveFailed} events={state.attentionEvents} />
-          ) : (
+          {/* Layer 3 — all-clear settles at the bottom; the warn/error feed has
+              already moved under the status band. */}
+          {state.attentionEvents.length > 0 ? null : (
             <AttentionAllClear connected={state.liveConnected} failed={state.liveFailed} />
           )}
         </>

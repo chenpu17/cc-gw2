@@ -21,6 +21,11 @@ export default {
     missingConfig: '未能加载配置，请刷新或稍后再试。',
     authLoadFailure: '安全配置加载失败：{{message}}'
   },
+  unsaved: {
+    title: '放弃未保存的设置？',
+    body: '设置页有未保存的修改，离开后将丢失。',
+    confirm: '放弃修改并离开'
+  },
   sections: {
     basics: '基础配置',
     routing: '模型路由',
@@ -111,8 +116,7 @@ export default {
     http: {
       enable: '启用 HTTP',
       hint: '标准 HTTP 协议，适用于本地开发和内网环境',
-      port: 'HTTP 端口',
-      host: 'HTTP 主机地址'
+      listener: '当前 HTTP 监听：{{address}}（在「基础配置」中修改）'
     },
     https: {
       enable: '启用 HTTPS',
@@ -131,7 +135,6 @@ export default {
     }
   },
   validation: {
-    port: '请输入 1-65535 之间的端口号',
     retention: '日志保留天数需为 1-365 之间的数字',
     logExportTimeout: '日志导出超时需在 5-600 秒之间',
     bodyLimit: '请求体大小需在 1-2048 MB 之间',
@@ -140,7 +143,8 @@ export default {
     httpsPort: 'HTTPS 端口必须在 1-65535 之间',
     httpsCertificate: 'HTTPS 已启用但缺少证书路径，请手动配置受信任的证书',
     routePair: '请填写完整的来源模型与目标模型配置。',
-    routeDuplicate: '模型 {{model}} 已存在映射，请勿重复配置。'
+    routeDuplicate: '模型 {{model}} 已存在映射，请勿重复配置。',
+    routeUnknownProvider: '转发目标引用了不存在的提供商「{{provider}}」，请检查拼写。'
   },
   defaults: {
     completion: '对话：{{model}}',

@@ -1,6 +1,8 @@
 export default {
   title: 'Sign in to cc-gw',
   description: 'Authentication is required before accessing the console.',
+  badge: 'Secure Gateway Control',
+  sessionProtected: 'Session protected',
   fields: {
     username: 'Username',
     usernamePlaceholder: 'Enter your username',
@@ -14,6 +16,6 @@ export default {
     required: 'Please enter both username and password',
     failed: 'Sign in failed. Check your credentials and try again.'
   },
-  hint: 'Forgot your credentials? You can reset the Web UI login settings from the server CLI or by editing the configuration file.',
+  hint: 'Forgot your password? Edit ~/.cc-gw/config.json, set webAuth.enabled to false (or remove the field), run cc-gw restart, then set a new password under Settings → Access security.',
   status: 'Signed in as {{username}}'
 }

@@ -39,7 +39,8 @@ export default {
     reasonLongContext: '命中长上下文默认',
     longContextDetail: '估算约 {{estimate}} tokens，超过阈值 {{threshold}}',
     reasonFallback: '未命中规则 · 全局兜底',
-    fallbackHint: '没有规则匹配该模型，将走全局兜底转发。'
+    fallbackHint: '没有规则匹配该模型，将走全局兜底转发。',
+    unsavedNotice: '模拟结果按已保存配置计算，未保存的路由修改暂不参与。'
   },
   defaults: {
     title: '默认转发',

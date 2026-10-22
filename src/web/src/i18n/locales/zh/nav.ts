@@ -13,5 +13,6 @@ export default {
     configure: '配置',
     system: '系统'
   },
-  more: '更多'
+  more: '更多',
+  primary: '主导航'
 }

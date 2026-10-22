@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react'
 import { toApiError } from '@/services/api'
 import { gatewayApi } from '@/services/gateway'
 import { modelManagementApi } from '@/services/modelManagement'
-import type { GatewayConfig, ProviderConfig } from '@/types/providers'
+import type { DefaultsConfig, GatewayConfig, ProviderConfig } from '@/types/providers'
 import type { WorkbenchConfigState } from './useWorkbenchConfig'
 import {
   resolveModelLabel,
+  routeTargetMatchesProvider,
   type AnthropicHeaderOption,
   type ProviderTestResult
 } from './shared'
@@ -307,23 +308,43 @@ export function useProvidersState(base: WorkbenchConfigState) {
 
       return nextRoutes
     }
+    // Defaults point at provider targets too; leaving them behind makes the
+    // gateway fall back to a provider that no longer exists.
+    const sanitizeDefaults = (defaults: DefaultsConfig | undefined): DefaultsConfig | undefined => {
+      if (!defaults) return defaults
+      const clear = (target: string | null): string | null =>
+        target && routeTargetMatchesProvider(target, provider.id) ? null : target
+      return {
+        ...defaults,
+        completion: clear(defaults.completion),
+        reasoning: clear(defaults.reasoning),
+        background: clear(defaults.background)
+      }
+    }
 
     const currentRouting = config?.endpointRouting ?? {}
     const sanitizedAnthropic = sanitizeRoutes(currentRouting.anthropic?.modelRoutes ?? config?.modelRoutes ?? {})
     const sanitizedOpenAI = sanitizeRoutes(currentRouting.openai?.modelRoutes ?? {})
     const sanitizedCustomEndpoints = (config?.customEndpoints ?? customEndpoints).map((endpoint) => {
       const currentRoutingConfig = endpoint.routing
-      const currentRoutes = currentRoutingConfig?.modelRoutes
-      if (!currentRoutes) {
+      if (!currentRoutingConfig) {
         return endpoint
       }
+
+      const sanitizedDefaults = currentRoutingConfig.defaults
+        ? sanitizeDefaults(currentRoutingConfig.defaults)
+        : currentRoutingConfig.modelRoutes
+          ? sanitizeDefaults(config!.defaults)
+          : undefined
 
       return {
         ...endpoint,
         routing: {
           ...currentRoutingConfig,
-          defaults: currentRoutingConfig.defaults ?? config!.defaults,
-          modelRoutes: sanitizeRoutes(currentRoutes)
+          ...(sanitizedDefaults ? { defaults: sanitizedDefaults } : {}),
+          ...(currentRoutingConfig.modelRoutes
+            ? { modelRoutes: sanitizeRoutes(currentRoutingConfig.modelRoutes) }
+            : {})
         }
       }
     })
@@ -331,16 +352,17 @@ export function useProvidersState(base: WorkbenchConfigState) {
     const nextConfig: GatewayConfig = {
       ...config!,
       providers: nextProviders,
+      defaults: sanitizeDefaults(config!.defaults) ?? config!.defaults,
       modelRoutes: sanitizedAnthropic,
       customEndpoints: sanitizedCustomEndpoints,
       endpointRouting: {
         anthropic: {
-          defaults: currentRouting.anthropic?.defaults ?? config!.defaults,
+          defaults: sanitizeDefaults(currentRouting.anthropic?.defaults ?? config!.defaults) ?? config!.defaults,
           modelRoutes: sanitizedAnthropic,
           compatibility: currentRouting.anthropic?.compatibility
         },
         openai: {
-          defaults: currentRouting.openai?.defaults ?? config!.defaults,
+          defaults: sanitizeDefaults(currentRouting.openai?.defaults ?? config!.defaults) ?? config!.defaults,
           modelRoutes: sanitizedOpenAI,
           compatibility: currentRouting.openai?.compatibility
         }

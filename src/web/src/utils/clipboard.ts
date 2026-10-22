@@ -41,7 +41,12 @@ export async function copyToClipboard(text: string): Promise<void> {
   textarea.style.userSelect = 'text'
   textarea.style.clipPath = 'inset(50%)'
 
-  document.body.appendChild(textarea)
+  // Radix dialogs trap focus: a body-level scratch textarea gets yanked back
+  // before execCommand runs, so nothing is copied. Mount it inside the topmost
+  // open dialog instead, keeping focus and the selection inside the trap.
+  const openDialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"]'))
+  const container = openDialogs.length > 0 ? openDialogs[openDialogs.length - 1] : document.body
+  container.appendChild(textarea)
 
   try {
     textarea.focus({ preventScroll: true })
@@ -53,7 +58,7 @@ export async function copyToClipboard(text: string): Promise<void> {
       throw new Error('execCommand copy failed')
     }
   } finally {
-    document.body.removeChild(textarea)
+    container.removeChild(textarea)
     if (selection) {
       selection.removeAllRanges()
       for (const range of selectedRanges) {

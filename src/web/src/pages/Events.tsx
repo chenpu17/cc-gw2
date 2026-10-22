@@ -346,7 +346,7 @@ function EventCard({ event }: { event: GatewayEvent }) {
             </div>
             <div className="min-w-0">
               <h3 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{event.title || t('events.defaultTitle')}</h3>
-              <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">{event.message || t('events.defaultMessage')}</p>
+              <p className="mt-1 line-clamp-2 break-words text-sm leading-5 text-muted-foreground [overflow-wrap:anywhere]">{event.message || t('events.defaultMessage')}</p>
             </div>
           </div>
           <div className="shrink-0 space-y-0.5 text-xs text-muted-foreground lg:text-right">

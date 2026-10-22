@@ -1,4 +1,5 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '@/providers/ToastProvider'
@@ -47,6 +48,14 @@ export function useLogsPageState() {
     storageKeys.logs.modelFilter,
     ''
   )
+  const [clientKindFilter, setClientKindFilter] = usePersistentState<string>(
+    storageKeys.logs.clientKindFilter,
+    'all'
+  )
+  const [sessionFilter, setSessionFilter] = usePersistentState<string>(
+    storageKeys.logs.sessionFilter,
+    ''
+  )
   const [statusFilter, setStatusFilter] = usePersistentState<StatusFilter>(
     storageKeys.logs.statusFilter,
     'all'
@@ -78,6 +87,23 @@ export function useLogsPageState() {
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [expandedLogId, setExpandedLogId] = useState<number | null>(null)
+  // Auto-refresh only while the user is at the top of the list: prepending
+  // rows mid-read shifts content under the cursor every 3s.
+  const [scrolledAwayFromTop, setScrolledAwayFromTop] = useState(false)
+
+  useEffect(() => {
+    // The console scrolls inside the app shell (`app-scroll`), not the window:
+    // window.scrollY stays 0 there, so listening to it never paused refresh.
+    const scroller = document.querySelector<HTMLElement>('[data-testid="app-scroll"]')
+    const scrollTop = () => (scroller ? scroller.scrollTop : window.scrollY)
+    const onScroll = () => {
+      setScrolledAwayFromTop(scrollTop() >= AUTO_SCROLL_TOP_THRESHOLD_PX)
+    }
+    onScroll()
+    const target: EventTarget = scroller ?? window
+    target.addEventListener('scroll', onScroll, { passive: true })
+    return () => target.removeEventListener('scroll', onScroll)
+  }, [])
   const [selectedApiKeys, setSelectedApiKeys] = usePersistentState<number[]>(
     storageKeys.logs.selectedApiKeys,
     [],
@@ -97,7 +123,11 @@ export function useLogsPageState() {
     }
   )
   // Advanced filters default to expanded; the toggle is session-only (not persisted).
-  const [filtersExpanded, setFiltersExpanded] = useState(true)
+  // Narrow screens start with the filter grid collapsed so the first screen
+  // shows the request list, not eight controls.
+  const [filtersExpanded, setFiltersExpanded] = useState(
+    () => typeof window === 'undefined' || window.matchMedia('(min-width: 768px)').matches
+  )
   const {
     resetVisibleColumns,
     rowDensity,
@@ -109,13 +139,75 @@ export function useLogsPageState() {
     visibleColumns,
     visibleColumnSet
   } = useLogsTablePreferences()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // One-shot: dashboard and event deep links seed the filters once, then the
+  // params are stripped so a later reload does not resurrect a stale scope
+  // over whatever the user has since changed (filters persist in storage).
+  const urlFiltersAppliedRef = useRef(false)
+  useEffect(() => {
+    if (urlFiltersAppliedRef.current) return
+    const keys = ['status', 'endpoint', 'provider', 'model', 'clientKind', 'session', 'from', 'to'] as const
+    if (!keys.some((key) => searchParams.has(key))) return
+    urlFiltersAppliedRef.current = true
+
+    // A deep link describes a complete scope ("failed requests on this
+    // endpoint"), so start from a clean slate instead of intersecting with
+    // whatever filters happened to persist from the previous visit.
+    setProviderFilter('all')
+    setEndpointFilter('all')
+    setModelFilter('')
+    setClientKindFilter('all')
+    setSessionFilter('')
+    setStatusFilter('all')
+    setFromDate('')
+    setToDate('')
+    setSelectedApiKeys([])
+
+    const status = searchParams.get('status')
+    if (status === 'success' || status === 'error') {
+      setStatusFilter(status)
+    }
+    const endpoint = searchParams.get('endpoint')
+    if (endpoint) setEndpointFilter(endpoint)
+    const provider = searchParams.get('provider')
+    if (provider) setProviderFilter(provider)
+    const model = searchParams.get('model')
+    if (model) setModelFilter(model)
+    const clientKind = searchParams.get('clientKind')
+    if (clientKind) setClientKindFilter(clientKind)
+    const session = searchParams.get('session')
+    if (session) setSessionFilter(session)
+    const from = searchParams.get('from')
+    if (from) setFromDate(from)
+    const to = searchParams.get('to')
+    if (to) setToDate(to)
+
+    const next = new URLSearchParams(searchParams)
+    for (const key of keys) next.delete(key)
+    setSearchParams(next, { replace: true })
+  }, [
+    searchParams,
+    setClientKindFilter,
+    setEndpointFilter,
+    setFromDate,
+    setModelFilter,
+    setProviderFilter,
+    setSearchParams,
+    setSelectedApiKeys,
+    setSessionFilter,
+    setStatusFilter,
+    setToDate
+  ])
+
   const deferredModelFilter = useDeferredValue(modelFilter)
   const appliedModelFilter = modelFilter === '' ? '' : deferredModelFilter
+  const deferredSessionFilter = useDeferredValue(sessionFilter)
+  const appliedSessionFilter = sessionFilter === '' ? '' : deferredSessionFilter
 
   useEffect(() => {
     setPage(1)
     setExpandedLogId(null)
-  }, [providerFilter, endpointFilter, appliedModelFilter, statusFilter, fromDate, toDate, pageSize, selectedApiKeys])
+  }, [providerFilter, endpointFilter, appliedModelFilter, clientKindFilter, appliedSessionFilter, statusFilter, fromDate, toDate, pageSize, selectedApiKeys])
 
   const queryParams = useMemo(() => {
     const params: Record<string, unknown> = {
@@ -131,6 +223,12 @@ export function useLogsPageState() {
     }
     if (appliedModelFilter.trim().length > 0) {
       params.model = appliedModelFilter.trim()
+    }
+    if (clientKindFilter !== 'all') {
+      params.clientKind = clientKindFilter
+    }
+    if (appliedSessionFilter.trim().length > 0) {
+      params.session = appliedSessionFilter.trim()
     }
     if (statusFilter !== 'all') {
       params.status = statusFilter
@@ -149,7 +247,7 @@ export function useLogsPageState() {
     }
 
     return params
-  }, [appliedModelFilter, endpointFilter, fromDate, page, pageSize, providerFilter, selectedApiKeys, statusFilter, toDate])
+  }, [appliedModelFilter, appliedSessionFilter, clientKindFilter, endpointFilter, fromDate, page, pageSize, providerFilter, selectedApiKeys, statusFilter, toDate])
 
   const logsQuery = useApiQuery<LogListResponse, ApiError>(
     queryKeys.logs.list(queryParams),
@@ -157,8 +255,13 @@ export function useLogsPageState() {
     {
       gcTime: 60_000,
       // Poll only on the first page (newest logs live there); paging through
-      // history stays stable instead of jumping on every refresh.
-      refetchInterval: autoRefresh && page === 1 ? AUTO_REFRESH_INTERVAL_MS : false
+      // history stays stable instead of jumping on every refresh. Pause while
+      // a row is expanded or the detail drawer is open so the panel under the
+      // user does not shift mid-read.
+      refetchInterval:
+        autoRefresh && page === 1 && expandedLogId === null && !isDetailOpen && !scrolledAwayFromTop
+          ? AUTO_REFRESH_INTERVAL_MS
+          : false
     }
   )
   const providersQuery = useApiQuery<ProviderSummary[], ApiError>(
@@ -186,13 +289,6 @@ export function useLogsPageState() {
       variant: 'error'
     })
   }, [logsQuery.error, logsQuery.isError, pushToast, t])
-
-  useEffect(() => {
-    if (!autoRefresh || page !== 1) return
-    if (typeof window === 'undefined') return
-    if (window.scrollY >= AUTO_SCROLL_TOP_THRESHOLD_PX) return
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [autoRefresh, page, logsQuery.dataUpdatedAt])
 
   useEffect(() => {
     if (!providersQuery.isError || !providersQuery.error) return
@@ -269,6 +365,20 @@ export function useLogsPageState() {
         onRemove: () => setModelFilter('')
       })
     }
+    if (clientKindFilter !== 'all') {
+      filters.push({
+        key: 'clientKind',
+        label: `${t('logs.filters.clientKind')}: ${t(`dashboard.usage.clientKinds.${clientKindFilter}`, { defaultValue: clientKindFilter })}`,
+        onRemove: () => setClientKindFilter('all')
+      })
+    }
+    if (appliedSessionFilter.trim()) {
+      filters.push({
+        key: 'session',
+        label: `${t('logs.filters.session')}: ${appliedSessionFilter.trim()}`,
+        onRemove: () => setSessionFilter('')
+      })
+    }
     if (statusFilter !== 'all') {
       const statusLabel = statusFilter === 'success'
         ? t('logs.filters.statusSuccess')
@@ -301,7 +411,7 @@ export function useLogsPageState() {
       })
     }
     return filters
-  }, [appliedModelFilter, endpointFilter, endpointLabelMap, fromDate, providerFilter, providerLabelMap, selectedApiKeys.length, statusFilter, t, toDate])
+  }, [appliedModelFilter, appliedSessionFilter, clientKindFilter, endpointFilter, endpointLabelMap, fromDate, providerFilter, providerLabelMap, selectedApiKeys.length, statusFilter, t, toDate])
 
   const apiKeys = apiKeysQuery.data ?? []
   const apiKeyMap = useMemo(() => {
@@ -328,6 +438,12 @@ export function useLogsPageState() {
   }, [])
 
   const activeQuickView = useMemo<QuickView | null>(() => {
+    // Client-kind and session filters are orthogonal to every preset; while
+    // either is set no quick view can claim the current state.
+    const hasExtras = clientKindFilter !== 'all' || appliedSessionFilter.trim() !== ''
+    if (hasExtras) {
+      return null
+    }
     if (
       providerFilter === 'all' &&
       endpointFilter === 'all' &&
@@ -383,11 +499,13 @@ export function useLogsPageState() {
       return 'openai'
     }
     return null
-  }, [appliedModelFilter, endpointFilter, fromDate, providerFilter, selectedApiKeys.length, statusFilter, toDate, todayString])
+  }, [appliedModelFilter, appliedSessionFilter, clientKindFilter, endpointFilter, fromDate, providerFilter, selectedApiKeys.length, statusFilter, toDate, todayString])
 
   const handleResetFilters = useCallback(() => {
     setProviderFilter('all')
     setModelFilter('')
+    setClientKindFilter('all')
+    setSessionFilter('')
     setEndpointFilter('all')
     setStatusFilter('all')
     setFromDate('')
@@ -455,6 +573,7 @@ export function useLogsPageState() {
     apiKeysQuery,
     applyQuickView,
     autoRefresh,
+    clientKindFilter,
     columnOptions,
     customEndpoints: customEndpointsQuery.data?.endpoints,
     endpointFilter,
@@ -481,7 +600,9 @@ export function useLogsPageState() {
     resetVisibleColumns,
     selectedApiKeys,
     selectedLogId,
+    sessionFilter,
     setAutoRefresh,
+    setClientKindFilter,
     setEndpointFilter,
     setFiltersExpanded,
     setFromDate,
@@ -491,6 +612,7 @@ export function useLogsPageState() {
     setProviderFilter,
     setRowDensity,
     setSelectedApiKeys,
+    setSessionFilter,
     setStatusFilter,
     setToDate,
     showScrollHint,

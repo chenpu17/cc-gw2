@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export interface ToastOptions {
   id?: string
@@ -25,6 +26,7 @@ function buildId() {
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation()
   const [toasts, setToasts] = useState<InternalToast[]>([])
   const toastsRef = useRef<InternalToast[]>([])
   const dismissTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -71,7 +73,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const pushToast = useCallback(
     (toast: ToastOptions) => {
-      const duration = toast.durationMs ?? 3000
+      // Errors usually carry the only diagnostic copy — give them twice as
+      // long as routine success/info toasts.
+      const duration = toast.durationMs ?? (toast.variant === 'error' ? 6000 : 3000)
       const existingToast = toastsRef.current.find((item) =>
         toast.id
           ? item.id === toast.id
@@ -82,8 +86,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       const id = existingToast?.id ?? toast.id ?? buildId()
       setToasts((prev) =>
         existingToast
-          ? prev.map((item) => (item.id === id ? { ...item, ...toast, id, dismissing: false } : item))
-          : [...prev, { ...toast, id }]
+          ? prev.map((item) => (item.id === id ? { ...item, ...toast, id, durationMs: duration, dismissing: false } : item))
+          : [...prev, { ...toast, id, durationMs: duration }]
       )
       scheduleDismiss(id, duration)
     },
@@ -95,11 +99,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div aria-live="polite" aria-atomic="false" className="fixed right-6 top-6 z-50 flex w-80 flex-col gap-3">
+      <div aria-live="polite" aria-atomic="false" className="fixed right-4 top-16 z-50 flex w-80 flex-col gap-3 sm:right-6">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             role="alert"
+            onMouseEnter={() => toast.id && clearDismissTimer(toast.id)}
+            onMouseLeave={() => toast.id && scheduleDismiss(toast.id, toast.durationMs ?? 3000)}
+            onFocus={() => toast.id && clearDismissTimer(toast.id)}
+            onBlur={() => toast.id && scheduleDismiss(toast.id, toast.durationMs ?? 3000)}
             className={`rounded-md border border-border bg-card p-4 text-card-foreground shadow-[var(--surface-shadow-lg)] ${
               toast.dismissing
                 ? 'animate-toast-out'
@@ -119,7 +127,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               </div>
               <button
                 type="button"
-                aria-label="Dismiss"
+                aria-label={t('common.actions.dismiss')}
                 className="text-sm text-muted-foreground hover:text-foreground"
                 onClick={() => toast.id && dismissToast(toast.id)}
               >

@@ -39,7 +39,8 @@ export default {
     reasonLongContext: 'Hit long-context default',
     longContextDetail: 'Estimated ~{{estimate}} tokens, over threshold {{threshold}}',
     reasonFallback: 'No rule matched · global fallback',
-    fallbackHint: 'No rule matched this model; it will use the global fallback.'
+    fallbackHint: 'No rule matched this model; it will use the global fallback.',
+    unsavedNotice: 'Results use the saved config; your unsaved route edits are not simulated yet.'
   },
   defaults: {
     title: 'Default forwarding',

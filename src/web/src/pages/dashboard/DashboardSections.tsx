@@ -152,8 +152,26 @@ function eventLevelBadge(level: GatewayEvent['level']) {
   }
 }
 
+/**
+ * Logs deep link that carries the dashboard's endpoint scope, so a drill-down
+ * from a scoped dashboard does not silently widen to all endpoints.
+ */
+function logsLink(endpointFilter?: string, status?: 'error'): string {
+  const params = new URLSearchParams()
+  if (endpointFilter && endpointFilter !== 'all') params.set('endpoint', endpointFilter)
+  if (status) params.set('status', status)
+  const query = params.toString()
+  return query ? `/logs?${query}` : '/logs'
+}
+
 /** Layer 1b — today's consumption + health: requests, tokens, cache hit, cost, error rate */
-export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
+export function TodaySummaryBand({
+  overview,
+  endpointFilter
+}: {
+  overview?: OverviewStats
+  endpointFilter?: string
+}) {
   const { t } = useTranslation()
   const today = overview?.today
   const yesterday = overview?.yesterday
@@ -258,7 +276,19 @@ export function TodaySummaryBand({ overview }: { overview?: OverviewStats }) {
           )
         }
         delta={deltaChip(errorRateDelta, true)}
-        hint={errorCount > 0 ? t('dashboard.cards.errorCountHint', { value: errorCount }) : undefined}
+        hint={
+          errorCount > 0 ? (
+            <span className="inline-flex flex-wrap items-center gap-1">
+              {t('dashboard.cards.errorCountHint', { value: errorCount })}
+              <Link
+                to={logsLink(endpointFilter, 'error')}
+                className="font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground"
+              >
+                {t('dashboard.cards.viewErrors')}
+              </Link>
+            </span>
+          ) : undefined
+        }
         valueTestId="dashboard-today-value-error-rate"
       />
     </div>
@@ -867,7 +897,7 @@ export function DashboardGettingStarted({
       description: endpointCount > 0
         ? t('dashboard.guide.step2DescDone', { count: endpointCount })
         : t('dashboard.guide.step2Desc'),
-      href: '/providers',
+      href: '/routing',
       cta: t('dashboard.guide.step2Cta'),
     },
     {
@@ -960,7 +990,15 @@ export function ModelMetricsTable({ models, loading, embedded }: { models: Model
   )
 }
 
-export function RecentRequestsTable({ records, loading }: { records: LogRecord[]; loading?: boolean }) {
+export function RecentRequestsTable({
+  records,
+  loading,
+  endpointFilter
+}: {
+  records: LogRecord[]
+  loading?: boolean
+  endpointFilter?: string
+}) {
   const { t } = useTranslation()
   const statusMeta = records.map((item) => getLogStatusMeta(item, t))
   const successCount = statusMeta.filter((item) => item.tone === 'success').length
@@ -986,8 +1024,21 @@ export function RecentRequestsTable({ records, loading }: { records: LogRecord[]
                 {t('common.status.pending')}: {pendingCount}
               </Badge>
             ) : null}
+            <Link
+              to={logsLink(endpointFilter)}
+              className="ml-1 text-xs font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground"
+            >
+              {t('dashboard.recent.viewAll')}
+            </Link>
           </div>
-        ) : null
+        ) : (
+          <Link
+            to={logsLink(endpointFilter)}
+            className="text-xs font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground"
+          >
+            {t('dashboard.recent.viewAll')}
+          </Link>
+        )
       }
     >
       {loading ? (

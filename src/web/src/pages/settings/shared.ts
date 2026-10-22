@@ -17,8 +17,6 @@ export const LOG_LEVEL_OPTIONS: Array<{ value: LogLevel; labelKey: string }> = [
 ]
 
 export interface FormState {
-  port: string
-  host: string
   logRetentionDays: string
   logExportTimeoutSeconds: string
   storeRequestPayloads: boolean
@@ -38,7 +36,6 @@ export interface FormState {
 }
 
 export interface FormErrors {
-  port?: string
   logRetentionDays?: string
   logExportTimeoutSeconds?: string
   bodyLimitMb?: string
@@ -184,8 +181,6 @@ export function deriveFormState(config: GatewayConfig): FormState {
     typeof value === 'boolean' ? value : typeof legacyStore === 'boolean' ? legacyStore : true
 
   return {
-    port: String(config.port ?? config.http?.port ?? ''),
-    host: config.host ?? config.http?.host ?? '127.0.0.1',
     logRetentionDays: String(config.logRetentionDays ?? 30),
     logExportTimeoutSeconds: String(config.logExportTimeoutSeconds ?? 60),
     storeRequestPayloads: deriveStoreFlag(config.storeRequestPayloads),

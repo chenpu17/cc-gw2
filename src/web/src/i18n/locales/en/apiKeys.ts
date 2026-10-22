@@ -32,7 +32,7 @@ export default {
   confirmDelete: 'Are you sure you want to delete this API key? This action cannot be undone.',
   errors: {
     nameRequired: 'Key name is required',
-    maxConcurrencyInvalid: 'Max concurrency must be a positive integer'
+    maxConcurrencyInvalid: 'Max concurrency must be 0 or a positive integer'
   },
   analytics: {
     title: 'Key Usage Analytics',

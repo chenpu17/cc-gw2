@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
@@ -47,35 +48,33 @@ export function ThemeSwitcher() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>{t('common.theme.skinGroupLabel')}</DropdownMenuLabel>
-        {skins.map((item) => {
-          const ItemIcon = item.icon
-          return (
-            <DropdownMenuItem
-              key={item.skin}
-              onClick={() => setSkin(item.skin)}
-              className={item.skin === skin ? 'bg-accent' : ''}
-            >
-              <ItemIcon className="mr-2 h-4 w-4" aria-hidden="true" />
-              {t(`common.theme.families.${item.skin}`)}
-            </DropdownMenuItem>
-          )
-        })}
+        <DropdownMenuRadioGroup value={skin} onValueChange={(value) => setSkin(value as Skin)}>
+          {skins.map((item) => {
+            const ItemIcon = item.icon
+            return (
+              <DropdownMenuRadioItem key={item.skin} value={item.skin}>
+                <ItemIcon className="mr-2 h-4 w-4" aria-hidden="true" />
+                {t(`common.theme.families.${item.skin}`)}
+              </DropdownMenuRadioItem>
+            )
+          })}
+        </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>{t('common.theme.modeGroupLabel')}</DropdownMenuLabel>
-        {modes.map((item) => {
-          const ItemIcon = item.icon
-          const isSelected = item.mode === mode
-          return (
-            <DropdownMenuItem
-              key={item.mode}
-              onClick={() => setMode(item.mode)}
-              className={isSelected ? 'bg-accent' : ''}
-            >
-              <ItemIcon className="mr-2 h-4 w-4" aria-hidden="true" />
-              {t(item.labelKey)}
-            </DropdownMenuItem>
-          )
-        })}
+        <DropdownMenuRadioGroup
+          value={mode}
+          onValueChange={(value) => setMode(value as 'light' | 'dark' | 'system')}
+        >
+          {modes.map((item) => {
+            const ItemIcon = item.icon
+            return (
+              <DropdownMenuRadioItem key={item.mode} value={item.mode}>
+                <ItemIcon className="mr-2 h-4 w-4" aria-hidden="true" />
+                {t(item.labelKey)}
+              </DropdownMenuRadioItem>
+            )
+          })}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { storageKeys } from '@/services/storageKeys'
 import type { ProviderConfig } from '@/types/providers'
 import type { ConfirmAction } from './workbench/shared'
-import { countProviderRouteReferences } from './workbench/shared'
+import { summarizeProviderReferences } from './workbench/shared'
 import { useWorkbenchConfig } from './workbench/useWorkbenchConfig'
 import { useProvidersState } from './workbench/useProvidersState'
 import { CreateProviderDialog } from './workbench/CreateProviderDialog'
@@ -104,10 +104,10 @@ export default function ProvidersPage() {
     }
   }
 
-  const providerRouteImpact =
+  const providerImpact =
     confirmAction?.kind === 'provider'
-      ? countProviderRouteReferences(base.config, base.customEndpoints, confirmAction.provider.id)
-      : 0
+      ? summarizeProviderReferences(base.config, base.customEndpoints, confirmAction.provider.id)
+      : { routes: 0, defaults: 0, aggregateMembers: 0 }
 
   return (
     <div className="flex flex-col gap-6">
@@ -123,6 +123,12 @@ export default function ProvidersPage() {
       <ProvidersMasterDetail
         providers={providers}
         configPending={base.configQuery.isPending || (!base.config && base.configQuery.isFetching)}
+        configError={
+          !base.config && base.configQuery.isError
+            ? base.configQuery.error?.message ?? t('common.status.error')
+            : null
+        }
+        onRetryConfig={() => void base.configQuery.refetch()}
         selectedProviderId={selectedProviderId}
         onSelectProvider={setSelectedProviderId}
         onTest={(provider) => providers.initiateTestConnection(provider)}
@@ -203,9 +209,21 @@ export default function ProvidersPage() {
             <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 font-mono text-xs text-foreground">
               {confirmAction.provider.label || confirmAction.provider.id}
             </div>
-            {providerRouteImpact > 0 ? (
+            {providerImpact.routes > 0 ? (
               <p className="text-xs text-muted-foreground">
-                {t('providers.confirm.deleteImpact', { count: providerRouteImpact })}
+                {t('providers.confirm.deleteImpact', { count: providerImpact.routes })}
+              </p>
+            ) : null}
+            {providerImpact.defaults > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {t('providers.confirm.deleteDefaultsImpact', { count: providerImpact.defaults })}
+              </p>
+            ) : null}
+            {providerImpact.aggregateMembers > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {t('providers.confirm.deleteAggregateImpact', {
+                  count: providerImpact.aggregateMembers
+                })}
               </p>
             ) : null}
           </div>

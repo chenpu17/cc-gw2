@@ -26,6 +26,8 @@ export default {
     saving: 'Saving...',
     cancel: 'Cancel',
     copy: 'Copy',
+    copied: 'Copied',
+    copyFailed: 'Copy failed',
     download: 'Download',
     testConnection: 'Test connection',
     testingConnection: 'Testing...',
@@ -34,7 +36,8 @@ export default {
     compact: 'Compact database',
     compacting: 'Compacting...',
     checkUpdates: 'Check for updates',
-    logout: 'Sign out'
+    logout: 'Sign out',
+    dismiss: 'Dismiss notification'
   },
   theme: {
     label: 'Theme',
@@ -70,6 +73,11 @@ export default {
   noMatches: 'No matches',
   unknownError: 'Unknown error',
   requestFailed: 'Request failed, please try again later',
+  errorBoundary: {
+    title: 'Something went wrong',
+    description: 'The interface hit an unhandled problem. Reloading usually recovers; check the browser console if it keeps happening.',
+    reload: 'Reload page'
+  },
   filters: {
     activeCount: '{{count}} active filters',
     collapse: 'Collapse filters',

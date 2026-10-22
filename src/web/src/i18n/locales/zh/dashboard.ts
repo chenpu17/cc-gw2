@@ -1,5 +1,6 @@
 export default {
   description: '快速了解请求规模与实时运行状态。',
+  refreshFailed: '刷新失败，正在显示上次成功的数据：{{message}}',
   labels: {
     activeClientAddresses: '活跃来源地址',
     activeClientSessions: '活跃会话',
@@ -54,6 +55,7 @@ export default {
     unpricedHint: '{{count}} 条请求未计价',
     cacheHitHint: '命中率 {{value}}%',
     errorCountHint: '{{value}} 次错误',
+    viewErrors: '查看失败请求',
     yesterdayHint: '昨日同期 {{value}}',
     avgLatency: '平均响应耗时',
     systemResources: '系统资源'
@@ -150,6 +152,7 @@ export default {
   recent: {
     title: '最新请求',
     subtitle: '仅展示最近 {{count}} 条记录',
+    viewAll: '查看全部日志',
     loading: '加载中...',
     empty: '暂无请求记录',
     routePlaceholder: '未指定',
@@ -183,13 +186,13 @@ export default {
     subtitle: '把提供商、路由和 API Key 配好后发起一条请求，仪表盘就会开始有数据。',
     startWizard: '开始引导设置',
     step1Title: '先配置提供商',
-    step1Desc: '先在"模型与路由"里接入至少 1 个上游模型服务。',
+    step1Desc: '先在「提供商」页接入至少 1 个上游模型服务。',
     step1DescDone: '当前已检测到 {{count}} 个提供商，可直接继续下一步。',
-    step1Cta: '去模型与路由',
+    step1Cta: '去提供商',
     step2Title: '确认默认路由入口',
-    step2Desc: '把一个端点或默认路由配置清楚，后续客户端就能稳定接入。',
+    step2Desc: '在「路由」页为端点配置默认转发与模型规则，后续客户端就能稳定接入。',
     step2DescDone: '当前已有 {{count}} 个自定义端点，可继续检查默认映射是否合理。',
-    step2Cta: '去模型与路由',
+    step2Cta: '去路由',
     step3Title: '发起第一条真实请求',
     step3Desc: '创建 API Key，然后从常用客户端打进来一条请求，让日志、路由和延迟开始有数据。',
     step3Cta: '去 API 密钥'

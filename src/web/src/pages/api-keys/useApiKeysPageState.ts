@@ -57,9 +57,11 @@ export function useApiKeysPageState() {
       deserialize: (raw) => (raw === 'enabled' || raw === 'disabled' ? raw : 'all')
     }
   )
+  // Narrow screens default to the card layout: the compact table has a
+  // 980px min-width and would force horizontal scrolling on every phone.
   const [viewMode, setViewMode] = usePersistentState<'cards' | 'compact'>(
     storageKeys.apiKeys.viewMode,
-    'compact',
+    () => (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'cards' : 'compact'),
     {
       serialize: (value) => value,
       deserialize: (raw) => (raw === 'cards' ? 'cards' : 'compact')
@@ -243,7 +245,7 @@ export function useApiKeysPageState() {
     const trimmedConcurrency = newKeyMaxConcurrency.trim()
     if (
       trimmedConcurrency &&
-      (!Number.isInteger(Number(trimmedConcurrency)) || Number(trimmedConcurrency) < 1)
+      (!Number.isInteger(Number(trimmedConcurrency)) || Number(trimmedConcurrency) < 0)
     ) {
       pushToast({ title: t('apiKeys.errors.maxConcurrencyInvalid'), variant: 'error' })
       return
@@ -254,7 +256,7 @@ export function useApiKeysPageState() {
         name: newKeyName.trim(),
         description: newKeyDescription.trim() || undefined,
         allowedEndpoints: newKeyEndpoints.length > 0 ? newKeyEndpoints : undefined,
-        maxConcurrency: trimmedConcurrency ? Number(trimmedConcurrency) : null
+        maxConcurrency: Number(trimmedConcurrency) > 0 ? Number(trimmedConcurrency) : null
       })
       setNewlyCreatedKey(response)
       handleCreateDialogChange(false)
@@ -330,7 +332,7 @@ export function useApiKeysPageState() {
     const trimmedConcurrency = editMaxConcurrency.trim()
     if (
       trimmedConcurrency &&
-      (!Number.isInteger(Number(trimmedConcurrency)) || Number(trimmedConcurrency) < 1)
+      (!Number.isInteger(Number(trimmedConcurrency)) || Number(trimmedConcurrency) < 0)
     ) {
       pushToast({ title: t('apiKeys.errors.maxConcurrencyInvalid'), variant: 'error' })
       return
@@ -342,7 +344,7 @@ export function useApiKeysPageState() {
         ...(editEndpointsKey.isWildcard
           ? {}
           : { allowedEndpoints: editEndpointsSelection.length > 0 ? editEndpointsSelection : null }),
-        maxConcurrency: trimmedConcurrency ? Number(trimmedConcurrency) : null
+        maxConcurrency: Number(trimmedConcurrency) > 0 ? Number(trimmedConcurrency) : null
       })
       setEditEndpointsKey(null)
     } catch {

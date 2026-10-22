@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PageToolbar } from '@/components/PageToolbar'
 import { PageSection } from '@/components/PageSection'
@@ -180,6 +180,19 @@ function StepList({ items, compact = false }: { items: string[]; compact?: boole
 function StepContent({ content }: { content: string }) {
   const { t } = useTranslation()
   const parts = content.split('```')
+  // Copy used to give no feedback at all, so a click looked like a dead
+  // button. Flash the label instead of toasting on every snippet.
+  const [copiedBlock, setCopiedBlock] = useState<number | null>(null)
+
+  const handleCopy = async (index: number, code: string) => {
+    try {
+      await copyToClipboard(code)
+      setCopiedBlock(index)
+      window.setTimeout(() => setCopiedBlock((current) => (current === index ? null : current)), 1500)
+    } catch {
+      // No inline feedback slot for failures; keep the label unchanged.
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -199,9 +212,9 @@ function StepContent({ content }: { content: string }) {
                   variant="ghost"
                   size="sm"
                   className="h-6 rounded px-2 text-[11px] text-muted-foreground hover:text-foreground"
-                  onClick={() => copyToClipboard(code)}
+                  onClick={() => void handleCopy(index, code)}
                 >
-                  {t('common.actions.copy')}
+                  {copiedBlock === index ? t('common.actions.copied') : t('common.actions.copy')}
                 </Button>
               </div>
               <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[12px] leading-6 text-foreground">

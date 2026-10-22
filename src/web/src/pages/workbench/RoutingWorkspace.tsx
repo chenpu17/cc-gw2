@@ -39,6 +39,8 @@ export function RoutingWorkspace({
   const endpoint = selectedEndpointId ?? routing.endpointTabs[0]?.key ?? 'anthropic'
   const tabInfo = routing.endpointTabs.find((tab) => tab.key === endpoint)
   const defaults = routing.defaultsByEndpoint[endpoint]
+  const hasUnsavedChanges =
+    Boolean(routing.isDirtyByEndpoint[endpoint]) || Boolean(routing.isDefaultsDirtyByEndpoint[endpoint])
 
   const endpointPath = (() => {
     if (endpoint === 'anthropic') return '/anthropic'
@@ -68,7 +70,12 @@ export function RoutingWorkspace({
         </div>
 
         <div className="flex flex-col gap-3.5 lg:sticky lg:top-4">
-          <RoutingSimulator tabs={routing.endpointTabs} endpoint={endpoint} onEndpointChange={onSelectEndpoint} />
+          <RoutingSimulator
+            tabs={routing.endpointTabs}
+            endpoint={endpoint}
+            onEndpointChange={onSelectEndpoint}
+            hasUnsavedChanges={hasUnsavedChanges}
+          />
           <EndpointConfigCard routing={routing} endpoint={endpoint} tabInfo={tabInfo} config={config} customEndpoints={customEndpoints} />
         </div>
       </div>

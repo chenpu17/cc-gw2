@@ -34,6 +34,10 @@ export function RoutingPresetsCard({
   const applyingPreset = routing.applyingPreset?.endpoint === endpoint ? routing.applyingPreset.name : null
   const deletingPreset = routing.deletingPreset?.endpoint === endpoint ? routing.deletingPreset.name : null
   const writing = routing.writingEndpoint === endpoint
+  // Saving a preset snapshots the *persisted* routes on the gateway, not the
+  // draft. Block it while the rule list is dirty so users don't silently save
+  // a stale template.
+  const routesDirty = Boolean(routing.isDirtyByEndpoint[endpoint])
 
   const body = (
     <div className="space-y-3">
@@ -51,11 +55,14 @@ export function RoutingPresetsCard({
           size="sm"
           data-testid="save-preset"
           onClick={() => void routing.handleSavePreset(endpoint)}
-          disabled={savingPreset || writing}
+          disabled={savingPreset || writing || routesDirty}
         >
           {savingPreset ? t('modelManagement.presets.saving') : t('modelManagement.presets.save')}
         </Button>
       </div>
+        {routesDirty ? (
+          <p className="text-[11px] text-warning">{t('modelManagement.presets.dirtyBlocked')}</p>
+        ) : null}
         {presetError ? <p className="text-xs text-destructive">{presetError}</p> : null}
         {presets.length === 0 ? (
           <p className="py-2 text-center text-[11px] text-muted-foreground">{t('modelManagement.presets.empty')}</p>

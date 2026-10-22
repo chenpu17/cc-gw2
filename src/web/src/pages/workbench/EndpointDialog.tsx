@@ -47,9 +47,10 @@ export function EndpointDialog({
   open: boolean
   endpoint?: CustomEndpoint
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (createdEndpointId?: string) => void
 }) {
   const { t } = useTranslation()
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [formData, setFormData] = useState({
     id: '',
     label: '',
@@ -59,6 +60,7 @@ export function EndpointDialog({
 
   useEffect(() => {
     if (!open) return
+    setSubmitAttempted(false)
     if (endpoint) {
       const paths = endpoint.paths && endpoint.paths.length > 0
         ? endpoint.paths
@@ -88,8 +90,8 @@ export function EndpointDialog({
     invalidateKeys: [queryKeys.customEndpoints.all()],
     successToast: () => ({ title: t('modelManagement.createEndpointSuccess') }),
     errorToast: (error) => ({ title: t('modelManagement.createEndpointError', { error: error.message }) }),
-    onSuccess: async () => {
-      onSuccess()
+    onSuccess: async (response) => {
+      onSuccess(response.endpoint?.id)
       onClose()
     }
   })
@@ -140,6 +142,7 @@ export function EndpointDialog({
 
   const handleSubmit = (event?: React.FormEvent) => {
     event?.preventDefault()
+    setSubmitAttempted(true)
 
     if (!formData.id.trim() || !formData.label.trim()) {
       return
@@ -212,7 +215,6 @@ export function EndpointDialog({
                 onChange={(event) => setFormData((previous) => ({ ...previous, id: event.target.value }))}
                 placeholder={t('modelManagement.endpointIdPlaceholder')}
                 disabled={!!endpoint}
-                required
               />
               <p className="text-xs text-muted-foreground">{t('modelManagement.endpointIdHint')}</p>
             </div>
@@ -225,7 +227,6 @@ export function EndpointDialog({
                 value={formData.label}
                 onChange={(event) => setFormData((previous) => ({ ...previous, label: event.target.value }))}
                 placeholder={t('modelManagement.endpointLabelPlaceholder')}
-                required
               />
             </div>
 
@@ -252,7 +253,6 @@ export function EndpointDialog({
                           value={pathItem.path}
                           onChange={(event) => handlePathChange(index, 'path', event.target.value)}
                           placeholder={t('modelManagement.endpointPathPlaceholder')}
-                          required
                         />
                         <Select
                           value={pathItem.protocol}
@@ -296,7 +296,9 @@ export function EndpointDialog({
                   </div>
                 ))}
               </div>
-              {validationError ? <p className="text-xs text-destructive">{validationError}</p> : null}
+              {validationError && submitAttempted ? (
+                <p className="text-xs text-destructive">{validationError}</p>
+              ) : null}
             </div>
 
             <div className="flex items-center gap-3">

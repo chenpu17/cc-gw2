@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useBlocker, useSearchParams } from 'react-router-dom'
-import { Plus, TableProperties } from 'lucide-react'
+import { AlertTriangle, Plus, TableProperties } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { PageState } from '@/components/PageState'
 import { PageToolbar } from '@/components/PageToolbar'
 import { Button } from '@/components/ui/button'
 import type { CustomEndpoint } from '@/types/endpoints'
@@ -48,14 +49,51 @@ export default function RoutingPage() {
       hasDirtyDrafts && currentLocation.pathname !== nextLocation.pathname
   )
 
+  // Full page exit (reload / tab close) needs the browser prompt too.
+  useEffect(() => {
+    if (!hasDirtyDrafts) return
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasDirtyDrafts])
+
   // The selected routing endpoint is deep-linkable via `?endpoint=<id>`.
   const [searchParams, setSearchParams] = useSearchParams()
   const endpointParam = searchParams.get('endpoint')
   const [selectedEndpointId, setSelectedEndpointId] = useState<string | null>(endpointParam)
+  // Newly created endpoint waiting to appear in the (refetched) endpoint list
+  // before it can be selected — selecting it earlier would trip the stale-id
+  // cleanup below and clear the parameter again.
+  const [pendingEndpointId, setPendingEndpointId] = useState<string | null>(null)
 
   useEffect(() => {
     setSelectedEndpointId(endpointParam)
   }, [endpointParam])
+
+  // A bare /routing visit still shows the first endpoint's rules; reflect that
+  // in the URL so the endpoint rail has an active row and dirty-guard messages
+  // can name the endpoint being edited.
+  const seededEndpointRef = useRef(false)
+  useEffect(() => {
+    if (seededEndpointRef.current) return
+    if (endpointParam) {
+      seededEndpointRef.current = true
+      return
+    }
+    if (routing.endpointTabs.length === 0) return
+    seededEndpointRef.current = true
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        next.set('endpoint', routing.endpointTabs[0].key)
+        return next
+      },
+      { replace: true }
+    )
+  }, [endpointParam, routing.endpointTabs, setSearchParams])
 
   const handleSelectEndpoint = useCallback(
     (endpointId: string) => {
@@ -81,6 +119,14 @@ export default function RoutingPage() {
       { replace: true }
     )
   }, [setSearchParams])
+
+  // Select a just-created endpoint once the endpoint list has picked it up.
+  useEffect(() => {
+    if (!pendingEndpointId) return
+    if (!routing.endpointTabs.some((tab) => tab.key === pendingEndpointId)) return
+    setPendingEndpointId(null)
+    handleSelectEndpoint(pendingEndpointId)
+  }, [pendingEndpointId, routing.endpointTabs, handleSelectEndpoint])
 
   // Clear the selection when its endpoint no longer exists (deleted, or a
   // stale deep link) once the endpoint list has loaded.
@@ -127,7 +173,21 @@ export default function RoutingPage() {
     confirmAction?.kind === 'preset'
       ? t('modelManagement.confirm.deletePreset', { name: confirmAction.preset.name })
       : confirmAction?.kind === 'endpoint'
-        ? t('modelManagement.deleteEndpointConfirm', { label: confirmAction.endpoint.label })
+        ? [
+            t('modelManagement.deleteEndpointConfirm', { label: confirmAction.endpoint.label }),
+            (routing.routesByEndpoint[confirmAction.endpoint.id]?.length ?? 0) > 0
+              ? t('modelManagement.deleteEndpointImpactRoutes', {
+                  count: routing.routesByEndpoint[confirmAction.endpoint.id]?.length ?? 0
+                })
+              : '',
+            (routing.presetsByEndpoint[confirmAction.endpoint.id]?.length ?? 0) > 0
+              ? t('modelManagement.deleteEndpointImpactPresets', {
+                  count: routing.presetsByEndpoint[confirmAction.endpoint.id]?.length ?? 0
+                })
+              : ''
+          ]
+            .filter(Boolean)
+            .join(' ')
         : ''
 
   const confirmDialogName =
@@ -172,16 +232,30 @@ export default function RoutingPage() {
         }
       />
 
-      <RoutingWorkspace
-        routing={routing}
-        config={base.config}
-        customEndpoints={base.customEndpoints}
-        routeCounts={endpointRouteCounts}
-        selectedEndpointId={selectedEndpointId}
-        onSelectEndpoint={handleSelectEndpoint}
-        onEditEndpoint={handleOpenEditEndpoint}
-        onDeleteEndpoint={(endpoint) => setConfirmAction({ kind: 'endpoint', endpoint })}
-      />
+      {!base.config && base.configQuery.isError ? (
+        <PageState
+          tone="danger"
+          icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
+          title={t('common.status.error')}
+          description={base.configQuery.error?.message ?? t('common.status.error')}
+          action={(
+            <Button variant="outline" onClick={() => void base.configQuery.refetch()}>
+              {t('common.actions.refresh')}
+            </Button>
+          )}
+        />
+      ) : (
+        <RoutingWorkspace
+          routing={routing}
+          config={base.config}
+          customEndpoints={base.customEndpoints}
+          routeCounts={endpointRouteCounts}
+          selectedEndpointId={selectedEndpointId}
+          onSelectEndpoint={handleSelectEndpoint}
+          onEditEndpoint={handleOpenEditEndpoint}
+          onDeleteEndpoint={(endpoint) => setConfirmAction({ kind: 'endpoint', endpoint })}
+        />
+      )}
 
       <RoutingPresetsDialog
         open={presetsOpen}
@@ -198,8 +272,9 @@ export default function RoutingPage() {
           setEndpointDialogOpen(false)
           setEditingEndpoint(undefined)
         }}
-        onSuccess={() => {
+        onSuccess={(createdEndpointId) => {
           void base.configQuery.refetch()
+          if (createdEndpointId) setPendingEndpointId(createdEndpointId)
         }}
       />
 

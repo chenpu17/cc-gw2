@@ -21,6 +21,11 @@ export default {
     missingConfig: 'Configuration not available. Refresh and try again.',
     authLoadFailure: 'Failed to load security settings: {{message}}'
   },
+  unsaved: {
+    title: 'Discard unsaved settings?',
+    body: 'This page has unsaved changes that will be lost when you leave.',
+    confirm: 'Discard and leave'
+  },
   sections: {
     basics: 'Basic configuration',
     routing: 'Model routing',
@@ -111,8 +116,7 @@ export default {
     http: {
       enable: 'Enable HTTP',
       hint: 'Standard HTTP protocol, suitable for local development and internal networks',
-      port: 'HTTP Port',
-      host: 'HTTP Host'
+      listener: 'Current HTTP listener: {{address}} (edit in Basics)'
     },
     https: {
       enable: 'Enable HTTPS',
@@ -131,7 +135,6 @@ export default {
     }
   },
   validation: {
-    port: 'Enter a port between 1 and 65535',
     retention: 'Retention days must be between 1 and 365',
     logExportTimeout: 'Log export timeout must be between 5 and 600 seconds',
     bodyLimit: 'Request body limit must be between 1 and 2048 MB',
@@ -140,7 +143,8 @@ export default {
     httpsPort: 'HTTPS port must be between 1 and 65535',
     httpsCertificate: 'HTTPS is enabled but certificate paths are missing.',
     routePair: 'Fill both the source and target models.',
-    routeDuplicate: 'A route for {{model}} already exists.'
+    routeDuplicate: 'A route for {{model}} already exists.',
+    routeUnknownProvider: 'The target references an unknown provider "{{provider}}". Check the spelling.'
   },
   defaults: {
     completion: 'Conversation: {{model}}',

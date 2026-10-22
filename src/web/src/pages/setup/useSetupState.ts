@@ -87,7 +87,7 @@ export function useSetupState() {
     } catch (error) {
       pushToast({
         title: t('providers.drawer.toast.saveFailure', {
-          message: error instanceof Error ? error.message : 'unknown'
+          message: toApiError(error).message
         }),
         variant: 'error'
       })
@@ -127,7 +127,7 @@ export function useSetupState() {
     } catch (error) {
       pushToast({
         title: t('modelManagement.toast.routesSaveFailure', {
-          message: error instanceof Error ? error.message : 'unknown'
+          message: toApiError(error).message
         }),
         variant: 'error'
       })
@@ -144,7 +144,7 @@ export function useSetupState() {
     const trimmedConcurrency = keyMaxConcurrency.trim()
     if (
       trimmedConcurrency &&
-      (!Number.isInteger(Number(trimmedConcurrency)) || Number(trimmedConcurrency) < 1)
+      (!Number.isInteger(Number(trimmedConcurrency)) || Number(trimmedConcurrency) < 0)
     ) {
       pushToast({ title: t('apiKeys.errors.maxConcurrencyInvalid'), variant: 'error' })
       return
@@ -155,7 +155,7 @@ export function useSetupState() {
       const response = await apiKeysApi.create({
         name: keyName.trim(),
         allowedEndpoints: keyEndpoints.length > 0 ? keyEndpoints : undefined,
-        maxConcurrency: trimmedConcurrency ? Number(trimmedConcurrency) : null
+        maxConcurrency: Number(trimmedConcurrency) > 0 ? Number(trimmedConcurrency) : null
       })
       setCreatedKey(response)
     } catch (error) {
@@ -176,7 +176,7 @@ export function useSetupState() {
     } catch (error) {
       pushToast({
         title: t('apiKeys.toast.copyFailure'),
-        description: error instanceof Error ? error.message : t('common.unknownError'),
+        description: toApiError(error).message,
         variant: 'error'
       })
     }

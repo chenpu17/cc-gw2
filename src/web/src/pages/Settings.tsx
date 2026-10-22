@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useBlocker } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { PageLoadingState } from '@/components/PageState'
 import { PageToolbar } from '@/components/PageToolbar'
@@ -19,6 +21,23 @@ export default function SettingsPage() {
   const { t } = useTranslation()
   const state = useSettingsPageState()
   const dirtyCount = Number(state.isConfigDirty) + Number(state.isAuthDirty) + Number(state.isBillingDirty)
+
+  // Settings drafts are otherwise dropped silently on navigation; match the
+  // providers/routing pages' guard.
+  const hasUnsavedChanges = dirtyCount > 0
+  const routeBlocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      hasUnsavedChanges && currentLocation.pathname !== nextLocation.pathname
+  )
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasUnsavedChanges])
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,13 +65,13 @@ export default function SettingsPage() {
         </Card>
       ) : (
         <>
-          <div className="grid gap-6 xl:grid-cols-[200px_1fr]">
+          <div className="grid gap-6 xl:grid-cols-[200px_minmax(0,1fr)]">
             <SettingsSectionNav
               activeSection={state.activeSection}
               onSelectSection={state.handleSectionClick}
             />
 
-            <div className="flex flex-col gap-6">
+            <div className="flex min-w-0 flex-col gap-6">
               <BasicsSection
                 defaultsSummary={state.defaultsSummary}
                 errors={state.errors}
@@ -149,6 +168,19 @@ export default function SettingsPage() {
         onConfirm={async () => {
           await state.handleClearAllLogs()
           state.setConfirmClearAllOpen(false)
+        }}
+      />
+      <ConfirmDialog
+        open={routeBlocker.state === 'blocked'}
+        onOpenChange={(open) => {
+          if (!open && routeBlocker.state === 'blocked') routeBlocker.reset()
+        }}
+        title={t('settings.unsaved.title')}
+        description={t('settings.unsaved.body')}
+        confirmLabel={t('settings.unsaved.confirm')}
+        cancelLabel={t('common.actions.cancel')}
+        onConfirm={() => {
+          if (routeBlocker.state === 'blocked') routeBlocker.proceed()
         }}
       />
     </div>

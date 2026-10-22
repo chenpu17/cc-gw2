@@ -391,6 +391,7 @@ export default {
   masterDetail: {
     emptyDetailTitle: 'Select a provider',
     emptyDetailHint: 'Pick a provider from the rail to view and edit it, or click "Add provider" above.',
+    backToList: 'Back to list',
     modelsMeta_one: '{{count}} model',
     modelsMeta_other: '{{count}} models',
     keysMeta_one: '{{count}} key',
@@ -452,6 +453,10 @@ export default {
   },
   confirm: {
     delete: 'Remove provider “{{name}}”?',
-    deleteImpact: 'This will also clean up {{count}} routing rule(s) that reference this provider.'
+    deleteImpact: 'This will also clean up {{count}} routing rule(s) that reference this provider.',
+    deleteDefaultsImpact_one: 'This will also clear {{count}} default forwarding target that points at it.',
+    deleteDefaultsImpact_other: 'This will also clear {{count}} default forwarding targets that point at it.',
+    deleteAggregateImpact_one: 'This will also remove it from {{count}} aggregate-model member chain.',
+    deleteAggregateImpact_other: 'This will also remove it from {{count}} aggregate-model member chains.'
   }
 }

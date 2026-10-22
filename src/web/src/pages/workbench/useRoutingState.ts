@@ -116,6 +116,18 @@ export function useRoutingState(base: WorkbenchConfigState) {
 
   const providers = config?.providers ?? []
 
+  // Explicit `providerId:modelId` / `providerId:*` targets must reference a
+  // provider that exists; bare identifiers are resolved by the gateway against
+  // the model catalog and can't be checked here. Returns the bad prefix, or
+  // null when the target is valid or not checkable.
+  const findUnknownTargetProvider = (target: string | null | undefined): string | null => {
+    const trimmed = target?.trim()
+    if (!trimmed || !trimmed.includes(':')) return null
+    const providerId = trimmed.split(':', 1)[0].trim()
+    if (!providerId) return trimmed
+    return providers.some((provider) => provider.id === providerId) ? null : providerId
+  }
+
   const providerModelOptions = useMemo(() => {
     const options: Array<{
       value: string
@@ -255,6 +267,19 @@ export function useRoutingState(base: WorkbenchConfigState) {
         Number.isFinite(draft.longContextThreshold) && draft.longContextThreshold > 0
           ? Math.floor(draft.longContextThreshold)
           : config!.defaults.longContextThreshold
+    }
+
+    // `providerId:model` targets are pinned; catch typos here instead of
+    // letting the backend reject the whole config with a less specific error.
+    for (const target of [sanitized.completion, sanitized.reasoning, sanitized.background]) {
+      const unknownProvider = findUnknownTargetProvider(target)
+      if (unknownProvider) {
+        pushToast({
+          title: t('settings.validation.routeUnknownProvider', { provider: unknownProvider }),
+          variant: 'error'
+        })
+        return
+      }
     }
 
     setSavingDefaultsFor(endpoint)
@@ -768,6 +793,14 @@ export function useRoutingState(base: WorkbenchConfigState) {
         }))
         return
       }
+      const unknownProvider = findUnknownTargetProvider(target)
+      if (unknownProvider) {
+        setRouteError((previous) => ({
+          ...previous,
+          [endpoint]: t('settings.validation.routeUnknownProvider', { provider: unknownProvider })
+        }))
+        return
+      }
       sanitizedRoutes[source] = target
     }
 
@@ -856,21 +889,6 @@ export function useRoutingState(base: WorkbenchConfigState) {
     }
   }
 
-  /** Drop route drafts (across all endpoints) whose target points at a
-   *  provider that was just deleted, so a later save cannot persist a
-   *  dangling route. Saved routes are sanitized server-side by the caller. */
-  const sanitizeDraftsForProvider = (providerId: string) => {
-    setRoutesByEndpoint((previous) => {
-      const next: Record<string, ModelRouteEntry[]> = {}
-      for (const [endpoint, entries] of Object.entries(previous)) {
-        next[endpoint] = entries.filter(
-          (entry) => !routeTargetMatchesProvider(entry.target.trim(), providerId)
-        )
-      }
-      return next
-    })
-  }
-
   return {
     endpointTabs,
     routesByEndpoint,
@@ -906,8 +924,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
     handleReorderRules,
     handleResetRoutes,
     handleSaveRoutes,
-    handleCompatibilityEnabledChange,
-    sanitizeDraftsForProvider
+    handleCompatibilityEnabledChange
   }
 }
 

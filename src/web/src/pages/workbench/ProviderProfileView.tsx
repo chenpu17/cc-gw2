@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useAppMutation } from '@/hooks/useAppMutation'
+import { useToast } from '@/providers/ToastProvider'
+import { copyToClipboard } from '@/utils/clipboard'
 import { balanceApi } from '@/services/providers'
 import { queryKeys } from '@/services/queryKeys'
 import { cn } from '@/lib/utils'
@@ -36,14 +38,17 @@ function ProfileRow({
 /** Mono value with a transient copy button. */
 function CopyableValue({ value }: { value: string }) {
   const { t } = useTranslation()
+  const { pushToast } = useToast()
   const [copied, setCopied] = useState(false)
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(value)
+      // Shared helper: falls back to execCommand outside secure contexts, where
+      // `navigator.clipboard` is undefined (console opened over LAN HTTP).
+      await copyToClipboard(value)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1500)
     } catch {
-      // Clipboard unavailable (permission/insecure context) — silent no-op.
+      pushToast({ title: t('common.actions.copyFailed'), variant: 'error' })
     }
   }
   return (

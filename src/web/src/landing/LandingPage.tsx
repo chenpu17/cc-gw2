@@ -463,9 +463,14 @@ function CodeBlock({
 }) {
   const [copied, setCopied] = useState(false)
   async function onCopy() {
-    await copyToClipboard(code)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1800)
+    try {
+      await copyToClipboard(code)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      // Clipboard blocked (insecure context + denied fallback) — keep the
+      // label unchanged rather than promising a copy that did not happen.
+    }
   }
   return (
     <div className={cn('relative min-w-0', className)}>
@@ -495,9 +500,13 @@ function InstallPill() {
   const [copied, setCopied] = useState(false)
   const cmd = 'npm install -g @chenpu17/cc-gw'
   async function onCopy() {
-    await copyToClipboard(cmd)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1800)
+    try {
+      await copyToClipboard(cmd)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      // See CodeBlock: no false "copied" state when the clipboard is blocked.
+    }
   }
   return (
     <div className="inline-flex w-full max-w-md items-center gap-2 rounded-2xl border border-border bg-card py-2 pl-4 pr-2">

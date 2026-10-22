@@ -63,11 +63,13 @@ function getReasonMeta(
 export function RoutingSimulator({
   tabs,
   endpoint: endpointProp,
-  onEndpointChange
+  onEndpointChange,
+  hasUnsavedChanges = false
 }: {
   tabs: ManagementTab[]
   endpoint?: string
   onEndpointChange?: (endpointId: string) => void
+  hasUnsavedChanges?: boolean
 }) {
   const { t } = useTranslation()
   // `providers` is a workbench tab, not a routable endpoint.
@@ -146,6 +148,15 @@ export function RoutingSimulator({
         autoComplete="off"
         aria-label={t('workbench.hitSim.modelPlaceholder')}
       />
+
+      {/* Simulation runs against the persisted config on the gateway, so unsaved
+          draft edits here are invisible to it. Say so instead of silently
+          showing a result that contradicts the editor above. */}
+      {hasUnsavedChanges ? (
+        <p data-testid="simulator-unsaved-notice" className="text-[11px] text-warning">
+          {t('workbench.hitSim.unsavedNotice')}
+        </p>
+      ) : null}
 
       <ResultArea
         result={data}

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { getActiveNavigationRoute } from '@/app/routes'
@@ -20,8 +21,15 @@ export function useActivePageMeta(): ActivePageMeta {
   const location = useLocation()
   const nav = getActiveNavigationRoute(location.pathname)?.nav
 
+  const title = nav ? t(nav.titleKey ?? nav.labelKey) : ''
+  // Keep the tab title in sync with the route (and the active locale) so
+  // multiple tabs and browser history entries are distinguishable.
+  useEffect(() => {
+    document.title = title ? `${title} · cc-gw` : 'cc-gw'
+  }, [title])
+
   return {
-    title: nav ? t(nav.titleKey ?? nav.labelKey) : '',
+    title,
     description: nav?.descriptionKey ? t(nav.descriptionKey) : ''
   }
 }

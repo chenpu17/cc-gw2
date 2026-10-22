@@ -45,6 +45,10 @@ export default function LogsPage() {
         setSelectedApiKeys={state.setSelectedApiKeys}
         modelFilter={state.modelFilter}
         setModelFilter={state.setModelFilter}
+        clientKindFilter={state.clientKindFilter}
+        setClientKindFilter={state.setClientKindFilter}
+        sessionFilter={state.sessionFilter}
+        setSessionFilter={state.setSessionFilter}
         statusFilter={state.statusFilter}
         setStatusFilter={state.setStatusFilter}
         fromDate={state.fromDate}
