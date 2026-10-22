@@ -640,7 +640,9 @@ export default function LandingPage() {
             <div className="mx-auto max-w-3xl text-center">
               <span className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-1 text-xs font-medium text-foreground">
                 <span aria-hidden="true" className="inline-flex h-1.5 w-1.5 rounded-full bg-success" />
-                {tt(COPY.hero.badge)}
+                {/* Version bumps every release; mask the text (not layout) so the
+                    landing zero-diff baseline stays a theme tripwire. */}
+                <span data-visual-volatile="text">{tt(COPY.hero.badge)}</span>
               </span>
 
               <h1 className="mt-7 text-[2.4rem] font-bold leading-[1.05] tracking-[-0.035em] sm:text-6xl">
