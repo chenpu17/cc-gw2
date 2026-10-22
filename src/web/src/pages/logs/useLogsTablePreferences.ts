@@ -9,6 +9,7 @@ import {
   type LogColumnId,
   type RowDensity
 } from './shared'
+import { useResponsiveLogColumns } from './useResponsiveLogColumns'
 
 /** v2 key (pre-billing); its value migrates into v3 on first read. */
 const LEGACY_VISIBLE_COLUMNS_V2 = 'cc-gw.logs.visible-columns-v2'
@@ -66,6 +67,7 @@ export function useLogsTablePreferences() {
     }
   )
   const { scrollRef: tableScrollRef, showScrollHint } = useHorizontalScrollHint<HTMLDivElement>()
+  const responsive = useResponsiveLogColumns(tableScrollRef, visibleColumns)
 
   const visibleColumnSet = useMemo(() => new Set(visibleColumns), [visibleColumns])
   const visibleColumnCount = visibleColumns.length + 2
@@ -88,6 +90,10 @@ export function useLogsTablePreferences() {
   }, [])
 
   return {
+    autoHiddenColumns: responsive.autoHiddenColumns,
+    effectiveVisibleColumns: responsive.effectiveVisibleColumns,
+    effectiveVisibleColumnCount: responsive.effectiveVisibleColumnCount,
+    effectiveVisibleColumnSet: responsive.effectiveVisibleColumnSet,
     resetVisibleColumns,
     rowDensity,
     setRowDensity,

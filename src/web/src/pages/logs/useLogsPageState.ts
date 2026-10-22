@@ -137,7 +137,11 @@ export function useLogsPageState() {
     toggleColumn,
     visibleColumnCount,
     visibleColumns,
-    visibleColumnSet
+    visibleColumnSet,
+    autoHiddenColumns,
+    effectiveVisibleColumns,
+    effectiveVisibleColumnCount,
+    effectiveVisibleColumnSet
   } = useLogsTablePreferences()
   const [searchParams, setSearchParams] = useSearchParams()
   // One-shot: dashboard and event deep links seed the filters once, then the
@@ -622,6 +626,10 @@ export function useLogsPageState() {
     toggleColumn,
     total,
     totalPages,
+    autoHiddenColumns,
+    effectiveVisibleColumns,
+    effectiveVisibleColumnCount,
+    effectiveVisibleColumnSet,
     visibleColumnCount,
     visibleColumns,
     visibleColumnSet

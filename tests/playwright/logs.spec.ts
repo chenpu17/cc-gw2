@@ -263,6 +263,41 @@ test('logs table controls respect column toggles, pagination, and export payload
   expect(exportPayload?.model).toBe('stub-model')
 })
 
+test('logs table auto-hides low-priority columns as the content area narrows', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+  const valid = await request.post(`${baseUrl}/v1/messages`, {
+    data: messagePayload,
+    headers: { 'content-type': 'application/json' }
+  })
+  expect(valid.status()).toBe(200)
+  await pollForAnyLog(request, baseUrl)
+
+  // 1000px viewport → content column ≈716px, deep into the hide steps.
+  await page.setViewportSize({ width: 1000, height: 900 })
+  await page.goto(`${baseUrl}/ui/logs`)
+  await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
+
+  await expect(page.getByText(/窄屏已隐藏 \d+ 列/)).toBeVisible()
+  for (const label of ['错误信息', '客户端', '密钥', '请求模型', '路由模型']) {
+    await expect(page.locator('th').filter({ hasText: label }).first()).toHaveCount(0)
+  }
+  for (const label of ['Tokens', '成本', '耗时', '状态']) {
+    await expect(page.locator('th').filter({ hasText: label }).first()).toBeVisible()
+  }
+
+  // Header and body cell counts must stay in lockstep after columns drop.
+  const headerCells = await page.locator('thead tr th').count()
+  const firstRowCells = await page.locator('tbody tr[data-log-id]').first().locator('td').count()
+  expect(firstRowCells).toBe(headerCells)
+
+  // Widening restores the full set (canonical 1440 desktop).
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect(page.getByText(/窄屏已隐藏 \d+ 列/)).toHaveCount(0)
+  for (const label of ['错误信息', '客户端', '密钥', '请求模型', '路由模型']) {
+    await expect(page.locator('th').filter({ hasText: label }).first()).toBeVisible()
+  }
+})
+
 test('logs table assigns the same color marker to rows from the same session', async ({ page, request }) => {
   const baseUrl = harness.baseUrl()
   const requests = [

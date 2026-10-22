@@ -26,6 +26,7 @@ export default function LogsPage() {
             rowDensity={state.rowDensity}
             visibleColumns={state.visibleColumns}
             visibleColumnSet={state.visibleColumnSet}
+            autoHiddenColumns={state.autoHiddenColumns}
           />
         }
       />
@@ -63,8 +64,9 @@ export default function LogsPage() {
 
       <LogsTableCard
         tableScrollRef={state.tableScrollRef}
-        visibleColumnSet={state.visibleColumnSet}
-        visibleColumnCount={state.visibleColumnCount}
+        visibleColumnSet={state.effectiveVisibleColumnSet}
+        visibleColumnCount={state.effectiveVisibleColumnCount}
+        autoHiddenColumns={state.autoHiddenColumns}
         logsError={state.logsQuery.isError ? state.logsQuery.error?.message ?? null : null}
         logsPending={state.logsQuery.isPending}
         items={state.items}

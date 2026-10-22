@@ -25,6 +25,8 @@ interface LogsPageActionsProps {
   rowDensity: RowDensity
   visibleColumns: LogColumnId[]
   visibleColumnSet: ReadonlySet<LogColumnId>
+  /** Checked columns the narrow-window pass is currently hiding. */
+  autoHiddenColumns: LogColumnId[]
 }
 
 export function LogsPageActions({
@@ -40,10 +42,12 @@ export function LogsPageActions({
   refreshing,
   rowDensity,
   visibleColumns,
-  visibleColumnSet
+  visibleColumnSet,
+  autoHiddenColumns
 }: LogsPageActionsProps) {
   const { t } = useTranslation()
   const isDefaultColumns = JSON.stringify(visibleColumns) === JSON.stringify(DEFAULT_VISIBLE_COLUMNS)
+  const autoHiddenSet = new Set(autoHiddenColumns)
 
   return (
     <div className="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-center">
@@ -97,10 +101,18 @@ export function LogsPageActions({
                       className="h-4 w-4 rounded border-border"
                     />
                     <span>{column.label}</span>
+                    {autoHiddenSet.has(column.id) ? (
+                      <span className="ml-auto rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {t('logs.table.narrowHiddenPill')}
+                      </span>
+                    ) : null}
                   </label>
                 )
               })}
             </div>
+            <p className="mt-3 text-[11px] leading-snug text-muted-foreground">
+              {t('logs.table.autoHiddenNote')}
+            </p>
           </PopoverContent>
         </Popover>
 

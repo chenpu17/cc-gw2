@@ -16,12 +16,14 @@ import { LogRow } from './LogRow'
 import { PAGE_SIZE_OPTIONS, type LogColumnId, type RowDensity } from './shared'
 
 /** Shared header-cell metrics; each `th` appends its own alignment. */
-const TH = 'whitespace-nowrap px-3 py-2.5 text-xs font-semibold text-muted-foreground'
+const TH = 'whitespace-nowrap px-1.5 py-2.5 text-xs font-semibold text-muted-foreground'
 
 interface LogsTableCardProps {
   tableScrollRef: RefObject<HTMLDivElement>
   visibleColumnSet: ReadonlySet<LogColumnId>
   visibleColumnCount: number
+  /** Columns dropped by the width-driven responsive pass. */
+  autoHiddenColumns: LogColumnId[]
   logsError?: string | null
   logsPending: boolean
   items: LogRecord[]
@@ -51,6 +53,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
     tableScrollRef,
     visibleColumnSet,
     visibleColumnCount,
+    autoHiddenColumns,
     logsError,
     logsPending,
     items,
@@ -129,8 +132,19 @@ export function LogsTableCard(props: LogsTableCardProps) {
               {t('logs.table.visibleColumns', { count: visibleColumnCount })}
             </p>
           </div>
-          {showScrollHint ? (
-            <div className="hidden md:flex">
+          {autoHiddenColumns.length > 0 || showScrollHint ? (
+            <div className="hidden items-center gap-2 md:flex">
+              {autoHiddenColumns.length > 0 ? (
+                <Badge
+                  variant="outline"
+                  className="bg-background text-muted-foreground"
+                  title={t('logs.table.autoHiddenHint', {
+                    columns: autoHiddenColumns.map((id) => t(`logs.table.columns.${id}`)).join(' · ')
+                  })}
+                >
+                  {t('logs.table.autoHiddenColumns', { count: autoHiddenColumns.length })}
+                </Badge>
+              ) : null}
               <Badge variant="outline" className="bg-background text-muted-foreground">
                 {rowDensity === 'compact' ? t('logs.table.density.compact') : t('logs.table.density.comfortable')}
               </Badge>
@@ -139,7 +153,7 @@ export function LogsTableCard(props: LogsTableCardProps) {
         </div>
         <div className="relative hidden md:block">
           <div ref={tableScrollRef} className="overflow-x-auto">
-            <table className="w-full min-w-[1180px] text-sm">
+            <table className="w-full text-sm">
               <thead className="border-b border-border/50 bg-secondary/50">
                 <tr>
                   {/* No `uppercase`: these headers are Chinese in zh and Title
