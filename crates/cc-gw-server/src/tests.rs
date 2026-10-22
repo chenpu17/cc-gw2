@@ -3585,6 +3585,124 @@ async fn anthropic_count_tokens_accounts_for_schema_keys_and_structure() {
 }
 
 #[tokio::test]
+async fn anthropic_count_tokens_does_not_count_base64_attachment_payloads() {
+    let config = GatewayConfig::default();
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-count-tokens-attachments").await;
+    let client = reqwest::Client::new();
+
+    // A single screenshot-sized base64 payload would otherwise be counted at
+    // len/3 — hundreds of thousands of tokens — and force clients such as
+    // Claude Code to compact long before the real context is full.
+    let image_data = "A".repeat(600_000);
+    let request = json!({
+        "model": "claude-client",
+        "messages": [{
+            "role": "user",
+            "content": [
+                { "type": "text", "text": "look at this" },
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": image_data
+                    }
+                }
+            ]
+        }]
+    });
+
+    let response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages/count_tokens"))
+        .json(&request)
+        .send()
+        .await
+        .expect("send image count_tokens request")
+        .json()
+        .await
+        .expect("decode image count_tokens response");
+    let tokens = response["input_tokens"]
+        .as_u64()
+        .expect("image token estimate");
+
+    assert!(
+        tokens < 10_000,
+        "base64 attachment payload must not inflate count_tokens: {tokens}"
+    );
+
+    // A multi-page PDF must scale with its payload instead of collapsing to
+    // the small-document floor, otherwise clients with long PDFs skip
+    // compaction and then hit the upstream context limit.
+    let pdf_document = json!({
+        "model": "claude-client",
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": "A".repeat(4_000_000)
+                }
+            }]
+        }]
+    });
+    let pdf_response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages/count_tokens"))
+        .json(&pdf_document)
+        .send()
+        .await
+        .expect("send pdf count_tokens request")
+        .json()
+        .await
+        .expect("decode pdf count_tokens response");
+    let pdf_tokens = pdf_response["input_tokens"]
+        .as_u64()
+        .expect("pdf token estimate");
+    assert!(
+        (40_000..200_000).contains(&pdf_tokens),
+        "multi-page PDF should scale with payload size: {pdf_tokens}"
+    );
+
+    // A text document keeps its body in `source.data` — it must be counted as
+    // text, not charged the flat document estimate.
+    let text_document = json!({
+        "model": "claude-client",
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "document",
+                "source": {
+                    "type": "text",
+                    "media_type": "text/plain",
+                    "data": "x".repeat(9_000)
+                }
+            }]
+        }]
+    });
+    let text_document_response: Value = client
+        .post(format!("http://{gateway_addr}/v1/messages/count_tokens"))
+        .json(&text_document)
+        .send()
+        .await
+        .expect("send text document count_tokens request")
+        .json()
+        .await
+        .expect("decode text document count_tokens response");
+    let text_document_tokens = text_document_response["input_tokens"]
+        .as_u64()
+        .expect("text document token estimate");
+    assert!(
+        text_document_tokens >= 3_000,
+        "text document body must be counted as text: {text_document_tokens}"
+    );
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn api_version_check_reports_update_state_from_registry() {
     let current_version = env!("CARGO_PKG_VERSION");
     let latest_version = "999.0.0";
@@ -7027,6 +7145,123 @@ async fn anthropic_to_openai_maps_required_tool_choice_and_stop_sequences() {
     assert_eq!(recorded[0].get("stop"), Some(&json!(["END"])));
     assert!(recorded[0].get("stop_sequences").is_none());
 
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn anthropic_to_openai_tool_result_image_is_forwarded_as_attachment_not_text() {
+    let attempts = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let attempts_for_route = Arc::clone(&attempts);
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(move |AxumJson(payload): AxumJson<Value>| {
+            let attempts = Arc::clone(&attempts_for_route);
+            async move {
+                record_payload(&attempts, &payload);
+                Json(json!({
+                    "choices": [{
+                        "message": { "content": "ok" },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 4,
+                        "completion_tokens": 2
+                    }
+                }))
+            }
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "image-openai".to_string(),
+        label: "Image OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-test".to_string(),
+            label: Some("GPT Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(anthropic) = config.endpoint_routing.get_mut("anthropic") {
+        anthropic.defaults.completion = Some("image-openai:gpt-test".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "anthropic-openai-tool-result-image").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 128,
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{
+                        "type": "tool_use",
+                        "id": "call_1",
+                        "name": "screenshot",
+                        "input": {}
+                    }]
+                },
+                {
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": "call_1",
+                        "content": [{
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": "QUJDREVGR0g="
+                            }
+                        }]
+                    }]
+                }
+            ]
+        }))
+        .send()
+        .await
+        .expect("send anthropic tool_result image request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let recorded = attempts.lock().expect("lock attempts");
+    assert_eq!(recorded.len(), 1);
+    let messages = recorded[0]["messages"]
+        .as_array()
+        .expect("upstream messages");
+    let tool_message = messages
+        .iter()
+        .find(|message| message["role"] == json!("tool"))
+        .expect("tool message present");
+    assert!(
+        !tool_message["content"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("QUJDREVGR0g="),
+        "base64 image must not be serialized into tool text: {tool_message}"
+    );
+    let image_part = messages
+        .iter()
+        .filter_map(|message| message["content"].as_array())
+        .flatten()
+        .find(|part| part["type"] == json!("image_url"))
+        .expect("image attachment forwarded as a content part");
+    assert_eq!(
+        image_part["image_url"]["url"],
+        json!("data:image/png;base64,QUJDREVGR0g=")
+    );
+
+    drop(recorded);
     gateway_handle.abort();
     upstream_handle.abort();
     let _ = stdfs::remove_dir_all(home_dir);

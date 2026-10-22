@@ -150,17 +150,97 @@ fn anthropic_message_content_blocks(message: &Value, role: &str) -> Vec<Value> {
     }
 }
 
-fn anthropic_tool_result_content_to_openai(content: Option<&Value>) -> String {
+/// Split an Anthropic `tool_result` payload into the text carried by the
+/// upstream tool-output message and any non-text attachments.
+///
+/// OpenAI tool outputs (`tool` message content / `function_call_output.output`)
+/// only carry a string, so images and documents must be re-emitted as content
+/// parts on a following user message. Serializing a tool result that contains
+/// only an image would ship the base64 payload as plain text — the upstream
+/// tokenizes it as prompt tokens, and one screenshot can exceed the whole
+/// context window. Mixed text+image results keep the text and the attachment.
+fn anthropic_tool_result_parts(
+    content: Option<&Value>,
+    map_attachment: fn(&Value) -> Option<Value>,
+) -> (String, Vec<Value>) {
     let Some(content) = content else {
-        return String::new();
+        return (String::new(), Vec::new());
     };
-    let text = extract_text(content);
-    if text.trim().is_empty() {
-        stringify_value(content)
-    } else {
-        text
+    match content {
+        Value::String(text) => (text.clone(), Vec::new()),
+        Value::Array(items) => {
+            let mut texts = Vec::new();
+            let mut attachments = Vec::new();
+            for item in items {
+                match item.get("type").and_then(Value::as_str) {
+                    Some("image") | Some("document") => {
+                        if let Some(part) = map_attachment(item) {
+                            attachments.push(part);
+                        } else if let Some(text) = attachment_fallback_text(item) {
+                            // Unsupported source kind: keep a readable trace
+                            // instead of dropping the block silently.
+                            texts.push(text);
+                        }
+                    }
+                    Some("text") | Some("input_text") | Some("output_text") => {
+                        // Whitespace-only text blocks must not degrade into a
+                        // JSON literal; they simply contribute nothing.
+                        let text = extract_text(item);
+                        if !text.trim().is_empty() {
+                            texts.push(text);
+                        }
+                    }
+                    _ => {
+                        let text = extract_text(item);
+                        if !text.trim().is_empty() {
+                            texts.push(text);
+                        } else if !item.is_null() {
+                            // Unknown block types keep their payload instead
+                            // of being dropped silently.
+                            texts.push(stringify_value(item));
+                        }
+                    }
+                }
+            }
+            (texts.join("\n"), attachments)
+        }
+        other => (stringify_value(other), Vec::new()),
     }
 }
+
+/// Readable fallback for an attachment block whose source kind the target
+/// protocol cannot map (e.g. an Anthropic Files API `file` source, or a
+/// `text` document). Text documents contribute their body; anything else
+/// leaves a short marker so the loss is visible without re-introducing the
+/// base64-as-text blowup.
+fn attachment_fallback_text(block: &Value) -> Option<String> {
+    let source = block.get("source");
+    let source_type = source
+        .and_then(|value| value.get("type"))
+        .and_then(Value::as_str);
+    let kind = block.get("type").and_then(Value::as_str)?;
+    if source_type == Some("text") {
+        // A text document normally carries its body in `source.data`; a
+        // malformed one still leaves the marker so the block isn't dropped.
+        return Some(
+            source
+                .and_then(|value| value.get("data"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("[{kind} attachment omitted: text]")),
+        );
+    }
+    let media_type = source
+        .and_then(|value| value.get("media_type"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    Some(format!("[{kind} attachment omitted: {media_type}]"))
+}
+
+/// Tool-output text for an attachment-only result: upstreams may reject an
+/// empty tool content, and the model still gets the attachment in the
+/// following user message.
+const ATTACHMENT_ONLY_TOOL_TEXT: &str = "[attachment]";
 
 fn anthropic_source_to_openai_image_url(source: &Value) -> Option<String> {
     match source.get("type").and_then(Value::as_str) {
@@ -282,6 +362,9 @@ fn anthropic_block_to_openai_response_content_part(block: &Value) -> Option<Valu
 
 fn openai_image_url_to_anthropic_source(image_url: &Value) -> Option<Value> {
     let url = image_url.get("url").and_then(Value::as_str)?;
+    if url.trim().is_empty() {
+        return None;
+    }
     if let Some((prefix, data)) = url.split_once(";base64,") {
         let media_type = prefix.strip_prefix("data:")?;
         Some(json!({
@@ -347,6 +430,62 @@ fn openai_chat_content_part_to_anthropic_block(part: &Value) -> Option<Value> {
         })),
         Some("file") => openai_file_to_anthropic_document(part.get("file")?),
         _ => None,
+    }
+}
+
+fn is_empty_text_block(block: &Value) -> bool {
+    block.get("type").and_then(Value::as_str) == Some("text")
+        && block
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .is_empty()
+}
+
+/// Map an OpenAI chat `tool` message's content to Anthropic `tool_result`
+/// content. The Chat spec types this field as a string, but some providers
+/// echo tool-produced media (screenshots, generated files) as a parts array;
+/// images/files become `image`/`document` blocks so the attachment survives
+/// the hop instead of being flattened to text.
+fn openai_chat_tool_content_to_anthropic(value: Option<&Value>) -> Value {
+    match value {
+        Some(Value::Array(parts)) => {
+            let blocks = parts
+                .iter()
+                .filter_map(|part| {
+                    openai_chat_content_part_to_anthropic_block(part).or_else(|| {
+                        // Unknown part kinds keep their text (if any) and are
+                        // never stringified — a raw base64 payload must not
+                        // re-enter the prompt as text.
+                        let text = extract_text(part);
+                        (!text.trim().is_empty()).then(|| json!({ "type": "text", "text": text }))
+                    })
+                })
+                .filter(|block| !is_empty_text_block(block))
+                .collect::<Vec<_>>();
+            if blocks.is_empty() {
+                Value::String(String::new())
+            } else {
+                Value::Array(blocks)
+            }
+        }
+        Some(other) => {
+            // Non-array content is typed as a string; a blank one must not
+            // become an empty text block (Anthropic rejects those).
+            let text = extract_text(other);
+            if text.trim().is_empty() {
+                Value::String(String::new())
+            } else {
+                Value::Array(vec![json!({ "type": "text", "text": text })])
+            }
+        }
+        None => {
+            // Missing tool content must behave like every other blank case:
+            // an empty string is valid tool_result content, an empty text
+            // block is not (Anthropic rejects those).
+            Value::String(String::new())
+        }
     }
 }
 
@@ -708,19 +847,13 @@ fn openai_function_output_to_anthropic_tool_result_content(value: Option<&Value>
     match value.cloned().unwrap_or(Value::Null) {
         Value::String(text) => Value::String(text),
         Value::Array(items) => {
+            // `output` may carry `input_image`/`input_file` parts (tool results
+            // that produce media). Map them into `tool_result.content` blocks
+            // so the attachment is not dropped on the way to Anthropic.
             let blocks = items
-                .into_iter()
-                .filter_map(|item| {
-                    let object = item.as_object()?;
-                    let block_type = object.get("type").and_then(Value::as_str).unwrap_or("");
-                    match block_type {
-                        "input_text" | "output_text" | "text" => Some(json!({
-                            "type": "text",
-                            "text": object.get("text").and_then(Value::as_str).unwrap_or("")
-                        })),
-                        _ => None,
-                    }
-                })
+                .iter()
+                .filter_map(openai_response_content_part_to_anthropic_block)
+                .filter(|block| !is_empty_text_block(block))
                 .collect::<Vec<_>>();
             if blocks.is_empty() {
                 Value::String(String::new())
@@ -761,6 +894,10 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
                 let mut text_parts = Vec::new();
                 let mut content_parts = Vec::new();
                 let mut tool_results = Vec::new();
+                // Attachments found inside tool results are re-emitted as
+                // content parts on the user message that follows the tool
+                // messages (OpenAI `tool` content is text-only).
+                let mut tool_result_attachments = Vec::new();
 
                 for block in &content_blocks {
                     let block_type = block.get("type").and_then(Value::as_str).unwrap_or("");
@@ -789,18 +926,27 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
                                 .get("name")
                                 .cloned()
                                 .unwrap_or_else(|| tool_use_id.clone());
+                            let (mut text, attachments) = anthropic_tool_result_parts(
+                                block.get("content"),
+                                anthropic_block_to_openai_chat_part,
+                            );
+                            if text.trim().is_empty() && !attachments.is_empty() {
+                                text = ATTACHMENT_ONLY_TOOL_TEXT.to_string();
+                            }
                             tool_results.push(json!({
                                 "role": "tool",
                                 "tool_call_id": tool_use_id,
                                 "name": tool_name,
-                                "content": anthropic_tool_result_content_to_openai(block.get("content"))
+                                "content": text
                             }));
+                            tool_result_attachments.extend(attachments);
                         }
                         _ => {}
                     }
                 }
 
                 messages.extend(tool_results);
+                content_parts.extend(tool_result_attachments);
                 let user_text = text_parts.join("\n");
                 if !content_parts.is_empty() {
                     messages.push(json!({
@@ -996,13 +1142,13 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
                 }
             }
             "tool" => {
-                let content = message.get("content").map(extract_text).unwrap_or_default();
+                let content = openai_chat_tool_content_to_anthropic(message.get("content"));
                 messages.push(json!({
                     "role": "user",
                     "content": [{
                         "type": "tool_result",
                         "tool_use_id": message.get("tool_call_id").cloned().unwrap_or(Value::String("tool_result".to_string())),
-                        "content": [{ "type": "text", "text": content }]
+                        "content": content
                     }]
                 }));
             }
@@ -1336,6 +1482,10 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
         match role {
             "user" => {
                 let mut pending_content_parts = Vec::<Value>::new();
+                // Tool-result attachments are emitted after all function-call
+                // outputs so an image never lands between two outputs of the
+                // same tool-call batch.
+                let mut tool_result_attachments = Vec::<Value>::new();
                 let flush_user_message =
                     |input: &mut Vec<Value>, content_parts: &mut Vec<Value>| {
                         if content_parts.is_empty() {
@@ -1359,16 +1509,25 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
                         }
                         "tool_result" => {
                             flush_user_message(&mut input, &mut pending_content_parts);
+                            let (mut text, attachments) = anthropic_tool_result_parts(
+                                block.get("content"),
+                                anthropic_block_to_openai_response_content_part,
+                            );
+                            if text.trim().is_empty() && !attachments.is_empty() {
+                                text = ATTACHMENT_ONLY_TOOL_TEXT.to_string();
+                            }
                             input.push(json!({
                                 "type": "function_call_output",
                                 "call_id": block.get("tool_use_id").cloned().unwrap_or(Value::String("tool_result".to_string())),
-                                "output": stringify_value(block.get("content").unwrap_or(&Value::Null))
+                                "output": text
                             }));
+                            tool_result_attachments.extend(attachments);
                         }
                         _ => {}
                     }
                 }
 
+                pending_content_parts.extend(tool_result_attachments);
                 if content_blocks.is_empty() {
                     input.push(json!({
                         "type": "message",
@@ -2064,6 +2223,285 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_request_to_openai_chat_tool_result_image_becomes_user_attachment() {
+        // A screenshot-only tool result must not be serialized into the tool
+        // message as base64 text: the upstream would tokenize it as prompt
+        // tokens and the client would compact immediately. The image travels
+        // as a content part on the following user message instead.
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call_1",
+                    "content": [{
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": "QUJD"
+                        }
+                    }]
+                }]
+            }]
+        }));
+
+        assert_eq!(converted["messages"][0]["role"], json!("tool"));
+        assert_eq!(converted["messages"][0]["content"], json!("[attachment]"));
+        assert_eq!(converted["messages"][1]["role"], json!("user"));
+        assert_eq!(
+            converted["messages"][1]["content"][0]["type"],
+            json!("image_url")
+        );
+        assert_eq!(
+            converted["messages"][1]["content"][0]["image_url"]["url"],
+            json!("data:image/png;base64,QUJD")
+        );
+        assert!(
+            !converted["messages"][0]["content"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("QUJD"),
+            "base64 payload leaked into tool text"
+        );
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_chat_tool_result_keeps_text_and_image() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call_1",
+                    "content": [
+                        { "type": "text", "text": "screenshot attached" },
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": "QUJD"
+                            }
+                        }
+                    ]
+                }]
+            }]
+        }));
+
+        assert_eq!(
+            converted["messages"][0]["content"],
+            json!("screenshot attached")
+        );
+        assert_eq!(
+            converted["messages"][1]["content"][0]["type"],
+            json!("image_url")
+        );
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_chat_tool_result_document_becomes_file_attachment() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call_1",
+                    "content": [{
+                        "type": "document",
+                        "title": "spec.pdf",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": "JVBERi0="
+                        }
+                    }]
+                }]
+            }]
+        }));
+
+        assert_eq!(converted["messages"][0]["content"], json!("[attachment]"));
+        let part = &converted["messages"][1]["content"][0];
+        assert_eq!(part["type"], json!("file"));
+        assert_eq!(part["file"]["file_data"], json!("JVBERi0="));
+        assert_eq!(part["file"]["filename"], json!("spec.pdf"));
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_response_tool_result_document_becomes_input_file() {
+        let converted = anthropic_request_to_openai_response(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call_1",
+                    "content": [{
+                        "type": "document",
+                        "title": "spec.pdf",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": "JVBERi0="
+                        }
+                    }]
+                }]
+            }]
+        }));
+
+        assert_eq!(converted["input"][0]["output"], json!("[attachment]"));
+        let part = &converted["input"][1]["content"][0];
+        assert_eq!(part["type"], json!("input_file"));
+        assert_eq!(part["file_data"], json!("JVBERi0="));
+        assert_eq!(part["filename"], json!("spec.pdf"));
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_chat_tool_result_text_document_keeps_body() {
+        // `source.type: "text"` documents have no chat/response content part;
+        // keep the body as tool text instead of dropping it.
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call_1",
+                    "content": [{
+                        "type": "document",
+                        "source": {
+                            "type": "text",
+                            "media_type": "text/plain",
+                            "data": "line one\nline two"
+                        }
+                    }]
+                }]
+            }]
+        }));
+
+        assert_eq!(
+            converted["messages"][0]["content"],
+            json!("line one\nline two")
+        );
+        assert_eq!(converted["messages"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_chat_tool_result_malformed_text_document_keeps_marker() {
+        // A `text` document without `source.data` is malformed, but it must
+        // still leave a marker rather than vanishing from the conversation.
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call_1",
+                    "content": [{
+                        "type": "document",
+                        "source": { "type": "text" }
+                    }]
+                }]
+            }]
+        }));
+
+        assert_eq!(
+            converted["messages"][0]["content"],
+            json!("[document attachment omitted: text]")
+        );
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_chat_tool_result_whitespace_text_is_not_stringified() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call_1",
+                    "content": [{ "type": "text", "text": "   " }]
+                }]
+            }]
+        }));
+
+        assert_eq!(converted["messages"][0]["content"], json!(""));
+        assert!(
+            !converted["messages"][0]["content"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("\"type\"")
+        );
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_chat_multiple_tool_results_keep_order() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_1",
+                        "content": [{ "type": "text", "text": "first" }]
+                    },
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_2",
+                        "content": [{
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": "QUJD"
+                            }
+                        }]
+                    }
+                ]
+            }]
+        }));
+
+        let messages = converted["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["tool_call_id"], json!("call_1"));
+        assert_eq!(messages[0]["content"], json!("first"));
+        assert_eq!(messages[1]["tool_call_id"], json!("call_2"));
+        assert_eq!(messages[1]["content"], json!("[attachment]"));
+        assert_eq!(messages[2]["role"], json!("user"));
+        assert_eq!(messages[2]["content"][0]["type"], json!("image_url"));
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_response_tool_result_image_becomes_user_attachment() {
+        let converted = anthropic_request_to_openai_response(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call_1",
+                    "content": [{
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": "QUJD"
+                        }
+                    }]
+                }]
+            }]
+        }));
+
+        assert_eq!(converted["input"][0]["type"], json!("function_call_output"));
+        assert_eq!(converted["input"][0]["output"], json!("[attachment]"));
+        assert_eq!(converted["input"][1]["type"], json!("message"));
+        assert_eq!(converted["input"][1]["role"], json!("user"));
+        assert_eq!(
+            converted["input"][1]["content"][0]["type"],
+            json!("input_image")
+        );
+        assert_eq!(
+            converted["input"][1]["content"][0]["image_url"],
+            json!("data:image/png;base64,QUJD")
+        );
+    }
+
+    #[test]
     fn anthropic_request_to_openai_chat_preserves_string_message_content() {
         let converted = anthropic_request_to_openai_chat(&json!({
             "messages": [
@@ -2481,6 +2919,150 @@ mod tests {
         assert_eq!(merged[1]["type"].as_str(), Some("tool_result"));
         assert_eq!(merged[0]["tool_use_id"].as_str(), Some("call_1"));
         assert_eq!(merged[1]["tool_use_id"].as_str(), Some("call_2"));
+    }
+
+    #[test]
+    fn openai_chat_request_to_anthropic_tool_message_image_part_becomes_tool_result_image() {
+        // Reverse of the forward-direction safeguard: media echoed inside an
+        // OpenAI `tool` message must land in `tool_result.content` as an image
+        // block, not be flattened into text (which would lose the screenshot
+        // and could re-inject base64 as prompt tokens).
+        let converted = openai_chat_request_to_anthropic(&json!({
+            "messages": [
+                { "role": "user", "content": "take a screenshot" },
+                {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": { "name": "screenshot", "arguments": "{}" }
+                    }]
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_1",
+                    "content": [
+                        { "type": "text", "text": "captured" },
+                        {
+                            "type": "image_url",
+                            "image_url": { "url": "data:image/png;base64,QUJD" }
+                        }
+                    ]
+                }
+            ]
+        }));
+
+        let tool_result = &converted["messages"][2]["content"][0];
+        assert_eq!(tool_result["type"], json!("tool_result"));
+        let content = tool_result["content"].as_array().expect("content array");
+        assert_eq!(content[0], json!({ "type": "text", "text": "captured" }));
+        assert_eq!(content[1]["type"], json!("image"));
+        assert_eq!(content[1]["source"]["type"], json!("base64"));
+        assert_eq!(content[1]["source"]["media_type"], json!("image/png"));
+        assert_eq!(content[1]["source"]["data"], json!("QUJD"));
+        assert!(!converted.to_string().contains("\"text\":\"QUJD\""));
+    }
+
+    #[test]
+    fn openai_chat_request_to_anthropic_unknown_tool_part_is_not_stringified() {
+        // An unparseable part must not dump its raw payload (often base64)
+        // back into the prompt as text.
+        let converted = openai_chat_request_to_anthropic(&json!({
+            "messages": [{
+                "role": "tool",
+                "tool_call_id": "call_1",
+                "content": [{
+                    "type": "computer_screenshot",
+                    "encoding": "base64",
+                    "payload": "QUJDREVGR0g="
+                }]
+            }]
+        }));
+
+        let tool_result = &converted["messages"][0]["content"][0];
+        assert_eq!(tool_result["content"], json!(""));
+        assert!(!converted.to_string().contains("QUJDREVGR0g="));
+    }
+
+    #[test]
+    fn openai_responses_request_to_anthropic_function_output_image_becomes_tool_result_image() {
+        let converted = openai_responses_request_to_anthropic(&json!({
+            "input": [
+                { "role": "user", "content": "take a screenshot" },
+                { "type": "function_call", "call_id": "call_1", "name": "screenshot", "arguments": "{}" },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_1",
+                    "output": [
+                        { "type": "input_text", "text": "captured" },
+                        {
+                            "type": "input_image",
+                            "image_url": "data:image/png;base64,QUJD"
+                        }
+                    ]
+                }
+            ]
+        }));
+
+        let tool_result = &converted["messages"][2]["content"][0];
+        assert_eq!(tool_result["type"], json!("tool_result"));
+        let content = tool_result["content"].as_array().expect("content array");
+        assert_eq!(content[0], json!({ "type": "text", "text": "captured" }));
+        assert_eq!(content[1]["type"], json!("image"));
+        assert_eq!(content[1]["source"]["data"], json!("QUJD"));
+    }
+
+    #[test]
+    fn openai_responses_request_to_anthropic_function_output_file_becomes_document() {
+        let converted = openai_responses_request_to_anthropic(&json!({
+            "input": [{
+                "type": "function_call_output",
+                "call_id": "call_1",
+                "output": [{
+                    "type": "input_file",
+                    "filename": "report.pdf",
+                    "file_data": "JVBERi0x"
+                }]
+            }]
+        }));
+
+        let tool_result = &converted["messages"][0]["content"][0];
+        let content = tool_result["content"].as_array().expect("content array");
+        assert_eq!(content[0]["type"], json!("document"));
+        assert_eq!(content[0]["source"]["type"], json!("base64"));
+        assert_eq!(content[0]["source"]["media_type"], json!("application/pdf"));
+        assert_eq!(content[0]["source"]["data"], json!("JVBERi0x"));
+        assert_eq!(content[0]["title"], json!("report.pdf"));
+    }
+
+    #[test]
+    fn openai_chat_request_to_anthropic_whitespace_tool_content_is_not_an_empty_text_block() {
+        // Whitespace-only `tool` content must not become an empty text block
+        // (Anthropic rejects those); an empty string is valid tool content.
+        let converted = openai_chat_request_to_anthropic(&json!({
+            "messages": [{
+                "role": "tool",
+                "tool_call_id": "call_1",
+                "content": "  \n\t "
+            }]
+        }));
+
+        assert_eq!(converted["messages"][0]["content"][0]["content"], json!(""));
+    }
+
+    #[test]
+    fn openai_chat_request_to_anthropic_missing_tool_content_is_empty_string() {
+        // A `tool` message without `content` must not become an empty text
+        // block; an empty string is the valid representation.
+        let converted = openai_chat_request_to_anthropic(&json!({
+            "messages": [{
+                "role": "tool",
+                "tool_call_id": "call_1"
+            }]
+        }));
+
+        assert_eq!(converted["messages"][0]["content"][0]["content"], json!(""));
     }
 
     #[test]

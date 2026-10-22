@@ -225,7 +225,13 @@ mod tests {
         dual.sort_unstable();
         assert_eq!(
             dual,
-            vec!["aliyun-bailian", "deepseek", "kimi", "volcano-coding", "zhipu"]
+            vec![
+                "aliyun-bailian",
+                "deepseek",
+                "kimi",
+                "volcano-coding",
+                "zhipu"
+            ]
         );
     }
 }

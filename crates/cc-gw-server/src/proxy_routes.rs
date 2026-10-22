@@ -703,6 +703,32 @@ pub(super) async fn anthropic_count_tokens(
             text.len().div_ceil(3).max(1)
         }
 
+        // Image/document blocks carry a base64 `source` blob that is not
+        // prompt text. Counting it as text (len/3) turns one screenshot into
+        // hundreds of thousands of tokens and makes clients such as Claude
+        // Code compact long before the real context is full. Use a per-
+        // attachment estimate instead — mirrors the `source` skip in
+        // `cc_gw_core::routing::estimate_token_budget`.
+        const IMAGE_TOKENS: usize = 1_600;
+        // Base64 documents (PDFs) scale with page count, so a flat estimate
+        // badly under-reports long files and lets clients skip compaction.
+        // Derive from the decoded payload size (~50 bytes per output token)
+        // with a small-document floor; URL/file-id documents keep the floor
+        // because their size is unknown, and the cap keeps a pathological
+        // payload from producing an absurd number.
+        const DOCUMENT_TOKENS_MIN: usize = 2_000;
+        const DOCUMENT_TOKENS_MAX: usize = 1_000_000;
+        fn document_tokens(source: Option<&Value>) -> usize {
+            let bytes = source
+                .and_then(|value| value.get("data"))
+                .and_then(Value::as_str)
+                .map(|data| data.len().saturating_mul(3) / 4)
+                .unwrap_or(0);
+            bytes
+                .div_ceil(50)
+                .clamp(DOCUMENT_TOKENS_MIN, DOCUMENT_TOKENS_MAX)
+        }
+
         match value {
             Value::Null => 0,
             Value::Bool(_) => 1,
@@ -712,6 +738,36 @@ pub(super) async fn anthropic_count_tokens(
                 values.iter().map(estimate_count_tokens).sum::<usize>() + values.len() + 2
             }
             Value::Object(map) => {
+                let block_type = map.get("type").and_then(Value::as_str);
+                if matches!(block_type, Some("image") | Some("document")) {
+                    let source = map.get("source");
+                    let source_is_text = block_type == Some("document")
+                        && source
+                            .and_then(|value| value.get("type"))
+                            .and_then(Value::as_str)
+                            == Some("text");
+                    let attachment_tokens = if block_type == Some("image") {
+                        IMAGE_TOKENS
+                    } else if source_is_text {
+                        // A text document keeps its body in `source.data`, not
+                        // in a base64 blob — count it as text instead of
+                        // charging the document estimate.
+                        source
+                            .and_then(|value| value.get("data"))
+                            .and_then(Value::as_str)
+                            .map(text_tokens)
+                            .unwrap_or(DOCUMENT_TOKENS_MIN)
+                    } else {
+                        document_tokens(source)
+                    };
+                    return attachment_tokens
+                        + map
+                            .iter()
+                            .filter(|(key, _)| *key != "source")
+                            .map(|(key, value)| text_tokens(key) + estimate_count_tokens(value) + 2)
+                            .sum::<usize>()
+                        + 2;
+                }
                 map.iter()
                     .map(|(key, value)| text_tokens(key) + estimate_count_tokens(value) + 2)
                     .sum::<usize>()
