@@ -105,6 +105,11 @@ export function useResponsiveLogColumns(
       }
 
       const table = element.firstElementChild as HTMLElement | null
+      // Skeleton rows are sized by fixed placeholder cells and are wider than
+      // the real data rows; judging overflow against them would hide a column
+      // on first load that the loaded table does not actually need. Only the
+      // populated table (real rows carry data-log-id) may trigger the pass.
+      const hasDataRows = Boolean(table?.querySelector('tbody tr[data-log-id]'))
       // Only columns the user still has enabled can be auto-hidden; a manually
       // hidden priority column must not make the cap exceed the real candidate
       // list (otherwise the badge count and the hidden set drift apart).
@@ -112,7 +117,7 @@ export function useResponsiveLogColumns(
         visibleColumns.includes(id)
       ).length
       const base = hiddenCountForWidth(width)
-      const overflowing = Boolean(table && table.scrollWidth > width + 1)
+      const overflowing = Boolean(table && hasDataRows && table.scrollWidth > width + 1)
 
       const update = (next: number): boolean => {
         if (next === applied) return false

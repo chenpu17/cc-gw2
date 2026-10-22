@@ -272,9 +272,21 @@ test('logs table auto-hides low-priority columns as the content area narrows', a
   expect(valid.status()).toBe(200)
   await pollForAnyLog(request, baseUrl)
 
+  // Load directly at the canonical 1440 desktop with real rows: the loading
+  // skeleton is wider than the populated table, so judging overflow against it
+  // used to hide a column that the loaded data does not need. Wait for data
+  // rows, then require every column and no auto-hide badge.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(`${baseUrl}/ui/logs`)
+  await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
+  await expect(page.locator('tbody tr[data-log-id]').first()).toBeVisible()
+  await expect(page.getByText(/窄屏已隐藏 \d+ 列/)).toHaveCount(0)
+  for (const label of ['错误信息', '客户端', '密钥', '请求模型', '路由模型']) {
+    await expect(page.locator('th').filter({ hasText: label }).first()).toBeVisible()
+  }
+
   // 1000px viewport → content column ≈910px, below the 920px step.
   await page.setViewportSize({ width: 1000, height: 900 })
-  await page.goto(`${baseUrl}/ui/logs`)
   await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
 
   await expect(page.getByText(/窄屏已隐藏 \d+ 列/)).toBeVisible()
@@ -310,16 +322,20 @@ test('logs table auto-hides low-priority columns as the content area narrows', a
   expect(zhWidths).not.toBeNull()
   expect(zhWidths!.scroll).toBeLessThanOrEqual(zhWidths!.client + 1)
 
-  // English headers/values are wider than Chinese, so the same width that fits
-  // all 13 zh columns needs an auto-hidden column in en. The exact count is
-  // content-dependent (it grows as more columns are needed), so assert the
-  // en-localized badge and the structural outcome instead of a fixed number.
+  // English headers/values are wider than Chinese. A direct en load at 1440
+  // must still fit all 13 columns (the loading skeleton must not have hidden
+  // any), then 1400 falls into the first hide step: exactly one column drops
+  // and the singular plural form is used.
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.evaluate(() => window.localStorage.setItem('cc-gw-language', 'en'))
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Request Logs', level: 1 })).toBeVisible()
-  const hiddenBadge = page.getByText(/^\d+ columns? hidden$/)
-  await expect(hiddenBadge).toBeVisible()
+  await expect(page.locator('tbody tr[data-log-id]').first()).toBeVisible()
+  await expect(page.getByText(/^\d+ columns? hidden$/)).toHaveCount(0)
+  await expect(page.locator('th').filter({ hasText: 'Error' })).toBeVisible()
+
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await expect(page.getByText('1 column hidden', { exact: true })).toBeVisible()
   await expect(page.locator('th').filter({ hasText: 'Error' })).toHaveCount(0)
   const enWidths = await page.evaluate(() => {
     const table = document.querySelector('table')
