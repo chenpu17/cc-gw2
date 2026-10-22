@@ -42,6 +42,8 @@ test('useAbsoluteUrl switch renders, persists, and bypasses path suffix end-to-e
   await expect(panel).toBeVisible()
   await panel.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
   const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
+  // 后台 config 刷新不得替用户展开高级选项，否则这里的一点会把面板关掉。
+  await expect(advanced).toHaveJSProperty('open', false)
   await advanced.locator('summary').click()
   const absoluteSwitch = panel.getByRole('switch', { name: '使用绝对路径' })
   await expect(absoluteSwitch).toBeVisible()

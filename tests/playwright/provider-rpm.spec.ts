@@ -36,6 +36,7 @@ test('provider RPM limit fields render and persist via provider panel', async ({
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
   const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
+  await expect(advanced).toHaveJSProperty('open', false)
   await advanced.locator('summary').click()
   await expect(panel.getByText('RPM 限流（排队等待）')).toBeVisible()
   await panel.getByPlaceholder('如 60').fill('60')
@@ -176,6 +177,7 @@ test('RPM limit set via WebUI panel throttles real client traffic', async ({ pag
   await panel.getByPlaceholder('可留空以从环境变量读取').fill('stub-key')
   // 高级选项默认折叠，展开后填写 RPM 字段
   const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
+  await expect(advanced).toHaveJSProperty('open', false)
   await advanced.locator('summary').click()
   await panel.getByPlaceholder('如 60').fill('1')
   await panel.getByPlaceholder('默认 30').fill('5')

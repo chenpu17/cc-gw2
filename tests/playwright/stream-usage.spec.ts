@@ -36,6 +36,7 @@ test('streamUsage switch renders and persists via provider panel', async ({ page
   const panel = page.getByTestId('provider-detail-panel')
   await expect(panel).toBeVisible()
   const advanced = panel.locator('details').filter({ hasText: '高级选项' }).first()
+  await expect(advanced).toHaveJSProperty('open', false)
   const usageSwitch = panel.getByRole('switch', { name: '流式请求携带 usage 统计' })
   await advanced.locator('summary').click()
   await expect(usageSwitch).toBeVisible()

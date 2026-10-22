@@ -92,11 +92,15 @@ export function useProviderForm({ mode, provider, existingProviderIds, providers
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const providerIdRef = useRef<HTMLInputElement | null>(null)
 
-  const resetForm = useCallback(() => {
+  // Resetting the draft (mount, discard, external re-sync) must not leave
+  // advanced options open — the panel contract is "collapsed by default".
+  // External re-syncs preserve the current state: a background config refresh
+  // must not collapse a section the user is reading.
+  const resetForm = useCallback((options?: { keepAdvancedOpen?: boolean }) => {
     setForm(buildInitialState(provider))
     setErrors({})
-    setAdvancedOpen(mode === 'edit')
-  }, [provider, mode])
+    if (!options?.keepAdvancedOpen) setAdvancedOpen(false)
+  }, [provider])
 
   const handleFieldChange = (field: keyof FormState) => (value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))

@@ -54,7 +54,7 @@ export function useProviderDetailState({
   if (savedProviderRef.current !== provider) {
     savedProviderRef.current = provider
     if (!dirty) {
-      providerForm.resetForm()
+      providerForm.resetForm({ keepAdvancedOpen: true })
       initialFormJsonRef.current = null
     }
   }
