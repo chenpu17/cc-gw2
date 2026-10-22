@@ -1,4 +1,4 @@
-import { AppWindow, BookOpen, Droplets, Minus, Monitor, Moon, Square, Sun } from 'lucide-react'
+import { AppWindow, BookOpen, Droplets, Flower2, Minus, Monitor, Moon, Sparkles, Square, Sun, Waves, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SKINS, useTheme, type Skin } from '@/providers/ThemeProvider'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,11 @@ const skins: Array<{ skin: Skin; icon: typeof Sun }> = [
   { skin: 'classic', icon: AppWindow },
   { skin: 'paper', icon: BookOpen },
   { skin: 'glass', icon: Droplets },
-  { skin: 'modernist', icon: Square }
+  { skin: 'modernist', icon: Square },
+  { skin: 'neon', icon: Zap },
+  { skin: 'aurora', icon: Sparkles },
+  { skin: 'sakura', icon: Flower2 },
+  { skin: 'ocean', icon: Waves }
 ]
 
 const modes: Array<{ mode: 'light' | 'dark' | 'system'; labelKey: string; icon: typeof Sun }> = [

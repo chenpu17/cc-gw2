@@ -48,7 +48,11 @@ export default {
       classic: 'Classic',
       paper: 'Paper',
       glass: 'Glass',
-      modernist: 'Modernist'
+      modernist: 'Modernist',
+      neon: 'Neon',
+      aurora: 'Aurora',
+      sakura: 'Sakura',
+      ocean: 'Ocean'
     },
     light: 'Light',
     dark: 'Dark',

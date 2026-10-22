@@ -83,8 +83,8 @@ test('theme and language switchers open menus', async ({ page }) => {
   await page.getByTestId('theme-switcher-trigger').click({ force: true })
   await expect(page.getByRole('menuitemradio', { name: '亮色' })).toBeVisible()
   await expect(page.getByRole('menuitemradio', { name: '跟随系统' })).toBeVisible()
-  // 风格家族分组:五个可选项
-  for (const family of ['极简', '经典', '纸张', '玻璃', 'Modernist']) {
+  // 风格家族分组:九个可选项
+  for (const family of ['极简', '经典', '纸张', '玻璃', 'Modernist', '霓虹', '极光', '樱花', '深海']) {
     await expect(page.getByRole('menuitemradio', { name: family })).toBeVisible()
   }
   // 点击切族 → data-skin 立即生效 → reload 后持久化 → 切回默认

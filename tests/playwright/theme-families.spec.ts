@@ -34,12 +34,19 @@ interface FamilyExpectation {
 }
 
 const FAMILIES: FamilyExpectation[] = [
-  { skin: 'minimal', lightPrimary: '#5e6ad2', radius: '8px', darkBackground: '#101013', darkPrimary: '#7c86ff' },
+  { skin: 'minimal', lightPrimary: '#5e6ad2', radius: '10px', darkBackground: '#0d0e12', darkPrimary: '#7f89ff' },
   { skin: 'classic', lightPrimary: '#2563eb', radius: '0.625rem', darkBackground: '#09090b', darkPrimary: '#60a5fa' },
   { skin: 'paper', lightPrimary: '#b4552d', radius: '6px', darkBackground: '#2f3437', darkPrimary: '#e0855f' },
   { skin: 'glass', lightPrimary: '#7c3aed', radius: '1rem', darkBackground: '#0e0c1d', darkPrimary: '#a78bfa' },
-  { skin: 'modernist', lightPrimary: '#ec3013', radius: '0px', darkBackground: '#201e1d', darkPrimary: '#ff563c' }
+  { skin: 'modernist', lightPrimary: '#ec3013', radius: '0px', darkBackground: '#201e1d', darkPrimary: '#ff563c' },
+  { skin: 'neon', lightPrimary: '#008f6b', radius: '4px', darkBackground: '#050b09', darkPrimary: '#35f0a3' },
+  { skin: 'aurora', lightPrimary: '#6d4afc', radius: '14px', darkBackground: '#07081a', darkPrimary: '#9b86ff' },
+  { skin: 'sakura', lightPrimary: '#cf3f74', radius: '12px', darkBackground: '#1b1117', darkPrimary: '#f472b6' },
+  { skin: 'ocean', lightPrimary: '#0e7490', radius: '6px', darkBackground: '#06141b', darkPrimary: '#38bdf8' }
 ]
+
+/** Families that opt into `--surface-blur` (backdrop-filter). */
+const BLUR_SKINS = new Set(['glass', 'aurora'])
 
 function normalizeToken(value: string): string {
   return value.trim().toLowerCase().replace(/^\.(\d)/, '0.$1')
@@ -89,16 +96,21 @@ test('存储里的未知 skin 值被清洗回默认族', async ({ page }) => {
   await seedAndReload(page, { 'cc-gw-theme': 'light', 'cc-gw-skin': 'neon-2000' })
   await expect(page.locator('html')).toHaveAttribute('data-skin', 'minimal')
   expect(normalizeToken(await rootToken(page, '--primary'))).toBe('#5e6ad2')
-  expect(normalizeToken(await rootToken(page, '--radius'))).toBe('8px')
+  expect(normalizeToken(await rootToken(page, '--radius'))).toBe('10px')
 })
 
-test('玻璃机制只在其家族开启 blur,其余家族无 backdrop-filter', async ({ page }) => {
+test('blur 机制只在声明的家族开启 backdrop-filter,其余家族无', async ({ page }) => {
   const headerFilter = () =>
     page.evaluate(
       () => getComputedStyle(document.querySelector('[data-testid="app-shell"] header')!).backdropFilter
     )
-  await seedAndReload(page, { 'cc-gw-theme': 'light', 'cc-gw-skin': 'minimal' })
-  expect(await headerFilter()).toBe('none')
-  await seedAndReload(page, { 'cc-gw-theme': 'light', 'cc-gw-skin': 'glass' })
-  expect(await headerFilter()).toContain('blur')
+  for (const family of FAMILIES) {
+    await seedAndReload(page, { 'cc-gw-theme': 'light', 'cc-gw-skin': family.skin })
+    const filter = await headerFilter()
+    if (BLUR_SKINS.has(family.skin)) {
+      expect(filter, `${family.skin} should blur`).toContain('blur')
+    } else {
+      expect(filter, `${family.skin} should stay opaque`).toBe('none')
+    }
+  }
 })

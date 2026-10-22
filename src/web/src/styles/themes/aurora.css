@@ -1,0 +1,118 @@
+/* Aurora — 极光家族。
+   深靛蓝画布 + 紫/青/粉三色极光,半透明毛玻璃表面。dark 是主打模式;
+   light 模式为冷白底 + 柔和极光晕染。 */
+
+/* ── Aurora · light ───────────────────────────────────────────── */
+[data-skin="aurora"] {
+  --background: #f4f5ff;
+  --foreground: #171331;
+  --card: #ffffff;
+  --card-foreground: #171331;
+  --popover: #ffffff;
+  --popover-foreground: #171331;
+  --primary: #6d4afc;
+  --primary-foreground: #ffffff;
+  --secondary: #eeeefc;
+  --secondary-foreground: #2a2450;
+  --muted: #eeeefc;
+  --muted-foreground: #666183;
+  --accent: #e6e3fb;
+  --accent-foreground: #171331;
+  --destructive: #d94661;
+  --destructive-foreground: #ffffff;
+  --border: #e2dff5;
+  --input: #e2dff5;
+  --ring: #6d4afc;
+  --radius: 14px;
+
+  --success: #1f9d6b;   --success-bg: #e1f6ec;
+  --warning: #b07a15;   --warning-bg: #fbf1d8;
+  --error: #d6455d;     --error-bg: #fbe8ed;
+  --info: #2f6fd0;      --info-bg: #e6effc;
+
+  --chart-1: #6d4afc;
+  --chart-2: #22b8b0;
+  --chart-3: #e86fa8;
+  --chart-4: #666183;
+  --chart-5: #b9b2e8;
+
+  --surface-shadow: 0 1px 2px rgb(35 27 90 / 0.05), 0 12px 32px rgb(70 50 160 / 0.08);
+  --surface-shadow-lg: 0 28px 70px rgb(55 35 140 / 0.18);
+  --surface-border: #e2dff5;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 0.80;
+  --surface-blur: blur(20px) saturate(1.35);
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-heading: "Space Grotesk", "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 600;
+  --font-heading-tracking: -0.02em;
+}
+
+/* ── Aurora · dark ────────────────────────────────────────────── */
+[data-skin="aurora"][data-theme="dark"],
+[data-skin="aurora"].dark {
+  --background: #07081a;
+  --foreground: #ecebfd;
+  --card: #101331;
+  --card-foreground: #ecebfd;
+  --popover: #13163a;
+  --popover-foreground: #ecebfd;
+  --primary: #9b86ff;
+  --primary-foreground: #0a0820;
+  --secondary: #171a3d;
+  --secondary-foreground: #e2dffb;
+  --muted: #171a3d;
+  --muted-foreground: #9a96c4;
+  --accent: #1c2050;
+  --accent-foreground: #ecebfd;
+  --destructive: #ff7b93;
+  --destructive-foreground: #ffffff;
+  --border: #232752;
+  --input: #232752;
+  --ring: #9b86ff;
+  --radius: 14px;
+
+  --success: #43e0a4;   --success-bg: #0a2b22;
+  --warning: #ffd166;   --warning-bg: #2d2611;
+  --error: #ff7b93;     --error-bg: #33121f;
+  --info: #63b3ff;      --info-bg: #0c2440;
+
+  --chart-1: #9b86ff;
+  --chart-2: #46e0d4;
+  --chart-3: #ff8fbf;
+  --chart-4: #9a96c4;
+  --chart-5: #4b4f86;
+
+  --surface-shadow: 0 0 0 1px rgb(155 134 255 / 0.06), 0 24px 64px rgb(0 0 0 / 0.50);
+  --surface-shadow-lg: 0 36px 90px rgb(0 0 0 / 0.60);
+  --surface-border: #232752;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 0.68;
+  --surface-blur: blur(22px) saturate(1.4);
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-heading: "Space Grotesk", "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 600;
+  --font-heading-tracking: -0.02em;
+}
+
+/* 画布极光:紫(左上)、青(右上)、粉(下方) */
+[data-skin="aurora"] .app-canvas {
+  background-image:
+    radial-gradient(900px 520px at 6% -10%, rgb(109 74 252 / 0.14), transparent 60%),
+    radial-gradient(820px 520px at 98% 4%, rgb(34 184 176 / 0.12), transparent 58%),
+    radial-gradient(700px 460px at 50% 110%, rgb(232 111 168 / 0.08), transparent 60%),
+    linear-gradient(180deg, #f7f7ff 0%, #eff0ff 100%);
+}
+
+[data-skin="aurora"][data-theme="dark"] .app-canvas,
+[data-skin="aurora"].dark .app-canvas {
+  background-image:
+    radial-gradient(980px 620px at 4% -12%, rgb(124 92 255 / 0.30), transparent 62%),
+    radial-gradient(860px 560px at 100% 0%, rgb(34 211 238 / 0.18), transparent 58%),
+    radial-gradient(760px 520px at 48% 112%, rgb(236 72 153 / 0.16), transparent 62%),
+    linear-gradient(180deg, #080a1e 0%, #060714 100%);
+}

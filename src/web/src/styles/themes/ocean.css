@@ -1,0 +1,111 @@
+/* Ocean — 深海家族。
+   海盐白 + 深青 accent,利落的小圆角;dark 为深海蓝绿。冷静、偏专业工具感。 */
+
+/* ── Ocean · light ────────────────────────────────────────────── */
+[data-skin="ocean"] {
+  --background: #f0f7fb;
+  --foreground: #0c2429;
+  --card: #ffffff;
+  --card-foreground: #0c2429;
+  --popover: #ffffff;
+  --popover-foreground: #0c2429;
+  --primary: #0e7490;
+  --primary-foreground: #ffffff;
+  --secondary: #e7f1f6;
+  --secondary-foreground: #173942;
+  --muted: #e7f1f6;
+  --muted-foreground: #557179;
+  --accent: #d9eaf0;
+  --accent-foreground: #0c2429;
+  --destructive: #cf3b4f;
+  --destructive-foreground: #ffffff;
+  --border: #d3e4ea;
+  --input: #d3e4ea;
+  --ring: #0e7490;
+  --radius: 6px;
+
+  --success: #1b8f6a;   --success-bg: #e0f5ed;
+  --warning: #b37b12;   --warning-bg: #fbf1d9;
+  --error: #cf3b4f;     --error-bg: #fbe8eb;
+  --info: #1f7fb5;      --info-bg: #e3f2fb;
+
+  --chart-1: #0e7490;
+  --chart-2: #0891b2;
+  --chart-3: #38bdf8;
+  --chart-4: #64748b;
+  --chart-5: #94a3b8;
+
+  --surface-shadow: 0 1px 2px rgb(8 40 50 / 0.05), 0 12px 30px rgb(8 60 75 / 0.07);
+  --surface-shadow-lg: 0 26px 60px rgb(8 50 65 / 0.18);
+  --surface-border: #d3e4ea;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 1;
+  --surface-blur: none;
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-heading: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 600;
+  --font-heading-tracking: -0.014em;
+}
+
+/* ── Ocean · dark ─────────────────────────────────────────────── */
+[data-skin="ocean"][data-theme="dark"],
+[data-skin="ocean"].dark {
+  --background: #06141b;
+  --foreground: #e5f7f8;
+  --card: #0b2028;
+  --card-foreground: #e5f7f8;
+  --popover: #0e262f;
+  --popover-foreground: #e5f7f8;
+  --primary: #38bdf8;
+  --primary-foreground: #03212c;
+  --secondary: #102c34;
+  --secondary-foreground: #d1eff2;
+  --muted: #102c34;
+  --muted-foreground: #86aeb4;
+  --accent: #14343d;
+  --accent-foreground: #e5f7f8;
+  --destructive: #ff6b7f;
+  --destructive-foreground: #ffffff;
+  --border: #17383f;
+  --input: #17383f;
+  --ring: #38bdf8;
+  --radius: 6px;
+
+  --success: #3ddba2;   --success-bg: #062b20;
+  --warning: #f2c14e;   --warning-bg: #2a2410;
+  --error: #ff6b7f;     --error-bg: #33121a;
+  --info: #56c2ff;      --info-bg: #06283b;
+
+  --chart-1: #38bdf8;
+  --chart-2: #22d3ee;
+  --chart-3: #67e8f9;
+  --chart-4: #8fb0bd;
+  --chart-5: #4b6b78;
+
+  --surface-shadow: 0 0 0 1px rgb(56 189 248 / 0.04), 0 18px 40px rgb(0 0 0 / 0.40);
+  --surface-shadow-lg: 0 30px 74px rgb(0 0 0 / 0.55);
+  --surface-border: #17383f;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 1;
+  --surface-blur: none;
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-heading: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 600;
+  --font-heading-tracking: -0.014em;
+}
+
+/* 画布:纵向海色渐变,暗色加一层海面反光 */
+[data-skin="ocean"] .app-canvas {
+  background-image: linear-gradient(180deg, #f7fbfd 0%, #eaf4f7 100%);
+}
+
+[data-skin="ocean"][data-theme="dark"] .app-canvas,
+[data-skin="ocean"].dark .app-canvas {
+  background-image:
+    radial-gradient(900px 520px at 78% -12%, rgb(56 189 248 / 0.12), transparent 60%),
+    linear-gradient(180deg, #07191f 0%, #04100f 100%);
+}

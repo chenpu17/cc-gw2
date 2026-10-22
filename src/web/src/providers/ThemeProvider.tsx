@@ -5,7 +5,17 @@ import { storageKeys } from '@/services/storageKeys'
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 /** 风格家族(data-skin 轴),与明暗模式(data-theme 轴)正交。 */
-export const SKINS = ['minimal', 'classic', 'paper', 'glass', 'modernist'] as const
+export const SKINS = [
+  'minimal',
+  'classic',
+  'paper',
+  'glass',
+  'modernist',
+  'neon',
+  'aurora',
+  'sakura',
+  'ocean'
+] as const
 export type Skin = (typeof SKINS)[number]
 /** 默认家族旋钮:首次打开/存储不可用/存储值非法时生效,须与
  *  themes/minimal.css(:root)、index.html pre-paint 脚本、视觉基线钉值保持一致。 */

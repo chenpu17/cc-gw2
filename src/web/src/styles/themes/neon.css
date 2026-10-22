@@ -1,0 +1,114 @@
+/* Neon — 赛博终端家族。
+   近黑底 + 电光薄荷绿,标题与数字使用 JetBrains Mono;暗色画布叠低透明度网格。
+   light 模式为冷白底 + 深青绿 accent,保证可读性。 */
+
+/* ── Neon · light ─────────────────────────────────────────────── */
+[data-skin="neon"] {
+  --background: #f2f7f5;
+  --foreground: #0a1614;
+  --card: #ffffff;
+  --card-foreground: #0a1614;
+  --popover: #ffffff;
+  --popover-foreground: #0a1614;
+  --primary: #008f6b;
+  --primary-foreground: #ffffff;
+  --secondary: #e9f4f0;
+  --secondary-foreground: #10312b;
+  --muted: #e9f4f0;
+  --muted-foreground: #506b66;
+  --accent: #dcece7;
+  --accent-foreground: #0a1614;
+  --destructive: #dc3d4f;
+  --destructive-foreground: #ffffff;
+  --border: #d3e4df;
+  --input: #d3e4df;
+  --ring: #008f6b;
+  --radius: 4px;
+
+  --success: #0b8a5f;   --success-bg: #ddf5e8;
+  --warning: #a86a12;   --warning-bg: #fbf1d7;
+  --error: #d92d4b;     --error-bg: #fbe8ec;
+  --info: #0b7fa8;      --info-bg: #e1f3fa;
+
+  --chart-1: #008f6b;
+  --chart-2: #16a394;
+  --chart-3: #39bfae;
+  --chart-4: #526b66;
+  --chart-5: #9db8b2;
+
+  --surface-shadow: 0 1px 2px rgb(8 30 26 / 0.05);
+  --surface-shadow-lg: 0 18px 44px rgb(8 30 26 / 0.14);
+  --surface-border: #d3e4df;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 1;
+  --surface-blur: none;
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-heading: "JetBrains Mono", "Noto Sans SC", "PingFang SC", ui-monospace, monospace;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 700;
+  --font-heading-tracking: -0.02em;
+}
+
+/* ── Neon · dark ──────────────────────────────────────────────── */
+[data-skin="neon"][data-theme="dark"],
+[data-skin="neon"].dark {
+  --background: #050b09;
+  --foreground: #d9fff4;
+  --card: #0a1512;
+  --card-foreground: #d9fff4;
+  --popover: #0d1a16;
+  --popover-foreground: #d9fff4;
+  --primary: #35f0a3;
+  --primary-foreground: #04140c;
+  --secondary: #10211c;
+  --secondary-foreground: #c8f5e5;
+  --muted: #10211c;
+  --muted-foreground: #7fa89b;
+  --accent: #143028;
+  --accent-foreground: #d9fff4;
+  --destructive: #ff5d73;
+  --destructive-foreground: #ffffff;
+  --border: #1b3a32;
+  --input: #1b3a32;
+  --ring: #35f0a3;
+  --radius: 4px;
+
+  --success: #39f0a0;   --success-bg: #06291c;
+  --warning: #ffd166;   --warning-bg: #2a2310;
+  --error: #ff5d73;     --error-bg: #33121a;
+  --info: #4cc9ff;      --info-bg: #06283a;
+
+  --chart-1: #35f0a3;
+  --chart-2: #7df5c4;
+  --chart-3: #4cc9ff;
+  --chart-4: #7fa89b;
+  --chart-5: #2c5a4d;
+
+  --surface-shadow: 0 0 0 1px rgb(53 240 163 / 0.05), 0 0 30px rgb(53 240 163 / 0.08);
+  --surface-shadow-lg: 0 24px 60px rgb(0 0 0 / 0.55);
+  --surface-border: #1b3a32;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 1;
+  --surface-blur: none;
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-heading: "JetBrains Mono", "Noto Sans SC", "PingFang SC", ui-monospace, monospace;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 700;
+  --font-heading-tracking: -0.02em;
+}
+
+/* 画布:亮色冷白;暗色叠 32px 网格 + 右上电光光晕 */
+[data-skin="neon"] .app-canvas {
+  background-image: linear-gradient(180deg, #f8fcfb 0%, #eef6f3 100%);
+}
+
+[data-skin="neon"][data-theme="dark"] .app-canvas,
+[data-skin="neon"].dark .app-canvas {
+  background-image:
+    radial-gradient(900px 520px at 85% -10%, rgb(53 240 163 / 0.10), transparent 60%),
+    linear-gradient(rgb(53 240 163 / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(53 240 163 / 0.045) 1px, transparent 1px);
+  background-size: auto, 32px 32px, 32px 32px;
+}

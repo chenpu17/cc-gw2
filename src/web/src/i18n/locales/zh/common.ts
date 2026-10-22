@@ -48,7 +48,11 @@ export default {
       classic: '经典',
       paper: '纸张',
       glass: '玻璃',
-      modernist: 'Modernist'
+      modernist: 'Modernist',
+      neon: '霓虹',
+      aurora: '极光',
+      sakura: '樱花',
+      ocean: '深海'
     },
     light: '亮色',
     dark: '暗色',

@@ -1,0 +1,115 @@
+/* Sakura — 樱家族。
+   暖象牙白 + 玫瑰 accent,标题使用 Source Serif 4(衬线);dark 为深梅色。
+   气质温柔,阴影更软。 */
+
+/* ── Sakura · light ───────────────────────────────────────────── */
+[data-skin="sakura"] {
+  --background: #fdf5f7;
+  --foreground: #2a1d22;
+  --card: #ffffff;
+  --card-foreground: #2a1d22;
+  --popover: #ffffff;
+  --popover-foreground: #2a1d22;
+  --primary: #cf3f74;
+  --primary-foreground: #ffffff;
+  --secondary: #faedf1;
+  --secondary-foreground: #4a2833;
+  --muted: #faedf1;
+  --muted-foreground: #7d6670;
+  --accent: #f6e2e8;
+  --accent-foreground: #2a1d22;
+  --destructive: #c93048;
+  --destructive-foreground: #ffffff;
+  --border: #f0dce3;
+  --input: #f0dce3;
+  --ring: #cf3f74;
+  --radius: 12px;
+
+  --success: #3f9a6b;   --success-bg: #e5f5ec;
+  --warning: #b7791f;   --warning-bg: #fbf0d8;
+  --error: #c93048;     --error-bg: #fbe7ea;
+  --info: #7a6ac9;      --info-bg: #efecfb;
+
+  --chart-1: #cf3f74;
+  --chart-2: #e88aa8;
+  --chart-3: #8a6ac9;
+  --chart-4: #9b6b7c;
+  --chart-5: #d9b3c2;
+
+  --surface-shadow: 0 1px 2px rgb(90 40 60 / 0.04), 0 10px 26px rgb(120 50 80 / 0.06);
+  --surface-shadow-lg: 0 24px 56px rgb(100 40 70 / 0.16);
+  --surface-border: #f0dce3;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 1;
+  --surface-blur: none;
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-heading: "Source Serif 4", "Noto Sans SC", "PingFang SC", Georgia, serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 600;
+  --font-heading-tracking: -0.01em;
+}
+
+/* ── Sakura · dark ────────────────────────────────────────────── */
+[data-skin="sakura"][data-theme="dark"],
+[data-skin="sakura"].dark {
+  --background: #1b1117;
+  --foreground: #fbeef2;
+  --card: #251820;
+  --card-foreground: #fbeef2;
+  --popover: #2b1c26;
+  --popover-foreground: #fbeef2;
+  --primary: #f472b6;
+  --primary-foreground: #2a0b1a;
+  --secondary: #33202b;
+  --secondary-foreground: #f8dbe7;
+  --muted: #33202b;
+  --muted-foreground: #c2a3b0;
+  --accent: #3d2533;
+  --accent-foreground: #fbeef2;
+  --destructive: #ff6b82;
+  --destructive-foreground: #ffffff;
+  --border: #45293a;
+  --input: #45293a;
+  --ring: #f472b6;
+  --radius: 12px;
+
+  --success: #58d49a;   --success-bg: #0d2b1e;
+  --warning: #f0c060;   --warning-bg: #2b2310;
+  --error: #ff6b82;     --error-bg: #33131a;
+  --info: #a99bff;      --info-bg: #1c1738;
+
+  --chart-1: #f472b6;
+  --chart-2: #f9a8d4;
+  --chart-3: #a99bff;
+  --chart-4: #c2a3b0;
+  --chart-5: #6b4a58;
+
+  --surface-shadow: 0 0 0 1px rgb(244 114 182 / 0.04), 0 18px 44px rgb(0 0 0 / 0.38);
+  --surface-shadow-lg: 0 30px 72px rgb(0 0 0 / 0.50);
+  --surface-border: #45293a;
+  --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
+  --surface-alpha: 1;
+  --surface-blur: none;
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-heading: "Source Serif 4", "Noto Sans SC", "PingFang SC", Georgia, serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-heading-weight: 600;
+  --font-heading-tracking: -0.01em;
+}
+
+/* 画布:右上柔光,暗色为深梅色晕染 */
+[data-skin="sakura"] .app-canvas {
+  background-image:
+    radial-gradient(880px 560px at 96% -8%, rgb(207 63 116 / 0.10), transparent 62%),
+    linear-gradient(180deg, #fffafb 0%, #fbf1f4 100%);
+}
+
+[data-skin="sakura"][data-theme="dark"] .app-canvas,
+[data-skin="sakura"].dark .app-canvas {
+  background-image:
+    radial-gradient(900px 600px at 92% -10%, rgb(244 114 182 / 0.16), transparent 62%),
+    radial-gradient(760px 520px at 0% 108%, rgb(169 155 255 / 0.10), transparent 60%),
+    linear-gradient(180deg, #1c1218 0%, #160d12 100%);
+}

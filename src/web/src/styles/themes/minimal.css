@@ -1,44 +1,45 @@
 /* Minimal — Linear 风格家族(默认)。
-   低饱和 zinc 中性 + 靛蓝 accent,暗色为主打模式。常规语义色(允许绿色)。 */
+   低饱和冷灰中性 + 靛蓝 accent,暗色为主打模式。常规语义色(允许绿色)。
+   v0.18 润色:更冷的表面、10px 圆角、双层柔和阴影、标题更紧的字距。 */
 
 /* ── Minimal · light(默认家族,占 :root)────────────────────────── */
 :root,
 [data-skin="minimal"] {
-  --background: #fafafa;
-  --foreground: #191a1c;
+  --background: #f7f7fa;
+  --foreground: #17181b;
   --card: #ffffff;
-  --card-foreground: #191a1c;
+  --card-foreground: #17181b;
   --popover: #ffffff;
-  --popover-foreground: #191a1c;
+  --popover-foreground: #17181b;
   --primary: #5e6ad2;
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #2a2b2d;
-  --muted: #f4f4f5;
-  --muted-foreground: #666871;
-  --accent: #ededf0;
-  --accent-foreground: #191a1c;
+  --secondary: #f3f3f7;
+  --secondary-foreground: #2a2b2f;
+  --muted: #f3f3f7;
+  --muted-foreground: #64656f;
+  --accent: #ebebf1;
+  --accent-foreground: #17181b;
   --destructive: #e5484d;
   --destructive-foreground: #ffffff;
-  --border: #e4e5e8;
-  --input: #e4e5e8;
+  --border: #e3e4ea;
+  --input: #e3e4ea;
   --ring: #5e6ad2;
-  --radius: 8px;
+  --radius: 10px;
 
-  --success: #30a46c;   --success-bg: #e3f5ea;
-  --warning: #ffb224;   --warning-bg: #fdf3d8;
+  --success: #2f9e63;   --success-bg: #e4f5ea;
+  --warning: #b7791f;   --warning-bg: #fbf0d8;
   --error: #e5484d;     --error-bg: #fdeaea;
-  --info: #0091ff;      --info-bg: #e2f1ff;
+  --info: #0b7fc4;      --info-bg: #e4f2fb;
 
   --chart-1: #5e6ad2;
   --chart-2: #7b84dc;
-  --chart-3: #b4b9ec;
+  --chart-3: #a9aeea;
   --chart-4: #6b6d76;
   --chart-5: #a3a5ad;
 
-  --surface-shadow: 0 1px 2px rgb(16 17 20 / 0.05);
-  --surface-shadow-lg: 0 10px 28px rgb(16 17 20 / 0.10);
-  --surface-border: #e4e5e8;
+  --surface-shadow: 0 1px 2px rgb(17 18 24 / 0.04), 0 2px 8px rgb(17 18 24 / 0.04);
+  --surface-shadow-lg: 0 16px 40px rgb(17 18 24 / 0.12);
+  --surface-border: #e3e4ea;
   --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
   --surface-alpha: 1;
   --surface-blur: none;
@@ -47,43 +48,53 @@
   --font-heading: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
   --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
   --font-heading-weight: 600;
-  --font-heading-tracking: -0.011em;
+  --font-heading-tracking: -0.014em;
 }
 
 /* ── 基础 dark 块(级联契约 Rule C:只放颜色,不放结构变量)──────────
    匹配任意 skin 的暗色兜底;各家族 dark 块(0,2,0)必须定义全部颜色变量盖过它。 */
 :root[data-theme="dark"],
 .dark {
-  --background: #101013;
-  --foreground: #f4f5f6;
-  --card: #17181b;
-  --card-foreground: #f4f5f6;
-  --popover: #1c1d21;
-  --popover-foreground: #f4f5f6;
-  --primary: #7c86ff;
-  --primary-foreground: #0f1013;
-  --secondary: #212226;
-  --secondary-foreground: #e9eaec;
-  --muted: #212226;
-  --muted-foreground: #9294a0;
-  --accent: #26272d;
-  --accent-foreground: #f4f5f6;
+  --background: #0d0e12;
+  --foreground: #f2f3f5;
+  --card: #16171c;
+  --card-foreground: #f2f3f5;
+  --popover: #1b1c22;
+  --popover-foreground: #f2f3f5;
+  --primary: #7f89ff;
+  --primary-foreground: #0b0c11;
+  --secondary: #212228;
+  --secondary-foreground: #e9eaee;
+  --muted: #212228;
+  --muted-foreground: #9a9ca8;
+  --accent: #26272e;
+  --accent-foreground: #f2f3f5;
   --destructive: #ff6369;
   --destructive-foreground: #ffffff;
-  --border: #26272c;
-  --input: #26272c;
-  --ring: #7c86ff;
+  --border: #26272e;
+  --input: #26272e;
+  --ring: #7f89ff;
 
   --success: #46c88a;   --success-bg: #12241b;
   --warning: #ffc94d;   --warning-bg: #2a2110;
   --error: #ff6369;     --error-bg: #331a1c;
   --info: #58a6ff;      --info-bg: #10233c;
 
-  --chart-1: #7c86ff;
-  --chart-2: #a3aaff;
-  --chart-3: #d0d3ff;
-  --chart-4: #9294a0;
+  --chart-1: #7f89ff;
+  --chart-2: #9ba3ff;
+  --chart-3: #c6caff;
+  --chart-4: #9a9ca8;
   --chart-5: #5c5e69;
 
-  --surface-border: #26272c;
+  --surface-border: #26272e;
+}
+
+/* 画布光晕(应用外壳自带不透明底色,渐变必须画在 .app-canvas 上) */
+[data-skin="minimal"] .app-canvas {
+  background-image: linear-gradient(180deg, #fbfbfe 0%, #f3f3f8 100%);
+}
+
+[data-skin="minimal"][data-theme="dark"] .app-canvas,
+[data-skin="minimal"].dark .app-canvas {
+  background-image: radial-gradient(1100px 620px at 12% -12%, rgb(94 106 210 / 0.16), transparent 62%);
 }
