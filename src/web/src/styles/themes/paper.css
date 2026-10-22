@@ -42,7 +42,7 @@
   --surface-blur: none;
 
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
-  --font-heading: "Source Serif 4", Georgia, "Noto Sans SC", "PingFang SC", serif;
+  --font-heading: "Source Serif 4", "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
   --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
   --font-heading-weight: 600;
   --font-heading-tracking: 0em;
@@ -92,7 +92,7 @@
   --radius: 6px;
   --ease-surface: cubic-bezier(0.22, 1, 0.36, 1);
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
-  --font-heading: "Source Serif 4", Georgia, "Noto Sans SC", "PingFang SC", serif;
+  --font-heading: "Source Serif 4", "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
   --font-mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
   --font-heading-weight: 600;
   --font-heading-tracking: 0em;
