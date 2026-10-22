@@ -4,10 +4,10 @@
 
 | 轴 | 属性 / 类 | 取值 | 持久化键 |
 |---|---|---|---|
-| 风格家族(skin) | `data-skin` | `minimal` · `classic` · `paper` · `glass` · `modernist` | `cc-gw-skin` |
+| 风格家族(skin) | `data-skin` | `minimal` · `classic` · `paper` · `glass` · `modernist` · `neon` · `aurora` · `sakura` · `ocean` | `cc-gw-skin` |
 | 明暗模式(mode) | `data-theme` + `.dark` 类 | `light` · `dark` | `cc-gw-theme`(存 `light/dark/system`) |
 
-两轴完全独立:任意家族 × 任意明暗都合法(共 10 组合)。用户偏好由
+两轴完全独立:任意家族 × 任意明暗都合法(共 18 组合)。用户偏好由
 `ThemeProvider` 经 `usePersistentState` 持久化;切换入口两处:头部
 `ThemeSwitcher` 下拉(家族分组 + 明暗分组)、⌘K 命令面板(明暗切换、
 家族循环)。
@@ -38,23 +38,27 @@
 
 | 家族 | 气质 | light `--primary` | `--radius` | 字体 | 特殊机制 |
 |---|---|---|---|---|---|
-| **minimal**(默认) | Linear 风,zinc 中性 + 靛蓝 | `#5e6ad2` | `8px` | Inter / Noto Sans SC | — |
+| **minimal**(默认) | Linear 风,cool zinc 中性 + 靛蓝,画布淡靛光 | `#5e6ad2` | `10px` | Inter / Noto Sans SC | 双层柔和阴影 + `.app-canvas` 渐变 |
 | **classic** | shadcn 风,zinc + 蓝,柔和圆角 | `#2563eb` | `0.625rem` | Inter | 常规阴影 |
 | **paper** | Notion 暖纸,陶土 accent | `#b4552d` | `6px` | 正文 Inter,**标题 Source Serif 4** | — |
 | **glass** | 毛玻璃,紫 accent | `#7c3aed` | `1rem` | Inter | `--surface-alpha` + `--surface-blur` + body 渐变 |
 | **modernist** | 原设计系统:直角、单一红、无绿、零阴影 | `#ec3013` | `0px` | Archivo | 无绿/无玻璃是其族签名 |
+| **neon** | 赛博终端:近黑底 + 电光薄荷绿,等宽标题 | `#008f6b` | `4px` | **标题/数字 JetBrains Mono** | dark 画布 32px 网格 + 光晕 |
+| **aurora** | 极光:深靛底 + 紫/青/粉光晕,毛玻璃 | `#6d4afc` | `14px` | 标题 Space Grotesk | `--surface-alpha` + `--surface-blur` + 多色 radial |
+| **sakura** | 樱:暖象牙白 + 玫瑰 accent,衬线标题 | `#cf3f74` | `12px` | 标题 Source Serif 4 | 柔和玫瑰光 |
+| **ocean** | 深海:海盐白 + 深青,利落小圆角 | `#0e7490` | `6px` | Inter | 海色纵向渐变 |
 
 状态色:除 modernist 外均为常规语义(green success 合法);modernist 沿用
 "无绿"(success = 深灰)与红系 warn/err。
 
-## 半透明表面(glass)机制
+## 半透明表面(glass / aurora)机制
 
 - `tailwind.config.cjs` 的 `withAlpha` 用相对颜色语法包装 token —— 这会
   **丢弃原值的 alpha**,因此 `--card`/`--popover`/`--background` 必须**永远是
   不透明 hex**。
 - 半透明只能经修饰符:`bg-card/[var(--surface-alpha)]` 编译为
   `rgb(from var(--card) r g b / var(--surface-alpha))`(Tailwind 3.4 支持
-  var() 作 alpha 值)。非 glass 家族 `--surface-alpha: 1`,像素等价于
+  var() 作 alpha 值)。非 glass/aurora 家族 `--surface-alpha: 1`,像素等价于
   `bg-card`。
 - 模糊走 `.surface-blur` 类(`global.css`):`backdrop-filter:
   var(--surface-blur, none)`。默认 `none` 而非 `blur(0px)` —— 后者仍会创建
@@ -66,6 +70,14 @@
   输入框/按钮/badge/遮罩一律不透明。
 - tailwind-merge 会把 `bg-card/[var(--surface-alpha)]` 与 `bg-card` /
   `bg-muted/30` 视为同组去重(后者胜),无需手动处理冲突。
+
+## 画布背景(`.app-canvas`)
+
+应用外壳 `[data-testid="app-shell"]` 自带不透明 `bg-background`,会遮住
+`body` 上的背景。因此家族级的光晕 / 网格 / 渐变必须画在 `.app-canvas`
+(同一个外壳根元素上的类)的 `background-image` 上,选择器形如
+`[data-skin="x"] .app-canvas` 与 `[data-skin="x"].dark .app-canvas`。
+landing 页走独立入口,不受影响。
 
 ## 防 FOUC
 
@@ -93,10 +105,10 @@ ECharts 无法解析 `var()`(canvas)。所有图表颜色必须经 `useChartThem
 
 ## 测试
 
-- `theme-families.spec.ts`(core 套件):5 族 × 亮/暗哨兵矩阵(`--primary`、
-  `--radius`、`--background`)、Rule B/C 渗透守卫、脏 skin 清洗、glass
-  backdrop-filter 开关。计算值经 `normalizeToken` 归一(minifier 丢前导零:
-  `0.625rem` → `.625rem`)。
+- `theme-families.spec.ts`(core 套件):9 族 × 亮/暗哨兵矩阵(`--primary`、
+  `--radius`、`--background`)、Rule B/C 渗透守卫、脏 skin 清洗、glass 与
+  aurora 的 backdrop-filter 开关。计算值经 `normalizeToken` 归一(minifier
+  丢前导零:`0.625rem` → `.625rem`)。
 - 视觉基线:**light + minimal** 钉值,由 `visual-helpers.ts` 在每次 goto 后
   写入 storage 并 reload(与 locale 钉值同一机制,防自持久化污染)。
 - 每族独立视觉基线暂不做(60 张已是 4 项目规模,未来按需扩展)。
@@ -111,6 +123,9 @@ ECharts 无法解析 `var()`(canvas)。所有图表颜色必须经 `useChartThem
 4. i18n:`{zh,en}/common.ts` 的 `common.theme.families.<name>` 成对补齐。
 5. `ThemeSwitcher.tsx` 的 `skins` 数组补图标项(lucide)。
 6. `theme-families.spec.ts`:哨兵表加一行(取 CSS 里的 `--primary` /
-   `--radius` / dark `--background` / dark `--primary`)。
+   `--radius` / dark `--background` / dark `--primary`);若新家族启用
+   `--surface-blur`,同步 blur 家族断言。
 7. Google Fonts(`index.html`):如需新字体族则扩充链接,并同步
    `tailwind.config.cjs` fallback。
+8. 若家族需要画布光晕 / 网格,写在 `<name>.css` 的 `.app-canvas` 选择器上
+   (见上节),不要试图给 `body` 加背景 —— 会被应用外壳遮住。
