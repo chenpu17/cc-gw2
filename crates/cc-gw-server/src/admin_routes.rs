@@ -1743,6 +1743,10 @@ pub(super) async fn api_logs(
             .get("clientKind")
             .cloned()
             .filter(|value| !value.is_empty()),
+        session: query
+            .get("session")
+            .cloned()
+            .filter(|value| !value.is_empty()),
     };
 
     match query_logs(&state.paths.db_path, &log_query) {
@@ -1813,6 +1817,11 @@ pub(super) async fn api_logs_export(
             .or_else(|| raw.get("apiKey").and_then(value_to_api_key_ids)),
         client_kind: raw
             .get("clientKind")
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .filter(|value| !value.is_empty()),
+        session: raw
+            .get("session")
             .and_then(Value::as_str)
             .map(ToString::to_string)
             .filter(|value| !value.is_empty()),

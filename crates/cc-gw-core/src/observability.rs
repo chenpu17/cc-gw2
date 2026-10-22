@@ -346,6 +346,8 @@ pub struct LogQuery {
     pub to: Option<i64>,
     pub api_key_ids: Option<Vec<i64>>,
     pub client_kind: Option<String>,
+    /// Exact session id — isolates one client conversation across turns.
+    pub session: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -617,8 +619,16 @@ fn build_log_filters(query: &LogQuery) -> (String, Vec<String>) {
         params.push(client_kind.clone());
     }
     if let Some(model) = &query.model {
-        conditions.push("model = ?".to_string());
+        // The table shows the model the client *requested* (client_model),
+        // while `model` holds the routed target. Filtering by what the user
+        // sees should match either side instead of silently returning zero.
+        conditions.push("(model = ? OR client_model = ?)".to_string());
         params.push(model.clone());
+        params.push(model.clone());
+    }
+    if let Some(session) = &query.session {
+        conditions.push("session_id = ?".to_string());
+        params.push(session.clone());
     }
     if let Some(status) = &query.status {
         if status == "success" {
@@ -2151,6 +2161,7 @@ mod tests {
                 to: None,
                 api_key_ids: None,
                 client_kind: None,
+                session: None,
             },
         )
         .expect("query logs");
@@ -2173,6 +2184,7 @@ mod tests {
                 to: None,
                 api_key_ids: None,
                 client_kind: Some("claude-code".to_string()),
+                session: None,
             },
         )
         .expect("query filtered logs");
@@ -2190,6 +2202,7 @@ mod tests {
                 to: None,
                 api_key_ids: None,
                 client_kind: Some("codex".to_string()),
+                session: None,
             },
         )
         .expect("query codex logs");
@@ -2213,6 +2226,7 @@ mod tests {
                 to: None,
                 api_key_ids: None,
                 client_kind: None,
+                session: None,
             },
         )
         .expect("export logs");
@@ -3145,6 +3159,110 @@ mod tests {
         assert_eq!(error_logs.total, 1);
         assert_eq!(error_logs.items[0].id, failure_id);
         assert_ne!(error_logs.items[0].id, pending_id);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn log_filters_match_requested_model_and_session() {
+        let root = std::env::temp_dir().join(format!(
+            "cc-gw2-observability-model-session-filter-tests-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let db_path = root.join("gateway.db");
+        initialize_database(&db_path).expect("init database");
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let requested_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now,
+                session_id: Some("sess-alpha".to_string()),
+                source_ip: None,
+                client_kind: Some("claude-code".to_string()),
+                user_agent: None,
+                endpoint: "anthropic".to_string(),
+                provider: "mock".to_string(),
+                model: "upstream-routed".to_string(),
+                client_model: Some("claude-sonnet-4".to_string()),
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert requested-model log");
+
+        let other_id = insert_request_log(
+            &db_path,
+            &RequestLogInput {
+                timestamp: now - 1,
+                session_id: Some("sess-beta".to_string()),
+                source_ip: None,
+                client_kind: Some("codex".to_string()),
+                user_agent: None,
+                endpoint: "openai".to_string(),
+                provider: "mock".to_string(),
+                model: "other-routed".to_string(),
+                client_model: Some("gpt-4o".to_string()),
+                stream: false,
+                api_key_id: None,
+                api_key_name: None,
+                api_key_value: None,
+            },
+        )
+        .expect("insert other log");
+
+        // Filtering by the model the client asked for (what the table shows)
+        // must find the row even though it was routed elsewhere.
+        let by_client_model = query_logs(
+            &db_path,
+            &LogQuery {
+                model: Some("claude-sonnet-4".to_string()),
+                limit: 20,
+                ..LogQuery::default()
+            },
+        )
+        .expect("query by client model");
+        assert_eq!(by_client_model.total, 1);
+        assert_eq!(by_client_model.items[0].id, requested_id);
+
+        // The routed model stays searchable too.
+        let by_routed_model = query_logs(
+            &db_path,
+            &LogQuery {
+                model: Some("other-routed".to_string()),
+                limit: 20,
+                ..LogQuery::default()
+            },
+        )
+        .expect("query by routed model");
+        assert_eq!(by_routed_model.total, 1);
+        assert_eq!(by_routed_model.items[0].id, other_id);
+
+        let by_session = query_logs(
+            &db_path,
+            &LogQuery {
+                session: Some("sess-alpha".to_string()),
+                limit: 20,
+                ..LogQuery::default()
+            },
+        )
+        .expect("query by session");
+        assert_eq!(by_session.total, 1);
+        assert_eq!(by_session.items[0].id, requested_id);
+
+        let missing_session = query_logs(
+            &db_path,
+            &LogQuery {
+                session: Some("sess-missing".to_string()),
+                limit: 20,
+                ..LogQuery::default()
+            },
+        )
+        .expect("query by missing session");
+        assert_eq!(missing_session.total, 0);
 
         let _ = std::fs::remove_dir_all(root);
     }
