@@ -55,8 +55,23 @@ export function LogCard({ record, providerLabelMap, onSelect, costCurrency }: Lo
             {t('logs.table.columns.latencyTtft')} {formatNumber(record.ttft_ms)}
           </span>
         ) : null}
+        {record.tpot_ms != null ? (
+          <span>
+            {t('logs.table.columns.latencyTpot')} {formatLatency(record.tpot_ms, t('common.units.msPerToken'))}
+          </span>
+        ) : null}
         {record.cost != null ? <span>{formatCost(record.cost, costCurrency)}</span> : null}
       </div>
+      {record.cache_read_tokens != null || record.cache_creation_tokens != null ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tabular-nums text-muted-foreground/80">
+          <span>
+            {t('logs.table.columns.tokenCacheRead')} {formatNumber(record.cache_read_tokens ?? record.cached_tokens)}
+          </span>
+          <span>
+            {t('logs.table.columns.tokenCacheWrite')} {formatNumber(record.cache_creation_tokens)}
+          </span>
+        </div>
+      ) : null}
     </button>
   )
 }

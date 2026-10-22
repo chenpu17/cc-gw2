@@ -138,9 +138,11 @@ export function LogInlineDetail({ logId, providerLabelMap, apiKeyMap }: LogInlin
     { label: t('logs.detail.info.status'), value: statusMeta?.label ?? '—' },
     { label: t('logs.detail.info.latency'), value: formatLatency(record.latency_ms, ms) },
     { label: t('logs.detail.info.ttft'), value: formatLatency(record.ttft_ms, ms) },
+    { label: t('logs.detail.info.tpot'), value: formatLatency(record.tpot_ms, t('common.units.msPerToken')) },
     { label: t('logs.detail.info.inputTokens'), value: formatNumber(record.input_tokens) },
     { label: t('logs.detail.info.outputTokens'), value: formatNumber(record.output_tokens) },
     { label: t('logs.detail.info.cacheReadTokens'), value: formatNumber(record.cache_read_tokens) },
+    { label: t('logs.detail.info.cacheCreationTokens'), value: formatNumber(record.cache_creation_tokens) },
     { label: t('logs.detail.info.cost'), value: formatCost(record.cost, record.cost_currency) }
   ]
   const hasTtft = record.ttft_ms != null

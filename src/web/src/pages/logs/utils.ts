@@ -17,6 +17,11 @@ export function formatDateTime(timestamp: number): string {
   return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')} ${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}:${`${date.getSeconds()}`.padStart(2, '0')}`
 }
 
+/** Compact table variant (no year) so the sticky time column stays narrow. */
+export function formatTableDateTime(timestamp: number): string {
+  return formatDateTime(timestamp).slice(5)
+}
+
 export function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—'
   return value.toLocaleString()
