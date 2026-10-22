@@ -14,7 +14,8 @@ test.afterAll(async () => {
 /**
  * 主题家族(风格轴 data-skin)× 明暗轴(data-theme)的哨兵矩阵。
  *
- * 断言 themes/*.css 十个 token 块的级联契约(见
+ * 断言 themes/*.css 十九个 token 块(9 家族 light + 9 家族 dark + 1 基础 dark)
+ * 的级联契约(见
  * src/web/src/styles/themes/index.css 头注释 Rule A/B/C):
  * - 每个家族 light 块是完整集(颜色 + 结构);
  * - dark 下颜色换族、结构变量(圆角/字体/缓动)仍属本族 —— 基础 dark 块只放

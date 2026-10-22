@@ -42,12 +42,12 @@
 |---|---|---|---|---|---|
 | **minimal**(默认) | Linear 风,cool zinc 中性 + 靛蓝,画布淡靛光 | `#5e6ad2` | `10px` | Inter / Noto Sans SC | 双层柔和阴影 + `.app-canvas` 渐变 |
 | **classic** | shadcn 风,zinc + 蓝,柔和圆角 | `#2563eb` | `0.625rem` | Inter | 常规阴影 |
-| **paper** | Notion 暖纸,陶土 accent | `#b4552d` | `6px` | 正文 Inter,**标题 Source Serif 4** | — |
-| **glass** | 毛玻璃,紫 accent | `#7c3aed` | `1rem` | Inter | `--surface-alpha` + `--surface-blur` + body 渐变 |
+| **paper** | Notion 暖纸,陶土 accent | `#b4552d` | `6px` | 正文 Inter,**标题 Source Serif 4 / Noto Serif SC** | — |
+| **glass** | 毛玻璃,紫 accent | `#7c3aed` | `1rem` | Inter | `--surface-alpha` + `--surface-blur` + `.app-canvas` 聚光渐变 |
 | **modernist** | 原设计系统:直角、单一红、无绿、零阴影 | `#ec3013` | `0px` | Archivo | 无绿/无玻璃是其族签名 |
-| **neon** | 赛博终端:近黑底 + 电光薄荷绿,等宽标题 | `#008f6b` | `4px` | **标题/数字 JetBrains Mono** | dark 画布 32px 网格 + 光晕 |
+| **neon** | 赛博终端:近黑底 + 电光薄荷绿,等宽标题 | `#007d5d` | `4px` | **标题/数字 JetBrains Mono** | dark 画布 32px 网格 + 光晕 |
 | **aurora** | 极光:深靛底 + 紫/青/粉光晕,毛玻璃 | `#6d4afc` | `14px` | 标题 Space Grotesk | `--surface-alpha` + `--surface-blur` + 多色 radial |
-| **sakura** | 樱:暖象牙白 + 玫瑰 accent,衬线标题 | `#cf3f74` | `12px` | 标题 Source Serif 4 | 柔和玫瑰光 |
+| **sakura** | 樱:暖象牙白 + 玫瑰 accent,衬线标题 | `#c23367` | `12px` | 标题 Source Serif 4 / Noto Serif SC | 柔和玫瑰光 |
 | **ocean** | 深海:海盐白 + 深青,利落小圆角 | `#0e7490` | `6px` | Inter | 海色纵向渐变 |
 
 状态色:除 modernist 外均为常规语义(green success 合法);modernist 沿用
