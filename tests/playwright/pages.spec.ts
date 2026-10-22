@@ -31,7 +31,7 @@ test('web console pages load and navigation works', async ({ page }) => {
   await expect(page.getByText('配置导览')).toHaveCount(0)
 
   await page.getByRole('link', { name: '路由' }).first().click()
-  await expect(page).toHaveURL(/\/ui\/routing$/)
+  await expect(page).toHaveURL(/\/ui\/routing(\?endpoint=anthropic)?$/)
   await expect(page.getByRole('heading', { name: '路由', level: 1 })).toBeVisible()
   await expect(page.getByRole('button', { name: '新建端点' }).first()).toBeVisible()
   // 旧「管理端点」入口已退役；端点的编辑/删除挂在左栏 rail 自定义行行内
@@ -66,8 +66,8 @@ test('web console pages load and navigation works', async ({ page }) => {
   await expect(page).toHaveURL(/\/ui\/settings$/)
   await expect(page.getByRole('heading', { level: 1 }).filter({ hasText: /设置/ })).toBeVisible()
 
-  // 使用指南已从侧边导航移除，仅保留直达路由
-  await page.goto(`${harness.baseUrl()}/ui/help`)
+  // 使用指南已回到侧边导航「系统」组，命令行面板同样可检索
+  await page.getByRole('link', { name: '使用指南' }).click()
   await expect(page).toHaveURL(/\/ui\/help$/)
   await expect(page.getByRole('heading', { level: 1 }).filter({ hasText: /使用指南/ })).toBeVisible()
 
@@ -81,26 +81,26 @@ test('theme and language switchers open menus', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
 
   await page.getByTestId('theme-switcher-trigger').click({ force: true })
-  await expect(page.getByRole('menuitem', { name: '亮色' })).toBeVisible()
-  await expect(page.getByRole('menuitem', { name: '跟随系统' })).toBeVisible()
+  await expect(page.getByRole('menuitemradio', { name: '亮色' })).toBeVisible()
+  await expect(page.getByRole('menuitemradio', { name: '跟随系统' })).toBeVisible()
   // 风格家族分组:五个可选项
   for (const family of ['极简', '经典', '纸张', '玻璃', 'Modernist']) {
-    await expect(page.getByRole('menuitem', { name: family })).toBeVisible()
+    await expect(page.getByRole('menuitemradio', { name: family })).toBeVisible()
   }
   // 点击切族 → data-skin 立即生效 → reload 后持久化 → 切回默认
-  await page.getByRole('menuitem', { name: '纸张' }).click()
+  await page.getByRole('menuitemradio', { name: '纸张' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-skin', 'paper')
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-skin', 'paper')
   await page.getByTestId('theme-switcher-trigger').click({ force: true })
-  await page.getByRole('menuitem', { name: '极简' }).click()
+  await page.getByRole('menuitemradio', { name: '极简' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-skin', 'minimal')
 
   await page.goto(`${harness.baseUrl()}/ui/`)
   await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible()
   await page.getByTestId('language-switcher-trigger').click({ force: true })
-  await expect(page.getByRole('menuitem', { name: '中文' })).toBeVisible()
-  await expect(page.getByRole('menuitem', { name: 'English' })).toBeVisible()
+  await expect(page.getByRole('menuitemradio', { name: '中文' })).toBeVisible()
+  await expect(page.getByRole('menuitemradio', { name: 'English' })).toBeVisible()
 })
 
 test('deep links and language preference survive reloads under /ui basename', async ({ page }) => {
@@ -120,7 +120,7 @@ test('deep links and language preference survive reloads under /ui basename', as
 
   await page.goto(`${harness.baseUrl()}/ui/providers`)
   await page.getByTestId('language-switcher-trigger').click({ force: true })
-  await page.getByRole('menuitem', { name: 'English' }).click()
+  await page.getByRole('menuitemradio', { name: 'English' }).click()
   await expect(page.getByRole('heading', { name: 'Providers', level: 1 })).toBeVisible()
 
   await page.reload()

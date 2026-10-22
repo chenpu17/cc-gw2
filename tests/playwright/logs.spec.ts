@@ -110,6 +110,67 @@ test('logs web ui supports filters, columns, detail modal and export', async ({ 
   expect(download.suggestedFilename()).toMatch(/cc-gw-logs-.*\.zip$/)
 })
 
+test('logs deep links seed status and client filters then clear the query string', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+  const valid = await request.post(`${baseUrl}/v1/messages`, {
+    data: messagePayload,
+    headers: { 'content-type': 'application/json' }
+  })
+  expect(valid.status()).toBe(200)
+  await pollForAnyLog(request, baseUrl)
+
+  // 仪表盘错误率卡片 / 客户端卡片下钻都走这条路径：URL 只负责播种，
+  // 之后由持久化过滤器接管，地址栏不残留参数。
+  await page.goto(`${baseUrl}/ui/logs?status=error&clientKind=anthropic-compatible`)
+  await expect(page.getByRole('heading', { name: '请求日志', level: 1 })).toBeVisible()
+  await expect(page.getByText('状态: 失败')).toBeVisible()
+  await expect(page.getByText('客户端: Anthropic 兼容客户端')).toBeVisible()
+  await expect(page).toHaveURL(/\/ui\/logs$/)
+
+  // 深链播种的是持久化状态，刷新后仍然生效
+  await page.reload()
+  await expect(page.getByText('状态: 失败')).toBeVisible()
+  await expect(page.getByText('客户端: Anthropic 兼容客户端')).toBeVisible()
+})
+
+test('payload copy falls back to execCommand inside the detail dialog', async ({ page, request }) => {
+  const baseUrl = harness.baseUrl()
+  const valid = await request.post(`${baseUrl}/v1/messages`, {
+    data: messagePayload,
+    headers: { 'content-type': 'application/json' }
+  })
+  expect(valid.status()).toBe(200)
+  await pollForAnyLog(request, baseUrl)
+
+  // 非安全上下文 + Radix 焦点陷阱：降级用的隐藏 textarea 必须挂在对话框内部，
+  // 否则焦点被抢回，execCommand 复制到的是空内容。
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+    ;(window as unknown as { __ccGwCopied: string | null }).__ccGwCopied = null
+    const original = document.execCommand.bind(document)
+    document.execCommand = (command: string) => {
+      if (command === 'copy') {
+        const active = document.activeElement as HTMLTextAreaElement | null
+        ;(window as unknown as { __ccGwCopied: string | null }).__ccGwCopied = active?.value ?? null
+        return true
+      }
+      return original(command)
+    }
+  })
+
+  await page.goto(`${baseUrl}/ui/logs`)
+  await page.getByRole('button', { name: '详情' }).first().click()
+  const dialog = page.getByRole('dialog', { name: '日志详情' })
+  await expect(dialog).toBeVisible()
+
+  await dialog.getByTestId('log-payload-client-request').getByRole('button', { name: '复制' }).click()
+  await expect(page.getByText('请求体已复制到剪贴板。')).toBeVisible()
+  const copied = await page.evaluate(
+    () => (window as unknown as { __ccGwCopied: string | null }).__ccGwCopied
+  )
+  expect(copied ?? '').toContain('Hello from Playwright logs test')
+})
+
 test('log detail response payload copy and download preserve large full content', async ({ page, request }) => {
   const baseUrl = harness.baseUrl()
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl })

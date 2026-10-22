@@ -53,6 +53,77 @@ test('help page code blocks can be copied end-to-end', async ({ page, context })
   await page.getByRole('button', { name: '复制' }).first().click()
   const copiedText = await page.evaluate(() => navigator.clipboard.readText())
   expect(copiedText.trim()).toBe(expectedCode)
+
+  // 复制后必须给出可见反馈，否则按钮看起来像坏的
+  await expect(page.getByRole('button', { name: '已复制' }).first()).toBeVisible()
+})
+
+test('copy buttons fall back to execCommand when the Clipboard API is unavailable', async ({ page }) => {
+  const baseUrl = harness.baseUrl()
+  // 模拟非安全上下文（控制台通过局域网 http://<ip>:4100 打开）：navigator.clipboard
+  // 不存在。用桩记录 execCommand('copy') 时选中的文本，验证降级路径真的复制了内容。
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+    ;(window as unknown as { __ccGwCopied: string | null }).__ccGwCopied = null
+    const original = document.execCommand.bind(document)
+    document.execCommand = (command: string) => {
+      if (command === 'copy') {
+        const active = document.activeElement as HTMLTextAreaElement | null
+        ;(window as unknown as { __ccGwCopied: string | null }).__ccGwCopied = active?.value ?? null
+        return true
+      }
+      return original(command)
+    }
+  })
+
+  await page.goto(`${baseUrl}/ui/help`)
+  await expect(page.getByRole('heading', { name: '使用指南', level: 1 })).toBeVisible()
+
+  const firstCodeBlock = page.locator('pre code').first()
+  const expectedCode = (await firstCodeBlock.textContent())?.trim() ?? ''
+  await page.getByRole('button', { name: '复制' }).first().click()
+
+  await expect(page.getByRole('button', { name: '已复制' }).first()).toBeVisible()
+  const copied = await page.evaluate(
+    () => (window as unknown as { __ccGwCopied: string | null }).__ccGwCopied
+  )
+  expect((copied ?? '').trim()).toBe(expectedCode)
+})
+
+test('provider profile copy falls back to execCommand when the Clipboard API is unavailable', async ({ page }) => {
+  const baseUrl = harness.baseUrl()
+  const stubBase = `http://127.0.0.1:${harness.stubPort}`
+
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+    ;(window as unknown as { __ccGwCopied: string | null }).__ccGwCopied = null
+    const original = document.execCommand.bind(document)
+    document.execCommand = (command: string) => {
+      if (command === 'copy') {
+        const active = document.activeElement as HTMLTextAreaElement | null
+        ;(window as unknown as { __ccGwCopied: string | null }).__ccGwCopied = active?.value ?? null
+        return true
+      }
+      return original(command)
+    }
+  })
+
+  await page.goto(`${baseUrl}/ui/providers`)
+  await expect(page.getByRole('heading', { name: '提供商', level: 1 })).toBeVisible()
+  await page.getByTestId('provider-rail-row').filter({ hasText: 'Stub Provider' }).click()
+
+  const panel = page.getByTestId('provider-detail-panel')
+  await expect(panel).toBeVisible()
+  // 详情面板主端点旁的复制按钮曾直接调用 navigator.clipboard，非安全上下文下静默失败
+  const copyButton = panel.getByRole('button', { name: '复制' }).first()
+  await copyButton.click()
+
+  const copied = await page.evaluate(
+    () => (window as unknown as { __ccGwCopied: string | null }).__ccGwCopied
+  )
+  expect(copied).toBe(stubBase)
+  // 成功后用对勾图标给出可见反馈
+  await expect(copyButton.locator('svg.text-foreground')).toBeVisible()
 })
 
 test('about page keeps manual refresh semantics and checks npm updates through the backend', async ({ page }) => {
