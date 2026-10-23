@@ -17,6 +17,12 @@ export interface RoutingSimulateRequest {
   endpoint: string
   model?: string
   thinking?: boolean
+  /**
+   * Protocol family to simulate. Needed for unified custom endpoints, whose
+   * routing table branches by family; omitted = the endpoint's first path
+   * protocol (legacy behavior).
+   */
+  protocol?: 'anthropic' | 'openai'
   /** Optional request body; used only for the long-context token estimate. */
   body?: unknown
 }

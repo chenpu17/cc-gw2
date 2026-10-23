@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { RoutingPreset } from '@/types/providers'
+import { collectPresetRoutes, getRouteScopeLabel } from './shared'
 import type { RoutingState } from './useRoutingState'
 
 /**
@@ -72,7 +73,7 @@ export function RoutingPresetsCard({
               {presets.map((preset) => {
                 const isApplying = applyingPreset === preset.name
                 const isDeleting = deletingPreset === preset.name
-                const entries = Object.entries(preset.modelRoutes ?? {})
+                const entries = collectPresetRoutes(preset)
                 const count = entries.length
                 return (
                   <div
@@ -94,11 +95,16 @@ export function RoutingPresetsCard({
                       {count > 0 ? (
                         <TooltipContent side="bottom" className="max-w-xs">
                           <div className="space-y-1 text-xs">
-                            {entries.slice(0, 5).map(([source, target]) => (
-                              <div key={source} className="flex items-center gap-1">
-                                <span className="truncate">{source}</span>
+                            {entries.slice(0, 5).map((route) => (
+                              <div key={`${route.scope}:${route.source}`} className="flex items-center gap-1">
+                                {route.scope !== 'all' ? (
+                                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                                    {getRouteScopeLabel(route.scope, t)}
+                                  </span>
+                                ) : null}
+                                <span className="truncate">{route.source}</span>
                                 <ArrowRight className="h-3 w-3 shrink-0" />
-                                <span className="truncate">{target}</span>
+                                <span className="truncate">{route.target}</span>
                               </div>
                             ))}
                             {count > 5 ? <div className="text-muted-foreground">…+{count - 5}</div> : null}

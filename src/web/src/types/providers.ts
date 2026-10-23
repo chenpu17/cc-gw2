@@ -160,15 +160,23 @@ export interface HttpsConfig {
   caPath?: string
 }
 
+export interface ProtocolModelRoutes {
+  anthropic?: Record<string, string>
+  openai?: Record<string, string>
+}
+
 export interface EndpointRoutingConfig {
   defaults: DefaultsConfig
   modelRoutes: Record<string, string>
+  /** Protocol-family routes (unified endpoints); override `modelRoutes`. */
+  modelRoutesByProtocol?: ProtocolModelRoutes
   compatibility?: EndpointCompatibilityConfig
 }
 
 export interface RoutingPreset {
   name: string
   modelRoutes: Record<string, string>
+  modelRoutesByProtocol?: ProtocolModelRoutes
   createdAt: number
 }
 

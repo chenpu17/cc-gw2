@@ -11,15 +11,28 @@ export interface EndpointCompatibilityConfig {
   enabled: boolean
 }
 
+export interface ProtocolModelRoutes {
+  anthropic?: Record<string, string>
+  openai?: Record<string, string>
+}
+
 export interface EndpointRoutingConfig {
   defaults: DefaultsConfig
   modelRoutes: Record<string, string>
+  /**
+   * Protocol-family routes for unified endpoints — an Anthropic request and an
+   * OpenAI request carrying the same source model can forward to different
+   * targets. These take precedence over `modelRoutes`; "openai" covers both
+   * Chat Completions and Responses.
+   */
+  modelRoutesByProtocol?: ProtocolModelRoutes
   compatibility?: EndpointCompatibilityConfig
 }
 
 export interface RoutingPreset {
   name: string
   modelRoutes: Record<string, string>
+  modelRoutesByProtocol?: ProtocolModelRoutes
   createdAt: number
 }
 

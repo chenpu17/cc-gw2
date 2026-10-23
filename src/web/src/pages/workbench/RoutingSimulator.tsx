@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Input } from '@/components/ui/input'
@@ -13,7 +13,7 @@ import {
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { routingApi } from '@/services/routing'
 import type { RouteMatchReason, RoutingSimulateResponse } from '@/types/routing'
-import type { ManagementTab } from './shared'
+import { getEndpointFamilies, type ManagementTab } from './shared'
 
 const DEBOUNCE_MS = 350
 
@@ -84,6 +84,34 @@ export function RoutingSimulator({
   const [model, setModel] = useState('')
   const [thinking, setThinking] = useState(false)
   const [debouncedModel, setDebouncedModel] = useState('')
+  const endpointProtocols = endpointTabs.find((tab) => tab.key === endpoint)?.protocols
+  // Which family the endpoint's first configured path belongs to. Used as the
+  // simulator's default when both families are served; for single-family
+  // endpoints the backend derives the protocol from the path itself.
+  const firstPathFamily: 'anthropic' | 'openai' = endpointProtocols?.[0]?.startsWith('openai')
+    ? 'openai'
+    : 'anthropic'
+  const [protocol, setProtocol] = useState<'anthropic' | 'openai'>(firstPathFamily)
+
+  const isCustomEndpoint = endpoint !== 'anthropic' && endpoint !== 'openai'
+  const families = getEndpointFamilies(endpointProtocols)
+  // Unified endpoints accept both families; the route table branches by
+  // family, so the simulator must let the operator pick which one to test.
+  const showProtocol = isCustomEndpoint && families.anthropic && families.openai
+  const simulatedProtocol = showProtocol ? protocol : undefined
+
+  // Switching between endpoints resets the simulator to that endpoint's first
+  // path family. Guarded by a ref so a parent re-render with a new `tabs`
+  // identity cannot clobber the operator's selection.
+  const lastEndpointRef = useRef(endpoint)
+  useEffect(() => {
+    if (lastEndpointRef.current === endpoint) return
+    lastEndpointRef.current = endpoint
+    const pathProtocols = tabs.find((tab) => tab.key === endpoint)?.protocols
+    const nextFamilies = getEndpointFamilies(pathProtocols)
+    if (!nextFamilies.anthropic || !nextFamilies.openai) return
+    setProtocol(pathProtocols?.[0]?.startsWith('openai') ? 'openai' : 'anthropic')
+  }, [endpoint, tabs])
 
   // 实时预览: 输入停顿后再查询,避免每次按键都打后端。
   useEffect(() => {
@@ -92,11 +120,14 @@ export function RoutingSimulator({
   }, [model])
 
   const { data, isFetching, error } = useApiQuery<RoutingSimulateResponse>(
-    ['routing', 'simulate', endpoint, debouncedModel, thinking],
+    ['routing', 'simulate', endpoint, debouncedModel, thinking, simulatedProtocol ?? 'auto'],
     routingApi.simulateRequest({
       endpoint,
       model: debouncedModel || undefined,
-      thinking
+      thinking,
+      // Only unified endpoints need an explicit family; elsewhere the backend
+      // mirrors the real proxy path (paths[0] / legacy protocol).
+      protocol: simulatedProtocol
     }),
     { retry: false, refetchOnWindowFocus: false, staleTime: Infinity }
   )
@@ -129,6 +160,27 @@ export function RoutingSimulator({
             </Select>
           </div>
         )}
+        {showProtocol ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{t('workbench.hitSim.protocolLabel')}</span>
+            <Select
+              value={protocol}
+              onValueChange={(value) => setProtocol(value as 'anthropic' | 'openai')}
+            >
+              <SelectTrigger
+                data-testid="simulator-protocol"
+                className="h-8 w-[128px]"
+                aria-label={t('workbench.hitSim.protocolLabel')}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="anthropic">{t('workbench.routing.scopeAnthropic')}</SelectItem>
+                <SelectItem value="openai">{t('workbench.routing.scopeOpenai')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <Switch
             checked={thinking}

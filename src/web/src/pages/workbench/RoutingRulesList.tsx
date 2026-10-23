@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { PageState } from '@/components/PageState'
-import { CLAUDE_MODEL_SUGGESTIONS, OPENAI_MODEL_SUGGESTIONS, type ManagementTab } from './shared'
+import { CLAUDE_MODEL_SUGGESTIONS, OPENAI_MODEL_SUGGESTIONS, getEndpointFamilies, type ManagementTab } from './shared'
 import { RoutingRuleRow } from './RoutingRuleRow'
 import type { RoutingState } from './useRoutingState'
 
@@ -58,6 +58,14 @@ export function RoutingRulesList({
 
   const hasAnthropicProtocol = tabInfo?.protocols?.includes('anthropic') ?? endpoint === 'anthropic'
   const suggestions = hasAnthropicProtocol ? CLAUDE_MODEL_SUGGESTIONS : OPENAI_MODEL_SUGGESTIONS
+  const families = getEndpointFamilies(tabInfo?.protocols)
+  const isSystemEndpoint = endpoint === 'anthropic' || endpoint === 'openai'
+  // Scope selection only makes sense where both protocol families arrive on the
+  // same endpoint. Existing scoped entries keep it visible even if a protocol
+  // was later removed from the path config.
+  const hasScopedEntries = routes.some((entry) => (entry.scope ?? 'all') !== 'all')
+  const showScope =
+    !isSystemEndpoint && ((families.anthropic && families.openai) || hasScopedEntries)
 
   return (
     <Card data-testid="routing-rules-card" className="shadow-[var(--surface-shadow)]">
@@ -68,7 +76,9 @@ export function RoutingRulesList({
               {t('workbench.routing.rulesTitle')}
               <Badge variant="outline" className="text-[10.5px] font-normal tabular-nums">{routes.length}</Badge>
             </h3>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">{t('workbench.routing.rulesSubtitle')}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {showScope ? t('workbench.routing.rulesSubtitleUnified') : t('workbench.routing.rulesSubtitle')}
+            </p>
           </div>
           <Button variant="outline" size="sm" data-testid="add-route" onClick={() => routing.handleAddRoute(endpoint)} disabled={savingRoute}>
             {t('settings.routing.add')}
@@ -100,7 +110,9 @@ export function RoutingRulesList({
                     savingRoute={savingRoute}
                     options={options}
                     sourceListId={sourceListId}
+                    showScope={showScope}
                     onRouteChange={(id, field, value) => routing.handleRouteChange(endpoint, id, field, value)}
+                    onScopeChange={(id, scope) => routing.handleRouteScopeChange(endpoint, id, scope)}
                     onRemoveRoute={(id) => routing.handleRemoveRoute(endpoint, id)}
                   />
                 ))}

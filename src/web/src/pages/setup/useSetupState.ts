@@ -110,6 +110,9 @@ export function useSetupState() {
       endpointRouting: {
         ...(config.endpointRouting ?? {}),
         anthropic: {
+          // Spread the existing block so protocol-scoped maps (set from the
+          // routing page) survive a wizard save.
+          ...config.endpointRouting?.anthropic,
           defaults: config.endpointRouting?.anthropic?.defaults ?? config.defaults,
           modelRoutes: nextRoutes,
           compatibility: config.endpointRouting?.anthropic?.compatibility

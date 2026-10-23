@@ -173,6 +173,10 @@ Rust 后端支持配置自定义端点，并按路径动态代理。
   - `openai-auto` → `<base>/v1/chat/completions`、`<base>/v1/responses`、`<base>/v1/models`
   - `openai-chat` / `openai-responses` → 各自对应的子路径，同样注册 `<base>/v1/models`
 - 创建端点时自动写入空的 `routing` 配置：请求模型能直接匹配 Provider 模型时无需先配置路由规则；自定义端点仍不继承全局 anthropic/openai 路由
+- 统一端点可按协议分流：`routing.modelRoutesByProtocol`（additive，可选）提供 `anthropic` 与 `openai` 两个映射，`openai` 同时覆盖 Chat Completions 与 Responses；同一个源模型 ID 在 Anthropic 与 OpenAI 请求下可转发到不同目标，避免被单一路由目标强制做协议转换。匹配顺序为「协议家族映射（精确/通配符/别名）→ 共享 `modelRoutes`（精确/通配符/别名）→ 直接匹配 → 默认规则 → 全局兜底」，即同一源模型同时出现在两侧时协议家族规则优先，家族映射内的通配符也可覆盖共享映射的精确规则；旧配置缺少该字段时行为不变，两个家族映射都为空时序列化省略该字段
+- 若 Provider 自身声明了与请求协议匹配的 `endpoints[]` 面，仍优先走原生面（不转换），协议分流只决定选中哪个 Provider/模型
+- `POST /api/routing/simulate` 新增可选 `protocol`（`anthropic` | `openai`；并接受 `openai-chat` / `openai-responses` 细分值）：统一端点可分别模拟两个协议家族的分流结果；仅对自定义端点生效，缺省仍取 `paths[0].protocol`
+- 路由预设同时快照/恢复 `modelRoutes` 与 `modelRoutesByProtocol`
 - 自定义 endpoint 请求会进入日志、API Key 权限和统计体系
 
 ## 9. 兼容性边界

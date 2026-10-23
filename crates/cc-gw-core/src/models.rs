@@ -42,7 +42,14 @@ pub fn build_models_response_for_endpoint(
     // merged in — a custom endpoint must not advertise models that belong
     // to the rest of the gateway.
     if let Some(routing) = endpoint_routing(config, endpoint, protocol) {
-        for (source, target) in &routing.model_routes {
+        // Shared routes plus the protocol-family map for this request surface.
+        // A unified endpoint branches by protocol, so each surface advertises
+        // only the sources that are routable over that protocol.
+        for (source, target) in routing
+            .model_routes
+            .iter()
+            .chain(routing.model_routes_by_protocol.for_protocol(protocol))
+        {
             if !source.trim().is_empty() {
                 models
                     .entry(source.trim().to_string())
@@ -191,5 +198,65 @@ mod tests {
         // (provider inventory must not leak in as a fallback).
         let entries = build_models_response(&config, "bare");
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn protocol_scoped_sources_are_listed_per_surface() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "a-model"), provider("beta", "b-model")];
+        let mut routing = EndpointRoutingConfig {
+            model_routes: [("shared-source".to_string(), "alpha:a-model".to_string())]
+                .into_iter()
+                .collect(),
+            ..EndpointRoutingConfig::default()
+        };
+        routing
+            .model_routes_by_protocol
+            .anthropic
+            .insert("claude-source".to_string(), "alpha:a-model".to_string());
+        routing
+            .model_routes_by_protocol
+            .openai
+            .insert("gpt-source".to_string(), "beta:b-model".to_string());
+        config.custom_endpoints.push(CustomEndpointConfig {
+            id: "unified".to_string(),
+            label: "Unified".to_string(),
+            enabled: Some(true),
+            paths: vec![
+                EndpointPathConfig {
+                    path: "/unified".to_string(),
+                    protocol: "anthropic".to_string(),
+                },
+                EndpointPathConfig {
+                    path: "/unified".to_string(),
+                    protocol: "openai-auto".to_string(),
+                },
+            ],
+            routing: Some(routing),
+            ..CustomEndpointConfig::default()
+        });
+
+        let anthropic = build_models_response_for_endpoint(
+            &config,
+            GatewayEndpoint::Custom("unified"),
+            ProviderProtocol::AnthropicMessages,
+        );
+        assert_eq!(
+            entry_ids(&anthropic),
+            vec!["claude-source", "shared-source"]
+        );
+
+        // Both OpenAI wire formats share the openai family map.
+        for protocol in [
+            ProviderProtocol::OpenAiChatCompletions,
+            ProviderProtocol::OpenAiResponses,
+        ] {
+            let openai = build_models_response_for_endpoint(
+                &config,
+                GatewayEndpoint::Custom("unified"),
+                protocol,
+            );
+            assert_eq!(entry_ids(&openai), vec!["gpt-source", "shared-source"]);
+        }
     }
 }

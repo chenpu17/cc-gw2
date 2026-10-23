@@ -20,9 +20,12 @@ import {
   deriveDefaultsFromConfig,
   deriveRoutesFromConfig,
   getSavedDefaultsFromConfig,
-  getSavedRoutesFromConfig,
+  getSavedRouteMapsFromConfig,
+  ROUTE_SCOPES,
   routeTargetMatchesProvider,
-  type ModelRouteEntry
+  type ModelRouteEntry,
+  type RouteScope,
+  type ScopedRouteMaps
 } from './shared'
 
 /**
@@ -79,16 +82,18 @@ export function useRoutingState(base: WorkbenchConfigState) {
       const merged: Record<string, ModelRouteEntry[]> = { ...nextFromServer }
       for (const [endpoint, previousEntries] of Object.entries(previous)) {
         if (!(endpoint in nextFromServer)) continue
-        const savedRoutes = getSavedRoutesFromConfig(incoming, customEndpoints, endpoint)
+        const savedRoutes = getSavedRouteMapsFromConfig(incoming, customEndpoints, endpoint)
         if (areRouteEntriesDirty(previousEntries, savedRoutes)) {
           merged[endpoint] = previousEntries
         } else {
           // Not dirty: adopt the server data but reuse existing entry ids so
           // rows do not remount (and lose input focus) on every refetch/poll.
-          const idBySource = new Map(previousEntries.map((entry) => [entry.source, entry.id]))
+          const idByKey = new Map(
+            previousEntries.map((entry) => [`${entry.scope ?? 'all'}:${entry.source}`, entry.id])
+          )
           merged[endpoint] = nextFromServer[endpoint].map((entry) => ({
             ...entry,
-            id: idBySource.get(entry.source) ?? entry.id
+            id: idByKey.get(`${entry.scope}:${entry.source}`) ?? entry.id
           }))
         }
       }
@@ -213,9 +218,9 @@ export function useRoutingState(base: WorkbenchConfigState) {
     return options
   }, [providers, routesByEndpoint, t])
 
-  const getSavedRoutes = (endpoint: string): Record<string, string> => {
-    if (!config) return {}
-    return getSavedRoutesFromConfig(config, customEndpoints, endpoint)
+  const getSavedRoutes = (endpoint: string): ScopedRouteMaps => {
+    if (!config) return { all: {}, anthropic: {}, openai: {} }
+    return getSavedRouteMapsFromConfig(config, customEndpoints, endpoint)
   }
 
   const isDirtyByEndpoint = useMemo(() => {
@@ -319,6 +324,8 @@ export function useRoutingState(base: WorkbenchConfigState) {
               modelRoutes:
                 config!.endpointRouting?.[systemEndpoint]?.modelRoutes ??
                 (systemEndpoint === 'anthropic' ? config!.modelRoutes ?? {} : {}),
+              modelRoutesByProtocol:
+                config!.endpointRouting?.[systemEndpoint]?.modelRoutesByProtocol ?? {},
               compatibility: config!.endpointRouting?.[systemEndpoint]?.compatibility
             }
           }
@@ -556,7 +563,10 @@ export function useRoutingState(base: WorkbenchConfigState) {
   const handleAddRoute = (endpoint: string) => {
     setRoutesByEndpoint((previous) => ({
       ...previous,
-      [endpoint]: [...(previous[endpoint] || []), { id: createEntryId(), source: '', target: '' }]
+      [endpoint]: [
+        ...(previous[endpoint] || []),
+        { id: createEntryId(), source: '', target: '', scope: 'all' as RouteScope }
+      ]
     }))
     setRouteError((previous) => ({ ...previous, [endpoint]: null }))
   }
@@ -578,7 +588,8 @@ export function useRoutingState(base: WorkbenchConfigState) {
 
         const baseRouting: EndpointRoutingConfig = {
           defaults: currentEndpointRouting.defaults ?? config!.defaults,
-          modelRoutes: currentEndpointRouting.modelRoutes ?? {}
+          modelRoutes: currentEndpointRouting.modelRoutes ?? {},
+          modelRoutesByProtocol: currentEndpointRouting.modelRoutesByProtocol ?? {}
         }
 
         const nextConfig: GatewayConfig = {
@@ -612,7 +623,8 @@ export function useRoutingState(base: WorkbenchConfigState) {
             ? { ...currentRouting, compatibility: { enabled: true } }
             : {
                 defaults: currentRouting.defaults,
-                modelRoutes: currentRouting.modelRoutes
+                modelRoutes: currentRouting.modelRoutes,
+                modelRoutesByProtocol: currentRouting.modelRoutesByProtocol
               }
         }
 
@@ -649,12 +661,21 @@ export function useRoutingState(base: WorkbenchConfigState) {
   const handleAddSuggestion = (endpoint: string, model: string) => {
     setRoutesByEndpoint((previous) => {
       const currentRoutes = previous[endpoint] || []
-      if (currentRoutes.some((entry) => entry.source.trim() === model.trim())) {
+      // Suggestions add a shared rule; protocol-scoped rules for the same
+      // source are a deliberate branch, not a duplicate.
+      if (
+        currentRoutes.some(
+          (entry) => entry.scope === 'all' && entry.source.trim() === model.trim()
+        )
+      ) {
         return previous
       }
       return {
         ...previous,
-        [endpoint]: [...currentRoutes, { id: createEntryId(), source: model, target: '' }]
+        [endpoint]: [
+          ...currentRoutes,
+          { id: createEntryId(), source: model, target: '', scope: 'all' as RouteScope }
+        ]
       }
     })
     setRouteError((previous) => ({ ...previous, [endpoint]: null }))
@@ -670,6 +691,16 @@ export function useRoutingState(base: WorkbenchConfigState) {
       ...previous,
       [endpoint]: (previous[endpoint] || []).map((entry) =>
         entry.id === id ? { ...entry, [field]: value } : entry
+      )
+    }))
+    setRouteError((previous) => ({ ...previous, [endpoint]: null }))
+  }
+
+  const handleRouteScopeChange = (endpoint: string, id: string, scope: RouteScope) => {
+    setRoutesByEndpoint((previous) => ({
+      ...previous,
+      [endpoint]: (previous[endpoint] || []).map((entry) =>
+        entry.id === id ? { ...entry, scope } : entry
       )
     }))
     setRouteError((previous) => ({ ...previous, [endpoint]: null }))
@@ -701,30 +732,11 @@ export function useRoutingState(base: WorkbenchConfigState) {
   const handleResetRoutes = (endpoint: string) => {
     if (!config) return
 
-    const customEndpoint = (config.customEndpoints ?? customEndpoints).find((item) => item.id === endpoint)
-    if (customEndpoint) {
-      setRoutesByEndpoint((previous) => ({
-        ...previous,
-        [endpoint]: Object.entries(customEndpoint.routing?.modelRoutes ?? {}).map(([source, target]) => ({
-          id: createEntryId(),
-          source,
-          target
-        }))
-      }))
-    } else {
-      const routing = config.endpointRouting ?? {}
-      const systemEndpoint = endpoint as 'anthropic' | 'openai'
-      const fallback = systemEndpoint === 'anthropic' ? config.modelRoutes ?? {} : {}
-      const routes = routing[systemEndpoint]?.modelRoutes ?? fallback
-      setRoutesByEndpoint((previous) => ({
-        ...previous,
-        [endpoint]: Object.entries(routes).map(([source, target]) => ({
-          id: createEntryId(),
-          source,
-          target
-        }))
-      }))
-    }
+    const saved = deriveRoutesFromConfig(config, customEndpoints)[endpoint] ?? []
+    setRoutesByEndpoint((previous) => ({
+      ...previous,
+      [endpoint]: saved.map((entry) => ({ ...entry, id: createEntryId() }))
+    }))
 
     setRouteError((previous) => ({ ...previous, [endpoint]: null }))
   }
@@ -772,7 +784,9 @@ export function useRoutingState(base: WorkbenchConfigState) {
     if (writingRef.current) return
 
     const currentEntries = routesByEndpoint[endpoint] || []
-    const sanitizedRoutes: Record<string, string> = {}
+    // Duplicates are judged per scope: the same source may appear once in the
+    // shared map and again in a protocol branch.
+    const scopedRoutes: ScopedRouteMaps = { all: {}, anthropic: {}, openai: {} }
     for (const entry of currentEntries) {
       const source = entry.source.trim()
       const target = entry.target.trim()
@@ -786,7 +800,8 @@ export function useRoutingState(base: WorkbenchConfigState) {
         }))
         return
       }
-      if (sanitizedRoutes[source]) {
+      const scope = entry.scope ?? 'all'
+      if (scopedRoutes[scope][source]) {
         setRouteError((previous) => ({
           ...previous,
           [endpoint]: t('settings.validation.routeDuplicate', { model: source })
@@ -801,7 +816,11 @@ export function useRoutingState(base: WorkbenchConfigState) {
         }))
         return
       }
-      sanitizedRoutes[source] = target
+      scopedRoutes[scope][source] = target
+    }
+    const modelRoutesByProtocol = {
+      anthropic: scopedRoutes.anthropic,
+      openai: scopedRoutes.openai
     }
 
     setRouteError((previous) => ({ ...previous, [endpoint]: null }))
@@ -813,7 +832,8 @@ export function useRoutingState(base: WorkbenchConfigState) {
       if (customEndpoint) {
         const routing: EndpointRoutingConfig = {
           ...(customEndpoint.routing ?? {}),
-          modelRoutes: sanitizedRoutes,
+          modelRoutes: scopedRoutes.all,
+          modelRoutesByProtocol,
           defaults: customEndpoint.routing?.defaults || config!.defaults
         }
         await saveCustomRoutesMutation.mutateAsync({ endpoint, routing })
@@ -846,11 +866,12 @@ export function useRoutingState(base: WorkbenchConfigState) {
             ...(config!.endpointRouting ?? {}),
             [endpoint]: {
               defaults: config!.endpointRouting?.[endpoint as 'anthropic' | 'openai']?.defaults ?? config!.defaults,
-              modelRoutes: sanitizedRoutes,
+              modelRoutes: scopedRoutes.all,
+              modelRoutesByProtocol,
               compatibility: config!.endpointRouting?.[endpoint as 'anthropic' | 'openai']?.compatibility
             }
           },
-          modelRoutes: endpoint === 'anthropic' ? sanitizedRoutes : config!.modelRoutes ?? {}
+          modelRoutes: endpoint === 'anthropic' ? scopedRoutes.all : config!.modelRoutes ?? {}
         }
         await saveSystemRoutesMutation.mutateAsync({
           endpoint: endpoint as 'anthropic' | 'openai',
@@ -861,14 +882,19 @@ export function useRoutingState(base: WorkbenchConfigState) {
 
       setRoutesByEndpoint((previous) => {
         const existing = previous[endpoint] ?? []
-        const idBySource = new Map(existing.map((entry) => [entry.source.trim(), entry.id]))
+        const idByKey = new Map(
+          existing.map((entry) => [`${entry.scope ?? 'all'}:${entry.source.trim()}`, entry.id])
+        )
         return {
           ...previous,
-          [endpoint]: Object.entries(sanitizedRoutes).map(([source, target]) => ({
-            id: idBySource.get(source.trim()) ?? createEntryId(),
-            source,
-            target
-          }))
+          [endpoint]: ROUTE_SCOPES.flatMap((scope) =>
+            Object.entries(scopedRoutes[scope]).map(([source, target]) => ({
+              id: idByKey.get(`${scope}:${source.trim()}`) ?? createEntryId(),
+              source,
+              target,
+              scope
+            }))
+          )
         }
       })
       pushToast({
@@ -920,6 +946,7 @@ export function useRoutingState(base: WorkbenchConfigState) {
     handleAddRoute,
     handleAddSuggestion,
     handleRouteChange,
+    handleRouteScopeChange,
     handleRemoveRoute,
     handleReorderRules,
     handleResetRoutes,

@@ -282,6 +282,11 @@ pub(super) struct RoutingSimulateBody {
     endpoint: String,
     model: Option<String>,
     thinking: Option<bool>,
+    /// Protocol family to simulate: `"anthropic"` | `"openai"` (additive).
+    /// Custom endpoints that serve both families are otherwise simulated with
+    /// their first configured path's protocol, which can only exercise one
+    /// branch of the routing table.
+    protocol: Option<String>,
     /// optional request body, used only for the long-context token estimate
     body: Option<serde_json::Value>,
 }
@@ -321,6 +326,11 @@ pub(super) async fn api_routing_simulate(
         "openai" => cc_gw_core::routing::GatewayEndpoint::OpenAi,
         other => cc_gw_core::routing::GatewayEndpoint::Custom(other),
     };
+    let requested_protocol = payload
+        .protocol
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let protocol = match endpoint {
         cc_gw_core::routing::GatewayEndpoint::Anthropic => {
             cc_gw_core::provider::ProviderProtocol::AnthropicMessages
@@ -329,28 +339,39 @@ pub(super) async fn api_routing_simulate(
             cc_gw_core::provider::ProviderProtocol::OpenAiChatCompletions
         }
         cc_gw_core::routing::GatewayEndpoint::Custom(id) => {
-            // Mirror the real proxy path (main.rs `match_custom_route`): a custom
-            // endpoint's protocol is driven by its configured paths[].protocol
-            // (or the legacy path/protocol pair), not a hardcoded OpenAI default.
-            // Falls back to OpenAI chat when the endpoint has no protocol config.
-            cc_gw_core::routing::find_custom_endpoint(&config, id)
-                .and_then(|ep| {
-                    if !ep.paths.is_empty() {
-                        Some(ep.paths[0].protocol.as_str())
-                    } else {
-                        ep.protocol.as_deref()
-                    }
-                })
-                .map_or(
-                    cc_gw_core::provider::ProviderProtocol::OpenAiChatCompletions,
-                    |proto| match proto {
-                        "anthropic" => cc_gw_core::provider::ProviderProtocol::AnthropicMessages,
-                        "openai-responses" => {
-                            cc_gw_core::provider::ProviderProtocol::OpenAiResponses
+            // An explicitly requested family wins: a unified endpoint serves
+            // both and the simulator must be able to exercise either branch.
+            // Otherwise mirror the real proxy path (main.rs
+            // `match_custom_route`): the protocol is driven by the endpoint's
+            // configured paths[].protocol (or the legacy path/protocol pair),
+            // falling back to OpenAI chat when nothing is configured.
+            match requested_protocol {
+                Some("anthropic") => cc_gw_core::provider::ProviderProtocol::AnthropicMessages,
+                Some("openai-responses") => cc_gw_core::provider::ProviderProtocol::OpenAiResponses,
+                Some("openai" | "openai-chat") => {
+                    cc_gw_core::provider::ProviderProtocol::OpenAiChatCompletions
+                }
+                _ => cc_gw_core::routing::find_custom_endpoint(&config, id)
+                    .and_then(|ep| {
+                        if !ep.paths.is_empty() {
+                            Some(ep.paths[0].protocol.as_str())
+                        } else {
+                            ep.protocol.as_deref()
                         }
-                        _ => cc_gw_core::provider::ProviderProtocol::OpenAiChatCompletions,
-                    },
-                )
+                    })
+                    .map_or(
+                        cc_gw_core::provider::ProviderProtocol::OpenAiChatCompletions,
+                        |proto| match proto {
+                            "anthropic" => {
+                                cc_gw_core::provider::ProviderProtocol::AnthropicMessages
+                            }
+                            "openai-responses" => {
+                                cc_gw_core::provider::ProviderProtocol::OpenAiResponses
+                            }
+                            _ => cc_gw_core::provider::ProviderProtocol::OpenAiChatCompletions,
+                        },
+                    ),
+            }
         }
     };
     let request_body = payload.body.unwrap_or_else(|| json!({}));
@@ -1164,20 +1185,27 @@ pub(super) async fn api_routing_presets_create(
             )
                 .into_response();
         }
-        let base_routes = config
+        let (base_routes, base_routes_by_protocol) = config
             .endpoint_routing
             .get(&endpoint)
-            .map(|routing| routing.model_routes.clone())
+            .map(|routing| {
+                (
+                    routing.model_routes.clone(),
+                    routing.model_routes_by_protocol.clone(),
+                )
+            })
             .unwrap_or_else(|| {
-                if endpoint == "anthropic" {
+                let routes = if endpoint == "anthropic" {
                     config.model_routes.clone()
                 } else {
                     Default::default()
-                }
+                };
+                (routes, Default::default())
             });
         current_presets.push(RoutingPreset {
             name: name.to_string(),
             model_routes: base_routes,
+            model_routes_by_protocol: base_routes_by_protocol,
             created_at: chrono::Utc::now().timestamp_millis(),
         });
         current_presets
@@ -1214,14 +1242,20 @@ pub(super) async fn api_routing_presets_create(
             )
                 .into_response();
         }
-        let routes = custom_endpoint
+        let (routes, routes_by_protocol) = custom_endpoint
             .routing
             .as_ref()
-            .map(|routing| routing.model_routes.clone())
+            .map(|routing| {
+                (
+                    routing.model_routes.clone(),
+                    routing.model_routes_by_protocol.clone(),
+                )
+            })
             .unwrap_or_default();
         custom_endpoint.routing_presets.push(RoutingPreset {
             name: name.to_string(),
             model_routes: routes,
+            model_routes_by_protocol: routes_by_protocol,
             created_at: chrono::Utc::now().timestamp_millis(),
         });
         custom_endpoint
@@ -1284,9 +1318,11 @@ pub(super) async fn api_routing_presets_apply(
             .or_insert_with(|| EndpointRoutingConfig {
                 defaults: config.defaults.clone(),
                 model_routes: Default::default(),
+                model_routes_by_protocol: Default::default(),
                 compatibility: None,
             });
         routing.model_routes = preset.model_routes.clone();
+        routing.model_routes_by_protocol = preset.model_routes_by_protocol.clone();
         if endpoint == "anthropic" {
             config.model_routes = preset.model_routes;
         }
@@ -1338,9 +1374,11 @@ pub(super) async fn api_routing_presets_apply(
             .unwrap_or(EndpointRoutingConfig {
                 defaults,
                 model_routes: Default::default(),
+                model_routes_by_protocol: Default::default(),
                 compatibility: None,
             });
         routing.model_routes = preset.model_routes;
+        routing.model_routes_by_protocol = preset.model_routes_by_protocol;
         custom_endpoint.routing = Some(routing.clone());
         let updated = config.sanitize_for_web();
         match replace_config(&state, config) {

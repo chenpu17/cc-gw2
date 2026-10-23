@@ -2,7 +2,12 @@ import { useMemo, useState } from 'react'
 import { toApiError } from '@/services/api'
 import { gatewayApi } from '@/services/gateway'
 import { modelManagementApi } from '@/services/modelManagement'
-import type { DefaultsConfig, GatewayConfig, ProviderConfig } from '@/types/providers'
+import type {
+  DefaultsConfig,
+  EndpointRoutingConfig,
+  GatewayConfig,
+  ProviderConfig
+} from '@/types/providers'
 import type { WorkbenchConfigState } from './useWorkbenchConfig'
 import {
   resolveModelLabel,
@@ -308,6 +313,18 @@ export function useProvidersState(base: WorkbenchConfigState) {
 
       return nextRoutes
     }
+    // Protocol-scoped maps point at providers too. Leaving a stale target in
+    // either family map makes the backend reject the whole save ("route target
+    // references a missing provider"), which would block deletion entirely.
+    const sanitizeScopedRoutes = (
+      maps: EndpointRoutingConfig['modelRoutesByProtocol']
+    ): EndpointRoutingConfig['modelRoutesByProtocol'] =>
+      maps
+        ? {
+            anthropic: sanitizeRoutes(maps.anthropic),
+            openai: sanitizeRoutes(maps.openai)
+          }
+        : undefined
     // Defaults point at provider targets too; leaving them behind makes the
     // gateway fall back to a provider that no longer exists.
     const sanitizeDefaults = (defaults: DefaultsConfig | undefined): DefaultsConfig | undefined => {
@@ -344,6 +361,13 @@ export function useProvidersState(base: WorkbenchConfigState) {
           ...(sanitizedDefaults ? { defaults: sanitizedDefaults } : {}),
           ...(currentRoutingConfig.modelRoutes
             ? { modelRoutes: sanitizeRoutes(currentRoutingConfig.modelRoutes) }
+            : {}),
+          ...(currentRoutingConfig.modelRoutesByProtocol
+            ? {
+                modelRoutesByProtocol: sanitizeScopedRoutes(
+                  currentRoutingConfig.modelRoutesByProtocol
+                )
+              }
             : {})
         }
       }
@@ -359,11 +383,25 @@ export function useProvidersState(base: WorkbenchConfigState) {
         anthropic: {
           defaults: sanitizeDefaults(currentRouting.anthropic?.defaults ?? config!.defaults) ?? config!.defaults,
           modelRoutes: sanitizedAnthropic,
+          ...(currentRouting.anthropic?.modelRoutesByProtocol
+            ? {
+                modelRoutesByProtocol: sanitizeScopedRoutes(
+                  currentRouting.anthropic.modelRoutesByProtocol
+                )
+              }
+            : {}),
           compatibility: currentRouting.anthropic?.compatibility
         },
         openai: {
           defaults: sanitizeDefaults(currentRouting.openai?.defaults ?? config!.defaults) ?? config!.defaults,
           modelRoutes: sanitizedOpenAI,
+          ...(currentRouting.openai?.modelRoutesByProtocol
+            ? {
+                modelRoutesByProtocol: sanitizeScopedRoutes(
+                  currentRouting.openai.modelRoutesByProtocol
+                )
+              }
+            : {}),
           compatibility: currentRouting.openai?.compatibility
         }
       }

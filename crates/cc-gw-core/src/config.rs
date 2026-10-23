@@ -67,10 +67,43 @@ pub struct FailoverPolicyConfig {
 pub struct RoutingPreset {
     pub name: String,
     pub model_routes: ModelRouteMap,
+    /// Protocol-scoped routes snapshotted alongside the shared map. Additive:
+    /// presets saved by older versions deserialize with empty maps.
+    #[serde(skip_serializing_if = "ProtocolModelRoutes::is_empty")]
+    pub model_routes_by_protocol: ProtocolModelRoutes,
     pub created_at: i64,
 }
 
 pub type ModelRouteMap = IndexMap<String, String>;
+
+/// Protocol-family route maps for one endpoint. A unified custom endpoint can
+/// receive the same source model over both Anthropic (`/v1/messages`) and
+/// OpenAI (`/v1/chat/completions`, `/v1/responses`) clients; these maps let
+/// each family forward to a different target instead of forcing one pinned
+/// target (and therefore a protocol conversion). Rules here take precedence
+/// over the shared `model_routes`; within a family the usual exact/wildcard
+/// lookup applies. "openai" covers both OpenAI wire formats.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ProtocolModelRoutes {
+    pub anthropic: ModelRouteMap,
+    pub openai: ModelRouteMap,
+}
+
+impl ProtocolModelRoutes {
+    pub fn is_empty(&self) -> bool {
+        self.anthropic.is_empty() && self.openai.is_empty()
+    }
+
+    /// Routes for the protocol family that serves `protocol`.
+    pub fn for_protocol(&self, protocol: crate::provider::ProviderProtocol) -> &ModelRouteMap {
+        match protocol {
+            crate::provider::ProviderProtocol::AnthropicMessages => &self.anthropic,
+            crate::provider::ProviderProtocol::OpenAiChatCompletions
+            | crate::provider::ProviderProtocol::OpenAiResponses => &self.openai,
+        }
+    }
+}
 
 /// One protocol surface of a provider. A provider may expose several (e.g. an
 /// Anthropic-compatible surface and an OpenAI-compatible one) at different
@@ -319,6 +352,10 @@ impl Default for EndpointCompatibilityConfig {
 pub struct EndpointRoutingConfig {
     pub defaults: DefaultsConfig,
     pub model_routes: ModelRouteMap,
+    /// Per-protocol-family routes; take precedence over `model_routes` so a
+    /// unified endpoint can branch the same source model by protocol.
+    #[serde(skip_serializing_if = "ProtocolModelRoutes::is_empty")]
+    pub model_routes_by_protocol: ProtocolModelRoutes,
     pub compatibility: Option<EndpointCompatibilityConfig>,
 }
 
@@ -327,6 +364,7 @@ impl Default for EndpointRoutingConfig {
         Self {
             defaults: DefaultsConfig::default(),
             model_routes: Default::default(),
+            model_routes_by_protocol: Default::default(),
             compatibility: None,
         }
     }
@@ -464,6 +502,7 @@ impl Default for GatewayConfig {
             EndpointRoutingConfig {
                 defaults: defaults.clone(),
                 model_routes: Default::default(),
+                model_routes_by_protocol: Default::default(),
                 compatibility: None,
             },
         );
@@ -472,6 +511,7 @@ impl Default for GatewayConfig {
             EndpointRoutingConfig {
                 defaults: defaults.clone(),
                 model_routes: Default::default(),
+                model_routes_by_protocol: Default::default(),
                 compatibility: None,
             },
         );
@@ -745,6 +785,14 @@ impl GatewayConfig {
                 &format!("endpointRouting.{endpoint}.modelRoutes"),
                 &routing.model_routes,
             )?;
+            validate_routes(
+                &format!("endpointRouting.{endpoint}.modelRoutesByProtocol.anthropic"),
+                &routing.model_routes_by_protocol.anthropic,
+            )?;
+            validate_routes(
+                &format!("endpointRouting.{endpoint}.modelRoutesByProtocol.openai"),
+                &routing.model_routes_by_protocol.openai,
+            )?;
         }
         for endpoint in &self.custom_endpoints {
             if let Some(routing) = endpoint.routing.as_ref() {
@@ -755,6 +803,20 @@ impl GatewayConfig {
                 validate_routes(
                     &format!("customEndpoints.{}.routing.modelRoutes", endpoint.id),
                     &routing.model_routes,
+                )?;
+                validate_routes(
+                    &format!(
+                        "customEndpoints.{}.routing.modelRoutesByProtocol.anthropic",
+                        endpoint.id
+                    ),
+                    &routing.model_routes_by_protocol.anthropic,
+                )?;
+                validate_routes(
+                    &format!(
+                        "customEndpoints.{}.routing.modelRoutesByProtocol.openai",
+                        endpoint.id
+                    ),
+                    &routing.model_routes_by_protocol.openai,
                 )?;
             }
         }
@@ -1012,6 +1074,60 @@ pub fn save_config(paths: &GatewayPaths, config: &GatewayConfig) -> Result<()> {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn routing_config_without_protocol_maps_stays_backward_compatible() {
+        // Configs and presets written by older versions have no
+        // `modelRoutesByProtocol`; they must load with empty family maps and
+        // keep routing through the shared map.
+        let routing: EndpointRoutingConfig = serde_json::from_value(serde_json::json!({
+            "modelRoutes": { "a": "p:x" }
+        }))
+        .expect("legacy routing config");
+        assert!(routing.model_routes_by_protocol.is_empty());
+        assert_eq!(
+            routing.model_routes.get("a").map(String::as_str),
+            Some("p:x")
+        );
+
+        let preset: RoutingPreset = serde_json::from_value(serde_json::json!({
+            "name": "legacy",
+            "modelRoutes": { "a": "p:x" },
+            "createdAt": 1
+        }))
+        .expect("legacy preset");
+        assert!(preset.model_routes_by_protocol.is_empty());
+
+        // Empty family maps are omitted from serialized output so existing
+        // config files stay tidy; scoped maps round-trip when present.
+        let serialized = serde_json::to_value(&routing).expect("serialize routing");
+        assert!(serialized.get("modelRoutesByProtocol").is_none());
+
+        let scoped: EndpointRoutingConfig = serde_json::from_value(serde_json::json!({
+            "modelRoutes": { "a": "p:x" },
+            "modelRoutesByProtocol": {
+                "anthropic": { "a": "p:claude" },
+                "openai": { "a": "p:gpt" }
+            }
+        }))
+        .expect("scoped routing config");
+        assert_eq!(
+            scoped
+                .model_routes_by_protocol
+                .for_protocol(crate::provider::ProviderProtocol::AnthropicMessages)
+                .get("a")
+                .map(String::as_str),
+            Some("p:claude")
+        );
+        assert_eq!(
+            scoped
+                .model_routes_by_protocol
+                .for_protocol(crate::provider::ProviderProtocol::OpenAiResponses)
+                .get("a")
+                .map(String::as_str),
+            Some("p:gpt")
+        );
+    }
 
     fn resolve_paths_from_pairs(pairs: &[(&str, &str)]) -> Result<GatewayPaths> {
         let vars = pairs

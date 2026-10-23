@@ -148,6 +148,22 @@ fn find_mapped_identifier(model_id: Option<&str>, routes: &ModelRouteMap) -> Opt
     best_target
 }
 
+/// Look up `requested_model` in one route map: exact/wildcard first, then via
+/// model alias. Returns the mapped identifier and whether the alias applied.
+fn find_route_match(
+    requested_model: Option<&str>,
+    routes: &ModelRouteMap,
+) -> Option<(String, bool)> {
+    if let Some(id) = find_mapped_identifier(requested_model, routes) {
+        return Some((id, false));
+    }
+    requested_model.and_then(|model| {
+        apply_model_alias(model).and_then(|alias| {
+            find_mapped_identifier(Some(alias.as_str()), routes).map(|id| (id, true))
+        })
+    })
+}
+
 fn provider_has_model(provider: &ProviderConfig, model_id: &str) -> bool {
     provider.default_model.as_deref() == Some(model_id)
         || provider.models.iter().any(|model| model.id == model_id)
@@ -465,19 +481,18 @@ fn resolve_route_inner(
             _ => anyhow::anyhow!("未找到端点路由配置"),
         })?;
 
-    // 1) explicit model_routes match (exact or wildcard), optionally via alias
-    let (mapped_identifier, via_alias) =
-        match find_mapped_identifier(requested_model, &endpoint_config.model_routes) {
-            Some(id) => (Some(id), false),
-            None => match requested_model.and_then(|model| {
-                apply_model_alias(model).and_then(|alias| {
-                    find_mapped_identifier(Some(alias.as_str()), &endpoint_config.model_routes)
-                })
-            }) {
-                Some(id) => (Some(id), true),
-                None => (None, false),
-            },
-        };
+    // 1) explicit model_routes match (exact or wildcard), optionally via alias.
+    // Protocol-family routes win over the shared map so a unified endpoint can
+    // branch the same source model by protocol; the shared map stays the
+    // fallback for models without a family-specific rule.
+    let (mapped_identifier, via_alias) = find_route_match(
+        requested_model,
+        endpoint_config
+            .model_routes_by_protocol
+            .for_protocol(protocol),
+    )
+    .or_else(|| find_route_match(requested_model, &endpoint_config.model_routes))
+    .map_or((None, false), |(id, via_alias)| (Some(id), via_alias));
     if let Some(mapped_identifier) = mapped_identifier {
         if let Some(target) = resolve_by_identifier(
             &mapped_identifier,
@@ -712,6 +727,176 @@ mod tests {
     }
 
     #[test]
+    fn custom_endpoint_branches_same_model_by_protocol() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "a-model"), provider("beta", "b-model")];
+
+        let mut routing = EndpointRoutingConfig {
+            model_routes: [("plain".to_string(), "alpha:a-model".to_string())]
+                .into_iter()
+                .collect(),
+            ..EndpointRoutingConfig::default()
+        };
+        routing
+            .model_routes_by_protocol
+            .anthropic
+            .insert("gpt-5".to_string(), "alpha:a-model".to_string());
+        routing
+            .model_routes_by_protocol
+            .openai
+            .insert("gpt-5".to_string(), "beta:b-model".to_string());
+
+        config.custom_endpoints.push(CustomEndpointConfig {
+            id: "unified".to_string(),
+            label: "Unified".to_string(),
+            enabled: Some(true),
+            paths: vec![
+                EndpointPathConfig {
+                    path: "/unified".to_string(),
+                    protocol: "anthropic".to_string(),
+                },
+                EndpointPathConfig {
+                    path: "/unified".to_string(),
+                    protocol: "openai-auto".to_string(),
+                },
+            ],
+            routing: Some(routing),
+            ..CustomEndpointConfig::default()
+        });
+
+        let body = json!({ "messages": [] });
+        let (anthropic, reason) = resolve_route_with_reason(
+            &config,
+            GatewayEndpoint::Custom("unified"),
+            ProviderProtocol::AnthropicMessages,
+            &body,
+            Some("gpt-5"),
+            false,
+        )
+        .expect("resolve anthropic family");
+        assert_eq!(
+            (anthropic.provider_id.as_str(), anthropic.model_id.as_str()),
+            ("alpha", "a-model")
+        );
+        assert!(matches!(
+            reason,
+            RouteMatchReason::ModelRoute { via_alias: false }
+        ));
+
+        // Both OpenAI wire formats share the "openai" family branch.
+        for protocol in [
+            ProviderProtocol::OpenAiChatCompletions,
+            ProviderProtocol::OpenAiResponses,
+        ] {
+            let openai = resolve_route(
+                &config,
+                GatewayEndpoint::Custom("unified"),
+                protocol,
+                &body,
+                Some("gpt-5"),
+                false,
+            )
+            .expect("resolve openai family");
+            assert_eq!(
+                (openai.provider_id.as_str(), openai.model_id.as_str()),
+                ("beta", "b-model")
+            );
+        }
+
+        // Models without a family-specific rule still use the shared map.
+        let plain = resolve_route(
+            &config,
+            GatewayEndpoint::Custom("unified"),
+            ProviderProtocol::AnthropicMessages,
+            &body,
+            Some("plain"),
+            false,
+        )
+        .expect("resolve shared route");
+        assert_eq!(
+            (plain.provider_id.as_str(), plain.model_id.as_str()),
+            ("alpha", "a-model")
+        );
+    }
+
+    #[test]
+    fn protocol_family_rule_beats_shared_rule_for_same_source() {
+        let mut config = GatewayConfig::default();
+        config.providers = vec![provider("alpha", "a-model"), provider("beta", "b-model")];
+
+        // Same source key in both maps, plus a shared exact rule that a family
+        // wildcard must still shadow — family lookup happens first, regardless
+        // of pattern specificity across maps.
+        let mut routing = EndpointRoutingConfig {
+            model_routes: [
+                ("exact-model".to_string(), "alpha:a-model".to_string()),
+                ("claude-sonnet-4-5".to_string(), "alpha:a-model".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+            ..EndpointRoutingConfig::default()
+        };
+        routing
+            .model_routes_by_protocol
+            .openai
+            .insert("exact-model".to_string(), "beta:b-model".to_string());
+        routing
+            .model_routes_by_protocol
+            .openai
+            .insert("claude-*".to_string(), "beta:b-model".to_string());
+
+        config.custom_endpoints.push(CustomEndpointConfig {
+            id: "unified".to_string(),
+            label: "Unified".to_string(),
+            enabled: Some(true),
+            paths: vec![
+                EndpointPathConfig {
+                    path: "/unified".to_string(),
+                    protocol: "anthropic".to_string(),
+                },
+                EndpointPathConfig {
+                    path: "/unified".to_string(),
+                    protocol: "openai-auto".to_string(),
+                },
+            ],
+            routing: Some(routing),
+            ..CustomEndpointConfig::default()
+        });
+
+        let body = json!({ "messages": [] });
+        let resolve = |protocol, model| {
+            resolve_route(
+                &config,
+                GatewayEndpoint::Custom("unified"),
+                protocol,
+                &body,
+                Some(model),
+                false,
+            )
+            .expect("resolve route")
+        };
+
+        // Same source key: the family map wins on its own protocol…
+        let anthropic = resolve(ProviderProtocol::AnthropicMessages, "exact-model");
+        assert_eq!(
+            (anthropic.provider_id.as_str(), anthropic.model_id.as_str()),
+            ("alpha", "a-model")
+        );
+        let openai = resolve(ProviderProtocol::OpenAiChatCompletions, "exact-model");
+        assert_eq!(
+            (openai.provider_id.as_str(), openai.model_id.as_str()),
+            ("beta", "b-model")
+        );
+
+        // …and a family wildcard shadows a shared exact rule.
+        let wildcard = resolve(ProviderProtocol::OpenAiChatCompletions, "claude-sonnet-4-5");
+        assert_eq!(
+            (wildcard.provider_id.as_str(), wildcard.model_id.as_str()),
+            ("beta", "b-model")
+        );
+    }
+
+    #[test]
     fn custom_endpoint_uses_its_own_routing_before_global_defaults() {
         let mut config = GatewayConfig::default();
         config.providers = vec![provider("alpha", "glm-4.7"), provider("beta", "glm-5")];
@@ -735,6 +920,7 @@ mod tests {
                     ..DefaultsConfig::default()
                 },
                 model_routes: Default::default(),
+                model_routes_by_protocol: Default::default(),
                 compatibility: None,
             }),
             ..CustomEndpointConfig::default()

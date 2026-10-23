@@ -5,13 +5,24 @@ import { ArrowRight, GripVertical, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { TargetCombobox } from './TargetCombobox'
-import type { ModelRouteEntry } from './shared'
+import type { ModelRouteEntry, RouteScope } from './shared'
 
 /**
  * One draggable model-route rule. Drag listeners live ONLY on the grip handle
  * (setActivatorNodeRef) so the source input, the TargetCombobox and the delete
  * button stay fully interactive. Sharp corners, flat — no framer-motion here.
+ *
+ * `showScope` is set for unified custom endpoints (Anthropic + OpenAI on one
+ * base path): each rule can be scoped to the shared map or to one protocol
+ * family, so the same source model can branch by protocol.
  */
 export function RoutingRuleRow({
   entry,
@@ -19,7 +30,9 @@ export function RoutingRuleRow({
   savingRoute,
   options,
   sourceListId,
+  showScope = false,
   onRouteChange,
+  onScopeChange,
   onRemoveRoute
 }: {
   entry: ModelRouteEntry
@@ -27,7 +40,9 @@ export function RoutingRuleRow({
   savingRoute: boolean
   options: RoutingRuleRowOptions
   sourceListId: string
+  showScope?: boolean
   onRouteChange: (id: string, field: 'source' | 'target', value: string) => void
+  onScopeChange: (id: string, scope: RouteScope) => void
   onRemoveRoute: (id: string) => void
 }) {
   const { t } = useTranslation()
@@ -40,8 +55,8 @@ export function RoutingRuleRow({
       data-id={entry.id}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        // Narrow: two rows (source / target) so neither input collapses to a
-        // sliver; sm+ returns to the single-line row.
+        // Narrow: source / target / scope stack over three rows so none of the
+        // inputs collapses to a sliver; sm+ returns to the single-line row.
         'grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 border border-border bg-card p-2 sm:flex sm:gap-2',
         isDragging && 'z-10 opacity-60 shadow-[var(--surface-shadow-lg)]'
       )}
@@ -58,6 +73,26 @@ export function RoutingRuleRow({
         <GripVertical className="h-4 w-4" aria-hidden />
       </button>
       <span className="w-4 shrink-0 text-center text-[10.5px] tabular-nums text-muted-foreground">{index + 1}</span>
+      {showScope ? (
+        <Select
+          value={entry.scope ?? 'all'}
+          onValueChange={(value) => onScopeChange(entry.id, value as RouteScope)}
+          disabled={savingRoute}
+        >
+          <SelectTrigger
+            data-testid="route-rule-scope"
+            className="col-start-2 col-span-2 row-start-3 h-8 w-full shrink-0 text-[11px] sm:col-auto sm:row-auto sm:w-[104px]"
+            aria-label={`${t('workbench.routing.scopeLabel')} ${entry.source || index + 1}`}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('workbench.routing.scopeAll')}</SelectItem>
+            <SelectItem value="anthropic">{t('workbench.routing.scopeAnthropic')}</SelectItem>
+            <SelectItem value="openai">{t('workbench.routing.scopeOpenai')}</SelectItem>
+          </SelectContent>
+        </Select>
+      ) : null}
       <Input
         data-testid="route-rule-source"
         value={entry.source}
@@ -68,12 +103,12 @@ export function RoutingRuleRow({
         className="h-8 min-w-0 flex-1 text-xs"
       />
       <ArrowRight
-        className="col-start-2 row-start-2 h-3.5 w-3.5 shrink-0 text-muted-foreground sm:col-auto sm:row-auto"
+        className="row-start-2 col-start-2 h-3.5 w-3.5 shrink-0 text-muted-foreground sm:col-auto sm:row-auto"
         aria-hidden
       />
       <div
         data-testid="route-rule-target"
-        className="col-start-3 row-start-2 min-w-0 sm:col-auto sm:row-auto sm:flex-[1.15]"
+        className="row-start-2 col-start-3 min-w-0 sm:col-auto sm:row-auto sm:flex-[1.15]"
       >
         <TargetCombobox
           value={entry.target}
@@ -88,7 +123,7 @@ export function RoutingRuleRow({
         variant="ghost"
         size="icon"
         data-testid="route-rule-delete"
-        className="col-start-4 row-span-2 h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive sm:col-auto sm:row-span-1"
+        className="row-span-2 col-start-4 h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive sm:col-auto sm:row-span-1"
         onClick={() => onRemoveRoute(entry.id)}
         disabled={savingRoute}
         aria-label={t('common.delete')}

@@ -8,10 +8,25 @@ import type {
   RoutingPreset
 } from '@/types/providers'
 
+/** Which route map a rule belongs to. `all` is the shared map; the other two
+ * scope the rule to a protocol family, letting one unified endpoint branch the
+ * same source model by protocol. */
+export type RouteScope = 'all' | 'anthropic' | 'openai'
+
+export const ROUTE_SCOPES: RouteScope[] = ['all', 'anthropic', 'openai']
+
 export interface ModelRouteEntry {
   id: string
   source: string
   target: string
+  scope: RouteScope
+}
+
+/** Saved routes for one endpoint, split the same way the backend stores them. */
+export interface ScopedRouteMaps {
+  all: Record<string, string>
+  anthropic: Record<string, string>
+  openai: Record<string, string>
 }
 
 export interface AnthropicHeaderOption {
@@ -56,6 +71,20 @@ export function getEndpointProtocolLabel(protocol: EndpointProtocol, t: (key: st
   return t('modelManagement.protocolOpenAI')
 }
 
+/** Protocol families an endpoint serves, derived from its configured path
+ * protocols (`anthropic` / `openai-auto` / `openai-chat` / `openai-responses`).
+ * A unified endpoint serves both and can use protocol-scoped route rules. */
+export function getEndpointFamilies(protocols?: string[]): {
+  anthropic: boolean
+  openai: boolean
+} {
+  const list = protocols ?? []
+  return {
+    anthropic: list.includes('anthropic'),
+    openai: list.some((protocol) => protocol.startsWith('openai'))
+  }
+}
+
 export const CLAUDE_MODEL_SUGGESTIONS = [
   'claude-sonnet-4-5-20250929',
   'claude-sonnet-4-5-20250929-thinking',
@@ -86,12 +115,16 @@ function mapManagedEndpoints(config: GatewayConfig | null, fallback: ManagedEndp
   return config?.customEndpoints?.length ? config.customEndpoints : fallback
 }
 
-export function mapRoutesToEntries(routes: Record<string, string> | undefined): ModelRouteEntry[] {
+export function mapRoutesToEntries(
+  routes: Record<string, string> | undefined,
+  scope: RouteScope = 'all'
+): ModelRouteEntry[] {
   if (!routes) return []
   return Object.entries(routes).map(([source, target]) => ({
     id: createEntryId(),
     source,
-    target
+    target,
+    scope
   }))
 }
 
@@ -104,32 +137,76 @@ export function deriveRoutesFromConfig(
   const result: Record<string, ModelRouteEntry[]> = {}
   const routing = config.endpointRouting ?? {}
 
-  result.anthropic = mapRoutesToEntries(routing.anthropic?.modelRoutes ?? config.modelRoutes ?? {})
-  result.openai = mapRoutesToEntries(routing.openai?.modelRoutes ?? {})
+  const systemEntries = (
+    shared: Record<string, string> | undefined,
+    byProtocol?: { anthropic?: Record<string, string>; openai?: Record<string, string> }
+  ): ModelRouteEntry[] => [
+    ...mapRoutesToEntries(shared, 'all'),
+    ...mapRoutesToEntries(byProtocol?.anthropic, 'anthropic'),
+    ...mapRoutesToEntries(byProtocol?.openai, 'openai')
+  ]
+
+  const anthropicRouting = routing.anthropic
+  result.anthropic = systemEntries(
+    anthropicRouting?.modelRoutes ?? config.modelRoutes ?? {},
+    anthropicRouting?.modelRoutesByProtocol
+  )
+  result.openai = systemEntries(
+    routing.openai?.modelRoutes ?? {},
+    routing.openai?.modelRoutesByProtocol
+  )
 
   for (const endpoint of mapManagedEndpoints(config, customEndpoints)) {
-    if (endpoint.routing?.modelRoutes) {
-      result[endpoint.id] = mapRoutesToEntries(endpoint.routing.modelRoutes)
-    } else {
-      result[endpoint.id] = []
-    }
+    const endpointRouting = endpoint.routing
+    result[endpoint.id] = endpointRouting
+      ? systemEntries(endpointRouting.modelRoutes, endpointRouting.modelRoutesByProtocol)
+      : []
   }
 
   return result
 }
 
+export function getSavedRouteMapsFromConfig(
+  config: GatewayConfig,
+  customEndpoints: ManagedEndpointLike[],
+  endpoint: string
+): ScopedRouteMaps {
+  const customEndpoint = mapManagedEndpoints(config, customEndpoints).find((item) => item.id === endpoint)
+  if (customEndpoint) {
+    return {
+      all: customEndpoint.routing?.modelRoutes ?? {},
+      anthropic: customEndpoint.routing?.modelRoutesByProtocol?.anthropic ?? {},
+      openai: customEndpoint.routing?.modelRoutesByProtocol?.openai ?? {}
+    }
+  }
+
+  const routing = config.endpointRouting ?? {}
+  if (endpoint === 'anthropic') {
+    return {
+      all: routing.anthropic?.modelRoutes ?? config.modelRoutes ?? {},
+      anthropic: routing.anthropic?.modelRoutesByProtocol?.anthropic ?? {},
+      openai: routing.anthropic?.modelRoutesByProtocol?.openai ?? {}
+    }
+  }
+  if (endpoint === 'openai') {
+    return {
+      all: routing.openai?.modelRoutes ?? {},
+      anthropic: routing.openai?.modelRoutesByProtocol?.anthropic ?? {},
+      openai: routing.openai?.modelRoutesByProtocol?.openai ?? {}
+    }
+  }
+  return { all: {}, anthropic: {}, openai: {} }
+}
+
+/** Shared (`modelRoutes`) map only. Kept for callers that predate protocol
+ * scoping (setup wizard counts); use {@link getSavedRouteMapsFromConfig} when
+ * the protocol branch matters. */
 export function getSavedRoutesFromConfig(
   config: GatewayConfig,
   customEndpoints: ManagedEndpointLike[],
   endpoint: string
 ): Record<string, string> {
-  const customEndpoint = mapManagedEndpoints(config, customEndpoints).find((item) => item.id === endpoint)
-  if (customEndpoint) return customEndpoint.routing?.modelRoutes ?? {}
-
-  const routing = config.endpointRouting ?? {}
-  if (endpoint === 'anthropic') return routing.anthropic?.modelRoutes ?? config.modelRoutes ?? {}
-  if (endpoint === 'openai') return routing.openai?.modelRoutes ?? {}
-  return {}
+  return getSavedRouteMapsFromConfig(config, customEndpoints, endpoint).all
 }
 
 /** Effective defaults for an endpoint. System endpoints fall back to the
@@ -174,20 +251,59 @@ export function deriveDefaultsFromConfig(
   return result
 }
 
-export function mapEntriesToRoutes(entries: ModelRouteEntry[]): Record<string, string> {
-  const routes: Record<string, string> = {}
+export function mapEntriesToScopedRoutes(entries: ModelRouteEntry[]): ScopedRouteMaps {
+  const routes: ScopedRouteMaps = { all: {}, anthropic: {}, openai: {} }
   for (const entry of entries) {
     const source = entry.source.trim()
     const target = entry.target.trim()
     if (source && target) {
-      routes[source] = target
+      routes[entry.scope ?? 'all'][source] = target
     }
   }
   return routes
 }
 
-export function areRouteEntriesDirty(entries: ModelRouteEntry[], saved: Record<string, string>): boolean {
-  return JSON.stringify(mapEntriesToRoutes(entries)) !== JSON.stringify(saved)
+/** Stable signature of scoped routes for dirty comparison. Scope maps are
+ * always compared in the same key order so only content/order changes count. */
+export function scopedRoutesSignature(routes: ScopedRouteMaps): string {
+  return JSON.stringify({
+    all: routes.all ?? {},
+    anthropic: routes.anthropic ?? {},
+    openai: routes.openai ?? {}
+  })
+}
+
+export function areRouteEntriesDirty(entries: ModelRouteEntry[], saved: ScopedRouteMaps): boolean {
+  return scopedRoutesSignature(mapEntriesToScopedRoutes(entries)) !== scopedRoutesSignature(saved)
+}
+
+/** Flatten a preset's shared + protocol maps into display-ready rows. */
+export function collectPresetRoutes(
+  preset: Pick<RoutingPreset, 'modelRoutes' | 'modelRoutesByProtocol'>
+): Array<{ source: string; target: string; scope: RouteScope }> {
+  return [
+    ...Object.entries(preset.modelRoutes ?? {}).map(([source, target]) => ({
+      source,
+      target,
+      scope: 'all' as const
+    })),
+    ...Object.entries(preset.modelRoutesByProtocol?.anthropic ?? {}).map(([source, target]) => ({
+      source,
+      target,
+      scope: 'anthropic' as const
+    })),
+    ...Object.entries(preset.modelRoutesByProtocol?.openai ?? {}).map(([source, target]) => ({
+      source,
+      target,
+      scope: 'openai' as const
+    }))
+  ]
+}
+
+export function getRouteScopeLabel(scope: RouteScope, t: (key: string) => string): string {
+  if (scope === 'anthropic') return t('workbench.routing.scopeAnthropic')
+  if (scope === 'openai') return t('workbench.routing.scopeOpenai')
+  return t('workbench.routing.scopeAll')
 }
 
 export function isAnthropicEndpoint(endpoint: string, customEndpoints: ManagedEndpointLike[]): boolean {
@@ -344,10 +460,12 @@ export function findRoutesForProvider(
   const references: ProviderRouteReference[] = []
 
   for (const endpoint of endpointIds) {
-    const routes = getSavedRoutesFromConfig(config, customEndpoints, endpoint)
-    for (const [source, target] of Object.entries(routes)) {
-      if (routeTargetMatchesProvider(target, providerId)) {
-        references.push({ endpoint, source, target })
+    const maps = getSavedRouteMapsFromConfig(config, customEndpoints, endpoint)
+    for (const scope of ROUTE_SCOPES) {
+      for (const [source, target] of Object.entries(maps[scope])) {
+        if (routeTargetMatchesProvider(target, providerId)) {
+          references.push({ endpoint, source, target })
+        }
       }
     }
   }

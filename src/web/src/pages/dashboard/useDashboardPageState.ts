@@ -15,7 +15,7 @@ import { statsApi, type DimensionUsageMetric, type UsageDimensionId } from '@/se
 import { storageKeys } from '@/services/storageKeys'
 import type { ApiKeySummary, ApiKeyUsageMetric } from '@/types/apiKeys'
 import type { CustomEndpointsResponse } from '@/types/endpoints'
-import type { GatewayConfig } from '@/types/providers'
+import type { EndpointRoutingConfig, GatewayConfig } from '@/types/providers'
 import {
   LIVE_REFRESH_MS,
   TREND_REFRESH_MS,
@@ -33,12 +33,16 @@ const USAGE_ROW_LIMIT = 10
 /** Route rules across system endpoints, custom endpoints and the legacy top-level map */
 function countConfiguredRouteRules(config: GatewayConfig | undefined): number {
   if (!config) return 0
+  const countRouting = (routing: EndpointRoutingConfig | undefined) =>
+    Object.keys(routing?.modelRoutes ?? {}).length +
+    Object.keys(routing?.modelRoutesByProtocol?.anthropic ?? {}).length +
+    Object.keys(routing?.modelRoutesByProtocol?.openai ?? {}).length
   let count = Object.keys(config.modelRoutes ?? {}).length
   for (const routing of Object.values(config.endpointRouting ?? {})) {
-    count += Object.keys(routing?.modelRoutes ?? {}).length
+    count += countRouting(routing)
   }
   for (const endpoint of config.customEndpoints ?? []) {
-    count += Object.keys(endpoint.routing?.modelRoutes ?? {}).length
+    count += countRouting(endpoint.routing)
   }
   return count
 }
