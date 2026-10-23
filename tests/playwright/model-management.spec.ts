@@ -121,14 +121,14 @@ test('web ui can manage provider, endpoint, routes, and presets', async ({ page,
   const endpointDialog = page.getByRole('dialog', { name: '创建端点' })
   await endpointDialog.getByPlaceholder('如 custom-api').fill(endpointId)
   await endpointDialog.getByPlaceholder('如 我的自定义 API').fill(endpointLabel)
-  await endpointDialog.getByPlaceholder('如 /custom/api').fill('/playwright/v1/chat/completions')
+  await endpointDialog.getByPlaceholder('如 /myapi').fill('/playwright')
   await endpointDialog.getByRole('button', { name: '创建' }).click()
 
   await expect(page.getByText('端点创建成功')).toBeVisible()
 
   const createdEndpoint = await pollCustomEndpoint(request, baseUrl, endpointId)
   expect(createdEndpoint.label).toBe(endpointLabel)
-  expect(createdEndpoint.paths[0].path).toBe('/playwright/v1/chat/completions')
+  expect(createdEndpoint.paths[0].path).toBe('/playwright')
 
   // 新端点经左栏端点导航栏选中（桌面端点选择走 rail 行）
   await page
@@ -287,7 +287,7 @@ test('model management supports provider edit, delete, route reset, and preset d
   const endpointId = `pm-edit-endpoint-${Date.now()}`
   await endpointDialog.getByPlaceholder('如 custom-api').fill(endpointId)
   await endpointDialog.getByPlaceholder('如 我的自定义 API').fill('Edit Endpoint')
-  await endpointDialog.getByPlaceholder('如 /custom/api').fill(`/playwright/${endpointId}`)
+  await endpointDialog.getByPlaceholder('如 /myapi').fill(`/playwright/${endpointId}`)
   await endpointDialog.getByRole('button', { name: '创建' }).click()
   await expect(page.getByText('端点创建成功')).toBeVisible()
 
@@ -361,7 +361,7 @@ test('routing rules can be reordered by dragging the grip handle', async ({ page
   const endpointDialog = page.getByRole('dialog', { name: '创建端点' })
   await endpointDialog.getByPlaceholder('如 custom-api').fill(endpointId)
   await endpointDialog.getByPlaceholder('如 我的自定义 API').fill('Drag Endpoint')
-  await endpointDialog.getByPlaceholder('如 /custom/api').fill(`/playwright/${endpointId}`)
+  await endpointDialog.getByPlaceholder('如 /myapi').fill(`/playwright/${endpointId}`)
   await endpointDialog.getByRole('button', { name: '创建' }).click()
   await expect(page.getByText('端点创建成功')).toBeVisible()
 

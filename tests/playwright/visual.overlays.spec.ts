@@ -60,7 +60,7 @@ test.describe.serial('@overlay-only overlay open states', () => {
     const endpointDialog = page.getByRole('dialog', { name: '创建端点' })
     await endpointDialog.getByPlaceholder('如 custom-api').fill(ENDPOINT_ID)
     await endpointDialog.getByPlaceholder('如 我的自定义 API').fill(ENDPOINT_LABEL)
-    await endpointDialog.getByPlaceholder('如 /custom/api').fill('/overlay/v1/chat/completions')
+    await endpointDialog.getByPlaceholder('如 /myapi').fill('/overlay')
     await endpointDialog.getByRole('button', { name: '创建' }).click()
     await expect(page.getByText('端点创建成功')).toBeVisible()
 

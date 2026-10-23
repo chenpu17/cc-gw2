@@ -167,6 +167,12 @@ Rust 后端支持配置自定义端点，并按路径动态代理。
 
 - 可按 endpoint 前缀挂载
 - 能匹配 Anthropic / OpenAI 风格子路径
+- 同一个基础路径可同时挂载 Anthropic 与 OpenAI 协议（存储为多条 `paths[]`，协议子路径互不重叠），Claude Code 与 Codex 可共用一个端点
+- 协议自动展开：
+  - `anthropic` → `<base>/v1/messages`、`<base>/v1/messages/count_tokens`
+  - `openai-auto` → `<base>/v1/chat/completions`、`<base>/v1/responses`、`<base>/v1/models`
+  - `openai-chat` / `openai-responses` → 各自对应的子路径，同样注册 `<base>/v1/models`
+- 创建端点时自动写入空的 `routing` 配置：请求模型能直接匹配 Provider 模型时无需先配置路由规则；自定义端点仍不继承全局 anthropic/openai 路由
 - 自定义 endpoint 请求会进入日志、API Key 权限和统计体系
 
 ## 9. 兼容性边界

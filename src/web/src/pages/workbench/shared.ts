@@ -270,8 +270,16 @@ export function buildTabs(
     let protocols: string[] = []
 
     if (endpoint.paths && endpoint.paths.length > 0) {
-      description = `${t('modelManagement.tabs.customEndpoint')}: ${endpoint.paths
-        .map((pathItem) => `${pathItem.path} (${pathItem.protocol})`)
+      // One base path can serve several protocols (the editor stores one
+      // `paths[]` entry per protocol); describe it once, not once per entry.
+      const protocolsByPath = new Map<string, string[]>()
+      for (const pathItem of endpoint.paths) {
+        const protocolsForPath = protocolsByPath.get(pathItem.path) ?? []
+        protocolsForPath.push(pathItem.protocol)
+        protocolsByPath.set(pathItem.path, protocolsForPath)
+      }
+      description = `${t('modelManagement.tabs.customEndpoint')}: ${[...protocolsByPath.entries()]
+        .map(([path, protocolsForPath]) => `${path} (${protocolsForPath.join(', ')})`)
         .join(', ')}`
       protocols = [...new Set(endpoint.paths.map((pathItem) => pathItem.protocol))]
     } else if (endpoint.path) {

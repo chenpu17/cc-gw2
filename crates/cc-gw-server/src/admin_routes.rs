@@ -962,7 +962,13 @@ pub(super) async fn api_custom_endpoints_create(
         label: label.to_string(),
         deletable: Some(body.deletable.unwrap_or(true)),
         enabled: Some(body.enabled.unwrap_or(true)),
-        routing: body.routing,
+        // Always persist a routing block: an endpoint without one is rejected
+        // before direct model matching runs, so a freshly created endpoint
+        // could not serve requests until the routing page was saved once.
+        // An empty block keeps the "no global inheritance" contract while
+        // letting direct model matches (and any defaults added later) work
+        // immediately.
+        routing: Some(body.routing.unwrap_or_default()),
         paths,
         ..CustomEndpointConfig::default()
     };
