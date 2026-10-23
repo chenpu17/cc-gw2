@@ -26,6 +26,7 @@ import type { ClientActivityEntry } from '@/services/dashboard'
 import type { DimensionUsageMetric } from '@/services/stats'
 import { getLogStatusMeta } from '@/pages/logs/utils'
 import { formatCost } from '@/utils/currency'
+import { formatTime, formatTimestamp } from '@/utils/date'
 import { type UsageDistributionTab, USAGE_WINDOW_DAYS } from './useDashboardPageState'
 import {
   formatByteRate,
@@ -365,7 +366,8 @@ export function ClientActivityBand({
   )
 }
 
-/** Layer 2 — live warn/error feed; only rendered while there is something to show */
+/** Layer 3 — live warn/error feed; sits at the bottom so it cannot push the
+ *  overview KPIs below the fold. Only rendered while there is something to show. */
 export function AttentionFeed({
   connected,
   failed,
@@ -428,7 +430,7 @@ export function AttentionFeed({
               </div>
               {/* Second-granularity, so it differs on every visual run. */}
               <span data-visual-volatile="true" className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted-foreground/70">
-                {new Date(event.createdAt).toLocaleTimeString()}
+                {formatTime(event.createdAt)}
               </span>
             </motion.li>
           ))}
@@ -438,7 +440,7 @@ export function AttentionFeed({
   )
 }
 
-/** Layer 2 fallback — slim all-clear strip shown at the end of the StatusBand area */
+/** Layer 3 fallback — slim all-clear strip in the same bottom attention slot. */
 export function AttentionAllClear({ connected, failed }: { connected: boolean; failed?: boolean }) {
   const { t } = useTranslation()
 
@@ -1066,7 +1068,7 @@ export function RecentRequestsTable({
                   <TableRow key={item.id}>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span data-visual-volatile="true" className="text-xs font-medium">{new Date(item.timestamp).toLocaleString()}</span>
+                        <span data-visual-volatile="true" className="text-xs font-medium">{formatTimestamp(item.timestamp)}</span>
                         <span className="text-[11px] text-muted-foreground">#{item.id}</span>
                       </div>
                     </TableCell>

@@ -31,5 +31,11 @@ export function formatRelativeTime(timestamp: number): string {
 
 export function formatTimestamp(timestamp: number): string {
   const date = new Date(timestamp)
-  return date.toLocaleString()
+  return date.toLocaleString(i18n.language || 'en')
+}
+
+/** Time-only form (compact rows). Locale-aware: zh renders 24h, en 12h. */
+export function formatTime(timestamp: number): string {
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString(i18n.language || 'en')
 }

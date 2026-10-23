@@ -101,12 +101,6 @@ export default function DashboardPage() {
           {/* Layer 1 — live status */}
           <StatusBand status={state.status} recentThroughput={state.recentThroughput} />
 
-          {/* Anything that needs attention goes directly under the status band —
-              it is the one section users must not have to scroll for. */}
-          {state.attentionEvents.length > 0 ? (
-            <AttentionFeed connected={state.liveConnected} failed={state.liveFailed} events={state.attentionEvents} />
-          ) : null}
-
           <TodaySummaryBand overview={state.overview} endpointFilter={state.endpointFilter} />
 
           <ClientActivityBand status={state.status} entries={state.clientActivity} />
@@ -157,9 +151,12 @@ export default function DashboardPage() {
             endpointFilter={state.endpointFilter}
           />
 
-          {/* Layer 3 — all-clear settles at the bottom; the warn/error feed has
-              already moved under the status band. */}
-          {state.attentionEvents.length > 0 ? null : (
+          {/* Layer 3 — the attention slot always settles at the bottom, in both
+              states: an expanded feed here cannot push the overview KPIs and
+              trends below the fold. */}
+          {state.attentionEvents.length > 0 ? (
+            <AttentionFeed connected={state.liveConnected} failed={state.liveFailed} events={state.attentionEvents} />
+          ) : (
             <AttentionAllClear connected={state.liveConnected} failed={state.liveFailed} />
           )}
         </>
