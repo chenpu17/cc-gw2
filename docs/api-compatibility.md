@@ -159,7 +159,23 @@ Dashboard 与事件流接口补充说明：
 - OpenAI Responses 请求可转为 Anthropic 请求
 - 支持流式输出兼容转换
 
-## 8. 自定义端点兼容
+## 8. 版本检测与升级接口
+
+| 路径 | 方法 | 状态 | 说明 |
+| --- | --- | --- | --- |
+| `/api/version/check` | `GET` | 已兼容 | 查询 npm registry 当前通道最新版本；响应新增 `upgradeMode`（`auto`/`manual`/`unsupported`）、`upgradeReason`、`installMethod`、`manualCommand` |
+| `/api/version/upgrade` | `POST` | 新增 | 仅 `upgradeMode=auto` 可用；重新校验 registry 后启动外部升级 helper，返回 `202` 与 `id/phase/fromVersion/toVersion`；安装方式不支持、已有升级进行中或已是最新版本返回 `409` |
+| `/api/version/upgrade/status` | `GET` | 新增 | 读取 `~/.cc-gw/upgrade-state.json`，返回 `phase`（`idle`/`preparing`/`installing`/`draining`/`starting`/`verifying`/`succeeded`/`failed`）、`stale`、`state`（`id/fromVersion/toVersion/startedAt/updatedAt/finishedAt/error/rolledBack/platform/installMethod/logPath/serverPid/instanceToken`）、`upgradeMode/upgradeReason/installMethod/manualCommand/currentVersion/platform/activeRequests` |
+
+说明：
+
+- 升级依赖 npm registry，无独立更新服务；`auto` 要求服务由 `cc-gw start`（daemon 模式）启动且全局安装目录可写（Windows 上还要求 npm 全局安装），其余场景返回可复制的手动命令；`upgradeReason` 取值包括 `foreground`/`npx`/`local-build`/`not-writable`/`package-manager`/`not-launched-by-cli`/`unknown`
+- 非终态状态超过 10 分钟未更新时 `stale=true`，不会阻塞新的升级请求
+- helper 在 `draining` 阶段写入状态文件，服务端轮询后拒绝新的代理请求（`503` + `Retry-After`），等待在途请求结束后优雅退出；安装或健康校验失败时自动回滚。状态文件带发起升级的网关实例随机 token（`instanceToken`，旧 helper 仅有 `serverPid` 时按 PID 兼容），只有被寻址的实例会响应停止信号，避免共享数据目录的另一个网关、PID 复用或系统时钟回拨导致误停
+- `POST /api/version/upgrade` 拒绝跨站请求（校验 `Origin` 与 `Sec-Fetch-Site`），即使未启用 Web 登录也不能被第三方页面触发安装/重启
+- `/health` 响应新增 `version` 字段，供升级后校验新版本已生效
+
+## 9. 自定义端点兼容
 
 Rust 后端支持配置自定义端点，并按路径动态代理。
 
@@ -179,7 +195,7 @@ Rust 后端支持配置自定义端点，并按路径动态代理。
 - 路由预设同时快照/恢复 `modelRoutes` 与 `modelRoutesByProtocol`
 - 自定义 endpoint 请求会进入日志、API Key 权限和统计体系
 
-## 9. 兼容性边界
+## 10. 兼容性边界
 
 当前兼容目标主要覆盖：
 
@@ -192,9 +208,19 @@ Rust 后端支持配置自定义端点，并按路径动态代理。
 
 - 与旧 Node.js 后端逐字节完全一致的错误消息
 - 所有边缘流式事件顺序与字段完全一致
+- OpenAI Chat Completions 与 OpenAI Responses 之间的互转：路由会让 OpenAI
+  客户端保持在自己的协议家族内（Chat 请求只匹配 Chat 目标，Responses 请求只匹配
+  Responses 目标），跨家族转换未实现；只有 Anthropic 客户端可以在 Chat /
+  Responses 目标之间选择。仅暴露另一种 OpenAI 协议的 Provider 需要为客户端选择
+  对应协议，或通过 Anthropic 客户端访问
 - 面向公网部署场景下的强安全兼容
+- Anthropic 服务端工具（`web_search_*`、`web_fetch_*`、`code_execution_*` 等）
+  没有 OpenAI 函数工具等价物：跨协议转发时会丢弃；引用它们的 `tool_choice`
+  会一并移除（仍有普通工具时降级为 `auto`）。同协议透传不受影响。否则严格
+  上游会以 `tools.0.function.parameters must be a JSON Schema of type object`
+  拒绝整个请求。
 
-## 10. 验证方式
+## 11. 验证方式
 
 当前兼容性主要通过下面几类验证：
 

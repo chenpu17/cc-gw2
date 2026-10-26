@@ -418,6 +418,11 @@ export function useSettingsPageState() {
       delete payload.webAuth
       await gatewayApi.saveConfig(payload)
       setConfig({ ...nextConfig, webAuth: config.webAuth })
+      // Clear the saved draft immediately instead of waiting for the refetch.
+      // Otherwise the route blocker still reports unsaved billing changes and
+      // intercepts SPA navigation right after a successful save.
+      setBillingForm(deriveBillingFormState({ ...nextConfig, webAuth: config.webAuth }))
+      setBillingErrors({})
 
       const normalizeOptionalPath = (value?: string) => value?.trim() || undefined
       const previousRootPort = config.port ?? config.http?.port ?? 4100

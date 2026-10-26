@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use serde_json::{Value, json};
 
@@ -206,14 +206,33 @@ impl UsageState {
     }
 
     fn openai_usage_value(&self) -> Value {
-        json!({
+        let mut usage = json!({
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "total_tokens": self.input_tokens + self.output_tokens,
             "prompt_tokens": self.input_tokens,
             "completion_tokens": self.output_tokens,
             "cached_tokens": self.cached_tokens
-        })
+        });
+        if self.cached_tokens > 0 {
+            usage["prompt_tokens_details"] = json!({ "cached_tokens": self.cached_tokens });
+        }
+        usage
+    }
+
+    fn openai_responses_usage_value(&self) -> Value {
+        let mut usage = json!({
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.input_tokens + self.output_tokens,
+            "prompt_tokens": self.input_tokens,
+            "completion_tokens": self.output_tokens,
+            "cached_tokens": self.cached_tokens
+        });
+        if self.cached_tokens > 0 {
+            usage["input_tokens_details"] = json!({ "cached_tokens": self.cached_tokens });
+        }
+        usage
     }
 }
 
@@ -280,6 +299,27 @@ impl Utf8StreamDecoder {
         let remaining = String::from_utf8_lossy(&self.pending).to_string();
         self.pending.clear();
         remaining
+    }
+}
+
+/// Whether a streamed delta field actually carries output. Providers commonly
+/// open a stream with a role chunk (`content: ""` or `content: null`) and some
+/// send an empty `tool_calls: []` before the real tool call; treating those as
+/// the first token would understate TTFT.
+fn json_string_or(value: Option<&Value>, fallback: &str) -> Value {
+    value
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(|value| Value::String(value.to_string()))
+        .unwrap_or_else(|| Value::String(fallback.to_string()))
+}
+
+fn delta_has_output(value: Option<&Value>) -> bool {
+    match value {
+        Some(Value::String(text)) => !text.is_empty(),
+        Some(Value::Array(items)) => !items.is_empty(),
+        Some(Value::Object(map)) => !map.is_empty(),
+        _ => false,
     }
 }
 
@@ -451,7 +491,7 @@ impl SseStreamObserver {
                 }),
             ProviderProtocol::OpenAiResponses => matches!(
                 event.get("type").and_then(Value::as_str),
-                Some("response.completed") | Some("response.done")
+                Some("response.completed") | Some("response.done") | Some("response.incomplete")
             ),
         }
     }
@@ -475,49 +515,109 @@ impl SseStreamObserver {
         match self.protocol {
             ProviderProtocol::AnthropicMessages => {
                 match event.get("type").and_then(Value::as_str) {
-                    Some("content_block_start") => matches!(
-                        event
-                            .get("content_block")
+                    Some("content_block_start") => {
+                        let content_block = event.get("content_block");
+                        match content_block
                             .and_then(|content_block| content_block.get("type"))
-                            .and_then(Value::as_str),
-                        Some("tool_use") | Some("thinking")
-                    ),
-                    Some("content_block_delta") => matches!(
-                        event
-                            .get("delta")
+                            .and_then(Value::as_str)
+                        {
+                            // A tool block start already carries the tool name.
+                            Some("tool_use") => true,
+                            // Thinking block starts are often empty placeholders;
+                            // only count one that already carries output text.
+                            Some("thinking") => delta_has_output(
+                                content_block.and_then(|block| block.get("thinking")),
+                            ),
+                            // Redacted thinking arrives as an opaque payload.
+                            Some("redacted_thinking") => {
+                                delta_has_output(content_block.and_then(|block| block.get("data")))
+                            }
+                            _ => false,
+                        }
+                    }
+                    Some("content_block_delta") => {
+                        let delta = event.get("delta");
+                        match delta
                             .and_then(|delta| delta.get("type"))
-                            .and_then(Value::as_str),
-                        Some("text_delta") | Some("input_json_delta") | Some("thinking_delta")
-                    ),
+                            .and_then(Value::as_str)
+                        {
+                            Some("text_delta") => {
+                                delta_has_output(delta.and_then(|delta| delta.get("text")))
+                            }
+                            Some("thinking_delta") => {
+                                delta_has_output(delta.and_then(|delta| delta.get("thinking")))
+                            }
+                            Some("input_json_delta") => {
+                                delta_has_output(delta.and_then(|delta| delta.get("partial_json")))
+                            }
+                            _ => false,
+                        }
+                    }
                     _ => false,
                 }
             }
             ProviderProtocol::OpenAiChatCompletions => event
                 .get("choices")
                 .and_then(Value::as_array)
-                .and_then(|choices| choices.first())
-                .and_then(|choice| choice.get("delta"))
-                .is_some_and(|delta| {
-                    delta.get("content").is_some()
-                        || delta.get("reasoning_content").is_some()
-                        || delta.get("tool_calls").is_some()
+                .into_iter()
+                .flatten()
+                .filter_map(|choice| choice.get("delta"))
+                .any(|delta| {
+                    delta_has_output(delta.get("content"))
+                        || delta_has_output(delta.get("reasoning_content"))
+                        || delta_has_output(delta.get("reasoning"))
+                        || delta_has_output(delta.get("refusal"))
+                        || delta_has_output(delta.get("tool_calls"))
+                        || delta
+                            .get("function_call")
+                            .is_some_and(|call| !call.is_null())
                 }),
             ProviderProtocol::OpenAiResponses => match event.get("type").and_then(Value::as_str) {
                 Some("response.output_text.delta")
                 | Some("response.content_part.delta")
                 | Some("response.output_item.content_part.delta")
-                | Some("response.function_call_arguments.delta") => true,
+                | Some("response.function_call_arguments.delta")
+                | Some("response.reasoning_summary_text.delta")
+                | Some("response.reasoning_text.delta")
+                | Some("response.refusal.delta") => delta_has_output(event.get("delta")),
+                // The item announcement carries the tool name before any
+                // argument delta; a plain text/message item is still empty here.
                 Some("response.output_item.added") => matches!(
                     event
                         .get("item")
                         .and_then(|item| item.get("type"))
                         .and_then(Value::as_str),
-                    Some("function_call") | Some("tool_use") | Some("output_text") | Some("text")
+                    Some("function_call") | Some("tool_use")
                 ),
                 _ => false,
             },
         }
     }
+}
+
+fn responses_item_key(item_id: Option<&str>, output_index: Option<u64>) -> String {
+    item_id
+        .filter(|item_id| !item_id.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| output_index.map(|index| format!("idx:{index}")))
+        .unwrap_or_else(|| "idx:0".to_string())
+}
+
+fn extract_openai_responses_output_text(block: &Value) -> Option<String> {
+    block
+        .get("text")
+        .and_then(Value::as_str)
+        .or_else(|| block.get("refusal").and_then(Value::as_str))
+        .or_else(|| {
+            block
+                .get("content")
+                .and_then(Value::as_array)
+                .and_then(|parts| parts.first())
+                .and_then(|part| part.get("text"))
+                .and_then(Value::as_str)
+        })
+        .filter(|text| !text.is_empty())
+        .map(ToString::to_string)
 }
 
 fn extract_openai_reasoning_text(block: &Value) -> Option<String> {
@@ -563,14 +663,40 @@ fn extract_openai_reasoning_text(block: &Value) -> Option<String> {
     }
 }
 
-fn build_openai_reasoning_output_item(reasoning: &str) -> Value {
+fn build_openai_reasoning_output_item(id: &str, reasoning: &str) -> Value {
     json!({
-        "id": format!("rs_{}", nanoid_like()),
+        "id": id,
         "type": "reasoning",
+        "status": "completed",
         "summary": [{
             "type": "summary_text",
             "text": reasoning
         }]
+    })
+}
+
+fn build_openai_responses_message_item(item_id: &str, text: &str) -> Value {
+    json!({
+        "id": item_id,
+        "type": "message",
+        "status": "completed",
+        "role": "assistant",
+        "content": [{
+            "type": "output_text",
+            "text": text,
+            "annotations": []
+        }]
+    })
+}
+
+fn build_openai_responses_function_call_item(call_id: &str, name: &str, arguments: &str) -> Value {
+    json!({
+        "id": call_id,
+        "type": "function_call",
+        "status": "completed",
+        "call_id": call_id,
+        "name": name,
+        "arguments": arguments
     })
 }
 
@@ -589,6 +715,28 @@ struct AnthropicToolState {
     id: String,
     name: String,
     arguments: String,
+    /// Position in the Responses `output` array. Only used when converting
+    /// Anthropic streams into the OpenAI Responses protocol.
+    output_index: Option<usize>,
+    done: bool,
+}
+
+/// One Anthropic `text` block converted into its own Responses message item.
+#[derive(Debug, Clone)]
+struct ResponsesTextItem {
+    id: String,
+    output_index: usize,
+    text: String,
+    done: bool,
+}
+
+/// One Anthropic thinking block converted into its own Responses reasoning item.
+#[derive(Debug, Clone)]
+struct ResponsesReasoningItem {
+    id: String,
+    output_index: usize,
+    text: String,
+    done: bool,
 }
 
 enum StreamMode {
@@ -613,6 +761,21 @@ pub struct CrossProtocolStreamTransformer {
     reasoning_block_started: bool,
     reasoning_block_stopped: bool,
     reasoning_block_index: Option<usize>,
+    /// Monotonic Anthropic content-block index allocator. Indices must stay
+    /// unique for the whole message even after a block stops, so a closed
+    /// block's index is never reused.
+    anthropic_next_block_index: usize,
+    /// Responses item owning the currently open text/reasoning block.
+    responses_text_item_id: Option<String>,
+    responses_reasoning_item_id: Option<String>,
+    /// Responses items whose content was already forwarded. Keys are the item
+    /// id and `idx:<output_index>`, so done/terminal events can dedupe even
+    /// when one side omits an id.
+    responses_streamed_text_items: HashSet<String>,
+    responses_seen_reasoning_items: HashSet<String>,
+    /// Whether any visible text/tool output was emitted. Suppressed reasoning
+    /// must not be promoted to text after a block has already been closed.
+    saw_visible_output: bool,
     usage: UsageState,
     stop_reason: Option<String>,
     openai_tool_calls: BTreeMap<usize, OpenAiToolState>,
@@ -620,6 +783,16 @@ pub struct CrossProtocolStreamTransformer {
     responses_tool_names: BTreeMap<String, String>,
     responses_text: String,
     responses_reasoning_content: String,
+    /// Output-array indices allocated while streaming Anthropic content into
+    /// OpenAI Responses items, in announcement order.
+    responses_next_output_index: usize,
+    /// Per-Anthropic-block Responses items. A message may contain several
+    /// text or thinking blocks; each becomes its own output item.
+    responses_text_items: BTreeMap<usize, ResponsesTextItem>,
+    responses_reasoning_items: BTreeMap<usize, ResponsesReasoningItem>,
+    /// Whether a refusal was streamed or seen in the terminal output, so the
+    /// Anthropic stop reason can be `refusal` instead of `end_turn`.
+    saw_refusal: bool,
     emit_anthropic_reasoning: bool,
     allow_anthropic_reasoning_fallback: bool,
     suppressed_anthropic_reasoning: String,
@@ -664,6 +837,12 @@ impl CrossProtocolStreamTransformer {
             reasoning_block_started: false,
             reasoning_block_stopped: false,
             reasoning_block_index: None,
+            anthropic_next_block_index: 0,
+            responses_text_item_id: None,
+            responses_reasoning_item_id: None,
+            responses_streamed_text_items: HashSet::new(),
+            responses_seen_reasoning_items: HashSet::new(),
+            saw_visible_output: false,
             usage: UsageState::default(),
             stop_reason: None,
             openai_tool_calls: BTreeMap::new(),
@@ -671,6 +850,10 @@ impl CrossProtocolStreamTransformer {
             responses_tool_names: BTreeMap::new(),
             responses_text: String::new(),
             responses_reasoning_content: String::new(),
+            responses_next_output_index: 0,
+            responses_text_items: BTreeMap::new(),
+            responses_reasoning_items: BTreeMap::new(),
+            saw_refusal: false,
             emit_anthropic_reasoning: true,
             allow_anthropic_reasoning_fallback: true,
             suppressed_anthropic_reasoning: String::new(),
@@ -757,20 +940,252 @@ impl CrossProtocolStreamTransformer {
         }
     }
 
-    fn next_anthropic_block_index(&self) -> usize {
-        let mut max_index = self.text_block_index.or(self.reasoning_block_index);
-        for state in self.openai_tool_calls.values() {
-            max_index =
-                Some(max_index.map_or(state.block_index, |current| current.max(state.block_index)));
+    fn allocate_anthropic_block_index(&mut self) -> usize {
+        let index = self.anthropic_next_block_index;
+        self.anthropic_next_block_index += 1;
+        index
+    }
+
+    fn anthropic_tool_chat_index(&self, block_index: usize) -> usize {
+        self.anthropic_tools
+            .keys()
+            .position(|key| *key == block_index)
+            .unwrap_or(0)
+    }
+
+    fn close_text_block(&mut self, out: &mut Vec<String>) {
+        if self.text_block_started {
+            if let Some(index) = self.text_block_index {
+                if !self.text_block_stopped {
+                    out.push(anthropic_event(
+                        "content_block_stop",
+                        json!({ "type": "content_block_stop", "index": index }),
+                    ));
+                }
+            }
         }
-        max_index.map_or(0, |index| index + 1)
+        self.text_block_started = false;
+        self.text_block_stopped = true;
+        self.text_block_index = None;
+        self.responses_text_item_id = None;
+    }
+
+    fn close_reasoning_block(&mut self, out: &mut Vec<String>) {
+        if self.reasoning_block_started {
+            if let Some(index) = self.reasoning_block_index {
+                if !self.reasoning_block_stopped {
+                    out.push(anthropic_event(
+                        "content_block_stop",
+                        json!({ "type": "content_block_stop", "index": index }),
+                    ));
+                }
+            }
+        }
+        self.reasoning_block_started = false;
+        self.reasoning_block_stopped = true;
+        self.reasoning_block_index = None;
+        self.responses_reasoning_item_id = None;
+    }
+
+    fn close_openai_tool_block(&mut self, index: usize, out: &mut Vec<String>) {
+        if let Some(state) = self.openai_tool_calls.get_mut(&index) {
+            if state.started && !state.stopped {
+                state.stopped = true;
+                out.push(anthropic_event(
+                    "content_block_stop",
+                    json!({ "type": "content_block_stop", "index": state.block_index }),
+                ));
+            }
+        }
+    }
+
+    fn close_active_openai_tool_block(&mut self, out: &mut Vec<String>) {
+        let active = self
+            .openai_tool_calls
+            .iter()
+            .find_map(|(index, state)| (state.started && !state.stopped).then_some(*index));
+        if let Some(index) = active {
+            self.close_openai_tool_block(index, out);
+        }
+    }
+
+    fn mark_responses_text_item(&mut self, item_id: Option<&str>, output_index: Option<u64>) {
+        if let Some(id) = item_id.filter(|id| !id.is_empty()) {
+            self.responses_streamed_text_items.insert(id.to_string());
+        } else if output_index.is_none() {
+            self.responses_streamed_text_items
+                .insert("idx:0".to_string());
+        }
+        if let Some(index) = output_index {
+            self.responses_streamed_text_items
+                .insert(format!("idx:{index}"));
+        }
+    }
+
+    fn mark_responses_reasoning_item(&mut self, item_id: Option<&str>, output_index: Option<u64>) {
+        if let Some(id) = item_id.filter(|id| !id.is_empty()) {
+            self.responses_seen_reasoning_items.insert(id.to_string());
+        } else if output_index.is_none() {
+            self.responses_seen_reasoning_items
+                .insert("idx:0".to_string());
+        }
+        if let Some(index) = output_index {
+            self.responses_seen_reasoning_items
+                .insert(format!("idx:{index}"));
+        }
+    }
+
+    fn responses_text_item_seen(&self, item_id: Option<&str>, output_index: Option<u64>) -> bool {
+        let has_id = item_id.filter(|id| !id.is_empty());
+        let by_id = has_id.is_some_and(|id| self.responses_streamed_text_items.contains(id));
+        let by_index = match output_index {
+            Some(index) => self
+                .responses_streamed_text_items
+                .contains(&format!("idx:{index}")),
+            None => has_id.is_none() && self.responses_streamed_text_items.contains("idx:0"),
+        };
+        by_id || by_index
+    }
+
+    fn responses_reasoning_item_seen(
+        &self,
+        item_id: Option<&str>,
+        output_index: Option<u64>,
+    ) -> bool {
+        let has_id = item_id.filter(|id| !id.is_empty());
+        let by_id = has_id.is_some_and(|id| self.responses_seen_reasoning_items.contains(id));
+        let by_index = match output_index {
+            Some(index) => self
+                .responses_seen_reasoning_items
+                .contains(&format!("idx:{index}")),
+            None => has_id.is_none() && self.responses_seen_reasoning_items.contains("idx:0"),
+        };
+        by_id || by_index
+    }
+
+    fn start_responses_text_block(&mut self, key: &str, out: &mut Vec<String>) -> usize {
+        if self.text_block_started && self.responses_text_item_id.as_deref() == Some(key) {
+            return self.text_block_index.unwrap_or(0);
+        }
+        self.close_text_block(out);
+        self.close_reasoning_block(out);
+        self.close_active_openai_tool_block(out);
+        let index = self.allocate_anthropic_block_index();
+        self.text_block_started = true;
+        self.text_block_stopped = false;
+        self.text_block_index = Some(index);
+        self.responses_text_item_id = Some(key.to_string());
+        self.saw_visible_output = true;
+        out.push(anthropic_event(
+            "content_block_start",
+            json!({
+                "type": "content_block_start",
+                "index": index,
+                "content_block": { "type": "text", "text": "" }
+            }),
+        ));
+        index
+    }
+
+    fn start_responses_reasoning_block(&mut self, key: &str, out: &mut Vec<String>) -> usize {
+        if self.reasoning_block_started && self.responses_reasoning_item_id.as_deref() == Some(key)
+        {
+            return self.reasoning_block_index.unwrap_or(0);
+        }
+        self.close_reasoning_block(out);
+        self.close_text_block(out);
+        self.close_active_openai_tool_block(out);
+        let index = self.allocate_anthropic_block_index();
+        self.reasoning_block_started = true;
+        self.reasoning_block_stopped = false;
+        self.reasoning_block_index = Some(index);
+        self.responses_reasoning_item_id = Some(key.to_string());
+        out.push(anthropic_event(
+            "content_block_start",
+            json!({
+                "type": "content_block_start",
+                "index": index,
+                "content_block": { "type": "thinking", "thinking": "" }
+            }),
+        ));
+        index
+    }
+
+    fn start_responses_tool_block(
+        &mut self,
+        item_id: &str,
+        name: &str,
+        out: &mut Vec<String>,
+    ) -> (usize, usize) {
+        if let Some((index, state)) = self
+            .openai_tool_calls
+            .iter()
+            .find(|(_, state)| state.id == item_id)
+        {
+            return (*index, state.block_index);
+        }
+        self.close_text_block(out);
+        self.close_reasoning_block(out);
+        self.close_active_openai_tool_block(out);
+        let map_index = self
+            .openai_tool_calls
+            .keys()
+            .max()
+            .map_or(0, |index| index.saturating_add(1));
+        let block_index = self.allocate_anthropic_block_index();
+        self.openai_tool_calls.insert(
+            map_index,
+            OpenAiToolState {
+                id: item_id.to_string(),
+                name: name.to_string(),
+                arguments: String::new(),
+                block_index,
+                started: true,
+                stopped: false,
+            },
+        );
+        self.saw_visible_output = true;
+        out.push(anthropic_event(
+            "content_block_start",
+            json!({
+                "type": "content_block_start",
+                "index": block_index,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": item_id,
+                    "name": name,
+                    "input": {}
+                }
+            }),
+        ));
+        (map_index, block_index)
+    }
+
+    fn close_responses_tool_block(&mut self, item_id: &str, out: &mut Vec<String>) {
+        let index = self
+            .openai_tool_calls
+            .iter()
+            .find_map(|(index, state)| (state.id == item_id).then_some(*index));
+        if let Some(index) = index {
+            self.close_openai_tool_block(index, out);
+        }
+    }
+
+    fn responses_tool_block_seen(&self, item_id: &str) -> bool {
+        self.openai_tool_calls
+            .values()
+            .any(|state| state.id == item_id)
     }
 
     fn ensure_text_block_started(&mut self, out: &mut Vec<String>) -> usize {
         if !self.text_block_started {
+            self.close_reasoning_block(out);
+            self.close_active_openai_tool_block(out);
             self.text_block_started = true;
-            let index = self.next_anthropic_block_index();
+            self.text_block_stopped = false;
+            let index = self.allocate_anthropic_block_index();
             self.text_block_index = Some(index);
+            self.saw_visible_output = true;
             out.push(anthropic_event(
                 "content_block_start",
                 json!({
@@ -785,8 +1200,11 @@ impl CrossProtocolStreamTransformer {
 
     fn ensure_reasoning_block_started(&mut self, out: &mut Vec<String>) -> usize {
         if !self.reasoning_block_started {
+            self.close_text_block(out);
+            self.close_active_openai_tool_block(out);
             self.reasoning_block_started = true;
-            let index = self.next_anthropic_block_index();
+            self.reasoning_block_stopped = false;
+            let index = self.allocate_anthropic_block_index();
             self.reasoning_block_index = Some(index);
             out.push(anthropic_event(
                 "content_block_start",
@@ -798,6 +1216,194 @@ impl CrossProtocolStreamTransformer {
             ));
         }
         self.reasoning_block_index.unwrap_or(0)
+    }
+
+    fn allocate_responses_output_index(&mut self) -> usize {
+        let index = self.responses_next_output_index;
+        self.responses_next_output_index += 1;
+        index
+    }
+
+    /// Open the Responses message item carrying one Anthropic text block.
+    /// `response.output_item.added` must announce an item of type `message`
+    /// (not `output_text`), followed by an empty `output_text` content part.
+    fn ensure_openai_responses_text_item(
+        &mut self,
+        block_index: usize,
+        out: &mut Vec<String>,
+    ) -> (usize, String) {
+        if let Some(item) = self.responses_text_items.get(&block_index) {
+            return (item.output_index, item.id.clone());
+        }
+        let output_index = self.allocate_responses_output_index();
+        let item_id = if self.responses_text_items.is_empty() {
+            self.response_output_id.clone()
+        } else {
+            format!("{}_{block_index}", self.response_output_id)
+        };
+        self.responses_text_items.insert(
+            block_index,
+            ResponsesTextItem {
+                id: item_id.clone(),
+                output_index,
+                text: String::new(),
+                done: false,
+            },
+        );
+        out.push(openai_responses_event(json!({
+            "type": "response.output_item.added",
+            "output_index": output_index,
+            "item": {
+                "id": item_id,
+                "type": "message",
+                "status": "in_progress",
+                "role": "assistant",
+                "content": []
+            }
+        })));
+        out.push(openai_responses_event(json!({
+            "type": "response.content_part.added",
+            "item_id": item_id,
+            "output_index": output_index,
+            "content_index": 0,
+            "part": { "type": "output_text", "text": "", "annotations": [] }
+        })));
+        (output_index, item_id)
+    }
+
+    fn close_openai_responses_text_item(&mut self, block_index: usize, out: &mut Vec<String>) {
+        let Some(item) = self.responses_text_items.get_mut(&block_index) else {
+            return;
+        };
+        if item.done {
+            return;
+        }
+        item.done = true;
+        let output_index = item.output_index;
+        let item_id = item.id.clone();
+        let text = item.text.clone();
+        out.push(openai_responses_event(json!({
+            "type": "response.output_text.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "content_index": 0,
+            "text": text
+        })));
+        out.push(openai_responses_event(json!({
+            "type": "response.content_part.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "content_index": 0,
+            "part": { "type": "output_text", "text": text, "annotations": [] }
+        })));
+        out.push(openai_responses_event(json!({
+            "type": "response.output_item.done",
+            "output_index": output_index,
+            "item": build_openai_responses_message_item(&item_id, &text)
+        })));
+    }
+
+    fn ensure_openai_responses_reasoning_item(
+        &mut self,
+        block_index: usize,
+        out: &mut Vec<String>,
+    ) -> (usize, String) {
+        if let Some(item) = self.responses_reasoning_items.get(&block_index) {
+            return (item.output_index, item.id.clone());
+        }
+        let output_index = self.allocate_responses_output_index();
+        let item_id = if self.responses_reasoning_items.is_empty() {
+            format!("rs_{}", nanoid_like())
+        } else {
+            format!("rs_{}_{block_index}", nanoid_like())
+        };
+        self.responses_reasoning_items.insert(
+            block_index,
+            ResponsesReasoningItem {
+                id: item_id.clone(),
+                output_index,
+                text: String::new(),
+                done: false,
+            },
+        );
+        out.push(openai_responses_event(json!({
+            "type": "response.output_item.added",
+            "output_index": output_index,
+            "item": {
+                "id": item_id,
+                "type": "reasoning",
+                "status": "in_progress",
+                "summary": []
+            }
+        })));
+        out.push(openai_responses_event(json!({
+            "type": "response.reasoning_summary_part.added",
+            "item_id": item_id,
+            "output_index": output_index,
+            "summary_index": 0,
+            "part": { "type": "summary_text", "text": "" }
+        })));
+        (output_index, item_id)
+    }
+
+    fn close_openai_responses_reasoning_item(&mut self, block_index: usize, out: &mut Vec<String>) {
+        let Some(item) = self.responses_reasoning_items.get_mut(&block_index) else {
+            return;
+        };
+        if item.done {
+            return;
+        }
+        item.done = true;
+        let output_index = item.output_index;
+        let item_id = item.id.clone();
+        let text = item.text.clone();
+        out.push(openai_responses_event(json!({
+            "type": "response.reasoning_summary_text.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "summary_index": 0,
+            "text": text
+        })));
+        out.push(openai_responses_event(json!({
+            "type": "response.reasoning_summary_part.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "summary_index": 0,
+            "part": { "type": "summary_text", "text": text }
+        })));
+        out.push(openai_responses_event(json!({
+            "type": "response.output_item.done",
+            "output_index": output_index,
+            "item": build_openai_reasoning_output_item(&item_id, &text)
+        })));
+    }
+
+    /// Close one Anthropic tool_use block as a Responses `function_call` item.
+    fn close_anthropic_tool_item(&mut self, block_index: usize, out: &mut Vec<String>) {
+        let Some(tool) = self.anthropic_tools.get_mut(&block_index) else {
+            return;
+        };
+        if tool.done {
+            return;
+        }
+        tool.done = true;
+        let Some(output_index) = tool.output_index else {
+            return;
+        };
+        let item_id = tool.id.clone();
+        let name = tool.name.clone();
+        let arguments = tool.arguments.clone();
+        out.push(openai_responses_event(json!({
+            "type": "response.function_call_arguments.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "arguments": arguments
+        })));
+        out.push(openai_responses_event(json!({
+            "type": "response.output_item.done",
+            "output_index": output_index,
+            "item": build_openai_responses_function_call_item(&item_id, &name, &arguments)
+        })));
     }
 
     fn openai_chat_to_anthropic(&mut self, event: Value) -> Vec<String> {
@@ -825,7 +1431,12 @@ impl CrossProtocolStreamTransformer {
         if !self.message_started
             && (delta.get("content").is_some()
                 || (self.emit_anthropic_reasoning && delta.get("reasoning_content").is_some())
+                || delta_has_output(delta.get("reasoning"))
+                || delta_has_output(delta.get("refusal"))
                 || delta.get("tool_calls").is_some()
+                || delta
+                    .get("function_call")
+                    .is_some_and(|call| !call.is_null())
                 || choice.get("finish_reason").is_some())
         {
             self.message_started = true;
@@ -866,22 +1477,44 @@ impl CrossProtocolStreamTransformer {
             ));
         }
 
-        if let Some(text) = delta.get("reasoning_content").and_then(Value::as_str) {
-            if !text.is_empty() {
-                if self.emit_anthropic_reasoning {
-                    let index = self.ensure_reasoning_block_started(&mut out);
-                    out.push(anthropic_event(
-                        "content_block_delta",
-                        json!({
-                            "type": "content_block_delta",
-                            "index": index,
-                            "delta": { "type": "thinking_delta", "thinking": text }
-                        }),
-                    ));
-                } else {
-                    self.suppressed_anthropic_reasoning.push_str(text);
-                }
+        // `reasoning` is an alias some OpenAI-compatible upstreams use instead
+        // of `reasoning_content`; both carry the same thinking stream.
+        let reasoning_text = delta
+            .get("reasoning_content")
+            .and_then(Value::as_str)
+            .or_else(|| delta.get("reasoning").and_then(Value::as_str));
+        if let Some(text) = reasoning_text.filter(|text| !text.is_empty()) {
+            if self.emit_anthropic_reasoning {
+                let index = self.ensure_reasoning_block_started(&mut out);
+                out.push(anthropic_event(
+                    "content_block_delta",
+                    json!({
+                        "type": "content_block_delta",
+                        "index": index,
+                        "delta": { "type": "thinking_delta", "thinking": text }
+                    }),
+                ));
+            } else {
+                self.suppressed_anthropic_reasoning.push_str(text);
             }
+        }
+
+        // A refusal is visible assistant output; Anthropic has no dedicated
+        // block type, so surface it as text rather than dropping it.
+        if let Some(text) = delta
+            .get("refusal")
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+        {
+            let index = self.ensure_text_block_started(&mut out);
+            out.push(anthropic_event(
+                "content_block_delta",
+                json!({
+                    "type": "content_block_delta",
+                    "index": index,
+                    "delta": { "type": "text_delta", "text": text }
+                }),
+            ));
         }
 
         if let Some(tool_calls) = delta.get("tool_calls").and_then(Value::as_array) {
@@ -913,23 +1546,30 @@ impl CrossProtocolStreamTransformer {
                     .and_then(|value| value.get("arguments"))
                     .and_then(Value::as_str)
                     .unwrap_or("");
-                let block_index = self.next_anthropic_block_index();
-                let entry =
-                    self.openai_tool_calls
-                        .entry(index)
-                        .or_insert_with(|| OpenAiToolState {
+                if !self.openai_tool_calls.contains_key(&index) {
+                    let block_index = self.allocate_anthropic_block_index();
+                    self.openai_tool_calls.insert(
+                        index,
+                        OpenAiToolState {
                             id: id.clone(),
                             name: name.clone(),
                             arguments: String::new(),
                             block_index,
                             started: false,
                             stopped: false,
-                        });
+                        },
+                    );
+                }
+                let entry = self
+                    .openai_tool_calls
+                    .get_mut(&index)
+                    .expect("tool state inserted above");
                 entry.id = id.clone();
                 entry.name = name.clone();
 
                 if !entry.started {
                     entry.started = true;
+                    self.saw_visible_output = true;
                     out.push(anthropic_event(
                         "content_block_start",
                         json!({
@@ -959,6 +1599,77 @@ impl CrossProtocolStreamTransformer {
                         }),
                     ));
                 }
+            }
+        }
+
+        // Legacy `function_call` (pre-tool_calls API) is a single call carried
+        // outside the tool_calls array. Reserve the top map key so it cannot
+        // collide with a real tool_calls index.
+        if let Some(function_call) = delta.get("function_call").filter(|call| !call.is_null()) {
+            let call_index = usize::MAX;
+            let name = function_call
+                .get("name")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+                .or_else(|| {
+                    self.openai_tool_calls
+                        .get(&call_index)
+                        .map(|state| state.name.clone())
+                })
+                .unwrap_or_else(|| "tool".to_string());
+            let arguments = function_call
+                .get("arguments")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if !self.openai_tool_calls.contains_key(&call_index) {
+                let block_index = self.allocate_anthropic_block_index();
+                self.openai_tool_calls.insert(
+                    call_index,
+                    OpenAiToolState {
+                        id: format!("call_{}", nanoid_like()),
+                        name: name.clone(),
+                        arguments: String::new(),
+                        block_index,
+                        started: false,
+                        stopped: false,
+                    },
+                );
+            }
+            let entry = self
+                .openai_tool_calls
+                .get_mut(&call_index)
+                .expect("legacy tool state inserted above");
+            entry.name = name.clone();
+            if !entry.started {
+                entry.started = true;
+                self.saw_visible_output = true;
+                out.push(anthropic_event(
+                    "content_block_start",
+                    json!({
+                        "type": "content_block_start",
+                        "index": entry.block_index,
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": entry.id,
+                            "name": entry.name,
+                            "input": {}
+                        }
+                    }),
+                ));
+            }
+            if !arguments.is_empty() {
+                entry.arguments.push_str(arguments);
+                out.push(anthropic_event(
+                    "content_block_delta",
+                    json!({
+                        "type": "content_block_delta",
+                        "index": entry.block_index,
+                        "delta": {
+                            "type": "input_json_delta",
+                            "partial_json": arguments
+                        }
+                    }),
+                ));
             }
         }
 
@@ -1011,15 +1722,21 @@ impl CrossProtocolStreamTransformer {
                                 id: id.clone(),
                                 name: name.clone(),
                                 arguments: String::new(),
+                                output_index: None,
+                                done: false,
                             },
                         );
+                        // OpenAI Chat numbers tool calls by their position in
+                        // the `tool_calls` array, not by Anthropic's content
+                        // block index (which counts text/thinking blocks too).
+                        let chat_index = self.anthropic_tool_chat_index(index);
                         out.push(openai_chat_chunk(
                             &self.message_id,
                             self.created,
                             &self.model,
                             json!({
                                 "tool_calls": [{
-                                    "index": index,
+                                    "index": chat_index,
                                     "id": id,
                                     "type": "function",
                                     "function": { "name": name, "arguments": "" }
@@ -1064,6 +1781,7 @@ impl CrossProtocolStreamTransformer {
                             .get("partial_json")
                             .and_then(Value::as_str)
                             .unwrap_or("");
+                        let chat_index = self.anthropic_tool_chat_index(index);
                         if let Some(tool) = self.anthropic_tools.get_mut(&index) {
                             tool.arguments.push_str(partial);
                             out.push(openai_chat_chunk(
@@ -1072,7 +1790,7 @@ impl CrossProtocolStreamTransformer {
                                 &self.model,
                                 json!({
                                     "tool_calls": [{
-                                        "index": index,
+                                        "index": chat_index,
                                         "id": tool.id,
                                         "type": "function",
                                         "function": { "name": tool.name, "arguments": partial }
@@ -1104,12 +1822,7 @@ impl CrossProtocolStreamTransformer {
                         &self.model,
                         json!({}),
                         json!(map_anthropic_stop_reason_to_openai_finish(reason)),
-                        Some(json!({
-                            "prompt_tokens": self.usage.input_tokens,
-                            "completion_tokens": self.usage.output_tokens,
-                            "total_tokens": self.usage.input_tokens + self.usage.output_tokens,
-                            "cached_tokens": self.usage.cached_tokens
-                        })),
+                        Some(self.usage.openai_usage_value()),
                     ));
                 }
             }
@@ -1119,6 +1832,363 @@ impl CrossProtocolStreamTransformer {
             _ => {}
         }
         out
+    }
+
+    fn responses_tool_name(&self, item_id: &str) -> String {
+        self.responses_tool_names
+            .get(item_id)
+            .cloned()
+            .unwrap_or_else(|| "tool".to_string())
+    }
+
+    /// Responses function-call items carry both `id` (`fc_*`) and `call_id`
+    /// (`call_*`), and upstreams disagree about which one appears in
+    /// `item_id`. Resolve any known alias to the id already used as the
+    /// Anthropic `tool_use.id` so terminal reconciliation cannot emit a second
+    /// block for the same call.
+    fn responses_existing_tool_id(&self, candidates: &[Option<&str>]) -> Option<String> {
+        candidates
+            .iter()
+            .flatten()
+            .filter(|candidate| !candidate.is_empty())
+            .find_map(|candidate| {
+                self.openai_tool_calls
+                    .values()
+                    .find(|state| state.id == *candidate)
+                    .map(|state| state.id.clone())
+            })
+    }
+
+    fn responses_active_text_for(&self, key: &str) -> bool {
+        self.text_block_started
+            && self
+                .responses_text_item_id
+                .as_deref()
+                .is_some_and(|active| active == key || active.starts_with(&format!("{key}:")))
+    }
+
+    fn responses_active_reasoning_for(&self, key: &str) -> bool {
+        self.reasoning_block_started
+            && self
+                .responses_reasoning_item_id
+                .as_deref()
+                .is_some_and(|active| active == key || active.starts_with(&format!("{key}:")))
+    }
+
+    fn push_openai_responses_text_delta(
+        &mut self,
+        text: Option<&str>,
+        item_id: Option<&str>,
+        output_index: Option<u64>,
+        refusal: bool,
+        out: &mut Vec<String>,
+    ) {
+        let Some(text) = text.filter(|text| !text.is_empty()) else {
+            return;
+        };
+        self.mark_responses_text_item(item_id, output_index);
+        if refusal {
+            self.saw_refusal = true;
+        }
+        let key = responses_item_key(item_id, output_index);
+        let index = self.start_responses_text_block(&key, out);
+        out.push(anthropic_event(
+            "content_block_delta",
+            json!({
+                "type": "content_block_delta",
+                "index": index,
+                "delta": { "type": "text_delta", "text": text }
+            }),
+        ));
+    }
+
+    fn finish_openai_responses_text_item(
+        &mut self,
+        text: Option<&str>,
+        item_id: Option<&str>,
+        output_index: Option<u64>,
+        refusal: bool,
+        out: &mut Vec<String>,
+    ) {
+        if !self.responses_text_item_seen(item_id, output_index) {
+            if let Some(text) = text.filter(|text| !text.is_empty()) {
+                self.mark_responses_text_item(item_id, output_index);
+                let key = responses_item_key(item_id, output_index);
+                self.emit_terminal_text_block(&key, text, refusal, out);
+            }
+        }
+        let key = responses_item_key(item_id, output_index);
+        if self.responses_active_text_for(&key) {
+            self.close_text_block(out);
+        }
+    }
+
+    fn push_openai_responses_reasoning_delta(
+        &mut self,
+        text: Option<&str>,
+        item_id: Option<&str>,
+        output_index: Option<u64>,
+        out: &mut Vec<String>,
+    ) {
+        let Some(text) = text.filter(|text| !text.is_empty()) else {
+            return;
+        };
+        self.mark_responses_reasoning_item(item_id, output_index);
+        if self.emit_anthropic_reasoning {
+            let key = responses_item_key(item_id, output_index);
+            let index = self.start_responses_reasoning_block(&key, out);
+            out.push(anthropic_event(
+                "content_block_delta",
+                json!({
+                    "type": "content_block_delta",
+                    "index": index,
+                    "delta": { "type": "thinking_delta", "thinking": text }
+                }),
+            ));
+        } else {
+            self.suppressed_anthropic_reasoning.push_str(text);
+        }
+    }
+
+    fn finish_openai_responses_reasoning_item(
+        &mut self,
+        text: Option<&str>,
+        item_id: Option<&str>,
+        output_index: Option<u64>,
+        out: &mut Vec<String>,
+    ) {
+        if !self.responses_reasoning_item_seen(item_id, output_index) {
+            if let Some(text) = text.filter(|text| !text.is_empty()) {
+                self.mark_responses_reasoning_item(item_id, output_index);
+                let key = responses_item_key(item_id, output_index);
+                self.emit_terminal_reasoning_block(&key, text, out);
+            }
+        }
+        let key = responses_item_key(item_id, output_index);
+        if self.responses_active_reasoning_for(&key) {
+            self.close_reasoning_block(out);
+        }
+    }
+
+    /// Emit a complete Anthropic text block for Responses content that only
+    /// appeared in a terminal/item-done event. Opening and closing the block
+    /// immediately keeps every block's lifecycle valid.
+    fn emit_terminal_text_block(
+        &mut self,
+        key: &str,
+        text: &str,
+        refusal: bool,
+        out: &mut Vec<String>,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        let index = self.start_responses_text_block(key, out);
+        if refusal {
+            self.saw_refusal = true;
+        }
+        out.push(anthropic_event(
+            "content_block_delta",
+            json!({
+                "type": "content_block_delta",
+                "index": index,
+                "delta": { "type": "text_delta", "text": text }
+            }),
+        ));
+        self.close_text_block(out);
+    }
+
+    fn emit_terminal_reasoning_block(&mut self, key: &str, text: &str, out: &mut Vec<String>) {
+        if text.is_empty() {
+            return;
+        }
+        if !self.emit_anthropic_reasoning {
+            self.suppressed_anthropic_reasoning.push_str(text);
+            return;
+        }
+        let index = self.start_responses_reasoning_block(key, out);
+        out.push(anthropic_event(
+            "content_block_delta",
+            json!({
+                "type": "content_block_delta",
+                "index": index,
+                "delta": { "type": "thinking_delta", "thinking": text }
+            }),
+        ));
+        self.close_reasoning_block(out);
+    }
+
+    fn emit_terminal_tool_block(&mut self, block: &Value, out: &mut Vec<String>) {
+        let item_id = block.get("id").and_then(Value::as_str);
+        let call_id = block.get("call_id").and_then(Value::as_str);
+        let id = self
+            .responses_existing_tool_id(&[item_id, call_id])
+            .or_else(|| item_id.or(call_id).map(ToString::to_string))
+            .unwrap_or_else(|| "call".to_string());
+        if self.responses_tool_block_seen(&id) {
+            self.close_responses_tool_block(&id, out);
+            return;
+        }
+        let name = block
+            .get("name")
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .unwrap_or_else(|| self.responses_tool_name(&id));
+        let arguments_value = block
+            .get("arguments")
+            .cloned()
+            .or_else(|| block.get("input").cloned())
+            .unwrap_or_else(|| json!({}));
+        let arguments = match &arguments_value {
+            Value::String(value) => value.clone(),
+            _ => serde_json::to_string(&arguments_value).unwrap_or_else(|_| "{}".to_string()),
+        };
+        let (map_index, block_index) = self.start_responses_tool_block(&id, &name, out);
+        if let Some(state) = self.openai_tool_calls.get_mut(&map_index) {
+            state.arguments.push_str(&arguments);
+        }
+        if !arguments.is_empty() {
+            out.push(anthropic_event(
+                "content_block_delta",
+                json!({
+                    "type": "content_block_delta",
+                    "index": block_index,
+                    "delta": {
+                        "type": "input_json_delta",
+                        "partial_json": arguments
+                    }
+                }),
+            ));
+        }
+        self.close_responses_tool_block(&id, out);
+    }
+
+    fn emit_openai_responses_message_content(
+        &mut self,
+        item: &Value,
+        key: &str,
+        item_id: Option<&str>,
+        output_index: Option<u64>,
+        out: &mut Vec<String>,
+    ) {
+        let parts: Vec<Value> = item
+            .get("content")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_else(|| vec![item.clone()]);
+        let multi_part = parts.len() > 1;
+        for (part_index, part) in parts.iter().enumerate() {
+            match part.get("type").and_then(Value::as_str).unwrap_or("") {
+                "output_text" | "text" | "refusal" => {
+                    let refusal = part.get("type").and_then(Value::as_str) == Some("refusal");
+                    if let Some(text) = extract_openai_responses_output_text(part) {
+                        let part_key = if multi_part {
+                            format!("{key}:{part_index}")
+                        } else {
+                            key.to_string()
+                        };
+                        self.emit_terminal_text_block(&part_key, &text, refusal, out);
+                    }
+                }
+                "function_call" | "tool_use" => {
+                    self.emit_terminal_tool_block(part, out);
+                }
+                "reasoning" => {
+                    if let Some(text) = extract_openai_reasoning_text(part) {
+                        self.emit_terminal_reasoning_block(
+                            &format!("{key}:r{part_index}"),
+                            &text,
+                            out,
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.mark_responses_text_item(item_id, output_index);
+    }
+
+    fn handle_openai_responses_item_done(
+        &mut self,
+        event: &Value,
+        item_id: Option<&str>,
+        output_index: Option<u64>,
+        out: &mut Vec<String>,
+    ) {
+        let Some(item) = event.get("item") else {
+            return;
+        };
+        let event_item_id = item_id;
+        let item_id = item.get("id").and_then(Value::as_str).or(item_id);
+        let output_index = event
+            .get("output_index")
+            .and_then(Value::as_u64)
+            .or(output_index);
+        let item_type = item.get("type").and_then(Value::as_str).unwrap_or("");
+        match item_type {
+            "reasoning" => {
+                let text = extract_openai_reasoning_text(item);
+                self.finish_openai_responses_reasoning_item(
+                    text.as_deref(),
+                    item_id,
+                    output_index,
+                    out,
+                );
+            }
+            "function_call" => {
+                let item_call_id = item.get("call_id").and_then(Value::as_str);
+                let id = self
+                    .responses_existing_tool_id(&[item_id, item_call_id, event_item_id])
+                    .or_else(|| {
+                        item_id
+                            .or(item_call_id)
+                            .or(event_item_id)
+                            .map(ToString::to_string)
+                    })
+                    .unwrap_or_else(|| format!("call_{}", output_index.unwrap_or(0)));
+                if !self.responses_tool_block_seen(&id) {
+                    let name = item
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| self.responses_tool_name(&id));
+                    let arguments = item.get("arguments").and_then(Value::as_str).unwrap_or("");
+                    let (map_index, block_index) = self.start_responses_tool_block(&id, &name, out);
+                    if let Some(state) = self.openai_tool_calls.get_mut(&map_index) {
+                        state.arguments.push_str(arguments);
+                    }
+                    if !arguments.is_empty() {
+                        out.push(anthropic_event(
+                            "content_block_delta",
+                            json!({
+                                "type": "content_block_delta",
+                                "index": block_index,
+                                "delta": {
+                                    "type": "input_json_delta",
+                                    "partial_json": arguments
+                                }
+                            }),
+                        ));
+                    }
+                }
+                self.close_responses_tool_block(&id, out);
+            }
+            _ => {
+                let key = responses_item_key(item_id, output_index);
+                if !self.responses_text_item_seen(item_id, output_index) {
+                    self.emit_openai_responses_message_content(
+                        item,
+                        &key,
+                        item_id,
+                        output_index,
+                        out,
+                    );
+                }
+                if self.responses_active_text_for(&key) {
+                    self.close_text_block(out);
+                }
+            }
+        }
     }
 
     fn openai_responses_to_anthropic(&mut self, event: Value) -> Vec<String> {
@@ -1159,99 +2229,117 @@ impl CrossProtocolStreamTransformer {
         }
 
         let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
+        let item_id = event.get("item_id").and_then(Value::as_str).or_else(|| {
+            event
+                .get("item")
+                .and_then(|item| item.get("id"))
+                .and_then(Value::as_str)
+        });
+        let output_index = event.get("output_index").and_then(Value::as_u64);
         match event_type {
             "response.output_text.delta" => {
-                if let Some(text) = event.get("delta").and_then(Value::as_str) {
-                    if !text.is_empty() {
-                        let index = self.ensure_text_block_started(&mut out);
-                        out.push(anthropic_event(
-                            "content_block_delta",
-                            json!({
-                                "type": "content_block_delta",
-                                "index": index,
-                                "delta": { "type": "text_delta", "text": text }
-                            }),
-                        ));
-                    }
-                }
+                self.push_openai_responses_text_delta(
+                    event.get("delta").and_then(Value::as_str),
+                    item_id,
+                    output_index,
+                    false,
+                    &mut out,
+                );
             }
             "response.content_part.delta" | "response.output_item.content_part.delta" => {
-                if let Some(text) = event
-                    .get("delta")
-                    .and_then(|delta| delta.get("text"))
-                    .and_then(Value::as_str)
-                {
-                    if !text.is_empty() {
-                        let index = self.ensure_text_block_started(&mut out);
-                        out.push(anthropic_event(
-                            "content_block_delta",
-                            json!({
-                                "type": "content_block_delta",
-                                "index": index,
-                                "delta": { "type": "text_delta", "text": text }
-                            }),
-                        ));
-                    }
-                }
+                self.push_openai_responses_text_delta(
+                    event
+                        .get("delta")
+                        .and_then(|delta| delta.get("text"))
+                        .and_then(Value::as_str),
+                    item_id,
+                    output_index,
+                    false,
+                    &mut out,
+                );
+            }
+            // Some Responses implementations signal the end of a content part
+            // without a separate output_item.done; close the item's block here
+            // so a following item cannot interleave with it.
+            "response.output_text.done" => {
+                self.finish_openai_responses_text_item(
+                    event.get("text").and_then(Value::as_str),
+                    item_id,
+                    output_index,
+                    false,
+                    &mut out,
+                );
+            }
+            // Refusals are user-visible assistant output in the Responses
+            // protocol; without these arms they would vanish for Anthropic clients.
+            "response.refusal.delta" => {
+                self.push_openai_responses_text_delta(
+                    event.get("delta").and_then(Value::as_str),
+                    item_id,
+                    output_index,
+                    true,
+                    &mut out,
+                );
+            }
+            "response.refusal.done" => {
+                self.finish_openai_responses_text_item(
+                    event
+                        .get("refusal")
+                        .and_then(Value::as_str)
+                        .or_else(|| event.get("text").and_then(Value::as_str)),
+                    item_id,
+                    output_index,
+                    true,
+                    &mut out,
+                );
+            }
+            "response.reasoning_summary_text.delta" | "response.reasoning_text.delta" => {
+                self.push_openai_responses_reasoning_delta(
+                    event.get("delta").and_then(Value::as_str),
+                    item_id,
+                    output_index,
+                    &mut out,
+                );
+            }
+            "response.reasoning_summary_text.done" | "response.reasoning_text.done" => {
+                self.finish_openai_responses_reasoning_item(
+                    event.get("text").and_then(Value::as_str),
+                    item_id,
+                    output_index,
+                    &mut out,
+                );
             }
             "response.output_item.added" => {
                 if let Some(item) = event.get("item") {
-                    if let (Some(id), Some(name)) = (
-                        item.get("id").and_then(Value::as_str),
-                        item.get("name").and_then(Value::as_str),
-                    ) {
-                        self.responses_tool_names
-                            .insert(id.to_string(), name.to_string());
+                    if let Some(name) = item.get("name").and_then(Value::as_str) {
+                        for alias in [item.get("id"), item.get("call_id")]
+                            .into_iter()
+                            .flatten()
+                            .filter_map(Value::as_str)
+                        {
+                            self.responses_tool_names
+                                .insert(alias.to_string(), name.to_string());
+                        }
                     }
                 }
             }
             "response.function_call_arguments.delta" => {
-                let item_id = event.get("item_id").and_then(Value::as_str);
                 let delta = event.get("delta").and_then(Value::as_str);
                 if let (Some(item_id), Some(delta)) = (item_id, delta) {
-                    let existing_index = self
-                        .openai_tool_calls
-                        .iter()
-                        .find_map(|(index, state)| (state.id == item_id).then_some(*index));
-                    let index = existing_index.unwrap_or(self.openai_tool_calls.len());
-                    let block_index = self.next_anthropic_block_index();
-                    let state =
-                        self.openai_tool_calls
-                            .entry(index)
-                            .or_insert_with(|| OpenAiToolState {
-                                id: item_id.to_string(),
-                                name: self
-                                    .responses_tool_names
-                                    .get(item_id)
-                                    .cloned()
-                                    .unwrap_or_else(|| "tool".to_string()),
-                                arguments: String::new(),
-                                block_index,
-                                started: false,
-                                stopped: false,
-                            });
-                    if !state.started {
-                        state.started = true;
-                        out.push(anthropic_event(
-                            "content_block_start",
-                            json!({
-                                "type": "content_block_start",
-                                "index": state.block_index,
-                                "content_block": {
-                                    "type": "tool_use",
-                                    "id": state.id,
-                                    "name": state.name,
-                                    "input": {}
-                                }
-                            }),
-                        ));
+                    let resolved_id = self
+                        .responses_existing_tool_id(&[Some(item_id)])
+                        .unwrap_or_else(|| item_id.to_string());
+                    let name = self.responses_tool_name(&resolved_id);
+                    let (map_index, block_index) =
+                        self.start_responses_tool_block(&resolved_id, &name, &mut out);
+                    if let Some(state) = self.openai_tool_calls.get_mut(&map_index) {
+                        state.arguments.push_str(delta);
                     }
-                    state.arguments.push_str(delta);
                     out.push(anthropic_event(
                         "content_block_delta",
                         json!({
                             "type": "content_block_delta",
-                            "index": state.block_index,
+                            "index": block_index,
                             "delta": {
                                 "type": "input_json_delta",
                                 "partial_json": delta
@@ -1260,12 +2348,50 @@ impl CrossProtocolStreamTransformer {
                     ));
                 }
             }
-            "response.completed" | "response.done" => {
-                if self.stop_reason.is_none() {
-                    self.stop_reason =
-                        infer_openai_responses_stop_reason(&event).map(ToString::to_string);
+            "response.function_call_arguments.done" => {
+                if let Some(item_id) = item_id {
+                    let resolved_id = self
+                        .responses_existing_tool_id(&[Some(item_id)])
+                        .unwrap_or_else(|| item_id.to_string());
+                    let arguments = event.get("arguments").and_then(Value::as_str);
+                    if !self.responses_tool_block_seen(&resolved_id) {
+                        if let Some(arguments) = arguments.filter(|text| !text.is_empty()) {
+                            let name = self.responses_tool_name(&resolved_id);
+                            let (map_index, block_index) =
+                                self.start_responses_tool_block(&resolved_id, &name, &mut out);
+                            if let Some(state) = self.openai_tool_calls.get_mut(&map_index) {
+                                state.arguments.push_str(arguments);
+                            }
+                            out.push(anthropic_event(
+                                "content_block_delta",
+                                json!({
+                                    "type": "content_block_delta",
+                                    "index": block_index,
+                                    "delta": {
+                                        "type": "input_json_delta",
+                                        "partial_json": arguments
+                                    }
+                                }),
+                            ));
+                        }
+                    }
+                    self.close_responses_tool_block(&resolved_id, &mut out);
                 }
+            }
+            "response.output_item.done" => {
+                self.handle_openai_responses_item_done(&event, item_id, output_index, &mut out);
+            }
+            "response.completed" | "response.done" | "response.incomplete" => {
+                // Reconcile first: it can observe a refusal content part or a
+                // whole item that only appears in the terminal output.
                 out.extend(self.reconcile_openai_responses_completed_event(&event));
+                if self.stop_reason.is_none() {
+                    self.stop_reason = if self.saw_refusal {
+                        Some("refusal".to_string())
+                    } else {
+                        infer_openai_responses_stop_reason(&event).map(ToString::to_string)
+                    };
+                }
                 out.extend(self.synthesize_finish());
             }
             _ => {}
@@ -1284,147 +2410,46 @@ impl CrossProtocolStreamTransformer {
         };
 
         let mut out = Vec::new();
-        let mut synthesized_tool_index = self.openai_tool_calls.len();
-        for item in output {
-            if let Some(content) = item.get("content").and_then(Value::as_array) {
-                for block in content {
-                    out.extend(self.reconcile_openai_responses_output_block(
-                        block,
-                        &mut synthesized_tool_index,
-                    ));
-                }
-            } else {
-                out.extend(
-                    self.reconcile_openai_responses_output_block(item, &mut synthesized_tool_index),
-                );
-            }
-        }
-
-        out
-    }
-
-    fn reconcile_openai_responses_output_block(
-        &mut self,
-        block: &Value,
-        synthesized_tool_index: &mut usize,
-    ) -> Vec<String> {
-        let mut out = Vec::new();
-        match block.get("type").and_then(Value::as_str) {
-            Some("output_text") | Some("text") => {
-                let text = block
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .or_else(|| {
-                        block
-                            .get("content")
-                            .and_then(Value::as_array)
-                            .and_then(|parts| parts.first())
-                            .and_then(|part| part.get("text"))
-                            .and_then(Value::as_str)
-                    })
-                    .unwrap_or("");
-                if !text.is_empty() && !self.text_block_started {
-                    let index = self.ensure_text_block_started(&mut out);
-                    out.push(anthropic_event(
-                        "content_block_delta",
-                        json!({
-                            "type": "content_block_delta",
-                            "index": index,
-                            "delta": { "type": "text_delta", "text": text }
-                        }),
-                    ));
-                }
-            }
-            Some("function_call") | Some("tool_use") => {
-                let id = block
-                    .get("id")
-                    .or_else(|| block.get("call_id"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("call");
-                let already_seen = self
-                    .openai_tool_calls
-                    .values()
-                    .any(|state| state.id == id || state.id == format!("fc_{id}"));
-                if already_seen {
-                    return out;
-                }
-
-                let name = block
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or("tool")
-                    .to_string();
-                let arguments_value = block
-                    .get("arguments")
-                    .cloned()
-                    .or_else(|| block.get("input").cloned())
-                    .unwrap_or_else(|| json!({}));
-                let arguments = match &arguments_value {
-                    Value::String(value) => value.clone(),
-                    _ => {
-                        serde_json::to_string(&arguments_value).unwrap_or_else(|_| "{}".to_string())
-                    }
-                };
-                let index = *synthesized_tool_index;
-                *synthesized_tool_index += 1;
-                let block_index = self.next_anthropic_block_index();
-                self.openai_tool_calls.insert(
-                    index,
-                    OpenAiToolState {
-                        id: id.to_string(),
-                        name: name.clone(),
-                        arguments: arguments.clone(),
-                        block_index,
-                        started: true,
-                        stopped: false,
-                    },
-                );
-                out.push(anthropic_event(
-                    "content_block_start",
-                    json!({
-                        "type": "content_block_start",
-                        "index": block_index,
-                        "content_block": {
-                            "type": "tool_use",
-                            "id": id,
-                            "name": name,
-                            "input": {}
+        for (position, item) in output.iter().enumerate() {
+            let output_index = position as u64;
+            let item_id = item.get("id").and_then(Value::as_str);
+            let item_type = item.get("type").and_then(Value::as_str).unwrap_or("");
+            match item_type {
+                "reasoning" => {
+                    let key = responses_item_key(item_id, Some(output_index));
+                    if !self.responses_reasoning_item_seen(item_id, Some(output_index)) {
+                        if let Some(text) = extract_openai_reasoning_text(item) {
+                            self.mark_responses_reasoning_item(item_id, Some(output_index));
+                            self.emit_terminal_reasoning_block(&key, &text, &mut out);
                         }
-                    }),
-                ));
-                if !arguments.is_empty() {
-                    out.push(anthropic_event(
-                        "content_block_delta",
-                        json!({
-                            "type": "content_block_delta",
-                            "index": block_index,
-                            "delta": {
-                                "type": "input_json_delta",
-                                "partial_json": arguments
-                            }
-                        }),
-                    ));
+                    }
+                    if self.responses_active_reasoning_for(&key) {
+                        self.close_reasoning_block(&mut out);
+                    }
                 }
-            }
-            Some("reasoning") => {
-                if let Some(text) = extract_openai_reasoning_text(block) {
-                    if self.emit_anthropic_reasoning {
-                        let index = self.ensure_reasoning_block_started(&mut out);
-                        out.push(anthropic_event(
-                            "content_block_delta",
-                            json!({
-                                "type": "content_block_delta",
-                                "index": index,
-                                "delta": { "type": "thinking_delta", "thinking": text }
-                            }),
-                        ));
-                    } else {
-                        self.suppressed_anthropic_reasoning.push_str(&text);
+                "function_call" => {
+                    // Resolves `id`/`call_id` aliases and closes an already
+                    // streamed block instead of emitting a duplicate.
+                    self.emit_terminal_tool_block(item, &mut out);
+                }
+                _ => {
+                    let key = responses_item_key(item_id, Some(output_index));
+                    if !self.responses_text_item_seen(item_id, Some(output_index)) {
+                        self.emit_openai_responses_message_content(
+                            item,
+                            &key,
+                            item_id,
+                            Some(output_index),
+                            &mut out,
+                        );
+                    }
+                    if self.responses_active_text_for(&key) {
+                        self.close_text_block(&mut out);
                     }
                 }
             }
-            _ => {}
         }
+
         out
     }
 
@@ -1459,7 +2484,7 @@ impl CrossProtocolStreamTransformer {
                         "response": {
                             "id": self.response_id,
                             "object": "response",
-                            "created": self.created,
+                            "created_at": self.created,
                             "status": "in_progress",
                             "model": self.model
                         }
@@ -1481,37 +2506,39 @@ impl CrossProtocolStreamTransformer {
                                 .and_then(Value::as_str)
                                 .unwrap_or("tool")
                                 .to_string();
+                            let output_index = self.allocate_responses_output_index();
                             self.anthropic_tools.insert(
                                 index,
                                 AnthropicToolState {
                                     id: id.clone(),
                                     name: name.clone(),
                                     arguments: String::new(),
+                                    output_index: Some(output_index),
+                                    done: false,
                                 },
                             );
                             out.push(openai_responses_event(json!({
                                 "type": "response.output_item.added",
-                                "output_index": 0,
+                                "output_index": output_index,
                                 "item": {
                                     "id": id,
                                     "type": "function_call",
-                                    "call_id": content_block.get("id").cloned().unwrap_or(Value::String("call".to_string())),
+                                    "status": "in_progress",
+                                    "call_id": id,
                                     "name": name,
                                     "arguments": ""
                                 }
                             })));
                         }
+                        Some("thinking") | Some("redacted_thinking") => {
+                            // The reasoning item itself is opened lazily on the
+                            // first thinking delta so an empty block stays empty
+                            // and consumes no output index.
+                        }
                         Some("text") => {
-                            out.push(openai_responses_event(json!({
-                                "type": "response.output_item.added",
-                                "output_index": 0,
-                                "item": {
-                                    "id": self.response_output_id,
-                                    "type": "output_text",
-                                    "index": index,
-                                    "text": ""
-                                }
-                            })));
+                            // Opened lazily on the first non-empty delta for the
+                            // same reason: empty text blocks must not announce an
+                            // item that the final output omits.
                         }
                         _ => {}
                     }
@@ -1522,26 +2549,45 @@ impl CrossProtocolStreamTransformer {
                 let delta = event.get("delta").cloned().unwrap_or_else(|| json!({}));
                 match delta.get("type").and_then(Value::as_str).unwrap_or("") {
                     "text_delta" => {
-                        if let Some(text) = delta.get("text").and_then(Value::as_str) {
+                        if let Some(text) = delta
+                            .get("text")
+                            .and_then(Value::as_str)
+                            .filter(|text| !text.is_empty())
+                        {
+                            let (output_index, item_id) =
+                                self.ensure_openai_responses_text_item(index, &mut out);
+                            if let Some(item) = self.responses_text_items.get_mut(&index) {
+                                item.text.push_str(text);
+                            }
                             self.responses_text.push_str(text);
                             out.push(openai_responses_event(json!({
-                                "type": "response.output_item.content_part.delta",
-                                "output_item_id": self.response_output_id,
-                                "index": index,
-                                "delta": {
-                                    "type": "text_delta",
-                                    "text": text
-                                }
-                            })));
-                            out.push(openai_responses_event(json!({
                                 "type": "response.output_text.delta",
+                                "item_id": item_id,
+                                "output_index": output_index,
+                                "content_index": 0,
                                 "delta": text
                             })));
                         }
                     }
                     "thinking_delta" => {
-                        if let Some(text) = delta.get("thinking").and_then(Value::as_str) {
+                        if let Some(text) = delta
+                            .get("thinking")
+                            .and_then(Value::as_str)
+                            .filter(|text| !text.is_empty())
+                        {
+                            let (output_index, item_id) =
+                                self.ensure_openai_responses_reasoning_item(index, &mut out);
+                            if let Some(item) = self.responses_reasoning_items.get_mut(&index) {
+                                item.text.push_str(text);
+                            }
                             self.responses_reasoning_content.push_str(text);
+                            out.push(openai_responses_event(json!({
+                                "type": "response.reasoning_summary_text.delta",
+                                "item_id": item_id,
+                                "output_index": output_index,
+                                "summary_index": 0,
+                                "delta": text
+                            })));
                         }
                     }
                     "input_json_delta" => {
@@ -1549,25 +2595,31 @@ impl CrossProtocolStreamTransformer {
                             .get("partial_json")
                             .and_then(Value::as_str)
                             .unwrap_or("");
-                        if let Some(tool) = self.anthropic_tools.get_mut(&index) {
-                            tool.arguments.push_str(partial);
-                            out.push(openai_responses_event(json!({
-                                "type": "response.output_item.content_part.delta",
-                                "output_item_id": tool.id,
-                                "index": index,
-                                "delta": {
-                                    "type": "input_json_delta",
-                                    "partial_json": partial
-                                }
-                            })));
-                            out.push(openai_responses_event(json!({
-                                "type": "response.function_call_arguments.delta",
-                                "item_id": tool.id,
-                                "delta": partial
-                            })));
+                        if !partial.is_empty() {
+                            if let Some(tool) = self.anthropic_tools.get_mut(&index) {
+                                tool.arguments.push_str(partial);
+                                let output_index = tool.output_index.unwrap_or(0);
+                                let item_id = tool.id.clone();
+                                out.push(openai_responses_event(json!({
+                                    "type": "response.function_call_arguments.delta",
+                                    "item_id": item_id,
+                                    "output_index": output_index,
+                                    "delta": partial
+                                })));
+                            }
                         }
                     }
                     _ => {}
+                }
+            }
+            "content_block_stop" => {
+                let index = event.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
+                if self.responses_text_items.contains_key(&index) {
+                    self.close_openai_responses_text_item(index, &mut out);
+                } else if self.responses_reasoning_items.contains_key(&index) {
+                    self.close_openai_responses_reasoning_item(index, &mut out);
+                } else {
+                    self.close_anthropic_tool_item(index, &mut out);
                 }
             }
             "message_delta" => {
@@ -1629,9 +2681,7 @@ impl CrossProtocolStreamTransformer {
         if self.allow_anthropic_reasoning_fallback
             && !self.emit_anthropic_reasoning
             && !self.suppressed_anthropic_reasoning.trim().is_empty()
-            && !self.reasoning_block_started
-            && !self.text_block_started
-            && self.openai_tool_calls.is_empty()
+            && !self.saw_visible_output
         {
             let fallback_text = self.suppressed_anthropic_reasoning.clone();
             let index = self.ensure_text_block_started(&mut out);
@@ -1707,78 +2757,98 @@ impl CrossProtocolStreamTransformer {
     }
 
     fn finish_openai_responses(&mut self) -> Vec<String> {
-        let mut tool_blocks = Vec::new();
+        let mut out = Vec::new();
+        let text_blocks: Vec<usize> = self.responses_text_items.keys().copied().collect();
+        for index in text_blocks {
+            self.close_openai_responses_text_item(index, &mut out);
+        }
+        let reasoning_blocks: Vec<usize> = self.responses_reasoning_items.keys().copied().collect();
+        for index in reasoning_blocks {
+            self.close_openai_responses_reasoning_item(index, &mut out);
+        }
+        let tool_indices: Vec<usize> = self.anthropic_tools.keys().copied().collect();
+        for index in tool_indices {
+            self.close_anthropic_tool_item(index, &mut out);
+        }
+
+        // Build the final output array in the same order the items were
+        // announced on the stream, so output_index values stay consistent.
+        let mut output_items = Vec::<(usize, Value)>::new();
+        for item in self.responses_reasoning_items.values() {
+            if !item.text.is_empty() {
+                output_items.push((
+                    item.output_index,
+                    build_openai_reasoning_output_item(&item.id, &item.text),
+                ));
+            }
+        }
+        for item in self.responses_text_items.values() {
+            if !item.text.is_empty() {
+                output_items.push((
+                    item.output_index,
+                    build_openai_responses_message_item(&item.id, &item.text),
+                ));
+            }
+        }
         for tool in self.anthropic_tools.values() {
-            tool_blocks.push(json!({
-                "type": "function_call",
-                "id": tool.id,
-                "call_id": tool.id,
-                "name": tool.name,
-                "arguments": tool.arguments
-            }));
+            if let Some(index) = tool.output_index {
+                output_items.push((
+                    index,
+                    build_openai_responses_function_call_item(
+                        &tool.id,
+                        &tool.name,
+                        &tool.arguments,
+                    ),
+                ));
+            }
         }
+        output_items.sort_by_key(|(index, _)| *index);
+        let output: Vec<Value> = output_items.into_iter().map(|(_, item)| item).collect();
 
-        let mut output = Vec::new();
-        if !self.responses_reasoning_content.is_empty() {
-            output.push(build_openai_reasoning_output_item(
-                &self.responses_reasoning_content,
-            ));
-        }
-        let mut output_content = Vec::new();
-        if !self.responses_text.is_empty() {
-            output_content.push(json!({
-                "type": "output_text",
-                "text": self.responses_text
-            }));
-        }
-        output_content.extend(tool_blocks);
-        output.push(json!({
-            "id": "out_1",
-            "type": "output_message",
-            "role": "assistant",
-            "content": output_content
-        }));
+        let status = map_anthropic_stop_reason_to_openai_status(self.stop_reason.as_deref());
+        // OpenAI Responses signals a length cut with `status: incomplete` plus
+        // `incomplete_details`, and emits it as `response.incomplete`.
+        let (event_type, incomplete_details) = if status == "incomplete" {
+            (
+                "response.incomplete",
+                json!({ "reason": "max_output_tokens" }),
+            )
+        } else {
+            ("response.completed", Value::Null)
+        };
 
-        vec![
-            openai_responses_event(json!({
-                "type": "response.completed",
-                "status": map_anthropic_stop_reason_to_openai_status(self.stop_reason.as_deref()),
-                "status_code": 200,
-                "stop_reason": self.stop_reason,
-                "response": {
-                    "id": self.response_id,
-                    "object": "response",
-                    "created": self.created,
-                    "model": self.model,
-                    "status": map_anthropic_stop_reason_to_openai_status(self.stop_reason.as_deref()),
-                    "output": output,
-                    "usage": {
-                        "input_tokens": self.usage.input_tokens,
-                        "output_tokens": self.usage.output_tokens,
-                        "total_tokens": self.usage.input_tokens + self.usage.output_tokens,
-                        "prompt_tokens": self.usage.input_tokens,
-                        "completion_tokens": self.usage.output_tokens,
-                        "cached_tokens": self.usage.cached_tokens
-                    },
-                    "reasoning_content": if self.responses_reasoning_content.is_empty() {
-                        Value::Null
-                    } else {
-                        Value::String(self.responses_reasoning_content.clone())
-                    }
-                },
-                "output_text": if self.responses_text.is_empty() {
-                    Value::Null
-                } else {
-                    Value::String(self.responses_text.clone())
-                },
+        out.push(openai_responses_event(json!({
+            "type": event_type,
+            "status": status,
+            "stop_reason": self.stop_reason,
+            "response": {
+                "id": self.response_id,
+                "object": "response",
+                "created_at": self.created,
+                "model": self.model,
+                "status": status,
+                "incomplete_details": incomplete_details,
+                "output": output,
+                "usage": self.usage.openai_responses_usage_value(),
                 "reasoning_content": if self.responses_reasoning_content.is_empty() {
                     Value::Null
                 } else {
                     Value::String(self.responses_reasoning_content.clone())
                 }
-            })),
-            "data: [DONE]\n\n".to_string(),
-        ]
+            },
+            "output_text": if self.responses_text.is_empty() {
+                Value::Null
+            } else {
+                Value::String(self.responses_text.clone())
+            },
+            "reasoning_content": if self.responses_reasoning_content.is_empty() {
+                Value::Null
+            } else {
+                Value::String(self.responses_reasoning_content.clone())
+            }
+        })));
+        out.push("data: [DONE]\n\n".to_string());
+        out
     }
 }
 
@@ -1831,9 +2901,10 @@ fn map_anthropic_stop_reason_to_openai_finish(reason: &str) -> &'static str {
 }
 
 fn map_anthropic_stop_reason_to_openai_status(reason: Option<&str>) -> &'static str {
+    // Tool calls are normal Responses output; `requires_action` belongs to
+    // the Assistants API. Only a token-limit stop is an incomplete response.
     match reason {
-        Some("tool_use") => "requires_action",
-        Some("max_tokens") | Some("stop_sequence") => "incomplete",
+        Some("max_tokens") => "incomplete",
         _ => "completed",
     }
 }
@@ -1841,7 +2912,7 @@ fn map_anthropic_stop_reason_to_openai_status(reason: Option<&str>) -> &'static 
 fn map_openai_finish_reason_to_anthropic(reason: Option<&str>) -> &'static str {
     match reason {
         Some("tool_calls") => "tool_use",
-        Some("content_filter") => "refusal",
+        Some("content_filter" | "refusal") => "refusal",
         Some(
             "length"
             | "max_tokens"
@@ -1942,6 +3013,33 @@ fn infer_openai_responses_stop_reason(event: &Value) -> Option<&'static str> {
             .and_then(|response| response.get("status"))
             .and_then(Value::as_str)
     });
+    let saw_refusal = event
+        .get("response")
+        .and_then(|response| response.get("output"))
+        .and_then(Value::as_array)
+        .is_some_and(|output| {
+            output.iter().any(|item| {
+                let blocks = item
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_else(|| vec![item.clone()]);
+                blocks.iter().any(|block| {
+                    block.get("type").and_then(Value::as_str) == Some("refusal")
+                        && (block
+                            .get("refusal")
+                            .and_then(Value::as_str)
+                            .is_some_and(|text| !text.is_empty())
+                            || block
+                                .get("text")
+                                .and_then(Value::as_str)
+                                .is_some_and(|text| !text.is_empty()))
+                })
+            })
+        });
+    if saw_refusal {
+        return Some("refusal");
+    }
     let saw_tool_use = event
         .get("response")
         .and_then(|response| response.get("output"))
@@ -2215,6 +3313,7 @@ fn materialize_openai_chat_stream(sse_stream: &str) -> Option<String> {
     let mut model = None::<String>;
     let mut content = String::new();
     let mut reasoning_content = String::new();
+    let mut refusal = String::new();
     let mut finish_reason = Value::Null;
     let mut usage = UsageState::default();
     let mut tool_calls = BTreeMap::<usize, Value>::new();
@@ -2261,19 +3360,46 @@ fn materialize_openai_chat_stream(sse_stream: &str) -> Option<String> {
         }
         if let Some(text) = delta.get("reasoning_content").and_then(Value::as_str) {
             reasoning_content.push_str(text);
+        } else if let Some(text) = delta.get("reasoning").and_then(Value::as_str) {
+            reasoning_content.push_str(text);
+        }
+        if let Some(text) = delta.get("refusal").and_then(Value::as_str) {
+            refusal.push_str(text);
+        }
+        // Deprecated single-function streaming shape; still emitted by some
+        // OpenAI-compatible providers.
+        if let Some(function_call) = delta.get("function_call") {
+            let entry = tool_calls.entry(usize::MAX).or_insert_with(|| {
+                json!({
+                    "id": format!("call_{}", nanoid_like()),
+                    "type": "function",
+                    "function": { "name": "", "arguments": "" }
+                })
+            });
+            if let Some(name) = function_call.get("name").and_then(Value::as_str) {
+                entry["function"]["name"] = Value::String(name.to_string());
+            }
+            if let Some(arguments) = function_call.get("arguments").and_then(Value::as_str) {
+                let mut next = entry["function"]["arguments"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
+                next.push_str(arguments);
+                entry["function"]["arguments"] = Value::String(next);
+            }
         }
         if let Some(delta_tool_calls) = delta.get("tool_calls").and_then(Value::as_array) {
             for tool_call in delta_tool_calls {
                 let index = tool_call.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
                 let entry = tool_calls.entry(index).or_insert_with(|| {
                     json!({
-                        "id": Value::Null,
+                        "id": format!("call_{index}"),
                         "type": "function",
                         "function": { "name": "", "arguments": "" }
                     })
                 });
 
-                if let Some(value) = tool_call.get("id") {
+                if let Some(value) = tool_call.get("id").filter(|value| value.is_string()) {
                     entry["id"] = value.clone();
                 }
                 if let Some(name) = tool_call
@@ -2302,11 +3428,14 @@ fn materialize_openai_chat_stream(sse_stream: &str) -> Option<String> {
     let mut message = json!({ "role": "assistant" });
     if !content.is_empty() {
         message["content"] = Value::String(content);
-    } else if !tool_calls.is_empty() {
+    } else if !tool_calls.is_empty() || !refusal.is_empty() {
         message["content"] = Value::Null;
     }
     if !reasoning_content.is_empty() {
         message["reasoning_content"] = Value::String(reasoning_content);
+    }
+    if !refusal.is_empty() {
+        message["refusal"] = Value::String(refusal);
     }
     if !tool_calls.is_empty() {
         message["tool_calls"] = Value::Array(tool_calls.into_values().collect());
@@ -2357,8 +3486,9 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
                 .map(ToString::to_string)
                 .or(id);
             created = response_value
-                .get("created")
+                .get("created_at")
                 .and_then(Value::as_i64)
+                .or_else(|| response_value.get("created").and_then(Value::as_i64))
                 .or(created);
             model = response_value
                 .get("model")
@@ -2389,11 +3519,12 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
                         tool_calls.insert(
                             item_id.clone(),
                             json!({
-                                "id": item.get("id").cloned().unwrap_or(Value::String(item_id.clone())),
+                                "id": json_string_or(item.get("id"), &item_id),
                                 "type": "function_call",
-                                "call_id": item.get("call_id").cloned().unwrap_or(Value::String(item_id)),
-                                "name": item.get("name").cloned().unwrap_or(Value::String("tool".to_string())),
-                                "arguments": item.get("arguments").cloned().unwrap_or(Value::String(String::new()))
+                                "status": "completed",
+                                "call_id": json_string_or(item.get("call_id"), &item_id),
+                                "name": json_string_or(item.get("name"), "tool"),
+                                "arguments": json_string_or(item.get("arguments"), "")
                             }),
                         );
                     }
@@ -2409,6 +3540,7 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
                     json!({
                         "id": item_id,
                         "type": "function_call",
+                        "status": "completed",
                         "call_id": item_id,
                         "name": "tool",
                         "arguments": ""
@@ -2422,7 +3554,7 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
                 next.push_str(delta);
                 entry["arguments"] = Value::String(next);
             }
-            "response.completed" | "response.done" => {
+            "response.completed" | "response.done" | "response.incomplete" => {
                 response = event.get("response").cloned().or(response);
                 if let Some(value) = event.get("output_text").and_then(Value::as_str) {
                     output_text = value.to_string();
@@ -2439,28 +3571,30 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
         return serde_json::to_string(&response).ok();
     }
 
-    let mut content = Vec::new();
+    let mut output = Vec::new();
     if !output_text.is_empty() {
-        content.push(json!({
-            "type": "output_text",
-            "text": output_text
+        output.push(json!({
+            "id": "msg_cc_gw",
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [{
+                "type": "output_text",
+                "text": output_text,
+                "annotations": []
+            }]
         }));
     }
-    content.extend(tool_calls.into_values());
+    output.extend(tool_calls.into_values());
 
     serde_json::to_string(&json!({
         "id": id.unwrap_or_else(|| format!("resp_{}", nanoid_like())),
         "object": "response",
-        "created": created.unwrap_or_else(|| chrono::Utc::now().timestamp()),
+        "created_at": created.unwrap_or_else(|| chrono::Utc::now().timestamp()),
         "model": model.unwrap_or_else(|| "unknown-model".to_string()),
         "status": status.unwrap_or_else(|| "completed".to_string()),
-        "output": [{
-            "id": "out_1",
-            "type": "output_message",
-            "role": "assistant",
-            "content": content
-        }],
-        "usage": usage.openai_usage_value(),
+        "output": output,
+        "usage": usage.openai_responses_usage_value(),
         "output_text": if output_text.is_empty() {
             Value::Null
         } else {
@@ -2473,8 +3607,8 @@ fn materialize_openai_responses_stream(sse_stream: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CrossProtocolStreamTransformer, SseStreamObserver, Utf8StreamDecoder,
-        materialize_stream_response, observe_buffered_stream_usage,
+        CrossProtocolStreamTransformer, SseStreamObserver, UsageState, Utf8StreamDecoder,
+        materialize_stream_response, observe_buffered_stream_usage, sse_data_events,
         usage_stats_option_from_payload,
     };
     use crate::provider::ProviderProtocol;
@@ -2740,6 +3874,93 @@ mod tests {
     }
 
     #[test]
+    fn openai_chat_role_only_chunk_is_not_first_output() {
+        // OpenAI (and most compatible upstreams) open the stream with a role
+        // chunk whose content is "" or null — no token has been generated yet.
+        let mut observer = SseStreamObserver::new(ProviderProtocol::OpenAiChatCompletions);
+        let role = observer.push(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"}}]}\n\n",
+        );
+        assert!(!role.saw_first_token);
+        let null_content = observer.push(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":null}}]}\n\n\
+             data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[]}}]}\n\n",
+        );
+        assert!(!null_content.saw_first_token);
+        let content =
+            observer.push("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n");
+        assert!(content.saw_first_token);
+    }
+
+    #[test]
+    fn openai_chat_observer_detects_first_output_on_non_primary_choice() {
+        // Choice 0 may only carry the role preamble; a token in any choice
+        // still means generation started.
+        let mut observer = SseStreamObserver::new(ProviderProtocol::OpenAiChatCompletions);
+        let observation = observer.push(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"}},{\"index\":1,\"delta\":{\"content\":\"hi\"}}]}\n\n",
+        );
+        assert!(observation.saw_first_token);
+    }
+
+    #[test]
+    fn anthropic_empty_thinking_block_start_is_not_first_output() {
+        let mut observer = SseStreamObserver::new(ProviderProtocol::AnthropicMessages);
+        let empty = observer.push(
+            "event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n",
+        );
+        assert!(!empty.saw_first_token);
+        let thinking = observer.push(
+            "event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"hmm\"}}\n\n",
+        );
+        assert!(thinking.saw_first_token);
+    }
+
+    #[test]
+    fn openai_responses_observer_treats_incomplete_as_terminal() {
+        let mut observer = SseStreamObserver::new(ProviderProtocol::OpenAiResponses);
+        let observation = observer.push(
+            "data: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_i\",\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}}\n\n",
+        );
+        assert!(observation.saw_terminal_event);
+        assert!(observer.is_complete());
+        assert_eq!(observer.usage_stats().output_tokens, 3);
+    }
+
+    #[test]
+    fn anthropic_empty_text_delta_is_not_first_output() {
+        let mut observer = SseStreamObserver::new(ProviderProtocol::AnthropicMessages);
+        let empty = observer.push(
+            "event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"\"}}\n\n",
+        );
+        assert!(!empty.saw_first_token);
+        let text = observer.push(
+            "event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n",
+        );
+        assert!(text.saw_first_token);
+    }
+
+    #[test]
+    fn openai_responses_first_output_requires_actual_content() {
+        let mut observer = SseStreamObserver::new(ProviderProtocol::OpenAiResponses);
+        // The message item announcement and an empty text delta carry no token.
+        let item = observer.push(
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n\
+             data: {\"type\":\"response.output_text.delta\",\"delta\":\"\"}\n\n",
+        );
+        assert!(!item.saw_first_token);
+        // Reasoning summaries are generated output and precede the answer.
+        let reasoning = observer.push(
+            "data: {\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"thinking\"}\n\n",
+        );
+        assert!(reasoning.saw_first_token);
+    }
+
+    #[test]
     fn openai_responses_observer_treats_function_call_events_as_first_output() {
         let mut observer = SseStreamObserver::new(ProviderProtocol::OpenAiResponses);
         let observation = observer.push(
@@ -2855,6 +4076,292 @@ mod tests {
     }
 
     #[test]
+    fn openai_responses_transformer_maps_incomplete_event_to_max_tokens() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        // The real Responses protocol emits `response.incomplete` (not a
+        // `response.completed` carrying an incomplete status).
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_cut\"}}\n\n\
+             data: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_cut\",\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"usage\":{\"input_tokens\":5,\"output_tokens\":2},\"output\":[{\"id\":\"out_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"partial\"}]}]}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"text\":\"partial\""));
+        assert!(joined.contains("\"stop_reason\":\"max_tokens\""));
+        assert!(joined.contains("\"type\":\"message_stop\""));
+        assert!(joined.contains("\"input_tokens\":5"));
+    }
+
+    #[test]
+    fn openai_responses_to_anthropic_stream_forwards_reasoning_and_refusal_deltas() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_mix\"}}\n\n\
+             data: {\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rs_1\",\"delta\":\"plan\"}\n\n\
+             data: {\"type\":\"response.refusal.delta\",\"item_id\":\"msg_1\",\"delta\":\"cannot\"}\n\n\
+             data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_mix\",\"status\":\"completed\",\"usage\":{\"input_tokens\":3,\"output_tokens\":2},\"output\":[]}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"type\":\"thinking\""));
+        assert!(joined.contains("\"thinking\":\"plan\",\"type\":\"thinking_delta\""));
+        assert!(joined.contains("\"text\":\"cannot\",\"type\":\"text_delta\""));
+        // Refusal output must not be reported as a normal end_turn.
+        assert!(joined.contains("\"stop_reason\":\"refusal\""));
+        assert!(joined.contains("\"type\":\"message_stop\""));
+    }
+
+    #[test]
+    fn openai_responses_to_anthropic_stream_maps_terminal_refusal_output_to_refusal() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_ref\"}}\n\n\
+             data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_ref\",\"status\":\"completed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":1},\"output\":[{\"id\":\"msg_ref\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"refusal\",\"refusal\":\"cannot\"}]}]}}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains("\"text\":\"cannot\",\"type\":\"text_delta\""));
+        assert!(joined.contains("\"stop_reason\":\"refusal\""));
+    }
+
+    #[test]
+    fn openai_responses_to_anthropic_stream_separates_multiple_items() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        // Two independent reasoning/message pairs. Each item must own its
+        // Anthropic block: deltas may only land inside the item's block, and
+        // the item's terminal event must not replay the text it already
+        // streamed.
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_multi\"}}\n\n\
+             data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"rs_1\",\"type\":\"reasoning\"}}\n\n\
+             data: {\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rs_1\",\"output_index\":0,\"delta\":\"plan\"}\n\n\
+             data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"plan\"}]}}\n\n\
+             data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n\
+             data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":1,\"delta\":\"hello \"}\n\n\
+             data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":1,\"delta\":\"world\"}\n\n\
+             data: {\"type\":\"response.output_text.done\",\"item_id\":\"msg_1\",\"output_index\":1,\"text\":\"hello world\"}\n\n\
+             data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"id\":\"msg_1\",\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello world\"}]}}\n\n\
+             data: {\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rs_2\",\"output_index\":2,\"delta\":\"again\"}\n\n\
+             data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_2\",\"output_index\":3,\"delta\":\"world\"}\n\n\
+             data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_multi\",\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":6},\"output\":[{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"plan\"}]},{\"id\":\"msg_1\",\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello world\"}]},{\"id\":\"rs_2\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"again\"}]},{\"id\":\"msg_2\",\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"world\"}]}]}}\n\n",
+        );
+        let events = sse_data_events(&chunks.join(""));
+
+        let starts: Vec<(u64, &str)> = events
+            .iter()
+            .filter(|event| event["type"] == "content_block_start")
+            .map(|event| {
+                (
+                    event["index"].as_u64().unwrap(),
+                    event["content_block"]["type"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            starts,
+            [(0, "thinking"), (1, "text"), (2, "thinking"), (3, "text")]
+        );
+
+        let deltas: Vec<(u64, &str, &str)> = events
+            .iter()
+            .filter(|event| event["type"] == "content_block_delta")
+            .map(|event| {
+                let delta = &event["delta"];
+                (
+                    event["index"].as_u64().unwrap(),
+                    delta["type"].as_str().unwrap(),
+                    delta["text"]
+                        .as_str()
+                        .or_else(|| delta["thinking"].as_str())
+                        .unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            deltas,
+            [
+                (0, "thinking_delta", "plan"),
+                (1, "text_delta", "hello "),
+                (1, "text_delta", "world"),
+                (2, "thinking_delta", "again"),
+                (3, "text_delta", "world"),
+            ],
+            "terminal events must not replay streamed text"
+        );
+
+        let stops: Vec<u64> = events
+            .iter()
+            .filter(|event| event["type"] == "content_block_stop")
+            .map(|event| event["index"].as_u64().unwrap())
+            .collect();
+        assert_eq!(stops, [0, 1, 2, 3]);
+
+        let message_delta = events
+            .iter()
+            .find(|event| event["type"] == "message_delta")
+            .expect("message_delta");
+        assert_eq!(message_delta["delta"]["stop_reason"], "end_turn");
+        assert_eq!(message_delta["usage"]["input_tokens"], 5);
+        assert_eq!(message_delta["usage"]["output_tokens"], 6);
+    }
+
+    #[test]
+    fn openai_responses_to_anthropic_stream_resolves_function_call_aliases() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        // `item_id`/`item.id`/`call_id` can disagree; they still describe one
+        // function call, so only one tool_use block may be emitted.
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_alias\"}}\n\n\
+             data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc_1\",\"call_id\":\"call_1\",\"type\":\"function_call\",\"name\":\"lookup\",\"arguments\":\"\"}}\n\n\
+             data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"call_1\",\"output_index\":0,\"delta\":\"{\\\"q\\\":\"}\n\n\
+             data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"call_1\",\"output_index\":0,\"delta\":\"1}\"}\n\n\
+             data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"call_1\",\"output_index\":0,\"arguments\":\"{\\\"q\\\":1}\"}\n\n\
+             data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"fc_1\",\"call_id\":\"call_1\",\"type\":\"function_call\",\"name\":\"lookup\",\"arguments\":\"{\\\"q\\\":1}\"}}\n\n\
+             data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_alias\",\"status\":\"completed\",\"usage\":{\"input_tokens\":3,\"output_tokens\":2},\"output\":[{\"id\":\"fc_1\",\"call_id\":\"call_1\",\"type\":\"function_call\",\"name\":\"lookup\",\"arguments\":\"{\\\"q\\\":1}\"}]}}\n\n",
+        );
+        let events = sse_data_events(&chunks.join(""));
+
+        let tool_starts: Vec<&Value> = events
+            .iter()
+            .filter(|event| {
+                event["type"] == "content_block_start"
+                    && event["content_block"]["type"] == "tool_use"
+            })
+            .collect();
+        assert_eq!(tool_starts.len(), 1, "aliases must not create two blocks");
+        assert_eq!(tool_starts[0]["content_block"]["id"], "call_1");
+        assert_eq!(tool_starts[0]["content_block"]["name"], "lookup");
+
+        let partial_json: Vec<&str> = events
+            .iter()
+            .filter(|event| event["type"] == "content_block_delta")
+            .map(|event| event["delta"]["partial_json"].as_str().unwrap())
+            .collect();
+        assert_eq!(partial_json, ["{\"q\":", "1}"]);
+
+        let stops: Vec<u64> = events
+            .iter()
+            .filter(|event| event["type"] == "content_block_stop")
+            .map(|event| event["index"].as_u64().unwrap())
+            .collect();
+        assert_eq!(stops, [0]);
+        let message_delta = events
+            .iter()
+            .find(|event| event["type"] == "message_delta")
+            .expect("message_delta");
+        assert_eq!(message_delta["delta"]["stop_reason"], "tool_use");
+    }
+
+    #[test]
+    fn openai_responses_to_anthropic_stream_deduplicates_idless_terminal_text() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        // Some compatible upstreams omit `item_id`/`output_index` entirely;
+        // the fallback key must still prevent `output_text.done` from replaying
+        // the text already streamed.
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_idless\"}}\n\n\
+             data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n\
+             data: {\"type\":\"response.output_text.done\",\"text\":\"hello\"}\n\n\
+             data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_idless\",\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1},\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\"}]}]}}\n\n",
+        );
+        let events = sse_data_events(&chunks.join(""));
+
+        let text_deltas: Vec<&str> = events
+            .iter()
+            .filter(|event| event["type"] == "content_block_delta")
+            .map(|event| event["delta"]["text"].as_str().unwrap())
+            .collect();
+        assert_eq!(text_deltas, ["hello"]);
+        let stops: Vec<u64> = events
+            .iter()
+            .filter(|event| event["type"] == "content_block_stop")
+            .map(|event| event["index"].as_u64().unwrap())
+            .collect();
+        assert_eq!(stops, [0]);
+    }
+
+    #[test]
+    fn openai_responses_to_anthropic_stream_synthesizes_terminal_only_items_in_order() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::AnthropicMessages,
+            ProviderProtocol::OpenAiResponses,
+            "test-model",
+        )
+        .expect("supported transformer");
+        // Upstreams that skip delta events still produce complete output in
+        // `response.completed`; the Anthropic client must receive each item in
+        // output order with a valid block lifecycle.
+        let chunks = transformer.push(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_terminal\"}}\n\n\
+             data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_terminal\",\"status\":\"completed\",\"usage\":{\"input_tokens\":4,\"output_tokens\":5},\"output\":[{\"id\":\"rs_t\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"plan\"}]},{\"id\":\"msg_t\",\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\"}]},{\"id\":\"call_t\",\"type\":\"function_call\",\"name\":\"lookup\",\"arguments\":\"{\\\"q\\\":1}\"}]}}\n\n",
+        );
+        let events = sse_data_events(&chunks.join(""));
+
+        let starts: Vec<(u64, &str)> = events
+            .iter()
+            .filter(|event| event["type"] == "content_block_start")
+            .map(|event| {
+                (
+                    event["index"].as_u64().unwrap(),
+                    event["content_block"]["type"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(starts, [(0, "thinking"), (1, "text"), (2, "tool_use")]);
+
+        let joined = chunks.join("");
+        assert!(joined.contains("\"thinking\":\"plan\""));
+        assert!(joined.contains("\"text\":\"answer\""));
+        assert!(joined.contains("\"partial_json\":\"{\\\"q\\\":1}\""));
+
+        let stops: Vec<u64> = events
+            .iter()
+            .filter(|event| event["type"] == "content_block_stop")
+            .map(|event| event["index"].as_u64().unwrap())
+            .collect();
+        assert_eq!(
+            stops,
+            [0, 1, 2],
+            "each synthesized item needs exactly one stop"
+        );
+        let message_delta = events
+            .iter()
+            .find(|event| event["type"] == "message_delta")
+            .expect("message_delta");
+        assert_eq!(message_delta["delta"]["stop_reason"], "tool_use");
+    }
+
+    #[test]
     fn observe_buffered_stream_usage_distinguishes_missing_usage() {
         let with_usage = "\
              event: message_start\n\
@@ -2899,6 +4406,58 @@ mod tests {
         let joined = chunks.join("");
         assert!(joined.contains("\"prompt_tokens\":14"));
         assert!(joined.contains("\"completion_tokens\":7"));
+    }
+
+    #[test]
+    fn openai_usage_values_include_standard_cached_token_details() {
+        let mut usage = UsageState::default();
+        usage.input_tokens = 11;
+        usage.output_tokens = 7;
+        usage.cached_tokens = 3;
+
+        assert_eq!(
+            usage.openai_usage_value()["prompt_tokens_details"]["cached_tokens"],
+            json!(3)
+        );
+        assert_eq!(
+            usage.openai_responses_usage_value()["input_tokens_details"]["cached_tokens"],
+            json!(3)
+        );
+    }
+
+    #[test]
+    fn anthropic_to_openai_chat_numbers_tool_calls_from_zero() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::OpenAiChatCompletions,
+            ProviderProtocol::AnthropicMessages,
+            "test-model",
+        )
+        .expect("supported transformer");
+        // Anthropic block 3 is the first tool call: Chat clients expect it at
+        // tool_calls index 0, not 3.
+        let chunks = transformer.push(
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_tool_index\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test-model\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"checking\"}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":3,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tool_1\",\"name\":\"weather\",\"input\":{}}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":3,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"city\\\":\\\"Paris\\\"}\"}}\n\n\
+             event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        );
+        let joined = chunks.join("");
+
+        assert!(joined.contains(
+            "\"tool_calls\":[{\"function\":{\"arguments\":\"\",\"name\":\"weather\"},\"id\":\"tool_1\",\"index\":0,\"type\":\"function\"}]"
+        ));
+        assert!(joined.contains(
+            "\"tool_calls\":[{\"function\":{\"arguments\":\"{\\\"city\\\":\\\"Paris\\\"}\",\"name\":\"weather\"},\"id\":\"tool_1\",\"index\":0,\"type\":\"function\"}]"
+        ));
+        assert!(!joined.contains("\"index\":3,\"type\":\"function\""));
     }
 
     #[test]
@@ -3379,12 +4938,138 @@ mod tests {
 
         assert!(joined.contains("\"type\":\"response.created\""));
         assert!(joined.contains("\"type\":\"response.output_item.added\""));
-        assert!(joined.contains("\"type\":\"response.output_item.content_part.delta\""));
+        assert!(joined.contains("\"item\":{"));
+        assert!(joined.contains("\"role\":\"assistant\""));
+        assert!(joined.contains("\"id\":\"out_123\""));
+        assert!(joined.contains("\"status\":\"in_progress\""));
+        assert!(joined.contains("\"type\":\"response.content_part.added\""));
         assert!(joined.contains("\"type\":\"response.output_text.delta\""));
+        assert!(joined.contains(
+            "\"content_index\":0,\"delta\":\"hello\",\"item_id\":\"out_123\",\"output_index\":0"
+        ));
+        assert!(joined.contains("\"type\":\"response.output_text.done\""));
+        assert!(joined.contains("\"type\":\"response.content_part.done\""));
+        assert!(joined.contains("\"type\":\"response.output_item.done\""));
         assert!(joined.contains("\"type\":\"response.completed\""));
+        // The old custom event type must not come back.
+        assert!(!joined.contains("\"type\":\"response.output_item.content_part.delta\""));
         assert!(joined.contains("\"output_text\":\"hello\""));
         assert!(joined.contains("\"input_tokens\":12"));
         assert!(joined.contains("\"cached_tokens\":1"));
+        assert!(joined.contains("\"input_tokens_details\":{\"cached_tokens\":1}"));
+    }
+
+    #[test]
+    fn anthropic_to_openai_responses_separates_multiple_text_and_reasoning_blocks() {
+        let mut transformer = CrossProtocolStreamTransformer::new(
+            ProviderProtocol::OpenAiResponses,
+            ProviderProtocol::AnthropicMessages,
+            "test-model",
+        )
+        .expect("supported transformer");
+        let chunks = transformer.push(
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_multi\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test-model\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+             event: content_block_stop\n\
+             data: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"r1\"}}\n\n\
+             event: content_block_stop\n\
+             data: {\"type\":\"content_block_stop\",\"index\":1}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n\
+             event: content_block_stop\n\
+             data: {\"type\":\"content_block_stop\",\"index\":2}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":3,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":3,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"r2\"}}\n\n\
+             event: content_block_stop\n\
+             data: {\"type\":\"content_block_stop\",\"index\":3}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":4,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+             event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":4,\"delta\":{\"type\":\"text_delta\",\"text\":\"world\"}}\n\n\
+             event: content_block_stop\n\
+             data: {\"type\":\"content_block_stop\",\"index\":4}\n\n\
+             event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":3,\"output_tokens\":4}}\n\n\
+             event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        );
+        let events: Vec<Value> = chunks
+            .iter()
+            .filter_map(|chunk| chunk.strip_prefix("data: "))
+            .filter_map(|payload| serde_json::from_str(payload.trim()).ok())
+            .collect();
+
+        let added: Vec<&Value> = events
+            .iter()
+            .filter(|event| event["type"] == "response.output_item.added")
+            .collect();
+        let item_types: Vec<&str> = added
+            .iter()
+            .map(|event| event["item"]["type"].as_str().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            item_types,
+            ["reasoning", "message", "reasoning", "message"],
+            "the empty text block must not allocate an item"
+        );
+        let indices: Vec<u64> = added
+            .iter()
+            .map(|event| event["output_index"].as_u64().unwrap())
+            .collect();
+        assert_eq!(indices, [0, 1, 2, 3]);
+
+        let text_delta_ids: Vec<&str> = events
+            .iter()
+            .filter(|event| event["type"] == "response.output_text.delta")
+            .map(|event| event["item_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(text_delta_ids.len(), 2);
+        assert_ne!(text_delta_ids[0], text_delta_ids[1]);
+        // Each text delta targets an item that is still open (no delta after
+        // its item's `output_item.done`).
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event["type"] == "response.output_item.done")
+                .count(),
+            4
+        );
+
+        let completed = events
+            .iter()
+            .rev()
+            .find(|event| event["type"] == "response.completed")
+            .expect("completed event");
+        let output = completed["response"]["output"].as_array().expect("output");
+        assert_eq!(output.len(), 4);
+        assert_eq!(output[0]["type"], "reasoning");
+        assert_eq!(output[0]["summary"][0]["text"], "r1");
+        assert_eq!(output[1]["type"], "message");
+        assert_eq!(output[1]["content"][0]["text"], "hello");
+        assert_eq!(output[2]["type"], "reasoning");
+        assert_eq!(output[2]["summary"][0]["text"], "r2");
+        assert_eq!(output[3]["type"], "message");
+        assert_eq!(output[3]["content"][0]["text"], "world");
+        assert_eq!(completed["output_text"], "helloworld");
+        assert!(completed["response"]["created_at"].is_i64());
+        assert!(completed["response"].get("created").is_none());
+
+        let created = events
+            .iter()
+            .find(|event| event["type"] == "response.created")
+            .expect("created event");
+        assert!(created["response"]["created_at"].is_i64());
+        assert!(created["response"].get("created").is_none());
     }
 
     #[test]
@@ -3523,7 +5208,7 @@ mod tests {
     }
 
     #[test]
-    fn anthropic_to_openai_responses_tool_use_emits_requires_action_status() {
+    fn anthropic_to_openai_responses_tool_use_completes_function_call_item() {
         let mut transformer = CrossProtocolStreamTransformer::new(
             ProviderProtocol::OpenAiResponses,
             ProviderProtocol::AnthropicMessages,
@@ -3545,11 +5230,16 @@ mod tests {
         let joined = chunks.join("");
 
         assert!(joined.contains("\"type\":\"response.function_call_arguments.delta\""));
+        assert!(joined.contains("\"type\":\"response.function_call_arguments.done\""));
         assert!(joined.contains("\"item_id\":\"tool_1\""));
-        assert!(joined.contains("\"status\":\"requires_action\""));
+        assert!(joined.contains("\"output_index\":0"));
+        assert!(joined.contains("\"status\":\"completed\""));
         assert!(joined.contains("\"type\":\"function_call\""));
+        assert!(joined.contains("\"call_id\":\"tool_1\""));
         assert!(joined.contains("\"name\":\"weather\""));
         assert!(joined.contains("\"arguments\":\"{\\\"city\\\":\\\"Paris\\\"}\""));
+        assert!(!joined.contains("\"status\":\"requires_action\""));
+        assert!(joined.contains("\"type\":\"response.completed\""));
     }
 
     #[test]
@@ -3613,6 +5303,42 @@ mod tests {
             Some(7)
         );
         assert!(payload.contains("\"text\":\"hi\"") || payload.contains("\"content\":\"hi\""));
+    }
+
+    #[test]
+    fn materialize_openai_chat_stream_keeps_reasoning_refusal_and_legacy_function_call() {
+        let payload = materialize_stream_response(
+            ProviderProtocol::OpenAiChatCompletions,
+            "data: {\"id\":\"chatcmpl_legacy\",\"created\":1,\"model\":\"glm-test\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning\":\"think\",\"refusal\":\"no\"},\"finish_reason\":null}]}\n\n\
+             data: {\"id\":\"chatcmpl_legacy\",\"created\":1,\"model\":\"glm-test\",\"choices\":[{\"index\":0,\"delta\":{\"function_call\":{\"name\":\"weather\",\"arguments\":\"{\\\"city\\\":\"}},\"finish_reason\":null}]}\n\n\
+             data: {\"id\":\"chatcmpl_legacy\",\"created\":1,\"model\":\"glm-test\",\"choices\":[{\"index\":0,\"delta\":{\"function_call\":{\"arguments\":\"\\\"Paris\\\"}\"}},\"finish_reason\":\"stop\"}]}\n\n\
+             data: {\"id\":\"chatcmpl_legacy\",\"created\":1,\"model\":\"glm-test\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":2,\"total_tokens\":6}}\n\n\
+             data: [DONE]\n\n",
+        )
+        .expect("materialized payload");
+        let parsed: Value = serde_json::from_str(&payload).expect("valid json");
+        let message = &parsed["choices"][0]["message"];
+        assert_eq!(message["reasoning_content"], "think");
+        assert_eq!(message["refusal"], "no");
+        assert_eq!(message["content"], Value::Null);
+        let tool_call = &message["tool_calls"][0];
+        assert!(tool_call["id"].as_str().is_some_and(|id| !id.is_empty()));
+        assert_eq!(tool_call["function"]["name"], "weather");
+        assert_eq!(tool_call["function"]["arguments"], "{\"city\":\"Paris\"}");
+        assert_eq!(parsed["choices"][0]["finish_reason"], "stop");
+    }
+
+    #[test]
+    fn materialize_openai_chat_stream_fills_missing_tool_call_ids() {
+        let payload = materialize_stream_response(
+            ProviderProtocol::OpenAiChatCompletions,
+            "data: {\"id\":\"chatcmpl_null_id\",\"created\":1,\"model\":\"glm-test\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"type\":\"function\",\"function\":{\"name\":\"weather\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n\
+             data: [DONE]\n\n",
+        )
+        .expect("materialized payload");
+        let parsed: Value = serde_json::from_str(&payload).expect("valid json");
+        let tool_call = &parsed["choices"][0]["message"]["tool_calls"][0];
+        assert_eq!(tool_call["id"], "call_0");
     }
 
     #[test]

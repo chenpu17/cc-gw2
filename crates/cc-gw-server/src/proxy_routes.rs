@@ -688,6 +688,9 @@ pub(super) async fn anthropic_count_tokens(
     State(state): State<AppState>,
     request: Request,
 ) -> Response {
+    if state.draining.load(Ordering::Relaxed) {
+        return draining_response();
+    }
     let headers = request.headers().clone();
     if let Err(response) = authorize_request(&state, &headers, "anthropic") {
         return response;
@@ -789,6 +792,9 @@ pub(super) async fn anthropic_messages(
     ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
     request: Request,
 ) -> Response {
+    if state.draining.load(Ordering::Relaxed) {
+        return draining_response();
+    }
     let query = request.uri().query().map(ToString::to_string);
     let headers = request.headers().clone();
     let api_key_context = match authorize_request_with_context(&state, &headers, "anthropic") {
@@ -819,6 +825,9 @@ pub(super) async fn openai_chat_completions(
     ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
     request: Request,
 ) -> Response {
+    if state.draining.load(Ordering::Relaxed) {
+        return draining_response();
+    }
     let query = request.uri().query().map(ToString::to_string);
     let headers = request.headers().clone();
     let api_key_context = match authorize_request_with_context(&state, &headers, "openai") {
@@ -849,6 +858,9 @@ pub(super) async fn openai_responses(
     ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
     request: Request,
 ) -> Response {
+    if state.draining.load(Ordering::Relaxed) {
+        return draining_response();
+    }
     let query = request.uri().query().map(ToString::to_string);
     let headers = request.headers().clone();
     let api_key_context = match authorize_request_with_context(&state, &headers, "openai") {
@@ -1158,6 +1170,15 @@ fn build_request_body_for_target(
         }
         (ProviderProtocol::OpenAiResponses, ProviderProtocol::AnthropicMessages) => {
             openai_responses_request_to_anthropic(original_body)
+        }
+        // OpenAI Chat Completions and OpenAI Responses are not converted into
+        // each other. Routing keeps an OpenAI client inside its own protocol
+        // family, so these pairs are unreachable; if that invariant changes,
+        // forwarding the original body is safer than a half conversion (the
+        // streaming transformer already rejects them explicitly).
+        (ProviderProtocol::OpenAiChatCompletions, ProviderProtocol::OpenAiResponses)
+        | (ProviderProtocol::OpenAiResponses, ProviderProtocol::OpenAiChatCompletions) => {
+            original_body.clone()
         }
         _ => original_body.clone(),
     };
@@ -1551,6 +1572,7 @@ pub(super) async fn proxy_standard_request(
     protocol: ProviderProtocol,
 ) -> Response {
     let started_at = chrono::Utc::now().timestamp_millis();
+    let started_instant = std::time::Instant::now();
     let endpoint_id = endpoint_name(endpoint, protocol);
     let network_recorder = NetworkByteRecorder::new(&state, &endpoint_id);
     let user_agent = header_value(&headers, header::USER_AGENT.as_str());
@@ -1777,7 +1799,7 @@ pub(super) async fn proxy_standard_request(
             )
             .ok();
             request_log_finalizer = request_log_id.map(|log_id| {
-                RequestLogFinalizer::new(state.paths.db_path.clone(), log_id, started_at)
+                RequestLogFinalizer::new(state.paths.db_path.clone(), log_id, started_instant)
             });
             if let (Some(log_id), true) = (request_log_id, request_payload_storage) {
                 let _ = upsert_request_payload(
@@ -2149,7 +2171,7 @@ pub(super) async fn proxy_standard_request(
                     provider = %failure.provider_id,
                     "upstream request failed"
                 );
-                let latency_ms = now_millis() - started_at;
+                let latency_ms = elapsed_millis_since(started_instant, std::time::Instant::now());
                 if let Some(finalizer) = request_log_finalizer.as_mut() {
                     finalizer.fail(&RequestLogUpdate {
                         latency_ms: Some(latency_ms),
@@ -2248,7 +2270,7 @@ pub(super) async fn proxy_standard_request(
             log_id,
             endpoint_id: endpoint_id.clone(),
             api_key_id: api_key_context.id,
-            started_at,
+            started_instant,
             store_response_payload: response_payload_storage_enabled(&config),
             backend_provider: Some(candidate.provider_id.clone()),
             backend_model: Some(candidate.model_id.clone()),
@@ -2268,6 +2290,7 @@ pub(super) async fn proxy_standard_request(
                 upstream_response_payload,
                 client_response_payload,
                 response_status,
+                ttft_ms,
             ) = into_materialized_stream_response(
                 response,
                 protocol,
@@ -2278,9 +2301,10 @@ pub(super) async fn proxy_standard_request(
                 emit_anthropic_reasoning,
                 allow_anthropic_reasoning_fallback,
                 network_recorder.clone(),
+                started_instant,
             )
             .await;
-            let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
+            let latency_ms = elapsed_millis_since(started_instant, std::time::Instant::now());
             let status_code = response_status.as_u16() as i64;
             // A 200 handshake whose stream turned out to carry an error
             // event still means the backend is unhealthy — record it so
@@ -2314,6 +2338,12 @@ pub(super) async fn proxy_standard_request(
                     cached_tokens: usage.as_ref().map(|stats| stats.cached_tokens),
                     cache_read_tokens: usage.as_ref().map(|stats| stats.cache_read_tokens),
                     cache_creation_tokens: usage.as_ref().map(|stats| stats.cache_creation_tokens),
+                    ttft_ms,
+                    tpot_ms: compute_tpot_ms(
+                        latency_ms,
+                        usage.as_ref().map(|stats| stats.output_tokens).unwrap_or(0),
+                        ttft_ms,
+                    ),
                     provider: Some(candidate.provider_id.clone()),
                     model: Some(candidate.model_id.clone()),
                     ..RequestLogUpdate::default()
@@ -2370,8 +2400,6 @@ pub(super) async fn proxy_standard_request(
             )
             .await
         } else if cross_protocol {
-            let status_code = response.status().as_u16() as i64;
-            let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
             let (result, usage, upstream_response_payload, client_response_payload) =
                 into_converted_response(
                     response,
@@ -2384,6 +2412,8 @@ pub(super) async fn proxy_standard_request(
                     network_recorder.clone(),
                 )
                 .await;
+            let status_code = result.status().as_u16() as i64;
+            let latency_ms = elapsed_millis_since(started_instant, std::time::Instant::now());
             if let Some(log_id) = request_log_id {
                 let update = RequestLogUpdate {
                     latency_ms: Some(latency_ms),
@@ -2438,10 +2468,10 @@ pub(super) async fn proxy_standard_request(
             }
             result
         } else {
-            let status_code = response.status().as_u16() as i64;
-            let latency_ms = chrono::Utc::now().timestamp_millis() - started_at;
             let (result, usage, response_payload) =
                 into_proxy_response(response, !stream, network_recorder.clone()).await;
+            let status_code = result.status().as_u16() as i64;
+            let latency_ms = elapsed_millis_since(started_instant, std::time::Instant::now());
             if let Some(log_id) = request_log_id {
                 let update = RequestLogUpdate {
                     latency_ms: Some(latency_ms),
@@ -2624,12 +2654,14 @@ async fn into_materialized_stream_response(
     emit_anthropic_reasoning: bool,
     allow_anthropic_reasoning_fallback: bool,
     network_recorder: NetworkByteRecorder,
+    started_instant: std::time::Instant,
 ) -> (
     Response,
     Option<UsageStats>,
     Option<String>,
     Option<String>,
     StatusCode,
+    Option<i64>,
 ) {
     let status = response.status();
     let headers = response.headers().clone();
@@ -2637,6 +2669,7 @@ async fn into_materialized_stream_response(
         if request_protocol == target_protocol {
             let (result, usage, response_payload) =
                 into_proxy_response(response, true, network_recorder).await;
+            let result_status = result.status();
             // Same protocol: the client payload IS the upstream body verbatim.
             // Surface it as the upstream payload too so error_detail can embed
             // the upstream error body even when response-payload storage is
@@ -2646,7 +2679,8 @@ async fn into_materialized_stream_response(
                 usage,
                 response_payload.clone(),
                 response_payload,
-                status,
+                result_status,
+                None,
             );
         }
         let (result, usage, upstream_payload, response_payload) = into_converted_response(
@@ -2660,16 +2694,41 @@ async fn into_materialized_stream_response(
             network_recorder,
         )
         .await;
-        return (result, usage, upstream_payload, response_payload, status);
+        let result_status = result.status();
+        return (
+            result,
+            usage,
+            upstream_payload,
+            response_payload,
+            result_status,
+            None,
+        );
     }
 
     let mut stream = response.bytes_stream();
     let mut raw_stream_bytes = Vec::new();
+    let mut utf8 = Utf8StreamDecoder::new();
+    let mut observer = SseStreamObserver::new(target_protocol);
+    let first_token_ms = |first_token_at: Option<std::time::Instant>| {
+        first_token_at.map(|at| elapsed_millis_since(started_instant, at))
+    };
+    let mut first_token_at: Option<std::time::Instant> = None;
 
     loop {
         match stream.try_next().await {
             Ok(Some(chunk)) => {
                 raw_stream_bytes.extend_from_slice(&chunk);
+                // Observe the upstream SSE frames as they arrive so the
+                // materialized path reports the same TTFT as streaming
+                // passthrough; the whole body is consumed here before the
+                // client sees anything.
+                let text = utf8.push(&chunk);
+                if !text.is_empty() {
+                    let observation = observer.push(&text);
+                    if observation.saw_first_token && first_token_at.is_none() {
+                        first_token_at = Some(std::time::Instant::now());
+                    }
+                }
             }
             Ok(None) => break,
             Err(error) => {
@@ -2690,9 +2749,22 @@ async fn into_materialized_stream_response(
                     Some(raw_stream),
                     client_payload,
                     StatusCode::BAD_GATEWAY,
+                    first_token_ms(first_token_at),
                 );
             }
         }
+    }
+
+    let leftover = utf8.flush();
+    if !leftover.is_empty() {
+        let observation = observer.push(&leftover);
+        if observation.saw_first_token && first_token_at.is_none() {
+            first_token_at = Some(std::time::Instant::now());
+        }
+    }
+    let observation = observer.finish();
+    if observation.saw_first_token && first_token_at.is_none() {
+        first_token_at = Some(std::time::Instant::now());
     }
 
     let raw_stream = String::from_utf8_lossy(&raw_stream_bytes).to_string();
@@ -2702,7 +2774,14 @@ async fn into_materialized_stream_response(
         let converted = convert_error_payload(&payload, request_protocol, target_protocol);
         let (result, client_payload) =
             build_json_response(error_status, &headers, &converted, &network_recorder);
-        return (result, None, Some(raw_stream), client_payload, error_status);
+        return (
+            result,
+            None,
+            Some(raw_stream),
+            client_payload,
+            error_status,
+            first_token_ms(first_token_at),
+        );
     }
 
     let Some(materialized) = materialize_stream_response(target_protocol, &raw_stream) else {
@@ -2722,6 +2801,7 @@ async fn into_materialized_stream_response(
             Some(raw_stream),
             client_payload,
             StatusCode::BAD_GATEWAY,
+            first_token_ms(first_token_at),
         );
     };
 
@@ -2744,6 +2824,7 @@ async fn into_materialized_stream_response(
                 Some(raw_stream),
                 client_payload,
                 StatusCode::BAD_GATEWAY,
+                first_token_ms(first_token_at),
             );
         }
     };
@@ -2780,7 +2861,14 @@ async fn into_materialized_stream_response(
 
     let (result, response_payload) =
         build_json_response(status, &headers, &converted, &network_recorder);
-    (result, usage, Some(materialized), response_payload, status)
+    (
+        result,
+        usage,
+        Some(materialized),
+        response_payload,
+        status,
+        first_token_ms(first_token_at),
+    )
 }
 
 async fn into_streaming_converted_response(
@@ -2797,10 +2885,6 @@ async fn into_streaming_converted_response(
 ) -> Response {
     let status = response.status();
     if !status.is_success() {
-        let latency_ms = log_context
-            .as_ref()
-            .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
-            .unwrap_or_default();
         let (result, usage, upstream_response_payload, client_response_payload) =
             into_converted_response(
                 response,
@@ -2813,11 +2897,16 @@ async fn into_streaming_converted_response(
                 network_recorder,
             )
             .await;
-        let error_detail = if status.as_u16() >= 400 {
+        let status_code = result.status().as_u16() as i64;
+        let latency_ms = log_context
+            .as_ref()
+            .map(|context| elapsed_millis_since(context.started_instant, std::time::Instant::now()))
+            .unwrap_or_default();
+        let error_detail = if status_code >= 400 {
             build_error_detail(
                 "upstream",
                 None,
-                Some(status.as_u16() as i64),
+                Some(status_code),
                 upstream_response_payload.as_deref(),
                 None,
             )
@@ -2827,7 +2916,7 @@ async fn into_streaming_converted_response(
         finalize_stream_logging(
             log_context,
             request_protocol,
-            status.as_u16() as i64,
+            status_code,
             latency_ms,
             usage,
             None,
@@ -2835,7 +2924,7 @@ async fn into_streaming_converted_response(
             upstream_response_payload,
             client_response_payload,
             None,
-            upstream_error_source_for_status(status.as_u16() as i64),
+            upstream_error_source_for_status(status_code),
             error_detail,
         );
         drop(activity_guard);
@@ -2860,7 +2949,9 @@ async fn into_streaming_converted_response(
             Err(error) => {
                 let latency_ms = log_context
                     .as_ref()
-                    .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
+                    .map(|context| {
+                        elapsed_millis_since(context.started_instant, std::time::Instant::now())
+                    })
                     .unwrap_or_default();
                 let payload = protocol_error_payload(
                     request_protocol,
@@ -2957,7 +3048,7 @@ async fn into_streaming_converted_response(
                     let observation = observer.push(&text);
                     finalizer.record_usage(observer.observed_usage_stats());
                     if observation.saw_first_token {
-                        let seen_at = chrono::Utc::now().timestamp_millis();
+                        let seen_at = std::time::Instant::now();
                         finalizer.record_first_token_at(seen_at);
                     }
                     finalizer.push_upstream_response(&text);
@@ -3022,7 +3113,7 @@ async fn into_streaming_converted_response(
         if !leftover.is_empty() {
             let observation = observer.push(&leftover);
             if observation.saw_first_token {
-                let seen_at = chrono::Utc::now().timestamp_millis();
+                let seen_at = std::time::Instant::now();
                 finalizer.record_first_token_at(seen_at);
             }
             finalizer.push_upstream_response(&leftover);
@@ -3035,7 +3126,7 @@ async fn into_streaming_converted_response(
 
         let observation = observer.finish();
         if observation.saw_first_token {
-            let seen_at = chrono::Utc::now().timestamp_millis();
+            let seen_at = std::time::Instant::now();
             finalizer.record_first_token_at(seen_at);
         }
 
@@ -3440,17 +3531,18 @@ async fn into_streaming_proxy_response(
 ) -> Response {
     let status = response.status();
     if !status.is_success() {
-        let latency_ms = log_context
-            .as_ref()
-            .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
-            .unwrap_or_default();
         let (result, usage, response_payload) =
             into_proxy_response(response, true, network_recorder).await;
-        let error_detail = if status.as_u16() >= 400 {
+        let status_code = result.status().as_u16() as i64;
+        let latency_ms = log_context
+            .as_ref()
+            .map(|context| elapsed_millis_since(context.started_instant, std::time::Instant::now()))
+            .unwrap_or_default();
+        let error_detail = if status_code >= 400 {
             build_error_detail(
                 "upstream",
                 None,
-                Some(status.as_u16() as i64),
+                Some(status_code),
                 response_payload.as_deref(),
                 None,
             )
@@ -3460,7 +3552,7 @@ async fn into_streaming_proxy_response(
         finalize_stream_logging(
             log_context,
             protocol,
-            status.as_u16() as i64,
+            status_code,
             latency_ms,
             usage,
             None,
@@ -3468,7 +3560,7 @@ async fn into_streaming_proxy_response(
             None,
             response_payload,
             None,
-            upstream_error_source_for_status(status.as_u16() as i64),
+            upstream_error_source_for_status(status_code),
             error_detail,
         );
         drop(activity_guard);
@@ -3536,7 +3628,7 @@ async fn into_streaming_proxy_response(
                         let observation = observer.push(&text);
                         finalizer.record_usage(observer.observed_usage_stats());
                         if observation.saw_first_token {
-                            let seen_at = chrono::Utc::now().timestamp_millis();
+                            let seen_at = std::time::Instant::now();
                             finalizer.record_first_token_at(seen_at);
                         }
                         finalizer.push_client_response(&text);
@@ -3575,7 +3667,7 @@ async fn into_streaming_proxy_response(
         if !leftover.is_empty() {
             let observation = observer.push(&leftover);
             if observation.saw_first_token {
-                let seen_at = chrono::Utc::now().timestamp_millis();
+                let seen_at = std::time::Instant::now();
                 finalizer.record_first_token_at(seen_at);
             }
             finalizer.push_client_response(&leftover);
@@ -3583,7 +3675,7 @@ async fn into_streaming_proxy_response(
 
         let observation = observer.finish();
         if observation.saw_first_token {
-            let seen_at = chrono::Utc::now().timestamp_millis();
+            let seen_at = std::time::Instant::now();
             finalizer.record_first_token_at(seen_at);
         }
 
@@ -3660,13 +3752,21 @@ fn extract_usage_stats(payload: &Value) -> Option<UsageStats> {
     usage_stats_option_from_payload(payload)
 }
 
+fn elapsed_millis_since(start: std::time::Instant, end: std::time::Instant) -> i64 {
+    end.saturating_duration_since(start)
+        .as_millis()
+        .min(i64::MAX as u128) as i64
+}
+
 fn compute_tpot_ms(total_latency_ms: i64, output_tokens: i64, ttft_ms: Option<i64>) -> Option<f64> {
-    if output_tokens <= 0 {
+    // TPOT is the mean interval *between* output tokens: N tokens span N-1
+    // intervals, so a single-token response has no TPOT to report.
+    if output_tokens <= 1 {
         return None;
     }
     let ttft_ms = ttft_ms?;
     let effective_latency_ms = (total_latency_ms - ttft_ms).max(0) as f64;
-    let raw = effective_latency_ms / output_tokens as f64;
+    let raw = effective_latency_ms / (output_tokens - 1) as f64;
     Some((raw * 100.0).round() / 100.0)
 }
 
@@ -3678,16 +3778,16 @@ fn compute_tpot_ms(total_latency_ms: i64, output_tokens: i64, ttft_ms: Option<i6
 struct RequestLogFinalizer {
     db_path: std::path::PathBuf,
     log_id: i64,
-    started_at: i64,
+    started_instant: std::time::Instant,
     completed: bool,
 }
 
 impl RequestLogFinalizer {
-    fn new(db_path: std::path::PathBuf, log_id: i64, started_at: i64) -> Self {
+    fn new(db_path: std::path::PathBuf, log_id: i64, started_instant: std::time::Instant) -> Self {
         Self {
             db_path,
             log_id,
-            started_at,
+            started_instant,
             completed: false,
         }
     }
@@ -3718,7 +3818,10 @@ impl Drop for RequestLogFinalizer {
             return;
         }
         let update = RequestLogUpdate {
-            latency_ms: Some(chrono::Utc::now().timestamp_millis() - self.started_at),
+            latency_ms: Some(elapsed_millis_since(
+                self.started_instant,
+                std::time::Instant::now(),
+            )),
             status_code: Some(499),
             error: Some("request cancelled before completion".to_string()),
             error_source: Some(ERROR_SOURCE_CLIENT.to_string()),
@@ -3783,12 +3886,15 @@ impl StreamingResponseFinalizer {
         }
     }
 
-    fn record_first_token_at(&mut self, first_token_at: i64) {
+    fn record_first_token_at(&mut self, first_token_at: std::time::Instant) {
         if self.ttft_ms.is_some() {
             return;
         }
         if let Some(context) = self.log_context.as_ref() {
-            self.ttft_ms = Some(first_token_at - context.started_at);
+            self.ttft_ms = Some(elapsed_millis_since(
+                context.started_instant,
+                first_token_at,
+            ));
         }
     }
 
@@ -3808,7 +3914,7 @@ impl StreamingResponseFinalizer {
         let latency_ms = self
             .log_context
             .as_ref()
-            .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
+            .map(|context| elapsed_millis_since(context.started_instant, std::time::Instant::now()))
             .unwrap_or_default();
         self.completed = true;
         finalize_stream_logging(
@@ -3831,7 +3937,7 @@ impl StreamingResponseFinalizer {
         let latency_ms = self
             .log_context
             .as_ref()
-            .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
+            .map(|context| elapsed_millis_since(context.started_instant, std::time::Instant::now()))
             .unwrap_or_default();
         self.completed = true;
         finalize_stream_logging(
@@ -3860,7 +3966,7 @@ impl Drop for StreamingResponseFinalizer {
         let latency_ms = self
             .log_context
             .as_ref()
-            .map(|context| chrono::Utc::now().timestamp_millis() - context.started_at)
+            .map(|context| elapsed_millis_since(context.started_instant, std::time::Instant::now()))
             .unwrap_or_default();
         finalize_stream_logging(
             self.log_context.take(),
@@ -3974,14 +4080,22 @@ mod tests {
     use serde_json::json;
 
     fn make_test_state() -> AppState {
+        // Never point the upgrade state at a machine-global path: a leftover
+        // file would leak between test runs (and processes).
+        let home_dir = std::env::temp_dir().join(format!(
+            "cc-gw-proxy-tests-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let log_dir = home_dir.join("logs");
         AppState {
             config: Arc::new(RwLock::new(GatewayConfig::default())),
             paths: Arc::new(GatewayPaths {
-                home_dir: std::path::PathBuf::from("/tmp"),
-                db_path: std::path::PathBuf::from("/tmp/test.db"),
-                config_path: std::path::PathBuf::from("/tmp/config.json"),
-                data_dir: std::path::PathBuf::from("/tmp/data"),
-                log_dir: std::path::PathBuf::from("/tmp/logs"),
+                home_dir: home_dir.clone(),
+                db_path: home_dir.join("test.db"),
+                config_path: home_dir.join("config.json"),
+                data_dir: home_dir.join("data"),
+                log_dir: log_dir.clone(),
             }),
             ui_root: None,
             openai_compatibility_modes: Arc::new(Mutex::new(HashMap::new())),
@@ -4007,6 +4121,12 @@ mod tests {
             version_check_package_name: "@chenpu17/cc-gw".to_string(),
             sessions: auth::SessionStore::default(),
             event_bus: tokio::sync::broadcast::channel(256).0,
+            upgrade: Arc::new(UpgradeContext::disabled(&home_dir, &log_dir)),
+            server_started_at_ms: 0,
+            upgrade_instance_token: "test-instance".to_string(),
+            draining: Arc::new(AtomicBool::new(false)),
+            upgrade_start_lock: Arc::new(tokio::sync::Mutex::new(())),
+            shutdown_tx: tokio::sync::watch::channel(false).0,
         }
     }
 
@@ -4044,7 +4164,7 @@ mod tests {
         drop(RequestLogFinalizer::new(
             db_path.clone(),
             log_id,
-            started_at,
+            std::time::Instant::now(),
         ));
 
         let logs = query_logs(&db_path, &LogQuery::default()).expect("query logs");
@@ -4095,7 +4215,8 @@ mod tests {
         )
         .expect("insert request log");
 
-        let mut finalizer = RequestLogFinalizer::new(db_path.clone(), log_id, started_at);
+        let mut finalizer =
+            RequestLogFinalizer::new(db_path.clone(), log_id, std::time::Instant::now());
         finalizer.finish(&RequestLogUpdate {
             latency_ms: Some(120),
             status_code: Some(200),
@@ -4495,5 +4616,20 @@ mod tests {
             converted_same.get("stream_options").is_none(),
             "stream_options must be absent on same-protocol passthrough"
         );
+    }
+
+    #[test]
+    fn tpot_uses_inter_token_intervals_and_needs_two_tokens() {
+        // A single output token spans no interval, so there is no TPOT.
+        assert_eq!(compute_tpot_ms(1_000, 0, Some(400)), None);
+        assert_eq!(compute_tpot_ms(1_000, 1, Some(400)), None);
+        // Without a first-token timestamp the generation phase is unknown.
+        assert_eq!(compute_tpot_ms(1_000, 10, None), None);
+        // Two tokens span one interval.
+        assert_eq!(compute_tpot_ms(1_000, 2, Some(400)), Some(600.0));
+        // Eleven tokens span ten intervals.
+        assert_eq!(compute_tpot_ms(1_000, 11, Some(400)), Some(60.0));
+        // A clock step that makes TTFT exceed total latency must clamp to 0.
+        assert_eq!(compute_tpot_ms(500, 10, Some(600)), Some(0.0));
     }
 }

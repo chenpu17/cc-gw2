@@ -28,6 +28,9 @@ export const queryKeys = {
     byEndpoint: (endpoint = 'all') => ['status', endpoint] as const,
     gateway: () => ['status', 'gateway'] as const
   },
+  upgrade: {
+    status: () => ['upgrade', 'status'] as const
+  },
   db: {
     info: () => ['db', 'info'] as const
   },

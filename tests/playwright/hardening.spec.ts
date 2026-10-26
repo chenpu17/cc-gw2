@@ -126,6 +126,52 @@ test('provider profile copy falls back to execCommand when the Clipboard API is 
   await expect(copyButton.locator('svg.text-foreground')).toBeVisible()
 })
 
+test('self-upgrade status reports manual mode for foreground gateways and rejects automatic upgrades', async ({ request }) => {
+  const baseUrl = harness.baseUrl()
+
+  const statusResponse = await request.get(`${baseUrl}/api/version/upgrade/status`)
+  expect(statusResponse.status()).toBe(200)
+  const status = await statusResponse.json()
+  expect(status.phase).toBe('idle')
+  expect(status.stale).toBe(false)
+  expect(status.upgradeMode).toBe('manual')
+  expect(status.upgradeReason).toBe('foreground')
+  expect(status.manualCommand).toContain('&& cc-gw restart')
+
+  const upgradeResponse = await request.post(`${baseUrl}/api/version/upgrade`)
+  expect(upgradeResponse.status()).toBe(409)
+})
+
+test('about page shows the manual upgrade command for foreground installs', async ({ page, context }) => {
+  const upgradeHarness = createGatewayHarness({ registryVersion: '999.0.0' })
+  await upgradeHarness.start()
+  try {
+    const baseUrl = upgradeHarness.baseUrl()
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl })
+    await page.goto(`${baseUrl}/ui/about`)
+    await expect(page.getByRole('heading', { name: '关于', level: 1 })).toBeVisible()
+
+    await page.getByRole('button', { name: '检查更新' }).click()
+    await expect(page.locator('#main-content').getByText('发现新版本 v999.0.0', { exact: true })).toBeVisible()
+
+    // Foreground gateway: no one-click button, but a copyable manual command.
+    await expect(page.getByRole('button', { name: '立即升级' })).toHaveCount(0)
+    await expect(page.getByText(/当前安装方式无法从 Web 界面自动升级/)).toBeVisible()
+    await expect(page.getByText(/服务以前台模式运行/)).toBeVisible()
+
+    const command = page.locator('code', { hasText: 'npm install -g' }).first()
+    const expected = (await command.textContent())?.trim() ?? ''
+    expect(expected).toContain('&& cc-gw restart')
+
+    await page.getByRole('button', { name: '复制命令' }).click()
+    await expect(page.getByRole('button', { name: '已复制' })).toBeVisible()
+    const copied = await page.evaluate(() => navigator.clipboard.readText())
+    expect(copied.trim()).toBe(expected)
+  } finally {
+    await upgradeHarness.stop()
+  }
+})
+
 test('about page keeps manual refresh semantics and checks npm updates through the backend', async ({ page }) => {
   const baseUrl = harness.baseUrl()
 

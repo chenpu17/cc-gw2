@@ -27,6 +27,73 @@ struct VersionCheckResponse {
     package_name: String,
     release_url: String,
     published_at: Option<String>,
+    /// `auto` = the UI can run the upgrade; `manual` = show the command;
+    /// `unsupported` = this process was not launched by the CLI.
+    upgrade_mode: String,
+    upgrade_reason: Option<String>,
+    install_method: Option<String>,
+    manual_command: String,
+}
+
+#[derive(Debug, Clone)]
+struct RegistryVersionInfo {
+    current_version: String,
+    latest_version: String,
+    channel: String,
+    package_name: String,
+    published_at: Option<String>,
+    update_available: bool,
+}
+
+/// Progress file shared with the CLI upgrade helper. The helper writes it; the
+/// server reads it for the status endpoint and for the drain trigger.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct UpgradeStateFile {
+    id: String,
+    phase: String,
+    from_version: String,
+    to_version: String,
+    started_at: i64,
+    updated_at: i64,
+    finished_at: Option<i64>,
+    error: Option<String>,
+    rolled_back: bool,
+    platform: Option<String>,
+    install_method: Option<String>,
+    log_path: Option<String>,
+    /// PID of the gateway instance that started this run. Informational; the
+    /// watcher's primary address is `instance_token`.
+    server_pid: Option<u32>,
+    /// Random per-process token of the gateway instance that started this run.
+    /// The drain watcher only honors a `draining` state addressed to itself, so
+    /// a concurrently running gateway sharing `CC_GW_HOME`, a reused PID, or a
+    /// backward clock step cannot stop the wrong process.
+    instance_token: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VersionUpgradeStartResponse {
+    id: String,
+    phase: String,
+    from_version: String,
+    to_version: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct VersionUpgradeStatusResponse {
+    phase: String,
+    stale: bool,
+    state: Option<UpgradeStateFile>,
+    upgrade_mode: String,
+    upgrade_reason: Option<String>,
+    install_method: Option<String>,
+    manual_command: String,
+    current_version: String,
+    platform: String,
+    active_requests: u64,
 }
 
 fn count_active_entries(entries: &Mutex<HashMap<String, u64>>) -> u64 {
@@ -83,7 +150,9 @@ fn encode_package_name(package_name: &str) -> String {
     package_name.replace('@', "%40").replace('/', "%2F")
 }
 
-pub(super) async fn api_version_check(State(state): State<AppState>) -> Response {
+async fn fetch_registry_version(
+    state: &AppState,
+) -> Result<RegistryVersionInfo, (StatusCode, String)> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
     let channel = update_channel_for_version(&current_version);
     let package_name = state.version_check_package_name.clone();
@@ -93,81 +162,594 @@ pub(super) async fn api_version_check(State(state): State<AppState>) -> Response
         encode_package_name(&package_name)
     );
 
-    let registry_response = match state
+    let registry_response = state
         .http_client
         .get(&registry_url)
         .timeout(Duration::from_secs(5))
         .header(header::ACCEPT, "application/json")
         .send()
         .await
-    {
-        Ok(response) => response,
-        Err(error) => {
-            return (
+        .map_err(|error| {
+            (
                 StatusCode::BAD_GATEWAY,
-                Json(json!({ "error": format!("failed to query npm registry: {error}") })),
+                format!("failed to query npm registry: {error}"),
             )
-                .into_response();
-        }
-    };
+        })?;
 
     if !registry_response.status().is_success() {
-        return (
+        return Err((
             StatusCode::BAD_GATEWAY,
-            Json(json!({
-                "error": format!("npm registry returned status {}", registry_response.status())
-            })),
-        )
-            .into_response();
+            format!(
+                "npm registry returned status {}",
+                registry_response.status()
+            ),
+        ));
     }
 
-    let registry_payload = match registry_response.json::<NpmRegistryPackageResponse>().await {
-        Ok(payload) => payload,
-        Err(error) => {
-            return (
+    let registry_payload = registry_response
+        .json::<NpmRegistryPackageResponse>()
+        .await
+        .map_err(|error| {
+            (
                 StatusCode::BAD_GATEWAY,
-                Json(json!({ "error": format!("invalid npm registry response: {error}") })),
+                format!("invalid npm registry response: {error}"),
             )
-                .into_response();
-        }
-    };
+        })?;
 
     let latest_version = registry_payload
         .dist_tags
         .get(&channel)
         .or_else(|| registry_payload.dist_tags.get("latest"))
-        .cloned();
-    let Some(latest_version) = latest_version else {
-        return (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": format!("npm dist-tag not found for channel {channel}") })),
-        )
-            .into_response();
-    };
+        .cloned()
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("npm dist-tag not found for channel {channel}"),
+            )
+        })?;
 
-    let update_available = match (
-        Version::parse(current_version.trim_start_matches('v')),
-        Version::parse(latest_version.trim_start_matches('v')),
-    ) {
-        (Ok(current), Ok(latest)) => latest > current,
-        _ => latest_version != current_version,
-    };
+    // This value is displayed (and copied) as `npm install -g pkg@<version>`,
+    // and a custom registry base URL is honored. Refuse anything that is not a
+    // plain semantic version instead of rendering registry-controlled text.
+    let latest = Version::parse(latest_version.trim_start_matches('v')).map_err(|_| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("npm dist-tag {channel} is not a valid version: {latest_version}"),
+        )
+    })?;
+    let current = Version::parse(current_version.trim_start_matches('v'))
+        .unwrap_or_else(|_| Version::new(0, 0, 0));
+    let update_available = latest > current;
 
     let published_at = registry_payload
         .time
         .as_ref()
         .and_then(|entries| entries.get(&latest_version).cloned());
 
-    Json(VersionCheckResponse {
+    Ok(RegistryVersionInfo {
         current_version,
         latest_version,
         channel,
-        update_available,
-        package_name: package_name.clone(),
-        release_url: format!("https://www.npmjs.com/package/{package_name}"),
+        package_name,
         published_at,
+        update_available,
+    })
+}
+
+/// Decide whether the Web UI may trigger a self-upgrade. `auto` requires the
+/// CLI to have spawned this process in daemon mode with a writable global npm
+/// install; everything else falls back to a copyable manual command.
+pub(super) fn upgrade_mode(state: &AppState) -> (&'static str, Option<&'static str>) {
+    let cli_ready = state
+        .upgrade
+        .cli_path
+        .as_ref()
+        .map(|path| path.exists())
+        .unwrap_or(false)
+        && state
+            .upgrade
+            .node_bin
+            .as_ref()
+            .map(|path| path.exists())
+            .unwrap_or(false);
+    if !cli_ready {
+        return ("unsupported", Some("not-launched-by-cli"));
+    }
+    if state.upgrade.service_mode != "daemon" {
+        return ("manual", Some("foreground"));
+    }
+    match state.upgrade.install_method.as_deref() {
+        Some("npm-global" | "pnpm-global" | "yarn-global" | "bun-global") => {
+            // Node cannot spawn .cmd/.bat package-manager shims directly on
+            // Windows; only npm has a JS entry the helper can resolve.
+            if cfg!(windows) && state.upgrade.install_method.as_deref() != Some("npm-global") {
+                return ("manual", Some("package-manager"));
+            }
+            if state.upgrade.install_writable {
+                ("auto", None)
+            } else {
+                ("manual", Some("not-writable"))
+            }
+        }
+        Some("npx") => ("manual", Some("npx")),
+        _ => ("manual", Some("local-build")),
+    }
+}
+
+pub(super) fn manual_upgrade_command(state: &AppState, target_version: &str) -> String {
+    let package_name = &state.version_check_package_name;
+    let (manager, args) = match state.upgrade.install_method.as_deref() {
+        Some("pnpm-global") => ("pnpm", format!("add -g {package_name}@{target_version}")),
+        Some("yarn-global") => (
+            "yarn",
+            format!("global add {package_name}@{target_version}"),
+        ),
+        Some("bun-global") => ("bun", format!("add -g {package_name}@{target_version}")),
+        _ => ("npm", format!("install -g {package_name}@{target_version}")),
+    };
+    let sudo = if state.upgrade.install_writable {
+        ""
+    } else {
+        "sudo "
+    };
+    format!("{sudo}{manager} {args} && cc-gw restart")
+}
+
+fn read_upgrade_state(state: &AppState) -> Option<UpgradeStateFile> {
+    let raw = std::fs::read_to_string(&state.upgrade.state_path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+fn write_upgrade_state_at(state_path: &Path, payload: &UpgradeStateFile) -> Result<(), String> {
+    static WRITE_SEQ: AtomicU64 = AtomicU64::new(0);
+    let bytes = serde_json::to_vec_pretty(payload).map_err(|error| error.to_string())?;
+    // A fixed `.tmp` name lets two writers interleave and leave non-JSON in the
+    // state file (which silently disables the drain watcher). Serialize the
+    // suffix with a per-process counter as well as the PID.
+    let seq = WRITE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = state_path.with_extension(format!("json.{}.{seq}.tmp", std::process::id()));
+    std::fs::write(&tmp, bytes).map_err(|error| error.to_string())?;
+    std::fs::rename(&tmp, state_path).map_err(|error| error.to_string())
+}
+
+fn write_upgrade_state(state: &AppState, payload: &UpgradeStateFile) -> Result<(), String> {
+    write_upgrade_state_at(&state.upgrade.state_path, payload)
+}
+
+fn is_terminal_phase(phase: &str) -> bool {
+    matches!(phase, "" | "idle" | "succeeded" | "failed")
+}
+
+fn upgrade_state_is_active(state: Option<&UpgradeStateFile>) -> bool {
+    let Some(state) = state else {
+        return false;
+    };
+    if is_terminal_phase(&state.phase) {
+        return false;
+    }
+    let now = chrono::Utc::now().timestamp_millis();
+    now.saturating_sub(state.updated_at) < 10 * 60 * 1000
+}
+
+pub(super) async fn api_version_check(State(state): State<AppState>) -> Response {
+    let registry = match fetch_registry_version(&state).await {
+        Ok(registry) => registry,
+        Err((status, error)) => {
+            return (status, Json(json!({ "error": error }))).into_response();
+        }
+    };
+    let (upgrade_mode, upgrade_reason) = upgrade_mode(&state);
+
+    Json(VersionCheckResponse {
+        manual_command: manual_upgrade_command(&state, &registry.latest_version),
+        upgrade_mode: upgrade_mode.to_string(),
+        upgrade_reason: upgrade_reason.map(ToString::to_string),
+        install_method: state.upgrade.install_method.clone(),
+        current_version: registry.current_version,
+        latest_version: registry.latest_version.clone(),
+        channel: registry.channel,
+        update_available: registry.update_available,
+        package_name: registry.package_name.clone(),
+        release_url: format!("https://www.npmjs.com/package/{}", registry.package_name),
+        published_at: registry.published_at,
     })
     .into_response()
+}
+
+/// Browsers attach `Sec-Fetch-Site` (and `Origin`) to cross-site POSTs. When web
+/// auth is disabled — the default — this endpoint would otherwise be a CSRF
+/// primitive: any visited page could install code and restart the gateway with a
+/// bodyless form POST. Same-origin calls from the console are unaffected.
+fn is_cross_site_request(headers: &HeaderMap) -> bool {
+    if let Some(site) = headers
+        .get("sec-fetch-site")
+        .and_then(|value| value.to_str().ok())
+    {
+        let site = site.trim().to_ascii_lowercase();
+        if site == "cross-site" || site == "same-site" {
+            return true;
+        }
+    }
+    let Some(origin) = headers
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+    let origin_authority = origin
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(origin)
+        .split('/')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let authority_matches = |candidate: Option<&str>| {
+        candidate
+            .map(|value| value.trim().to_ascii_lowercase() == origin_authority)
+            .unwrap_or(false)
+    };
+    let host = headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok());
+    let forwarded_host = headers
+        .get("x-forwarded-host")
+        .and_then(|value| value.to_str().ok());
+    !(authority_matches(host) || authority_matches(forwarded_host))
+}
+
+/// Make paths independent of the helper's working directory. A relative
+/// `CC_GW_HOME` otherwise resolves twice (the server spawns the helper with
+/// `cwd` set to the same relative dir), so the helper would write its state to
+/// `<home>/<home>/upgrade-state.json` and never trigger the drain.
+fn absolute_path(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    std::env::current_dir()
+        .map(|cwd| cwd.join(path))
+        .unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Listening endpoint used by the upgrade helper's health probe and restart.
+fn upgrade_probe_port(config: &GatewayConfig) -> Option<(u16, &'static str)> {
+    let http = config.http.as_ref();
+    if http.map(|value| value.enabled).unwrap_or(true) {
+        if let Some(http) = http.filter(|value| value.port > 0) {
+            return Some((http.port, "http"));
+        }
+    }
+    config
+        .https
+        .as_ref()
+        .filter(|value| value.enabled && value.port > 0)
+        .map(|value| (value.port, "https"))
+}
+
+pub(super) async fn api_version_upgrade(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Response {
+    if is_cross_site_request(&headers) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "cross-site upgrade requests are not allowed" })),
+        )
+            .into_response();
+    }
+    let (mode, reason) = upgrade_mode(&state);
+    if mode != "auto" {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "self-upgrade is not available for this installation",
+                "upgradeMode": mode,
+                "upgradeReason": reason,
+            })),
+        )
+            .into_response();
+    }
+
+    if upgrade_state_is_active(read_upgrade_state(&state).as_ref()) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "another upgrade is already in progress" })),
+        )
+            .into_response();
+    }
+
+    // Hold across the registry fetch, state write, and spawn: without this two
+    // concurrent POSTs both pass the file check and start competing helpers.
+    let _start_guard = state.upgrade_start_lock.lock().await;
+    if upgrade_state_is_active(read_upgrade_state(&state).as_ref()) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "another upgrade is already in progress" })),
+        )
+            .into_response();
+    }
+
+    let registry = match fetch_registry_version(&state).await {
+        Ok(registry) => registry,
+        Err((status, error)) => {
+            return (status, Json(json!({ "error": error }))).into_response();
+        }
+    };
+    // A terminal `cc-gw upgrade` (or a previous server instance) may have
+    // written an active state while the registry call was in flight.
+    if upgrade_state_is_active(read_upgrade_state(&state).as_ref()) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "another upgrade is already in progress" })),
+        )
+            .into_response();
+    }
+    if !registry.update_available {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "already up to date", "currentVersion": registry.current_version })),
+        )
+            .into_response();
+    }
+
+    let Some(node_bin) = state.upgrade.node_bin.as_deref() else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "upgrade helper node binary is not configured" })),
+        )
+            .into_response();
+    };
+    let Some(cli_path) = state.upgrade.cli_path.as_deref() else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "upgrade helper cli path is not configured" })),
+        )
+            .into_response();
+    };
+
+    let home_dir = absolute_path(&state.paths.home_dir);
+    let log_dir = absolute_path(&state.upgrade.log_dir);
+    let state_path = absolute_path(&state.upgrade.state_path);
+    if let Err(error) = std::fs::create_dir_all(&log_dir) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("failed to create log directory: {error}") })),
+        )
+            .into_response();
+    }
+
+    let now = chrono::Utc::now();
+    // Sub-millisecond entropy: two requests served in the same millisecond (or
+    // concurrent runs on one machine) must not share an id, or the losing
+    // helper could mark the winner's run failed.
+    let id = format!(
+        "{}-{}-{}",
+        now.timestamp_millis(),
+        std::process::id(),
+        now.timestamp_subsec_nanos()
+    );
+    let log_path = log_dir.join(format!("upgrade-{id}.log"));
+    let now = now.timestamp_millis();
+    let initial_state = UpgradeStateFile {
+        id: id.clone(),
+        phase: "preparing".to_string(),
+        from_version: registry.current_version.clone(),
+        to_version: registry.latest_version.clone(),
+        started_at: now,
+        updated_at: now,
+        finished_at: None,
+        error: None,
+        rolled_back: false,
+        platform: Some(format!(
+            "{}-{}",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        )),
+        install_method: state.upgrade.install_method.clone(),
+        log_path: Some(log_path.display().to_string()),
+        server_pid: Some(std::process::id()),
+        instance_token: Some(state.upgrade_instance_token.clone()),
+    };
+    if let Err(error) = write_upgrade_state_at(&state_path, &initial_state) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("failed to write upgrade state: {error}") })),
+        )
+            .into_response();
+    }
+
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path);
+    let mut command = std::process::Command::new(node_bin);
+    command
+        .arg(cli_path)
+        .arg("upgrade")
+        .arg("--from-server")
+        .arg("--target")
+        .arg(&registry.latest_version)
+        .arg("--from-version")
+        .arg(&registry.current_version)
+        .arg("--id")
+        .arg(&id)
+        .arg("--state-file")
+        .arg(&state_path)
+        .arg("--log-file")
+        .arg(&log_path)
+        .arg("--home")
+        .arg(&home_dir)
+        // Trust the gateway's own PID instead of `cc-gw.pid`: when that file is
+        // missing or stale the helper used to install the package, report
+        // success, and leave the old process serving the old binary.
+        .arg("--server-pid")
+        .arg(std::process::id().to_string())
+        .env("CC_GW_HOME", &home_dir)
+        .env(
+            "CC_GW_VERSION_CHECK_PACKAGE_NAME",
+            &state.version_check_package_name,
+        )
+        .env(
+            "CC_GW_VERSION_CHECK_REGISTRY_BASE_URL",
+            &state.version_check_registry_base_url,
+        );
+    if let Some((port, protocol)) = upgrade_probe_port(&config_snapshot(&state)) {
+        command
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--protocol")
+            .arg(protocol);
+    }
+    command
+        .current_dir(&home_dir)
+        .stdin(std::process::Stdio::null());
+    match &log {
+        Ok(file) => {
+            if let Ok(stdout) = file.try_clone() {
+                command.stdout(std::process::Stdio::from(stdout));
+            }
+            if let Ok(stderr) = file.try_clone() {
+                command.stderr(std::process::Stdio::from(stderr));
+            }
+        }
+        Err(_) => {
+            command.stdout(std::process::Stdio::null());
+            command.stderr(std::process::Stdio::null());
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+
+    match command.spawn() {
+        Ok(mut child) => {
+            // Reap the helper so it never lingers as a zombie if the upgrade
+            // fails before the server is restarted. The helper runs detached,
+            // so killing this process does not kill it. A helper that dies
+            // before writing anything would otherwise leave `preparing` behind,
+            // which blocks retries for ten minutes and spins the UI.
+            let reaper_state = state.clone();
+            let reaper_id = id.clone();
+            std::thread::spawn(move || {
+                let status = child.wait();
+                let failed = match &status {
+                    Ok(status) => !status.success(),
+                    Err(_) => true,
+                };
+                if !failed {
+                    return;
+                }
+                let Some(mut current) = read_upgrade_state(&reaper_state) else {
+                    return;
+                };
+                if current.id != reaper_id || is_terminal_phase(&current.phase) {
+                    return;
+                }
+                let now = chrono::Utc::now().timestamp_millis();
+                current.phase = "failed".to_string();
+                current.error = Some(match status {
+                    Ok(status) => format!("upgrade helper exited with {status}"),
+                    Err(error) => format!("failed to wait for upgrade helper: {error}"),
+                });
+                current.finished_at = Some(now);
+                current.updated_at = now;
+                let _ = write_upgrade_state(&reaper_state, &current);
+            });
+            record_and_broadcast_event(
+                &state,
+                RecordEventInput {
+                    event_type: "upgrade_started".to_string(),
+                    level: Some("info".to_string()),
+                    source: Some("upgrade".to_string()),
+                    title: Some(format!("Upgrading to v{}", registry.latest_version)),
+                    message: Some(format!(
+                        "{} -> {}",
+                        registry.current_version, registry.latest_version
+                    )),
+                    details: Some(json!({
+                        "fromVersion": registry.current_version,
+                        "toVersion": registry.latest_version,
+                        "installMethod": state.upgrade.install_method,
+                        "logPath": log_path.display().to_string(),
+                    })),
+                    ..Default::default()
+                },
+            );
+            (
+                StatusCode::ACCEPTED,
+                Json(VersionUpgradeStartResponse {
+                    id,
+                    phase: initial_state.phase,
+                    from_version: initial_state.from_version,
+                    to_version: initial_state.to_version,
+                }),
+            )
+                .into_response()
+        }
+        Err(error) => {
+            let mut failed = initial_state;
+            failed.phase = "failed".to_string();
+            failed.error = Some(format!("failed to start upgrade helper: {error}"));
+            failed.finished_at = Some(chrono::Utc::now().timestamp_millis());
+            failed.updated_at = failed.finished_at.unwrap_or_default();
+            let _ = write_upgrade_state_at(&state_path, &failed);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("failed to start upgrade helper: {error}") })),
+            )
+                .into_response()
+        }
+    }
+}
+
+pub(super) async fn api_version_upgrade_status(
+    State(state): State<AppState>,
+) -> Json<VersionUpgradeStatusResponse> {
+    let state_file = read_upgrade_state(&state);
+    let phase = state_file
+        .as_ref()
+        .map(|value| value.phase.clone())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "idle".to_string());
+    let stale = state_file
+        .as_ref()
+        .map(|value| {
+            !is_terminal_phase(&value.phase)
+                && chrono::Utc::now()
+                    .timestamp_millis()
+                    .saturating_sub(value.updated_at)
+                    >= 10 * 60 * 1000
+        })
+        .unwrap_or(false);
+    let (upgrade_mode, upgrade_reason) = upgrade_mode(&state);
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let target_version = state_file
+        .as_ref()
+        .map(|value| value.to_version.clone())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| current_version.clone());
+
+    Json(VersionUpgradeStatusResponse {
+        phase,
+        stale,
+        state: state_file,
+        upgrade_mode: upgrade_mode.to_string(),
+        upgrade_reason: upgrade_reason.map(ToString::to_string),
+        install_method: state.upgrade.install_method.clone(),
+        manual_command: manual_upgrade_command(&state, &target_version),
+        current_version,
+        platform: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+        active_requests: state.active_requests.load(Ordering::Relaxed),
+    })
 }
 
 pub(super) async fn api_status(

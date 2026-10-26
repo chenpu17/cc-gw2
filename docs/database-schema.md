@@ -82,6 +82,8 @@
 - `client_model` 保留客户端传入模型名，`model` 表示最终路由后的模型名
 - `client_kind` 为识别出的 agent 客户端类型（claude-code / codex / opencode / gemini-cli / …），无法识别时按协议回退（anthropic-compatible / openai-compatible）；`user_agent` 保留截断后的原始 UA，便于后续重新归类
 - `ttft_ms` 和 `tpot_ms` 主要用于流式请求观测
+  - `ttft_ms` = 请求进入网关到上游首个**非空**输出增量的耗时；OpenAI Chat 常见的 role chunk（`content: ""`/`null`、`tool_calls: []`）与 Responses 的 item 公告不算首 Token
+  - `tpot_ms` = `(latency_ms - ttft_ms) / (output_tokens - 1)`，即首 Token 之后的平均间隔；仅有 1 个输出 Token、缺少 usage 或没有 TTFT 时为 NULL
 - `error_detail` 为 JSON 格式的扩展错误上下文（失败阶段 / 完整错误链 / 截断的上游响应体 / aggregate failover 尝试链），成功请求或无额外信息时为 NULL；含未脱敏的上游 URL 等信息，仅限控制台展示
 
 ## 3.2 `request_payloads`

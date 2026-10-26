@@ -83,6 +83,59 @@ async function waitForHealth(url, attempts = 50) {
   throw new Error(`health check did not succeed: ${url}`)
 }
 
+/**
+ * `cc-gw upgrade --check` must work offline against any registry base URL and
+ * must not install anything. Exercised here because it is the only upgrade path
+ * the release smoke test can safely run.
+ */
+async function verifyUpgradeCheck(homeDir, cliPath) {
+  const registryPort = await getFreePort()
+  const registry = http.createServer((request, response) => {
+    if (request.url?.includes('cc-gw')) {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ 'dist-tags': { latest: '0.0.1' } }))
+      return
+    }
+    response.statusCode = 404
+    response.end()
+  })
+  await new Promise((resolve, reject) => {
+    registry.once('error', reject)
+    registry.listen(registryPort, '127.0.0.1', resolve)
+  })
+
+  try {
+    const child = spawn(process.execPath, [cliPath, 'upgrade', '--check'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: homeDir,
+        CC_GW_VERSION_CHECK_REGISTRY_BASE_URL: `http://127.0.0.1:${registryPort}`,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let output = ''
+    child.stdout.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+    child.stderr.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+    const exitCode = await new Promise((resolve, reject) => {
+      child.once('error', reject)
+      child.once('exit', (code) => resolve(code))
+    })
+    if (exitCode !== 0) {
+      throw new Error(`upgrade --check exited with code ${exitCode}\n${output}`)
+    }
+    if (!output.includes('当前已是最新版本')) {
+      throw new Error(`unexpected upgrade --check output:\n${output}`)
+    }
+  } finally {
+    await new Promise((resolve) => registry.close(() => resolve()))
+  }
+}
+
 async function main() {
   const homeDir = await mkdtemp(path.join(os.tmpdir(), 'cc-gw-smoke-'))
   const port = await getFreePort()
@@ -118,6 +171,7 @@ async function main() {
     if (config?.port !== port) {
       throw new Error(`expected config port ${port}, got ${config?.port}`)
     }
+    await verifyUpgradeCheck(homeDir, cliPath)
     child.kill('SIGINT')
     const exitCode = await new Promise((resolve, reject) => {
       child.on('error', reject)

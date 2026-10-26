@@ -340,6 +340,7 @@ fn build_test_state(
     paths: GatewayPaths,
     ui_root: Option<PathBuf>,
 ) -> AppState {
+    let upgrade = UpgradeContext::disabled(&paths.home_dir, &paths.log_dir);
     AppState {
         config: Arc::new(RwLock::new(config)),
         paths: Arc::new(paths),
@@ -367,6 +368,12 @@ fn build_test_state(
         version_check_package_name: "@chenpu17/cc-gw".to_string(),
         sessions: auth::SessionStore::default(),
         event_bus: tokio::sync::broadcast::channel(256).0,
+        upgrade: Arc::new(upgrade),
+        server_started_at_ms: 0,
+        upgrade_instance_token: "test-instance".to_string(),
+        draining: Arc::new(AtomicBool::new(false)),
+        upgrade_start_lock: Arc::new(tokio::sync::Mutex::new(())),
+        shutdown_tx: tokio::sync::watch::channel(false).0,
     }
 }
 
@@ -574,6 +581,38 @@ async fn mock_anthropic_slow_stream() -> Response {
         .header(header::CONTENT_TYPE, "text/event-stream")
         .body(Body::from_stream(stream))
         .expect("build slow anthropic stream response")
+}
+
+async fn mock_anthropic_ttft_stream() -> Response {
+    let stream = stream! {
+        yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(
+            "event: message_start\n\
+             data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-test\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\
+             event: content_block_start\n\
+             data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+        ));
+        // A slow prefill: nothing is generated for 200ms after the handshake.
+        sleep(Duration::from_millis(200)).await;
+        yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(
+            "event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"a\"}}\n\n",
+        ));
+        sleep(Duration::from_millis(100)).await;
+        yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(
+            "event: content_block_delta\n\
+             data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"b\"}}\n\n\
+             event: message_delta\n\
+             data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":11,\"output_tokens\":3}}\n\n\
+             event: message_stop\n\
+             data: {\"type\":\"message_stop\"}\n\n",
+        ));
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .body(Body::from_stream(stream))
+        .expect("build anthropic ttft stream response")
 }
 
 async fn mock_anthropic_failing_stream() -> Response {
@@ -2558,6 +2597,181 @@ data: [DONE]\n\n",
         "latency_ms should include delayed upstream stream, got {:?}",
         item["latency_ms"]
     );
+    let latency_ms = item["latency_ms"].as_i64().expect("latency_ms");
+    let ttft_ms = item["ttft_ms"]
+        .as_i64()
+        .expect("materialized stream ttft_ms");
+    let tpot_ms = item["tpot_ms"]
+        .as_f64()
+        .expect("materialized stream tpot_ms");
+    assert!(
+        ttft_ms < latency_ms - 100,
+        "ttft should land on the first content chunk, before the 120ms tail: ttft={ttft_ms} latency={latency_ms}"
+    );
+    // completion_tokens = 2 → one inter-token interval spanning the 120ms tail.
+    assert!(
+        tpot_ms >= 100.0,
+        "tpot should cover the delayed tail, got {tpot_ms}"
+    );
+    let expected_tpot = ((latency_ms - ttft_ms) as f64 * 100.0).round() / 100.0;
+    assert!((tpot_ms - expected_tpot).abs() < 0.01);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn openai_chat_non_stream_latency_includes_body_read() {
+    // Headers arrive immediately; the JSON body is delayed. Latency must be
+    // recorded after the body is consumed, not at the handshake.
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            let stream = stream! {
+                sleep(Duration::from_millis(120)).await;
+                yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(
+                    "{\"id\":\"chatcmpl_slow_body\",\"object\":\"chat.completion\",\"model\":\"gpt-slow-body\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":1,\"total_tokens\":3}}",
+                ));
+            };
+
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from_stream(stream))
+                .expect("build slow body response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-slow-body".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-slow-body".to_string(),
+            label: Some("GPT Slow Body".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("mock-openai:gpt-slow-body".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-chat-non-stream-slow-body").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-slow-body",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send slow body request");
+    assert_eq!(response.status(), StatusCode::OK);
+    let _: Value = response.json().await.expect("decode slow body response");
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let item = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("log item");
+    assert!(
+        item["latency_ms"].as_i64().unwrap_or_default() >= 100,
+        "latency_ms should include the delayed response body, got {:?}",
+        item["latency_ms"]
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn openai_chat_non_stream_body_read_failure_logs_bad_gateway() {
+    // A 200 handshake whose body fails to read must be logged as the 502 the
+    // client actually received, not as the upstream 200.
+    let upstream = Router::new().route(
+        "/v1/chat/completions",
+        post(|| async {
+            let stream = stream! {
+                yield Err::<Bytes, std::io::Error>(std::io::Error::other("body broke"));
+            };
+
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from_stream(stream))
+                .expect("build broken body response")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-openai".to_string(),
+        label: "Mock OpenAI".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("openai".to_string()),
+        default_model: Some("gpt-broken-body".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "gpt-broken-body".to_string(),
+            label: Some("GPT Broken Body".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    if let Some(openai_routing) = config.endpoint_routing.get_mut("openai") {
+        openai_routing.defaults.completion = Some("mock-openai:gpt-broken-body".to_string());
+    }
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "openai-chat-broken-body").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/openai/v1/chat/completions"))
+        .json(&json!({
+            "model": "gpt-broken-body",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send broken body request");
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let item = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("log item");
+    assert_eq!(
+        item["status_code"].as_i64(),
+        Some(502),
+        "body-read failure should be logged as 502, got {:?}",
+        item["status_code"]
+    );
 
     gateway_handle.abort();
     upstream_handle.abort();
@@ -3766,6 +3980,675 @@ async fn api_version_check_reports_update_state_from_registry() {
 }
 
 #[tokio::test]
+async fn api_version_check_reports_manual_upgrade_for_unmanaged_installs() {
+    let latest_version = "999.0.0";
+    let registry = Router::new().fallback(get(move || async move {
+        Json(json!({
+            "dist-tags": { "latest": latest_version },
+            "time": { latest_version: "2026-03-30T03:45:32.000Z" }
+        }))
+    }));
+    let (registry_addr, registry_handle) = spawn_router(registry).await;
+
+    let paths = test_paths("version-check-manual");
+    initialize_database(&paths.db_path).expect("init db");
+    let mut state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    state.version_check_registry_base_url = format!("http://{registry_addr}");
+
+    let (gateway_addr, gateway_handle) = spawn_router(build_router(state)).await;
+    let client = reqwest::Client::new();
+    let response: Value = client
+        .get(format!("http://{gateway_addr}/api/version/check"))
+        .send()
+        .await
+        .expect("request version check")
+        .json()
+        .await
+        .expect("decode version check");
+
+    assert_eq!(
+        response.get("upgradeMode").and_then(Value::as_str),
+        Some("unsupported")
+    );
+    assert_eq!(
+        response.get("upgradeReason").and_then(Value::as_str),
+        Some("not-launched-by-cli")
+    );
+    let manual_command = response
+        .get("manualCommand")
+        .and_then(Value::as_str)
+        .expect("manual command");
+    assert!(
+        manual_command.contains(&format!("npm install -g @chenpu17/cc-gw@{latest_version}")),
+        "unexpected manual command: {manual_command}"
+    );
+    assert!(
+        manual_command.ends_with("&& cc-gw restart"),
+        "manual command must restart the service: {manual_command}"
+    );
+
+    let upgrade_response = client
+        .post(format!("http://{gateway_addr}/api/version/upgrade"))
+        .send()
+        .await
+        .expect("request upgrade");
+    assert_eq!(upgrade_response.status(), reqwest::StatusCode::CONFLICT);
+
+    let status: Value = client
+        .get(format!("http://{gateway_addr}/api/version/upgrade/status"))
+        .send()
+        .await
+        .expect("request upgrade status")
+        .json()
+        .await
+        .expect("decode upgrade status");
+    assert_eq!(status.get("phase").and_then(Value::as_str), Some("idle"));
+    assert_eq!(status.get("stale").and_then(Value::as_bool), Some(false));
+    assert_eq!(
+        status.get("upgradeMode").and_then(Value::as_str),
+        Some("unsupported")
+    );
+
+    gateway_handle.abort();
+    registry_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+#[cfg(unix)]
+fn write_fake_upgrade_helper(paths: &GatewayPaths) -> std::path::PathBuf {
+    let helper_script = paths.home_dir.join("fake-upgrade-helper.sh");
+    stdfs::write(
+        &helper_script,
+        r#"#!/bin/sh
+state=""
+target=""
+from=""
+home=""
+id=""
+server_pid=""
+probe_port=""
+protocol=""
+for arg in "$@"; do
+  case "$arg" in
+    --from-server) from_server=1 ;;
+  esac
+done
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --state-file) shift; state="$1" ;;
+    --target) shift; target="$1" ;;
+    --from-version) shift; from="$1" ;;
+    --home) shift; home="$1" ;;
+    --id) shift; id="$1" ;;
+    --server-pid) shift; server_pid="$1" ;;
+    --port) shift; probe_port="$1" ;;
+    --protocol) shift; protocol="$1" ;;
+  esac
+  shift
+done
+# The server must pass the full helper contract; fail loudly otherwise so a
+# regression (dropped flag, wrong env) cannot pass these tests vacuously.
+[ -n "$from_server" ] || { echo "missing --from-server" >&2; exit 2; }
+[ -n "$state" ] || { echo "missing --state-file" >&2; exit 3; }
+[ -n "$target" ] || { echo "missing --target" >&2; exit 4; }
+[ -n "$from" ] || { echo "missing --from-version" >&2; exit 5; }
+[ -n "$id" ] || { echo "missing --id" >&2; exit 6; }
+[ -n "$home" ] && [ -n "$CC_GW_HOME" ] || { echo "missing --home/CC_GW_HOME" >&2; exit 7; }
+case "$server_pid" in
+  ''|*[!0-9]*) echo "missing or invalid --server-pid" >&2; exit 8 ;;
+esac
+case "$probe_port" in
+  ''|*[!0-9]*) echo "missing or invalid --port" >&2; exit 9 ;;
+esac
+case "$protocol" in
+  http|https) ;;
+  *) echo "missing or invalid --protocol" >&2; exit 10 ;;
+esac
+# Keep the run "in progress" long enough for concurrency assertions.
+sleep 1
+printf '{"id":"%s","phase":"succeeded","fromVersion":"%s","toVersion":"%s","updatedAt":%s}\n' "$id" "$from" "$target" "$(date +%s000)" > "$state"
+"#,
+    )
+    .expect("write helper script");
+    helper_script
+}
+
+#[cfg(unix)]
+fn test_upgrade_context(paths: &GatewayPaths, helper_script: std::path::PathBuf) -> UpgradeContext {
+    UpgradeContext {
+        cli_path: Some(helper_script),
+        node_bin: Some(std::path::PathBuf::from("/bin/sh")),
+        service_mode: "daemon".to_string(),
+        install_method: Some("npm-global".to_string()),
+        install_writable: true,
+        state_path: paths.home_dir.join("upgrade-state.json"),
+        log_dir: paths.log_dir.clone(),
+        drain_timeout: std::time::Duration::from_millis(500),
+        shutdown_grace: std::time::Duration::from_millis(100),
+    }
+}
+
+#[test]
+fn upgrade_state_requests_drain_only_for_fresh_draining_phase() {
+    let now = 1_760_000_000_000_i64;
+    let pid = 4321_u32;
+    let token = "instance-token";
+    assert!(upgrade_state_requests_drain(
+        &json!({ "phase": "draining", "updatedAt": now }),
+        now,
+        pid,
+        token
+    ));
+    assert!(upgrade_state_requests_drain(
+        &json!({ "phase": "draining", "updatedAt": now + 500 }),
+        now,
+        pid,
+        token
+    ));
+    // A leftover state file from before this process started must be ignored.
+    assert!(!upgrade_state_requests_drain(
+        &json!({ "phase": "draining", "updatedAt": now - 1 }),
+        now,
+        pid,
+        token
+    ));
+    assert!(!upgrade_state_requests_drain(
+        &json!({ "phase": "installing", "updatedAt": now }),
+        now,
+        pid,
+        token
+    ));
+    assert!(!upgrade_state_requests_drain(
+        &json!({ "updatedAt": now }),
+        now,
+        pid,
+        token
+    ));
+    assert!(!upgrade_state_requests_drain(
+        &json!({ "phase": "draining", "updatedAt": "bad" }),
+        now,
+        pid,
+        token
+    ));
+    // When the state names its gateway instance, the instance token wins over
+    // wall-clock checks: a run started before a backward clock step still
+    // drains, and another gateway sharing the same home directory is never
+    // stopped even if its PID happens to match.
+    assert!(upgrade_state_requests_drain(
+        &json!({ "phase": "draining", "updatedAt": now - 1, "instanceToken": token }),
+        now,
+        pid,
+        token
+    ));
+    assert!(!upgrade_state_requests_drain(
+        &json!({ "phase": "draining", "updatedAt": now, "instanceToken": "other" }),
+        now,
+        pid,
+        token
+    ));
+    assert!(!upgrade_state_requests_drain(
+        &json!({ "phase": "draining", "updatedAt": now, "instanceToken": "other", "serverPid": pid }),
+        now,
+        pid,
+        token
+    ));
+    // Token-less states (e.g. written by an older helper) fall back to the PID.
+    assert!(upgrade_state_requests_drain(
+        &json!({ "phase": "draining", "updatedAt": now - 1, "serverPid": pid }),
+        now,
+        pid,
+        token
+    ));
+    assert!(!upgrade_state_requests_drain(
+        &json!({ "phase": "draining", "updatedAt": now, "serverPid": pid + 1 }),
+        now,
+        pid,
+        token
+    ));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn api_version_upgrade_ignores_stale_state_and_reports_it() {
+    let latest_version = "999.0.0";
+    let registry = Router::new().fallback(get(move || async move {
+        Json(json!({
+            "dist-tags": { "latest": latest_version },
+            "time": {}
+        }))
+    }));
+    let (registry_addr, registry_handle) = spawn_router(registry).await;
+
+    let paths = test_paths("version-upgrade-stale");
+    initialize_database(&paths.db_path).expect("init db");
+    let helper_script = write_fake_upgrade_helper(&paths);
+    let state_path = paths.home_dir.join("upgrade-state.json");
+    let stale_updated_at = chrono::Utc::now().timestamp_millis() - 11 * 60 * 1000;
+    stdfs::write(
+        &state_path,
+        serde_json::to_vec(&json!({
+            "id": "crashed-run",
+            "phase": "preparing",
+            "updatedAt": stale_updated_at
+        }))
+        .expect("encode stale state"),
+    )
+    .expect("write stale state");
+
+    let mut state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    state.version_check_registry_base_url = format!("http://{registry_addr}");
+    state.upgrade = Arc::new(test_upgrade_context(&paths, helper_script));
+    let (gateway_addr, gateway_handle) = spawn_router(build_router(state)).await;
+    let client = reqwest::Client::new();
+
+    let status: Value = client
+        .get(format!("http://{gateway_addr}/api/version/upgrade/status"))
+        .send()
+        .await
+        .expect("request upgrade status")
+        .json()
+        .await
+        .expect("decode upgrade status");
+    assert_eq!(
+        status.get("phase").and_then(Value::as_str),
+        Some("preparing")
+    );
+    assert_eq!(status.get("stale").and_then(Value::as_bool), Some(true));
+
+    // A stuck helper must not block a fresh upgrade attempt.
+    let response = client
+        .post(format!("http://{gateway_addr}/api/version/upgrade"))
+        .send()
+        .await
+        .expect("request upgrade after stale state");
+    assert_eq!(response.status(), reqwest::StatusCode::ACCEPTED);
+
+    gateway_handle.abort();
+    registry_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn api_version_upgrade_spawns_helper_and_tracks_state() {
+    let latest_version = "999.0.0";
+    let registry = Router::new().fallback(get(move || async move {
+        Json(json!({
+            "dist-tags": { "latest": latest_version },
+            "time": {}
+        }))
+    }));
+    let (registry_addr, registry_handle) = spawn_router(registry).await;
+
+    let paths = test_paths("version-upgrade");
+    initialize_database(&paths.db_path).expect("init db");
+    let helper_script = write_fake_upgrade_helper(&paths);
+
+    let mut state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    state.version_check_registry_base_url = format!("http://{registry_addr}");
+    state.upgrade = Arc::new(test_upgrade_context(&paths, helper_script));
+
+    let (gateway_addr, gateway_handle) = spawn_router(build_router(state)).await;
+    let client = reqwest::Client::new();
+
+    // A bodyless cross-site POST must not be able to install code and restart
+    // the gateway (web auth is disabled in the default config).
+    let cross_site = client
+        .post(format!("http://{gateway_addr}/api/version/upgrade"))
+        .header("sec-fetch-site", "cross-site")
+        .send()
+        .await
+        .expect("send cross-site upgrade request");
+    assert_eq!(cross_site.status(), StatusCode::FORBIDDEN);
+    let cross_origin = client
+        .post(format!("http://{gateway_addr}/api/version/upgrade"))
+        .header(header::ORIGIN, "http://evil.example")
+        .send()
+        .await
+        .expect("send cross-origin upgrade request");
+    assert_eq!(cross_origin.status(), StatusCode::FORBIDDEN);
+
+    let response = client
+        .post(format!("http://{gateway_addr}/api/version/upgrade"))
+        .send()
+        .await
+        .expect("request upgrade");
+    assert_eq!(response.status(), reqwest::StatusCode::ACCEPTED);
+    let started: Value = response.json().await.expect("decode upgrade start");
+    assert_eq!(
+        started.get("toVersion").and_then(Value::as_str),
+        Some(latest_version)
+    );
+    assert_eq!(
+        started.get("fromVersion").and_then(Value::as_str),
+        Some(env!("CARGO_PKG_VERSION"))
+    );
+
+    let mut phase = String::new();
+    for _ in 0..100 {
+        let status: Value = client
+            .get(format!("http://{gateway_addr}/api/version/upgrade/status"))
+            .send()
+            .await
+            .expect("request upgrade status")
+            .json()
+            .await
+            .expect("decode upgrade status");
+        phase = status
+            .get("phase")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        if phase == "succeeded" {
+            assert_eq!(
+                status.get("upgradeMode").and_then(Value::as_str),
+                Some("auto")
+            );
+            let state = status.get("state").expect("upgrade state");
+            assert_eq!(
+                state.get("fromVersion").and_then(Value::as_str),
+                Some(env!("CARGO_PKG_VERSION"))
+            );
+            assert_eq!(
+                state.get("toVersion").and_then(Value::as_str),
+                Some(latest_version)
+            );
+            assert_eq!(state.get("error").and_then(Value::as_str), None);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(phase, "succeeded", "helper did not report success");
+
+    gateway_handle.abort();
+    registry_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn api_version_upgrade_rejects_concurrent_start() {
+    let registry = Router::new().fallback(get(|| async {
+        Json(json!({
+            "dist-tags": { "latest": "999.0.0" },
+            "time": {}
+        }))
+    }));
+    let (registry_addr, registry_handle) = spawn_router(registry).await;
+
+    let paths = test_paths("version-upgrade-concurrent");
+    initialize_database(&paths.db_path).expect("init db");
+    let helper_script = write_fake_upgrade_helper(&paths);
+    let mut state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    state.version_check_registry_base_url = format!("http://{registry_addr}");
+    state.upgrade = Arc::new(test_upgrade_context(&paths, helper_script));
+    let (gateway_addr, gateway_handle) = spawn_router(build_router(state)).await;
+    let client = reqwest::Client::new();
+
+    let post = || {
+        let client = client.clone();
+        let url = format!("http://{gateway_addr}/api/version/upgrade");
+        async move {
+            client
+                .post(url)
+                .send()
+                .await
+                .expect("request upgrade")
+                .status()
+        }
+    };
+    let (first, second) = tokio::join!(post(), post());
+    let mut statuses = [first, second];
+    statuses.sort_by_key(|status| status.as_u16());
+    assert_eq!(
+        statuses,
+        [reqwest::StatusCode::ACCEPTED, reqwest::StatusCode::CONFLICT],
+        "exactly one concurrent upgrade request must win"
+    );
+
+    gateway_handle.abort();
+    registry_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn api_version_upgrade_rejects_when_already_current() {
+    let current_version = env!("CARGO_PKG_VERSION");
+    let registry = Router::new().fallback(get(move || async move {
+        Json(json!({
+            "dist-tags": { "latest": current_version },
+            "time": {}
+        }))
+    }));
+    let (registry_addr, registry_handle) = spawn_router(registry).await;
+
+    let paths = test_paths("version-upgrade-current");
+    initialize_database(&paths.db_path).expect("init db");
+    let helper_script = write_fake_upgrade_helper(&paths);
+    let mut state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    state.version_check_registry_base_url = format!("http://{registry_addr}");
+    state.upgrade = Arc::new(test_upgrade_context(&paths, helper_script));
+    let (gateway_addr, gateway_handle) = spawn_router(build_router(state)).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{gateway_addr}/api/version/upgrade"))
+        .send()
+        .await
+        .expect("request upgrade when current");
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    let body: Value = response.json().await.expect("decode conflict body");
+    assert_eq!(
+        body.get("error").and_then(Value::as_str),
+        Some("already up to date")
+    );
+    assert!(!paths.home_dir.join("upgrade-state.json").exists());
+
+    gateway_handle.abort();
+    registry_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn api_version_upgrade_reports_helper_spawn_failure() {
+    let registry = Router::new().fallback(get(|| async {
+        Json(json!({
+            "dist-tags": { "latest": "999.0.0" },
+            "time": {}
+        }))
+    }));
+    let (registry_addr, registry_handle) = spawn_router(registry).await;
+
+    let paths = test_paths("version-upgrade-spawn-failure");
+    initialize_database(&paths.db_path).expect("init db");
+    let helper_script = write_fake_upgrade_helper(&paths);
+    // `upgrade_mode` only checks that the configured node binary exists; a
+    // non-executable file forces the spawn itself to fail.
+    let unusable_node = paths.home_dir.join("node-without-exec");
+    stdfs::write(&unusable_node, b"not executable").expect("write fake node");
+    let mut context = test_upgrade_context(&paths, helper_script);
+    context.node_bin = Some(unusable_node);
+    let mut state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    state.version_check_registry_base_url = format!("http://{registry_addr}");
+    state.upgrade = Arc::new(context);
+    let (gateway_addr, gateway_handle) = spawn_router(build_router(state)).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{gateway_addr}/api/version/upgrade"))
+        .send()
+        .await
+        .expect("request upgrade with broken helper");
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let saved: Value = serde_json::from_str(
+        &stdfs::read_to_string(paths.home_dir.join("upgrade-state.json"))
+            .expect("read failed upgrade state"),
+    )
+    .expect("decode failed upgrade state");
+    assert_eq!(saved.get("phase").and_then(Value::as_str), Some("failed"));
+    assert!(
+        saved
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains("failed to start upgrade helper"),
+        "unexpected state: {saved}"
+    );
+
+    gateway_handle.abort();
+    registry_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+#[test]
+fn upgrade_mode_and_manual_command_cover_every_install_method() {
+    use crate::admin_routes::{manual_upgrade_command, upgrade_mode};
+
+    let paths = test_paths("upgrade-mode-matrix");
+    let cli_path = paths.home_dir.join("cli.js");
+    let node_bin = paths.home_dir.join("node");
+    stdfs::write(&cli_path, b"// cli").expect("write fake cli");
+    stdfs::write(&node_bin, b"// node").expect("write fake node");
+
+    let with_context = |service_mode: &str, method: Option<&str>, writable: bool| {
+        let mut state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+        state.upgrade = Arc::new(UpgradeContext {
+            cli_path: Some(cli_path.clone()),
+            node_bin: Some(node_bin.clone()),
+            service_mode: service_mode.to_string(),
+            install_method: method.map(ToString::to_string),
+            install_writable: writable,
+            state_path: paths.home_dir.join("upgrade-state.json"),
+            log_dir: paths.log_dir.clone(),
+            drain_timeout: std::time::Duration::from_millis(50),
+            shutdown_grace: std::time::Duration::from_millis(50),
+        });
+        state
+    };
+
+    // Not launched by the CLI: no helper paths are known.
+    let mut unmanaged = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    assert_eq!(
+        upgrade_mode(&unmanaged),
+        ("unsupported", Some("not-launched-by-cli"))
+    );
+    unmanaged.upgrade = Arc::new(UpgradeContext {
+        cli_path: Some(paths.home_dir.join("missing.js")),
+        node_bin: Some(node_bin.clone()),
+        service_mode: "daemon".to_string(),
+        install_method: Some("npm-global".to_string()),
+        install_writable: true,
+        state_path: paths.home_dir.join("upgrade-state.json"),
+        log_dir: paths.log_dir.clone(),
+        drain_timeout: std::time::Duration::from_millis(50),
+        shutdown_grace: std::time::Duration::from_millis(50),
+    });
+    assert_eq!(
+        upgrade_mode(&unmanaged),
+        ("unsupported", Some("not-launched-by-cli"))
+    );
+
+    assert_eq!(
+        upgrade_mode(&with_context("foreground", Some("npm-global"), true)),
+        ("manual", Some("foreground"))
+    );
+    assert_eq!(
+        upgrade_mode(&with_context("daemon", Some("npm-global"), true)),
+        ("auto", None)
+    );
+    assert_eq!(
+        upgrade_mode(&with_context("daemon", Some("npm-global"), false)),
+        ("manual", Some("not-writable"))
+    );
+    assert_eq!(
+        upgrade_mode(&with_context("daemon", Some("npx"), true)),
+        ("manual", Some("npx"))
+    );
+    assert_eq!(
+        upgrade_mode(&with_context("daemon", Some("local"), true)),
+        ("manual", Some("local-build"))
+    );
+    // Windows cannot spawn pnpm/yarn/bun shims from Node.
+    let (pnpm_mode, pnpm_reason) = upgrade_mode(&with_context("daemon", Some("pnpm-global"), true));
+    if cfg!(windows) {
+        assert_eq!(
+            (pnpm_mode, pnpm_reason),
+            ("manual", Some("package-manager"))
+        );
+    } else {
+        assert_eq!((pnpm_mode, pnpm_reason), ("auto", None));
+    }
+
+    assert_eq!(
+        manual_upgrade_command(&with_context("daemon", Some("npm-global"), true), "9.9.9"),
+        "npm install -g @chenpu17/cc-gw@9.9.9 && cc-gw restart"
+    );
+    assert_eq!(
+        manual_upgrade_command(&with_context("daemon", Some("pnpm-global"), false), "9.9.9"),
+        "sudo pnpm add -g @chenpu17/cc-gw@9.9.9 && cc-gw restart"
+    );
+    assert_eq!(
+        manual_upgrade_command(&with_context("daemon", Some("yarn-global"), true), "9.9.9"),
+        "yarn global add @chenpu17/cc-gw@9.9.9 && cc-gw restart"
+    );
+    assert_eq!(
+        manual_upgrade_command(&with_context("daemon", Some("bun-global"), true), "9.9.9"),
+        "bun add -g @chenpu17/cc-gw@9.9.9 && cc-gw restart"
+    );
+
+    let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+#[tokio::test]
+async fn draining_gateway_rejects_proxy_traffic_with_503() {
+    let paths = test_paths("draining-proxy");
+    initialize_database(&paths.db_path).expect("init db");
+    let state = build_test_state(GatewayConfig::default(), paths.clone(), None);
+    state.draining.store(true, Ordering::SeqCst);
+
+    let (gateway_addr, gateway_handle) = spawn_router(build_router(state)).await;
+    let client = reqwest::Client::new();
+
+    for path in [
+        "/v1/messages",
+        "/openai/v1/chat/completions",
+        "/v1/responses",
+    ] {
+        let response = client
+            .post(format!("http://{gateway_addr}{path}"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(r#"{"model":"x","max_tokens":1,"messages":[]}"#)
+            .send()
+            .await
+            .expect("send proxy request while draining");
+        assert_eq!(
+            response.status(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{path} must be rejected while draining"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok()),
+            Some("5"),
+            "{path} must ask the client to retry"
+        );
+    }
+
+    // Admin/status traffic must keep working so the UI can follow the upgrade.
+    let status = client
+        .get(format!("http://{gateway_addr}/api/version/upgrade/status"))
+        .send()
+        .await
+        .expect("request upgrade status while draining");
+    assert_eq!(status.status(), StatusCode::OK);
+
+    gateway_handle.abort();
+    let _ = stdfs::remove_dir_all(paths.home_dir);
+}
+
+#[tokio::test]
 async fn openai_responses_stream_from_anthropic_provider_emits_richer_events() {
     let upstream = Router::new().route("/v1/messages", post(mock_anthropic_stream));
     let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
@@ -3813,9 +4696,12 @@ async fn openai_responses_stream_from_anthropic_provider_emits_richer_events() {
 
     assert!(body.contains("\"type\":\"response.created\""));
     assert!(body.contains("\"type\":\"response.output_item.added\""));
-    assert!(body.contains("\"type\":\"response.output_item.content_part.delta\""));
+    assert!(body.contains("\"type\":\"response.content_part.added\""));
     assert!(body.contains("\"type\":\"response.output_text.delta\""));
+    assert!(body.contains("\"type\":\"response.output_text.done\""));
+    assert!(body.contains("\"type\":\"response.output_item.done\""));
     assert!(body.contains("\"type\":\"response.completed\""));
+    assert!(!body.contains("\"type\":\"response.output_item.content_part.delta\""));
     assert!(body.contains("\"output_text\":\"hello\""));
     assert!(body.contains("data: [DONE]"));
 
@@ -4105,6 +4991,83 @@ async fn streaming_logs_store_materialized_response_instead_of_raw_sse_chunks() 
             .get("output_text")
             .and_then(Value::as_str),
         Some("hello")
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
+async fn streaming_logs_record_ttft_and_tpot() {
+    let upstream = Router::new().route("/v1/messages", post(mock_anthropic_ttft_stream));
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic".to_string(),
+        label: "Mock Anthropic".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "stream-ttft-tpot").await;
+    let client = reqwest::Client::new();
+
+    let body = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "model": "claude-test",
+            "max_tokens": 16,
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await
+        .expect("send streaming request")
+        .text()
+        .await
+        .expect("read streaming response");
+    assert!(body.contains("text_delta"));
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs")
+        .json()
+        .await
+        .expect("decode logs response");
+    let item = logs["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("log item");
+
+    let ttft = item["ttft_ms"].as_i64().expect("ttft must be recorded");
+    assert!(
+        ttft >= 150,
+        "ttft must include the 200ms prefill pause, got {ttft}"
+    );
+    let latency = item["latency_ms"]
+        .as_i64()
+        .expect("latency must be recorded");
+    assert!(latency >= ttft);
+    let tpot = item["tpot_ms"].as_f64().expect("tpot must be recorded");
+    // output_tokens = 3 → three tokens span two inter-token intervals.
+    let expected = (latency - ttft) as f64 / 2.0;
+    assert!(
+        (tpot - expected).abs() < 0.01,
+        "tpot {tpot} should equal (latency {latency} - ttft {ttft}) / (output_tokens - 1) = {expected}"
     );
 
     gateway_handle.abort();
@@ -4537,6 +5500,15 @@ async fn web_auth_requires_session_for_api_routes() {
         .await
         .expect("request unauthorized api status");
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+    // Installing a package and restarting the gateway must never be reachable
+    // without a session when web auth is enabled.
+    let unauthorized_upgrade = client
+        .post(format!("http://{gateway_addr}/api/version/upgrade"))
+        .send()
+        .await
+        .expect("request unauthorized upgrade");
+    assert_eq!(unauthorized_upgrade.status(), StatusCode::UNAUTHORIZED);
 
     let public_health = client
         .get(format!("http://{gateway_addr}/health"))
@@ -6023,6 +6995,86 @@ async fn non_stream_via_stream_error_detail_keeps_upstream_body() {
 }
 
 #[tokio::test]
+async fn materialized_non_success_body_read_failure_logs_bad_gateway() {
+    // An upstream 500 whose body cannot be read becomes a 502 for the client;
+    // the log must reflect the client-visible 502, not the upstream status.
+    let upstream = Router::new().route(
+        "/v1/messages",
+        post(|| async {
+            let stream = stream! {
+                yield Err::<Bytes, std::io::Error>(std::io::Error::other("error body broke"));
+            };
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from_stream(stream))
+                .expect("build broken error body")
+        }),
+    );
+    let (upstream_addr, upstream_handle) = spawn_router(upstream).await;
+
+    let mut config = GatewayConfig::default();
+    config.providers = vec![cc_gw_core::config::ProviderConfig {
+        id: "mock-anthropic-broken".to_string(),
+        label: "Mock Anthropic Broken".to_string(),
+        base_url: format!("http://{upstream_addr}"),
+        provider_type: Some("anthropic".to_string()),
+        default_model: Some("claude-test".to_string()),
+        models: vec![cc_gw_core::config::ProviderModelConfig {
+            id: "claude-test".to_string(),
+            label: Some("Claude Test".to_string()),
+            non_stream_via_stream: Some(true),
+            ..Default::default()
+        }],
+        ..cc_gw_core::config::ProviderConfig::default()
+    }];
+    config.defaults.completion = Some("claude-test".to_string());
+
+    let (home_dir, gateway_addr, gateway_handle) =
+        spawn_test_gateway(config, "materialized-broken-error-body").await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{gateway_addr}/v1/messages"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(
+            json!({
+                "model": "claude-test",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hello"}]
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("send materialized broken error request");
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+
+    let logs: Value = client
+        .get(format!("http://{gateway_addr}/api/logs?limit=1"))
+        .send()
+        .await
+        .expect("request logs after broken upstream body")
+        .json()
+        .await
+        .expect("decode logs");
+    let item = logs
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .expect("log item");
+    assert_eq!(
+        item.get("status_code").and_then(Value::as_i64),
+        Some(502),
+        "log should record the client-visible 502"
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+    let _ = stdfs::remove_dir_all(home_dir);
+}
+
+#[tokio::test]
 async fn multi_surface_provider_routes_native_protocol_and_active_key() {
     use cc_gw_core::config::{AggregateMemberConfig, ProviderKeyConfig, ProviderModelConfig};
 
@@ -6951,18 +8003,17 @@ async fn openai_responses_from_anthropic_provider_emits_function_call_items() {
         .expect("decode non-stream responses response");
 
     assert_eq!(
-        response["output"][0]["content"][0]["type"].as_str(),
+        response["output"][0]["type"].as_str(),
         Some("function_call")
     );
+    assert_eq!(response["output"][0]["call_id"].as_str(), Some("tool_1"));
     assert_eq!(
-        response["output"][0]["content"][0]["call_id"].as_str(),
-        Some("tool_1")
-    );
-    assert_eq!(
-        response["output"][0]["content"][0]["arguments"].as_str(),
+        response["output"][0]["arguments"].as_str(),
         Some("{\"city\":\"Paris\"}")
     );
-    assert_eq!(response["status"].as_str(), Some("requires_action"));
+    assert_eq!(response["output"][0]["status"].as_str(), Some("completed"));
+    assert!(response["output"][0].get("content").is_none());
+    assert_eq!(response["status"].as_str(), Some("completed"));
 
     gateway_handle.abort();
     upstream_handle.abort();

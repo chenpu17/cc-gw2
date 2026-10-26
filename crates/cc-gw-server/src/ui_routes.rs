@@ -19,7 +19,10 @@ pub(super) fn legacy_redirect(location: &str) -> Response {
 }
 
 pub(super) async fn health() -> Json<serde_json::Value> {
-    Json(json!({ "status": "ok" }))
+    Json(json!({
+        "status": "ok",
+        "version": env!("CARGO_PKG_VERSION")
+    }))
 }
 
 pub(super) async fn robots_txt() -> Response {

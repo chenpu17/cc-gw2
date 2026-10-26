@@ -325,7 +325,7 @@ export function useDashboardPageState() {
   const buildModelBarOption = useCallback(
     (
       label: string,
-      pick: (item: ModelUsageMetric) => number,
+      pick: (item: ModelUsageMetric) => number | null,
       color: string
     ): EChartOption => ({
       ...chart.base,
@@ -358,12 +358,12 @@ export function useDashboardPageState() {
   )
 
   const ttftOption = useMemo<EChartOption>(
-    () => buildModelBarOption(t('dashboard.charts.ttftAxis'), (item) => item.avgTtftMs ?? 0, chart.palette[2]),
+    () => buildModelBarOption(t('dashboard.charts.ttftAxis'), (item) => item.avgTtftMs ?? null, chart.palette[2]),
     [buildModelBarOption, chart, t]
   )
 
   const tpotOption = useMemo<EChartOption>(
-    () => buildModelBarOption(t('dashboard.charts.tpotAxis'), (item) => item.avgTpotMs ?? 0, chart.palette[4]),
+    () => buildModelBarOption(t('dashboard.charts.tpotAxis'), (item) => item.avgTpotMs ?? null, chart.palette[4]),
     [buildModelBarOption, chart, t]
   )
 

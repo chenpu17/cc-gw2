@@ -21,6 +21,7 @@ interface ConfirmDialogProps {
   cancelLabel: ReactNode
   onConfirm: () => void | Promise<void>
   loading?: boolean
+  confirmDisabled?: boolean
   confirmVariant?: 'default' | 'destructive'
   children?: ReactNode
 }
@@ -34,6 +35,7 @@ export function ConfirmDialog({
   cancelLabel,
   onConfirm,
   loading = false,
+  confirmDisabled = false,
   confirmVariant = 'destructive',
   children
 }: ConfirmDialogProps) {
@@ -51,7 +53,7 @@ export function ConfirmDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             {cancelLabel}
           </Button>
-          <Button variant={confirmVariant} onClick={() => void onConfirm()} disabled={loading}>
+          <Button variant={confirmVariant} onClick={() => void onConfirm()} disabled={loading || confirmDisabled}>
             {confirmLabel}
           </Button>
         </AppDialogFooter>

@@ -29,6 +29,11 @@ export interface RecordedStubRequest {
   authorization: string | null
   xApiKey: string | null
   model: string | null
+  /** `stream` from the JSON body; null for GETs and unparseable bodies. */
+  stream: boolean | null
+  /** Tool names from the JSON body (`function.name` or bare `name`); null when
+   * the request had no tools array. */
+  toolNames: string[] | null
 }
 
 export interface GatewayHarnessOptions {
@@ -45,6 +50,12 @@ export interface GatewayHarnessOptions {
    * `secondary` provider. Combined with `aggregate`, also adds `agg-cross-model`
    * whose member chain spans both providers — for cross-provider failover e2e. */
   secondaryUpstream?: boolean
+  /** Version the stub registry advertises as `dist-tags.latest`. Defaults to the
+   * root package version (i.e. no update available). */
+  registryVersion?: string
+  /** Adds `anthropic` and `openai-responses` providers backed by the same stub,
+   * for protocol-conversion e2e (marker-driven upstream fixtures above). */
+  protocolFixtures?: boolean
 }
 
 function resolveBuiltServerBinary(): string | null {
@@ -88,17 +99,19 @@ function recordGet(req: http.IncomingMessage): RecordedStubRequest {
     authorization: (req.headers.authorization as string | undefined) ?? null,
     xApiKey: (req.headers['x-api-key'] as string | undefined) ?? null,
     model: null,
+    stream: null,
+    toolNames: null,
   }
 }
 
 async function startStubProvider(
   port: number,
-  options: { marker?: string } = {}
+  options: { marker?: string; registryVersion?: string } = {}
 ): Promise<{ server: http.Server; requests: RecordedStubRequest[] }> {
   const marker = options.marker ?? 'Stub'
   const requests: RecordedStubRequest[] = []
   const rootPackage = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as { version?: string }
-  const currentVersion = rootPackage.version ?? '0.0.0'
+  const currentVersion = options.registryVersion ?? rootPackage.version ?? '0.0.0'
   const server = http.createServer((req, res) => {
     // Test-introspection route: dump what the stub has received so far.
     if (req.method === 'GET' && req.url === '/__test/requests') {
@@ -160,19 +173,52 @@ async function startStubProvider(
         authorization: (req.headers.authorization as string | undefined) ?? null,
         xApiKey: (req.headers['x-api-key'] as string | undefined) ?? null,
         model: typeof body?.model === 'string' ? body.model : null,
+        stream: typeof body?.stream === 'boolean' ? body.stream : null,
+        toolNames: Array.isArray(body?.tools)
+          ? body.tools
+              .map((tool: any) => tool?.function?.name ?? tool?.name)
+              .filter((name: any) => typeof name === 'string')
+          : null,
       })
 
       if (req.url === '/v1/messages') {
+        const rawMessages = JSON.stringify(body.messages ?? '')
+
         // Minimal Anthropic Messages surface (native anthropic-endpoint legs).
         if (body.stream === true) {
-          const events: Array<[string, Record<string, unknown>]> = [
-            ['message_start', { type: 'message_start', message: { id: 'msg_stub', type: 'message', role: 'assistant', model: body.model ?? 'stub-model', content: [], usage: { input_tokens: 9, output_tokens: 1 } } }],
-            ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
-            ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: `${marker} anthropic stream` } }],
-            ['content_block_stop', { type: 'content_block_stop', index: 0 }],
-            ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 4 } }],
-            ['message_stop', { type: 'message_stop' }],
-          ]
+          // Protocol-conversion fixture: an empty text block followed by
+          // interleaved thinking/text blocks, incl. two text blocks across one
+          // message. Exercises per-block Responses item mapping and the
+          // materialized (non-stream-via-stream) path.
+          const events: Array<[string, Record<string, unknown>]> = rawMessages.includes('e2e-multi-block')
+            ? [
+                ['message_start', { type: 'message_start', message: { id: 'msg_multiblock', type: 'message', role: 'assistant', model: body.model ?? 'stub-model', content: [], usage: { input_tokens: 11, output_tokens: 1 } } }],
+                ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
+                ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+                ['content_block_start', { type: 'content_block_start', index: 1, content_block: { type: 'thinking', thinking: '' } }],
+                ['content_block_delta', { type: 'content_block_delta', index: 1, delta: { type: 'thinking_delta', thinking: 'plan-a' } }],
+                ['content_block_stop', { type: 'content_block_stop', index: 1 }],
+                ['content_block_start', { type: 'content_block_start', index: 2, content_block: { type: 'text', text: '' } }],
+                ['content_block_delta', { type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: 'hello ' } }],
+                ['content_block_delta', { type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: 'world' } }],
+                ['content_block_stop', { type: 'content_block_stop', index: 2 }],
+                ['content_block_start', { type: 'content_block_start', index: 3, content_block: { type: 'thinking', thinking: '' } }],
+                ['content_block_delta', { type: 'content_block_delta', index: 3, delta: { type: 'thinking_delta', thinking: 'plan-b' } }],
+                ['content_block_stop', { type: 'content_block_stop', index: 3 }],
+                ['content_block_start', { type: 'content_block_start', index: 4, content_block: { type: 'text', text: '' } }],
+                ['content_block_delta', { type: 'content_block_delta', index: 4, delta: { type: 'text_delta', text: 'again' } }],
+                ['content_block_stop', { type: 'content_block_stop', index: 4 }],
+                ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 8 } }],
+                ['message_stop', { type: 'message_stop' }],
+              ]
+            : [
+                ['message_start', { type: 'message_start', message: { id: 'msg_stub', type: 'message', role: 'assistant', model: body.model ?? 'stub-model', content: [], usage: { input_tokens: 9, output_tokens: 1 } } }],
+                ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
+                ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: `${marker} anthropic stream` } }],
+                ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+                ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 4 } }],
+                ['message_stop', { type: 'message_stop' }],
+              ]
           res.writeHead(200, { 'content-type': 'text/event-stream' })
           for (const [event, payload] of events) {
             res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
@@ -237,7 +283,34 @@ async function startStubProvider(
           return
         }
 
-        const omitUsage = JSON.stringify(body.messages ?? '').includes('no-usage')
+        const rawMessages = JSON.stringify(body.messages ?? '')
+        // Protocol-conversion fixture: deprecated single `function_call`, a
+        // separate `refusal` field, and `reasoning_content` — all in one
+        // non-stream completion. Anthropic clients must see each exactly once.
+        if (rawMessages.includes('e2e-chat-legacy-refusal')) {
+          res.writeHead(200, { 'content-type': 'application/json' })
+          res.end(JSON.stringify({
+            id: 'chatcmpl_legacy',
+            object: 'chat.completion',
+            created: 1700000000,
+            model: body.model ?? 'stub-model',
+            choices: [{
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: null,
+                reasoning_content: 'legacy plan',
+                refusal: 'I cannot help with that.',
+                function_call: { id: 'call_legacy', name: 'lookup', arguments: '{"q":"x"}' },
+              },
+              finish_reason: 'stop',
+            }],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          }))
+          return
+        }
+
+        const omitUsage = rawMessages.includes('no-usage')
         const completion: Record<string, unknown> = {
           id: 'chatcmpl_stub',
           object: 'chat.completion',
@@ -261,11 +334,161 @@ async function startStubProvider(
       }
 
       if (req.url === '/v1/responses') {
+        const rawBody = JSON.stringify(body)
+        const model = body.model ?? 'stub-model'
+
+        if (body.stream === true) {
+          const created = { id: 'resp_e2e', object: 'response', created_at: 1700000000, model, status: 'in_progress' }
+          res.writeHead(200, { 'content-type': 'text/event-stream' })
+
+          if (rawBody.includes('e2e-responses-multi-item')) {
+            // Two reasoning/message pairs streamed as distinct Responses items.
+            // The Anthropic conversion must keep one content block per item and
+            // must not replay streamed text from `output_item.done`.
+            const itemSources = [
+              { id: 'rs_1', type: 'reasoning' },
+              { id: 'msg_1', type: 'message' },
+              { id: 'rs_2', type: 'reasoning' },
+              { id: 'msg_2', type: 'message' },
+            ]
+            res.write(`data: ${JSON.stringify({ type: 'response.created', response: created })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'response.output_item.added', output_index: 0, item: itemSources[0] })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'response.reasoning_summary_text.delta', item_id: 'rs_1', output_index: 0, delta: 'plan' })}\n\n`)
+            res.write(`data: ${JSON.stringify({
+              type: 'response.output_item.done',
+              output_index: 0,
+              item: { id: 'rs_1', type: 'reasoning', summary: [{ type: 'summary_text', text: 'plan' }] },
+            })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'response.output_item.added', output_index: 1, item: itemSources[1] })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'response.output_text.delta', item_id: 'msg_1', output_index: 1, delta: 'hello ' })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'response.output_text.delta', item_id: 'msg_1', output_index: 1, delta: 'world' })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'response.output_text.done', item_id: 'msg_1', output_index: 1, text: 'hello world' })}\n\n`)
+            res.write(`data: ${JSON.stringify({
+              type: 'response.output_item.done',
+              output_index: 1,
+              item: { id: 'msg_1', type: 'message', content: [{ type: 'output_text', text: 'hello world' }] },
+            })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'response.reasoning_summary_text.delta', item_id: 'rs_2', output_index: 2, delta: 'again' })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'response.output_text.delta', item_id: 'msg_2', output_index: 3, delta: 'again' })}\n\n`)
+            res.write(`data: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                ...created,
+                status: 'completed',
+                output: [
+                  { id: 'rs_1', type: 'reasoning', summary: [{ type: 'summary_text', text: 'plan' }] },
+                  { id: 'msg_1', type: 'message', content: [{ type: 'output_text', text: 'hello world' }] },
+                  { id: 'rs_2', type: 'reasoning', summary: [{ type: 'summary_text', text: 'again' }] },
+                  { id: 'msg_2', type: 'message', content: [{ type: 'output_text', text: 'again' }] },
+                ],
+                usage: { input_tokens: 6, output_tokens: 4, total_tokens: 10 },
+              },
+            })}\n\n`)
+            res.end('data: [DONE]\n\n')
+            return
+          }
+
+          if (rawBody.includes('e2e-responses-terminal-refusal')) {
+            // Refusal appears only in the terminal output — no refusal delta.
+            // The Anthropic conversion must still synthesize visible text and
+            // a `refusal` stop reason from the completed snapshot.
+            res.write(`data: ${JSON.stringify({ type: 'response.created', response: created })}\n\n`)
+            res.write(`data: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                ...created,
+                status: 'completed',
+                output: [{
+                  id: 'msg_terminal',
+                  type: 'message',
+                  role: 'assistant',
+                  content: [{ type: 'refusal', refusal: 'Terminal refusal' }],
+                }],
+                usage: { input_tokens: 7, output_tokens: 2, total_tokens: 9 },
+              },
+            })}\n\n`)
+            res.end('data: [DONE]\n\n')
+            return
+          }
+
+          if (rawBody.includes('e2e-responses-refusal')) {
+            res.write(`data: ${JSON.stringify({ type: 'response.created', response: created })}\n\n`)
+            res.write(`data: ${JSON.stringify({
+              type: 'response.refusal.delta',
+              item_id: 'msg_refusal',
+              output_index: 0,
+              content_index: 0,
+              delta: 'I cannot',
+            })}\n\n`)
+            res.write(`data: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                ...created,
+                status: 'completed',
+                output: [{
+                  id: 'msg_refusal',
+                  type: 'message',
+                  role: 'assistant',
+                  content: [{ type: 'refusal', refusal: 'I cannot' }],
+                }],
+                usage: { input_tokens: 7, output_tokens: 2, total_tokens: 9 },
+              },
+            })}\n\n`)
+            res.end('data: [DONE]\n\n')
+            return
+          }
+
+          res.write(`data: ${JSON.stringify({ type: 'response.created', response: created })}\n\n`)
+          res.write(`data: ${JSON.stringify({
+            type: 'response.output_text.delta',
+            item_id: 'msg_stub',
+            output_index: 0,
+            content_index: 0,
+            delta: 'Stub responses stream',
+          })}\n\n`)
+          res.write(`data: ${JSON.stringify({
+            type: 'response.completed',
+            response: {
+              ...created,
+              status: 'completed',
+              output: [{
+                id: 'msg_stub',
+                type: 'message',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: 'Stub responses stream', annotations: [] }],
+              }],
+              usage: { input_tokens: 8, output_tokens: 3, total_tokens: 11 },
+            },
+          })}\n\n`)
+          res.end('data: [DONE]\n\n')
+          return
+        }
+
+        if (rawBody.includes('e2e-responses-nonstream-refusal')) {
+          res.writeHead(200, { 'content-type': 'application/json' })
+          res.end(JSON.stringify({
+            id: 'resp_refusal',
+            object: 'response',
+            created_at: 1700000000,
+            model,
+            status: 'completed',
+            output: [{
+              id: 'msg_refusal',
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'refusal', refusal: 'No.' }],
+            }],
+            usage: { input_tokens: 7, output_tokens: 1, total_tokens: 8 },
+          }))
+          return
+        }
+
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({
           id: 'resp_stub',
           object: 'response',
-          model: body.model ?? 'stub-model',
+          created_at: 1700000000,
+          model,
           status: 'completed',
           output: [{
             id: 'out_1',
@@ -348,6 +571,29 @@ function writeConfig(
       apiKey: 'stub-key',
       defaultModel: 'stub-model-secondary',
       models: [{ id: 'stub-model-secondary', label: 'Secondary Model' }],
+    })
+  }
+  if (options.protocolFixtures) {
+    providers.push({
+      id: 'anthropic-upstream',
+      label: 'Anthropic Upstream',
+      type: 'anthropic',
+      baseUrl: `http://127.0.0.1:${stubPort}`,
+      apiKey: 'stub-key',
+      defaultModel: 'anthropic-model',
+      models: [
+        { id: 'anthropic-model', label: 'Anthropic Model' },
+        { id: 'anthropic-materialized', label: 'Anthropic Materialized', nonStreamViaStream: true },
+      ],
+    })
+    providers.push({
+      id: 'responses-upstream',
+      label: 'Responses Upstream',
+      type: 'openai-responses',
+      baseUrl: `http://127.0.0.1:${stubPort}`,
+      apiKey: 'stub-key',
+      defaultModel: 'responses-model',
+      models: [{ id: 'responses-model', label: 'Responses Model' }],
     })
   }
   if (options.aggregate) {
@@ -489,7 +735,9 @@ export function createGatewayHarness(options: GatewayHarnessOptions = {}): Gatew
       harness.stubPort = await findFreePort()
       harness.gatewayPort = await findFreePort()
       harness.tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-gw-web-e2e-'))
-      const stub = await startStubProvider(harness.stubPort)
+      const stub = await startStubProvider(harness.stubPort, {
+        registryVersion: options.registryVersion,
+      })
       harness.stubServer = stub.server
       stubRequestLog = stub.requests
       if (options.secondaryUpstream) {

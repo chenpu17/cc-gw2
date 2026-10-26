@@ -59,5 +59,23 @@ jobs:
       - name: Smoke test CLI
         run: pnpm smoke:cli
 
+      - name: Test CLI upgrade engine
+        run: pnpm test:cli-upgrade
+
       - name: Verify npm pack contents
         run: pnpm pack:dry-run
+
+  # The self-upgrade path has Windows-only process handling (detached helpers,
+  # stop-before-install). Build it and run the server tests on the same runner
+  # the release pipeline uses, instead of discovering breakage at release time.
+  windows-rust:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Rust tests
+        run: cargo test -p cc-gw-server

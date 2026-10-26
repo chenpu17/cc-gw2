@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Command } from 'commander'
+import { Command, Option } from 'commander'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import { promises as fsp } from 'node:fs'
@@ -9,10 +9,16 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { green, yellow } from 'colorette'
+import {
+  detectInstallContext,
+  runManualUpgrade,
+  runServerUpgrade
+} from './upgrade'
 
 const program = new Command()
 
 const DEFAULT_PORT = 4100
+const CLI_ENTRY = fileURLToPath(import.meta.url)
 
 function resolveHomeDir(): string {
   const override = process.env.CC_GW_HOME?.trim()
@@ -30,9 +36,9 @@ function resolvePackageVersion(): string {
   const __filename = fileURLToPath(import.meta.url)
   const __dirname = path.dirname(__filename)
   const candidates = [
+    path.resolve(__dirname, '../../../package.json'),
     path.resolve(__dirname, '../../package.json'),
-    path.resolve(__dirname, '../package.json'),
-    path.resolve(__dirname, '../../../package.json')
+    path.resolve(__dirname, '../package.json')
   ]
   for (const candidate of candidates) {
     try {
@@ -308,6 +314,15 @@ async function handleStart(options: { daemon?: boolean; port?: string; foregroun
   const env = { ...process.env }
   env.CC_GW_HOME = env.CC_GW_HOME || HOME_DIR
 
+  // Lets the running server expose a one-click upgrade and spawn this CLI as
+  // an external upgrade helper (the server cannot restart itself).
+  const installContext = detectInstallContext(CLI_ENTRY)
+  env.CC_GW_CLI_PATH = CLI_ENTRY
+  env.CC_GW_NODE_BIN = process.execPath
+  env.CC_GW_SERVICE_MODE = options.foreground ? 'foreground' : 'daemon'
+  env.CC_GW_INSTALL_METHOD = installContext.method
+  env.CC_GW_INSTALL_WRITABLE = installContext.writable ? '1' : '0'
+
   if (options.port) {
     env.PORT = options.port
   }
@@ -475,6 +490,76 @@ program
   .description('查看 cc-gw 运行状态')
   .action(async () => {
     await handleStatus()
+  })
+
+program
+  .command('upgrade')
+  .description('升级 cc-gw（从 npm registry 安装新版本并重启服务）')
+  .option('--target <version>', '指定目标版本（默认按当前发布通道取最新版）')
+  .option('--check', '只检查是否有新版本，不执行升级')
+  .option('--yes', '跳过交互确认')
+  .option('--no-restart', '只安装新版本，不重启正在运行的服务')
+  .option('--no-rollback', '升级失败时不自动回滚到旧版本')
+  .addOption(new Option('--from-server', '由网关服务端调用（内部使用）').hideHelp())
+  .addOption(new Option('--state-file <path>', '升级状态文件路径').hideHelp())
+  .addOption(new Option('--log-file <path>', '升级日志文件路径').hideHelp())
+  .addOption(new Option('--id <id>', '升级任务 id').hideHelp())
+  .addOption(new Option('--home <dir>', 'cc-gw 数据目录').hideHelp())
+  .addOption(new Option('--from-version <version>', '升级前版本').hideHelp())
+  .addOption(new Option('--server-pid <pid>', '网关进程 PID').hideHelp())
+  .addOption(new Option('--port <port>', '网关监听端口').hideHelp())
+  .addOption(new Option('--protocol <protocol>', '健康检查协议（http/https）').hideHelp())
+  .action(async (options) => {
+    try {
+      const homeDir = options.home ? path.resolve(options.home) : HOME_DIR
+      if (options.fromServer) {
+        if (!options.target || !options.fromVersion || !options.stateFile) {
+          throw new Error('--from-server 需要 --target、--from-version 与 --state-file')
+        }
+        const serverPid = Number.parseInt(String(options.serverPid ?? ''), 10)
+        const port = Number.parseInt(String(options.port ?? ''), 10)
+        const protocol =
+          options.protocol === 'http' || options.protocol === 'https'
+            ? options.protocol
+            : undefined
+        process.exitCode = await runServerUpgrade({
+          cliPath: CLI_ENTRY,
+          nodeBin: process.execPath,
+          homeDir,
+          packageName: process.env.CC_GW_VERSION_CHECK_PACKAGE_NAME,
+          currentVersion: options.fromVersion,
+          targetVersion: options.target,
+          fromVersion: options.fromVersion,
+          id: options.id ?? `${Date.now()}-${process.pid}`,
+          stateFile: path.resolve(options.stateFile),
+          logFile: options.logFile
+            ? path.resolve(options.logFile)
+            : path.join(homeDir, 'logs', 'upgrade.log'),
+          restart: options.restart !== false,
+          rollback: options.rollback !== false,
+          serverPid: Number.isFinite(serverPid) ? serverPid : undefined,
+          port: Number.isFinite(port) ? port : undefined,
+          protocol
+        })
+        return
+      }
+
+      process.exitCode = await runManualUpgrade({
+        cliPath: CLI_ENTRY,
+        nodeBin: process.execPath,
+        homeDir,
+        packageName: process.env.CC_GW_VERSION_CHECK_PACKAGE_NAME,
+        currentVersion: CLI_VERSION,
+        targetVersion: options.target,
+        checkOnly: Boolean(options.check),
+        assumeYes: Boolean(options.yes),
+        restart: options.restart !== false,
+        rollback: options.rollback !== false
+      })
+    } catch (err) {
+      console.error((err as Error).message)
+      process.exitCode = 1
+    }
   })
 
 program.parseAsync(process.argv)

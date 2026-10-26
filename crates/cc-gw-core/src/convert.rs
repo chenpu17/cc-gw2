@@ -24,6 +24,16 @@ fn openai_cache_usage(usage: &Value) -> (Option<i64>, Option<i64>, i64) {
     (cache_read_tokens, cache_creation_tokens, cached_tokens)
 }
 
+fn json_string_or(value: Option<&Value>, fallback: &str) -> Value {
+    // `unwrap_or` on a cloned `Value::Null` keeps the null; tool_call ids are
+    // frequently present-but-null on the wire, which Anthropic clients reject.
+    value
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(|value| Value::String(value.to_string()))
+        .unwrap_or_else(|| Value::String(fallback.to_string()))
+}
+
 fn anthropic_cache_usage(usage: &Value) -> (i64, i64, i64, i64) {
     let input_tokens = usage
         .get("input_tokens")
@@ -589,6 +599,80 @@ fn anthropic_thinking_to_openai_reasoning(value: Option<&Value>) -> Option<Value
     None
 }
 
+/// Map an OpenAI Chat/Responses reasoning request onto Anthropic's `thinking`
+/// config. Anthropic requires `budget_tokens` on an `enabled` thinking block,
+/// so an unqualified `{ "type": "enabled" }` is rejected upstream. Explicit
+/// Anthropic-style `budget_tokens` wins; otherwise `reasoning_effort` /
+/// `reasoning.effort` select a budget. `none`/`off` disable thinking.
+fn openai_request_to_anthropic_thinking(body: &Value, max_tokens: Option<i64>) -> Option<Value> {
+    let explicit = body.get("thinking");
+    if let Some(thinking) = explicit {
+        match thinking {
+            Value::Bool(false) | Value::Null => return None,
+            Value::String(value)
+                if matches!(
+                    value.to_ascii_lowercase().as_str(),
+                    "disabled" | "off" | "none"
+                ) =>
+            {
+                return None;
+            }
+            Value::Object(map) => {
+                let kind = map.get("type").and_then(Value::as_str);
+                if matches!(kind, Some("disabled") | Some("off"))
+                    || map.get("enabled") == Some(&Value::Bool(false))
+                {
+                    return None;
+                }
+                if let Some(budget) = map
+                    .get("budget_tokens")
+                    .and_then(Value::as_i64)
+                    .filter(|budget| *budget > 0)
+                {
+                    return clamp_anthropic_thinking_budget(budget, max_tokens);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let effort = body
+        .get("reasoning_effort")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            body.get("reasoning")
+                .and_then(|reasoning| reasoning.get("effort"))
+                .and_then(Value::as_str)
+        })
+        .map(|effort| effort.to_ascii_lowercase());
+    if matches!(effort.as_deref(), Some("none" | "off" | "disabled")) {
+        return None;
+    }
+
+    let requested = effort.is_some() || explicit.is_some() || body.get("reasoning").is_some();
+    if !requested {
+        return None;
+    }
+
+    let budget = match effort.as_deref() {
+        Some("minimal" | "low") => 1024,
+        Some("high" | "xhigh") => 4096,
+        _ => 2048,
+    };
+    clamp_anthropic_thinking_budget(budget, max_tokens)
+}
+
+fn clamp_anthropic_thinking_budget(budget: i64, max_tokens: Option<i64>) -> Option<Value> {
+    // Anthropic requires `budget_tokens` to be at least 1024 and smaller than
+    // `max_tokens`; otherwise the whole request is rejected.
+    let max_tokens = max_tokens.unwrap_or(4096);
+    let budget = budget.min(max_tokens.saturating_sub(1));
+    if budget < 1024 {
+        return None;
+    }
+    Some(json!({ "type": "enabled", "budget_tokens": budget }))
+}
+
 fn openai_reasoning_item_from_anthropic_block(block: &Value, index: usize) -> Option<Value> {
     let text = anthropic_reasoning_text(block)?;
     if text.trim().is_empty() {
@@ -698,8 +782,21 @@ pub fn anthropic_error_to_openai(body: &Value) -> Value {
     })
 }
 
-fn anthropic_tool_choice_to_openai(value: Option<&Value>) -> Option<Value> {
+fn anthropic_tool_choice_to_openai(
+    anthropic_tools: Option<&Value>,
+    converted_tools: Option<&Value>,
+    value: Option<&Value>,
+) -> Option<Value> {
     let tool_choice = value?;
+    // If the request declared tools but every one was dropped (all were
+    // Anthropic server tools), there is nothing left to choose between.
+    if converted_tools.is_none()
+        && anthropic_tools
+            .and_then(Value::as_array)
+            .is_some_and(|tools| !tools.is_empty())
+    {
+        return None;
+    }
     match tool_choice {
         Value::String(raw) => match raw.trim().to_ascii_lowercase().as_str() {
             "auto" => Some(Value::String("auto".to_string())),
@@ -718,17 +815,25 @@ fn anthropic_tool_choice_to_openai(value: Option<&Value>) -> Option<Value> {
                 "auto" => Some(Value::String("auto".to_string())),
                 "none" => Some(Value::String("none".to_string())),
                 "required" | "any" => Some(Value::String("required".to_string())),
-                "tool" => map
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|name| !name.is_empty())
-                    .map(|name| {
-                        json!({
+                "tool" => {
+                    let name = map
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|name| !name.is_empty())?;
+                    // The forced tool may be an Anthropic server tool that the
+                    // OpenAI conversion drops; referencing it would make the
+                    // upstream reject the request. With no function tools left,
+                    // omit tool_choice entirely.
+                    if is_dropped_anthropic_server_tool(anthropic_tools, name) {
+                        converted_tools.map(|_| Value::String("auto".to_string()))
+                    } else {
+                        Some(json!({
                             "type": "function",
                             "function": { "name": name }
-                        })
-                    }),
+                        }))
+                    }
+                }
                 _ => None,
             }
         }
@@ -796,6 +901,57 @@ fn openai_tool_choice_to_anthropic(
     Some(apply_parallel_flag(tool_choice))
 }
 
+/// Anthropic built-in server tools (`web_search_20250305`, `web_fetch_…`,
+/// `code_execution_…`, …) are executed by Anthropic's API, not by the client.
+/// They carry no `input_schema`, so they cannot be forwarded to an OpenAI-wire
+/// upstream as function tools: strict providers reject an empty `parameters`
+/// ("must be a JSON Schema of type object") — and even a synthesized schema
+/// could not be executed upstream.
+fn is_anthropic_server_tool(tool: &Value) -> bool {
+    let Some(object) = tool.as_object() else {
+        return false;
+    };
+    // Client-side (custom) tools always carry a schema object. A null or
+    // non-object `input_schema` alongside a date-versioned type is still a
+    // server tool, not something an OpenAI upstream can execute.
+    if object.get("input_schema").is_some_and(Value::is_object) {
+        return false;
+    }
+    match object.get("type").and_then(Value::as_str) {
+        None | Some("custom") => false,
+        Some(kind) => kind.rsplit_once('_').is_some_and(|(_, suffix)| {
+            suffix.len() == 8 && suffix.bytes().all(|byte| byte.is_ascii_digit())
+        }),
+    }
+}
+
+fn is_dropped_anthropic_server_tool(tools: Option<&Value>, name: &str) -> bool {
+    tools
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|tool| {
+            is_anthropic_server_tool(tool) && tool.get("name").and_then(Value::as_str) == Some(name)
+        })
+}
+
+/// OpenAI requires `function.parameters` to be a JSON Schema object; absent or
+/// empty schemas are rejected by strict upstreams. Default to an object schema
+/// and fill in the required `type`/`properties` when the caller omitted them.
+fn openai_tool_parameters(schema: Option<&Value>) -> Value {
+    match schema {
+        Some(Value::Object(map)) => {
+            let mut map = map.clone();
+            map.entry("type")
+                .or_insert_with(|| Value::String("object".to_string()));
+            map.entry("properties")
+                .or_insert_with(|| Value::Object(Map::new()));
+            Value::Object(map)
+        }
+        _ => json!({ "type": "object", "properties": {} }),
+    }
+}
+
 fn openai_tools_to_anthropic(value: Option<&Value>) -> Option<Value> {
     let tools = value?.as_array()?;
     let mapped = tools
@@ -803,12 +959,15 @@ fn openai_tools_to_anthropic(value: Option<&Value>) -> Option<Value> {
         .filter_map(|tool| {
             let object = tool.as_object()?;
             let function = object.get("function").unwrap_or(tool);
-            Some(json!({
+            let mut mapped = json!({
                 "type": "tool",
                 "name": function.get("name").and_then(Value::as_str).unwrap_or("tool"),
-                "description": function.get("description").cloned().unwrap_or(Value::Null),
-                "input_schema": function.get("parameters").cloned().unwrap_or_else(|| json!({}))
-            }))
+                "input_schema": openai_tool_parameters(function.get("parameters"))
+            });
+            if let Some(description) = function.get("description").and_then(Value::as_str) {
+                mapped["description"] = Value::String(description.to_string());
+            }
+            Some(mapped)
         })
         .collect::<Vec<_>>();
 
@@ -825,13 +984,32 @@ fn anthropic_tools_to_openai(value: Option<&Value>) -> Option<Value> {
         .iter()
         .filter_map(|tool| {
             let object = tool.as_object()?;
+            // Server-side tools have no OpenAI-wire equivalent.
+            if is_anthropic_server_tool(tool) {
+                return None;
+            }
+            let mut function = Map::new();
+            function.insert(
+                "name".to_string(),
+                object
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(|name| Value::String(name.to_string()))
+                    .unwrap_or_else(|| Value::String("tool".to_string())),
+            );
+            if let Some(description) = object.get("description").and_then(Value::as_str) {
+                function.insert(
+                    "description".to_string(),
+                    Value::String(description.to_string()),
+                );
+            }
+            function.insert(
+                "parameters".to_string(),
+                openai_tool_parameters(object.get("input_schema")),
+            );
             Some(json!({
                 "type": "function",
-                "function": {
-                    "name": object.get("name").and_then(Value::as_str).unwrap_or("tool"),
-                    "description": object.get("description").cloned().unwrap_or(Value::Null),
-                    "parameters": object.get("input_schema").cloned().unwrap_or_else(|| json!({}))
-                }
+                "function": Value::Object(function)
             }))
         })
         .collect::<Vec<_>>();
@@ -981,10 +1159,10 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
                         }
                         "tool_use" => {
                             tool_calls.push(json!({
-                                "id": block.get("id").cloned().unwrap_or(Value::String("tool_call".to_string())),
+                                "id": json_string_or(block.get("id"), "tool_call"),
                                 "type": "function",
                                 "function": {
-                                    "name": block.get("name").cloned().unwrap_or(Value::String("tool".to_string())),
+                                    "name": json_string_or(block.get("name"), "tool"),
                                     "arguments": serde_json::to_string(block.get("input").unwrap_or(&json!({}))).unwrap_or_else(|_| "{}".to_string())
                                 }
                             }));
@@ -1036,13 +1214,18 @@ pub fn anthropic_request_to_openai_chat(body: &Value) -> Value {
     if let Some(stream) = body.get("stream").cloned() {
         result.insert("stream".to_string(), stream);
     }
-    if let Some(tool_choice) = anthropic_tool_choice_to_openai(body.get("tool_choice")) {
+    let openai_tools = anthropic_tools_to_openai(body.get("tools"));
+    if let Some(tool_choice) = anthropic_tool_choice_to_openai(
+        body.get("tools"),
+        openai_tools.as_ref(),
+        body.get("tool_choice"),
+    ) {
         result.insert("tool_choice".to_string(), tool_choice);
     }
     if let Some(parallel_tool_calls) = anthropic_parallel_tool_calls(body.get("tool_choice")) {
         result.insert("parallel_tool_calls".to_string(), parallel_tool_calls);
     }
-    if let Some(tools) = anthropic_tools_to_openai(body.get("tools")) {
+    if let Some(tools) = openai_tools {
         result.insert("tools".to_string(), tools);
     }
     if let Some(stop) = body
@@ -1147,7 +1330,7 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
                     "role": "user",
                     "content": [{
                         "type": "tool_result",
-                        "tool_use_id": message.get("tool_call_id").cloned().unwrap_or(Value::String("tool_result".to_string())),
+                        "tool_use_id": json_string_or(message.get("tool_call_id"), "tool_result"),
                         "content": content
                     }]
                 }));
@@ -1189,8 +1372,8 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
                         .unwrap_or_else(|| json!({}));
                     blocks.push(json!({
                         "type": "tool_use",
-                        "id": tool_call.get("id").cloned().unwrap_or(Value::String("tool_call".to_string())),
-                        "name": tool_call.get("function").and_then(|value| value.get("name")).cloned().unwrap_or(Value::String("tool".to_string())),
+                        "id": json_string_or(tool_call.get("id"), "tool_call"),
+                        "name": json_string_or(tool_call.get("function").and_then(|value| value.get("name")), "tool"),
                         "input": arguments
                     }));
                 }
@@ -1243,6 +1426,7 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
         .or_else(|| body.get("max_completion_tokens").cloned())
         .or_else(|| body.get("max_tokens").cloned())
         .unwrap_or_else(|| Value::from(4096));
+    let max_tokens_limit = max_tokens.as_i64();
     result.insert("max_tokens".to_string(), max_tokens);
     if let Some(temperature) = body.get("temperature").cloned() {
         result.insert("temperature".to_string(), temperature);
@@ -1250,8 +1434,8 @@ pub fn openai_chat_request_to_anthropic(body: &Value) -> Value {
     if let Some(stream) = body.get("stream").cloned() {
         result.insert("stream".to_string(), stream);
     }
-    if body.get("reasoning").is_some() || body.get("thinking").is_some() {
-        result.insert("thinking".to_string(), json!({ "type": "enabled" }));
+    if let Some(thinking) = openai_request_to_anthropic_thinking(body, max_tokens_limit) {
+        result.insert("thinking".to_string(), thinking);
     }
     if let Some(metadata) = body.get("metadata").cloned() {
         result.insert("metadata".to_string(), metadata);
@@ -1278,6 +1462,17 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
     let mut system_parts = Vec::new();
     let mut messages = Vec::<Value>::new();
 
+    // The Responses API accepts a bare string as `input` in addition to the
+    // item array form; clients rely on it for single-turn prompts.
+    if let Some(Value::String(text)) = body.get("input") {
+        if !text.trim().is_empty() {
+            messages.push(json!({
+                "role": "user",
+                "content": [{ "type": "text", "text": text }]
+            }));
+        }
+    }
+
     for item in body
         .get("input")
         .and_then(Value::as_array)
@@ -1297,7 +1492,7 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
                 "role": "user",
                 "content": [{
                     "type": "tool_result",
-                    "tool_use_id": item.get("call_id").cloned().unwrap_or(Value::String("tool_result".to_string())),
+                    "tool_use_id": json_string_or(item.get("call_id"), "tool_result"),
                     "content": openai_function_output_to_anthropic_tool_result_content(item.get("output"))
                 }]
             }));
@@ -1314,8 +1509,8 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
                 "role": "assistant",
                 "content": [{
                     "type": "tool_use",
-                    "id": item.get("call_id").or_else(|| item.get("id")).cloned().unwrap_or(Value::String("tool_call".to_string())),
-                    "name": item.get("name").cloned().unwrap_or(Value::String("tool".to_string())),
+                    "id": json_string_or(item.get("call_id").or_else(|| item.get("id")), "tool_call"),
+                    "name": json_string_or(item.get("name"), "tool"),
                     "input": arguments
                 }]
             }));
@@ -1372,8 +1567,8 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
                     .unwrap_or_else(|| json!({}));
                 blocks.push(json!({
                     "type": "tool_use",
-                    "id": tool_call.get("id").cloned().unwrap_or(Value::String("tool_call".to_string())),
-                    "name": tool_call.get("function").and_then(|value| value.get("name")).cloned().unwrap_or(Value::String("tool".to_string())),
+                    "id": json_string_or(tool_call.get("id"), "tool_call"),
+                    "name": json_string_or(tool_call.get("function").and_then(|value| value.get("name")), "tool"),
                     "input": arguments
                 }));
             }
@@ -1433,6 +1628,7 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
         .or_else(|| body.get("max_completion_tokens").cloned())
         .or_else(|| body.get("max_tokens").cloned())
         .unwrap_or_else(|| Value::from(4096));
+    let max_tokens_limit = max_tokens.as_i64();
     result.insert("max_tokens".to_string(), max_tokens);
     if let Some(temperature) = body.get("temperature").cloned() {
         result.insert("temperature".to_string(), temperature);
@@ -1440,8 +1636,8 @@ pub fn openai_responses_request_to_anthropic(body: &Value) -> Value {
     if let Some(stream) = body.get("stream").cloned() {
         result.insert("stream".to_string(), stream);
     }
-    if body.get("reasoning").is_some() || body.get("thinking").is_some() {
-        result.insert("thinking".to_string(), json!({ "type": "enabled" }));
+    if let Some(thinking) = openai_request_to_anthropic_thinking(body, max_tokens_limit) {
+        result.insert("thinking".to_string(), thinking);
     }
     if let Some(metadata) = body.get("metadata").cloned() {
         result.insert("metadata".to_string(), metadata);
@@ -1518,7 +1714,7 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
                             }
                             input.push(json!({
                                 "type": "function_call_output",
-                                "call_id": block.get("tool_use_id").cloned().unwrap_or(Value::String("tool_result".to_string())),
+                                "call_id": json_string_or(block.get("tool_use_id"), "tool_result"),
                                 "output": text
                             }));
                             tool_result_attachments.extend(attachments);
@@ -1584,9 +1780,9 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
                                     .unwrap_or_else(|_| "{}".to_string());
                             input.push(json!({
                                 "type": "function_call",
-                                "id": block.get("id").cloned().unwrap_or(Value::String("call".to_string())),
-                                "call_id": block.get("id").cloned().unwrap_or(Value::String("call".to_string())),
-                                "name": block.get("name").cloned().unwrap_or(Value::String("tool".to_string())),
+                                "id": json_string_or(block.get("id"), "call"),
+                                "call_id": json_string_or(block.get("id"), "call"),
+                                "name": json_string_or(block.get("name"), "tool"),
                                 "arguments": arguments
                             }));
                         }
@@ -1631,11 +1827,16 @@ pub fn anthropic_request_to_openai_response(body: &Value) -> Value {
     if let Some(metadata) = body.get("metadata").cloned() {
         result.insert("metadata".to_string(), metadata);
     }
-    if let Some(tools) = anthropic_tools_to_openai(body.get("tools")) {
-        result.insert("tools".to_string(), tools);
-    }
-    if let Some(tool_choice) = anthropic_tool_choice_to_openai(body.get("tool_choice")) {
+    let openai_tools = anthropic_tools_to_openai(body.get("tools"));
+    if let Some(tool_choice) = anthropic_tool_choice_to_openai(
+        body.get("tools"),
+        openai_tools.as_ref(),
+        body.get("tool_choice"),
+    ) {
         result.insert("tool_choice".to_string(), tool_choice);
+    }
+    if let Some(tools) = openai_tools {
+        result.insert("tools".to_string(), tools);
     }
     if let Some(parallel_tool_calls) = anthropic_parallel_tool_calls(body.get("tool_choice")) {
         result.insert("parallel_tool_calls".to_string(), parallel_tool_calls);
@@ -1664,10 +1865,16 @@ fn infer_openai_chat_stop_reason(choice: &Value, message: &Value) -> &'static st
     let has_tool_calls = message
         .get("tool_calls")
         .and_then(Value::as_array)
-        .is_some_and(|tool_calls| !tool_calls.is_empty());
+        .is_some_and(|tool_calls| !tool_calls.is_empty())
+        || message.get("function_call").is_some();
+    let has_refusal = message
+        .get("refusal")
+        .map(extract_text)
+        .is_some_and(|text| !text.trim().is_empty());
 
     match mapped {
         Some(reason @ ("max_tokens" | "refusal")) => reason,
+        _ if has_refusal => "refusal",
         _ if has_tool_calls => "tool_use",
         Some(reason) => reason,
         None => "end_turn",
@@ -1685,9 +1892,11 @@ fn map_anthropic_stop_to_openai_chat(reason: Option<&str>) -> Option<&'static st
 }
 
 fn map_anthropic_stop_to_openai_status(reason: Option<&str>) -> &'static str {
+    // Tool calls are ordinary Responses output; `requires_action` is an
+    // Assistants Run state. Only a token-limit stop marks the response
+    // incomplete.
     match reason {
-        Some("tool_use") => "requires_action",
-        Some("max_tokens") | Some("stop_sequence") => "incomplete",
+        Some("max_tokens") => "incomplete",
         _ => "completed",
     }
 }
@@ -1747,21 +1956,41 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
             .get("content")
             .map(extract_text)
             .filter(|text| !text.trim().is_empty())
-            .or_else(|| message.get("refusal").map(extract_text))
             .unwrap_or_default();
         if !text.trim().is_empty() {
             content.push(json!({ "type": "text", "text": text }));
         }
     }
+    // Refusal is a separate field in Chat Completions; append it once (it is
+    // not part of `content`).
     if let Some(refusal) = message.get("refusal").map(extract_text) {
         if !refusal.trim().is_empty() {
             content.push(json!({ "type": "text", "text": refusal }));
         }
     }
-    if let Some(reasoning_content) = message.get("reasoning_content").and_then(Value::as_str) {
+    let reasoning_text = message
+        .get("reasoning_content")
+        .or_else(|| message.get("reasoning"))
+        .and_then(Value::as_str);
+    if let Some(reasoning_content) = reasoning_text {
         if !reasoning_content.trim().is_empty() {
             reasoning.push(reasoning_content.to_string());
         }
+    }
+    // Deprecated single-function shape still used by some compatible
+    // providers; `tool_calls` supersedes it.
+    if let Some(function_call) = message.get("function_call") {
+        let arguments = function_call
+            .get("arguments")
+            .and_then(Value::as_str)
+            .map(parse_tool_input_object)
+            .unwrap_or_else(|| json!({}));
+        content.push(json!({
+            "type": "tool_use",
+            "id": json_string_or(function_call.get("id"), "tool"),
+            "name": json_string_or(function_call.get("name"), "tool"),
+            "input": arguments
+        }));
     }
     for tool_call in message
         .get("tool_calls")
@@ -1777,8 +2006,8 @@ pub fn openai_chat_response_to_anthropic(body: &Value, model: &str) -> Value {
             .unwrap_or_else(|| json!({}));
         content.push(json!({
             "type": "tool_use",
-            "id": tool_call.get("id").cloned().unwrap_or(Value::String("tool".to_string())),
-            "name": tool_call.get("function").and_then(|value| value.get("name")).cloned().unwrap_or(Value::String("tool".to_string())),
+            "id": json_string_or(tool_call.get("id"), "tool"),
+            "name": json_string_or(tool_call.get("function").and_then(|value| value.get("name")), "tool"),
             "input": arguments
         }));
     }
@@ -1871,8 +2100,8 @@ pub fn openai_responses_response_to_anthropic(body: &Value, model: &str) -> Valu
                         };
                         content.push(json!({
                             "type": "tool_use",
-                            "id": block.get("id").or_else(|| block.get("call_id")).cloned().unwrap_or(Value::String("tool".to_string())),
-                            "name": block.get("name").cloned().unwrap_or(Value::String("tool".to_string())),
+                            "id": json_string_or(block.get("id").or_else(|| block.get("call_id")), "tool"),
+                            "name": json_string_or(block.get("name"), "tool"),
                             "input": input
                         }));
                     }
@@ -2010,10 +2239,10 @@ pub fn anthropic_response_to_openai_chat(body: &Value, model: &str) -> Value {
             }
             "tool_use" => {
                 tool_calls.push(json!({
-                    "id": block.get("id").cloned().unwrap_or(Value::String("call".to_string())),
+                    "id": json_string_or(block.get("id"), "call"),
                     "type": "function",
                     "function": {
-                        "name": block.get("name").cloned().unwrap_or(Value::String("tool".to_string())),
+                        "name": json_string_or(block.get("name"), "tool"),
                         "arguments": serde_json::to_string(block.get("input").unwrap_or(&json!({}))).unwrap_or_else(|_| "{}".to_string())
                     }
                 }));
@@ -2042,6 +2271,17 @@ pub fn anthropic_response_to_openai_chat(body: &Value, model: &str) -> Value {
 
     let (_, cache_read_tokens, _, total_input_tokens) = anthropic_cache_usage(&usage);
     let cached_tokens = cache_read_tokens;
+    let mut usage_value = json!({
+        "prompt_tokens": total_input_tokens,
+        "completion_tokens": usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
+        "total_tokens": total_input_tokens + usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
+        "cached_tokens": if cached_tokens > 0 { Some(cached_tokens) } else { None }
+    });
+    if cached_tokens > 0 {
+        // Standard OpenAI clients read prompt-cache hits from
+        // `prompt_tokens_details`; keep the flat field for older consumers.
+        usage_value["prompt_tokens_details"] = json!({ "cached_tokens": cached_tokens });
+    }
 
     json!({
         "id": body.get("id").and_then(Value::as_str).map(|id| id.replace("msg_", "chatcmpl_")).unwrap_or_else(|| "chatcmpl_generated".to_string()),
@@ -2053,52 +2293,80 @@ pub fn anthropic_response_to_openai_chat(body: &Value, model: &str) -> Value {
             "finish_reason": map_anthropic_stop_to_openai_chat(body.get("stop_reason").and_then(Value::as_str)),
             "message": Value::Object(message)
         }],
-        "usage": {
-            "prompt_tokens": total_input_tokens,
-            "completion_tokens": usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
-            "total_tokens": total_input_tokens + usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
-            "cached_tokens": if cached_tokens > 0 { Some(cached_tokens) } else { None }
-        }
+        "usage": usage_value
     })
 }
 
 pub fn anthropic_response_to_openai_response(body: &Value, model: &str) -> Value {
-    let mut output_content = Vec::<Value>::new();
+    let mut output = Vec::<Value>::new();
     let mut output_text = String::new();
-    let mut reasoning_content = Vec::<String>::new();
-    for block in body
+    let mut reasoning_content = String::new();
+    let response_item_id = body
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("msg_cc_gw")
+        .to_string();
+    let mut text_item_count = 0usize;
+    for (block_index, block) in body
         .get("content")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
+        .enumerate()
     {
         match block.get("type").and_then(Value::as_str).unwrap_or("") {
             "text" => {
                 let text = extract_text(block);
-                if !text.is_empty() {
-                    output_content.push(json!({
-                        "type": "output_text",
-                        "text": text
-                    }));
-                    if !output_text.is_empty() {
-                        output_text.push('\n');
-                    }
-                    output_text.push_str(&text);
+                if text.is_empty() {
+                    continue;
                 }
+                // Keep one Responses message item per Anthropic text block and
+                // preserve the upstream block order; merging blocks here made
+                // the non-stream shape diverge from the streamed one.
+                let item_id = if text_item_count == 0 {
+                    response_item_id.clone()
+                } else {
+                    format!("{response_item_id}_text{block_index}")
+                };
+                text_item_count += 1;
+                output.push(json!({
+                    "id": item_id,
+                    "type": "message",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [{
+                        "type": "output_text",
+                        "text": text,
+                        "annotations": []
+                    }]
+                }));
+                output_text.push_str(&text);
             }
             "thinking" | "redacted_thinking" => {
+                if let Some(item) = openai_reasoning_item_from_anthropic_block(block, block_index) {
+                    output.push(item);
+                }
                 if let Some(text) = anthropic_reasoning_text(block) {
-                    reasoning_content.push(text);
+                    reasoning_content.push_str(&text);
                 }
             }
             "tool_use" => {
                 let arguments = serde_json::to_string(block.get("input").unwrap_or(&json!({})))
                     .unwrap_or_else(|_| "{}".to_string());
-                output_content.push(json!({
+                let call_id = block
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("call")
+                    .to_string();
+                // Responses models emit each function call as its own output
+                // item; nesting it inside a message's content hides it from
+                // standard clients.
+                output.push(json!({
+                    "id": call_id,
                     "type": "function_call",
-                    "id": block.get("id").cloned().unwrap_or(Value::String("tool".to_string())),
-                    "call_id": block.get("id").cloned().unwrap_or(Value::String("tool".to_string())),
-                    "name": block.get("name").cloned().unwrap_or(Value::String("tool".to_string())),
+                    "status": "completed",
+                    "call_id": call_id,
+                    "name": json_string_or(block.get("name"), "tool"),
                     "arguments": arguments
                 }));
             }
@@ -2109,19 +2377,34 @@ pub fn anthropic_response_to_openai_response(body: &Value, model: &str) -> Value
     let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));
     let (_, cache_read_tokens, _, total_input_tokens) = anthropic_cache_usage(&usage);
     let cached_tokens = cache_read_tokens;
+    let stop_reason = body.get("stop_reason").and_then(Value::as_str);
+    let status = map_anthropic_stop_to_openai_status(stop_reason);
+    let mut usage_value = json!({
+        "input_tokens": total_input_tokens,
+        "output_tokens": usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
+        "total_tokens": total_input_tokens + usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
+        "prompt_tokens": total_input_tokens,
+        "completion_tokens": usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
+        "cached_tokens": if cached_tokens > 0 { Some(cached_tokens) } else { None }
+    });
+    if cached_tokens > 0 {
+        // Standard Responses clients read cache hits from
+        // `input_tokens_details`; keep the flat field for older consumers.
+        usage_value["input_tokens_details"] = json!({ "cached_tokens": cached_tokens });
+    }
 
     json!({
         "id": body.get("id").and_then(Value::as_str).map(|id| id.replace("msg_", "resp_")).unwrap_or_else(|| "resp_generated".to_string()),
         "object": "response",
-        "created": chrono::Utc::now().timestamp(),
+        "created_at": chrono::Utc::now().timestamp(),
         "model": model,
-        "status": map_anthropic_stop_to_openai_status(body.get("stop_reason").and_then(Value::as_str)),
-        "output": [{
-            "id": "out_1",
-            "type": "output_message",
-            "role": "assistant",
-            "content": output_content
-        }],
+        "status": status,
+        "incomplete_details": if status == "incomplete" {
+            json!({ "reason": "max_output_tokens" })
+        } else {
+            Value::Null
+        },
+        "output": output,
         "response": {
             "id": body.get("id").and_then(Value::as_str).unwrap_or("resp_generated"),
             "type": "message",
@@ -2132,16 +2415,9 @@ pub fn anthropic_response_to_openai_response(body: &Value, model: &str) -> Value
         "reasoning_content": if reasoning_content.is_empty() {
             Value::Null
         } else {
-            Value::String(reasoning_content.join("\n"))
+            Value::String(reasoning_content)
         },
-        "usage": {
-            "input_tokens": total_input_tokens,
-            "output_tokens": usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
-            "total_tokens": total_input_tokens + usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
-            "prompt_tokens": total_input_tokens,
-            "completion_tokens": usage.get("output_tokens").and_then(Value::as_i64).unwrap_or(0),
-            "cached_tokens": if cached_tokens > 0 { Some(cached_tokens) } else { None }
-        },
+        "usage": usage_value,
         "stop_reason": body.get("stop_reason").cloned().unwrap_or(Value::Null),
         "stop_sequence": body.get("stop_sequence").cloned().unwrap_or(Value::Null)
     })
@@ -2150,6 +2426,105 @@ pub fn anthropic_response_to_openai_response(body: &Value, model: &str) -> Value
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn anthropic_request_to_openai_chat_drops_server_tools_and_keeps_valid_schemas() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{ "role": "user", "content": "search the web" }],
+            "tools": [
+                {
+                    "type": "web_search_20250305",
+                    "name": "web_search",
+                    "max_uses": 8
+                },
+                {
+                    "name": "lookup",
+                    "description": "Look something up",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": { "q": { "type": "string" } },
+                        "required": ["q"]
+                    }
+                },
+                {
+                    "name": "ping",
+                    "input_schema": { "properties": {} }
+                }
+            ],
+            "tool_choice": { "type": "tool", "name": "web_search" }
+        }));
+
+        let tools = converted["tools"].as_array().expect("tools array");
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0]["function"]["name"], "lookup");
+        assert_eq!(tools[0]["function"]["description"], "Look something up");
+        assert_eq!(tools[0]["function"]["parameters"]["type"], "object");
+        assert_eq!(tools[1]["function"]["name"], "ping");
+        assert_eq!(
+            tools[1]["function"]["parameters"],
+            json!({ "type": "object", "properties": {} })
+        );
+        for tool in tools {
+            assert_eq!(tool["function"]["parameters"]["type"], "object");
+        }
+        // A forced choice referencing the dropped server tool degrades to auto.
+        assert_eq!(converted["tool_choice"], json!("auto"));
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_chat_omits_tools_and_choice_when_only_server_tools() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{ "role": "user", "content": "search the web" }],
+            "tools": [{ "type": "web_search_20250305", "name": "web_search" }],
+            "tool_choice": { "type": "tool", "name": "web_search" }
+        }));
+
+        assert!(converted.get("tools").is_none());
+        assert!(converted.get("tool_choice").is_none());
+
+        // Same when the client only demanded "some" tool: an empty tool list
+        // cannot satisfy "required", so the choice is dropped with the tools.
+        let any_choice = anthropic_request_to_openai_chat(&json!({
+            "messages": [{ "role": "user", "content": "search the web" }],
+            "tools": [{ "type": "web_search_20250305", "name": "web_search" }],
+            "tool_choice": { "type": "any" }
+        }));
+        assert!(any_choice.get("tool_choice").is_none());
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_response_also_drops_server_tools() {
+        let converted = anthropic_request_to_openai_response(&json!({
+            "messages": [{ "role": "user", "content": "search the web" }],
+            "tools": [
+                { "type": "web_search_20250305", "name": "web_search", "max_uses": 8 },
+                { "name": "lookup", "input_schema": { "type": "object", "properties": {} } }
+            ]
+        }));
+
+        let tools = converted["tools"].as_array().expect("tools array");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["function"]["name"], "lookup");
+        assert_eq!(tools[0]["function"]["parameters"]["type"], "object");
+    }
+
+    #[test]
+    fn anthropic_request_to_openai_chat_defaults_missing_tool_schema_to_object() {
+        let converted = anthropic_request_to_openai_chat(&json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [{ "name": "noop" }]
+        }));
+
+        assert_eq!(
+            converted["tools"][0]["function"]["parameters"],
+            json!({ "type": "object", "properties": {} })
+        );
+        assert!(
+            converted["tools"][0]["function"]
+                .get("description")
+                .is_none()
+        );
+    }
 
     #[test]
     fn anthropic_request_to_openai_chat_preserves_metadata_and_tool_choice() {
@@ -2697,6 +3072,22 @@ mod tests {
     }
 
     #[test]
+    fn openai_responses_request_to_anthropic_accepts_string_input() {
+        let converted = openai_responses_request_to_anthropic(&json!({
+            "model": "claude-test",
+            "input": "hello as a bare string"
+        }));
+
+        assert_eq!(
+            converted["messages"],
+            json!([{
+                "role": "user",
+                "content": [{ "type": "text", "text": "hello as a bare string" }]
+            }])
+        );
+    }
+
+    #[test]
     fn openai_responses_request_to_anthropic_maps_function_call_output() {
         let converted = openai_responses_request_to_anthropic(&json!({
             "input": [{
@@ -2776,6 +3167,69 @@ mod tests {
             Some("text")
         );
         assert_eq!(converted["thinking"]["type"].as_str(), Some("enabled"));
+        assert_eq!(converted["thinking"]["budget_tokens"], json!(2048));
+    }
+
+    #[test]
+    fn openai_chat_request_to_anthropic_maps_reasoning_effort_to_thinking_budget() {
+        let low = openai_chat_request_to_anthropic(&json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "reasoning_effort": "low"
+        }));
+        assert_eq!(
+            low["thinking"],
+            json!({ "type": "enabled", "budget_tokens": 1024 })
+        );
+
+        let high = openai_chat_request_to_anthropic(&json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "max_tokens": 8192,
+            "reasoning_effort": "high"
+        }));
+        assert_eq!(
+            high["thinking"],
+            json!({ "type": "enabled", "budget_tokens": 4096 })
+        );
+    }
+
+    #[test]
+    fn openai_chat_request_to_anthropic_treats_reasoning_none_as_disabled() {
+        let converted = openai_chat_request_to_anthropic(&json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "reasoning_effort": "none"
+        }));
+        assert!(converted.get("thinking").is_none());
+
+        let responses = openai_responses_request_to_anthropic(&json!({
+            "input": "hi",
+            "reasoning": { "effort": "none" }
+        }));
+        assert!(responses.get("thinking").is_none());
+    }
+
+    #[test]
+    fn openai_request_to_anthropic_preserves_explicit_thinking_budget() {
+        let converted = openai_responses_request_to_anthropic(&json!({
+            "input": "hi",
+            "max_output_tokens": 8192,
+            "thinking": { "type": "enabled", "budget_tokens": 3072 },
+            "reasoning": { "effort": "low" }
+        }));
+        assert_eq!(
+            converted["thinking"],
+            json!({ "type": "enabled", "budget_tokens": 3072 })
+        );
+    }
+
+    #[test]
+    fn openai_request_to_anthropic_omits_thinking_when_budget_cannot_fit() {
+        let converted = openai_chat_request_to_anthropic(&json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "max_tokens": 1024,
+            "reasoning_effort": "medium"
+        }));
+        assert_eq!(converted["max_tokens"], json!(1024));
+        assert!(converted.get("thinking").is_none());
     }
 
     #[test]
@@ -2919,6 +3373,33 @@ mod tests {
         assert_eq!(merged[1]["type"].as_str(), Some("tool_result"));
         assert_eq!(merged[0]["tool_use_id"].as_str(), Some("call_1"));
         assert_eq!(merged[1]["tool_use_id"].as_str(), Some("call_2"));
+    }
+
+    #[test]
+    fn openai_chat_request_to_anthropic_replaces_null_tool_ids() {
+        let converted = openai_chat_request_to_anthropic(&json!({
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": null,
+                        "type": "function",
+                        "function": { "name": null, "arguments": "{}" }
+                    }]
+                },
+                { "role": "tool", "tool_call_id": null, "content": "ok" }
+            ]
+        }));
+
+        let blocks = converted["messages"][0]["content"]
+            .as_array()
+            .expect("assistant content");
+        assert_eq!(blocks[0]["type"].as_str(), Some("tool_use"));
+        assert_eq!(blocks[0]["id"].as_str(), Some("tool_call"));
+        assert_eq!(blocks[0]["name"].as_str(), Some("tool"));
+        let result = &converted["messages"][1]["content"][0];
+        assert_eq!(result["tool_use_id"].as_str(), Some("tool_result"));
     }
 
     #[test]
@@ -3462,7 +3943,46 @@ mod tests {
             converted["content"][0]["text"],
             json!("I can't help with that.")
         );
+        assert_eq!(
+            converted["content"].as_array().map(Vec::len),
+            Some(1),
+            "refusal must be emitted exactly once"
+        );
         assert_eq!(converted["stop_reason"], json!("refusal"));
+    }
+
+    #[test]
+    fn openai_chat_response_to_anthropic_reads_reasoning_alias_and_legacy_function_call() {
+        let converted = openai_chat_response_to_anthropic(
+            &json!({
+                "id": "chatcmpl_legacy",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "reasoning": "considering options",
+                        "function_call": {
+                            "name": "weather",
+                            "arguments": "{\"city\":\"Paris\"}"
+                        }
+                    }
+                }],
+                "usage": { "prompt_tokens": 4, "completion_tokens": 2 }
+            }),
+            "test-model",
+        );
+
+        assert_eq!(converted["content"][0]["type"], json!("thinking"));
+        assert_eq!(
+            converted["content"][0]["thinking"],
+            json!("considering options")
+        );
+        assert_eq!(converted["content"][1]["type"], json!("tool_use"));
+        assert_eq!(converted["content"][1]["name"], json!("weather"));
+        assert_eq!(converted["content"][1]["input"]["city"], json!("Paris"));
+        assert_eq!(converted["stop_reason"], json!("tool_use"));
     }
 
     #[test]
@@ -3530,6 +4050,10 @@ mod tests {
 
         assert_eq!(converted["usage"]["prompt_tokens"], json!(16));
         assert_eq!(converted["usage"]["cached_tokens"], 3);
+        assert_eq!(
+            converted["usage"]["prompt_tokens_details"]["cached_tokens"],
+            json!(3)
+        );
     }
 
     #[test]
@@ -3570,6 +4094,10 @@ mod tests {
 
         assert_eq!(converted["usage"]["input_tokens"], json!(16));
         assert_eq!(converted["usage"]["cached_tokens"], 3);
+        assert_eq!(
+            converted["usage"]["input_tokens_details"]["cached_tokens"],
+            json!(3)
+        );
     }
 
     #[test]
@@ -3589,6 +4117,38 @@ mod tests {
             converted["reasoning_content"].as_str(),
             Some("considering options")
         );
+        // Responses uses `created_at`, not Chat Completions' `created`.
+        assert!(converted["created_at"].is_i64());
+        assert!(converted.get("created").is_none());
+    }
+
+    #[test]
+    fn anthropic_response_to_openai_response_preserves_block_order() {
+        let converted = anthropic_response_to_openai_response(
+            &json!({
+                "id": "msg_multi",
+                "content": [
+                    { "type": "thinking", "thinking": "plan-a" },
+                    { "type": "text", "text": "hello " },
+                    { "type": "thinking", "thinking": "plan-b" },
+                    { "type": "text", "text": "world" }
+                ],
+                "usage": { "input_tokens": 5, "output_tokens": 2 }
+            }),
+            "test-model",
+        );
+
+        let types: Vec<&str> = converted["output"]
+            .as_array()
+            .expect("output array")
+            .iter()
+            .map(|item| item["type"].as_str().unwrap_or(""))
+            .collect();
+        assert_eq!(types, vec!["reasoning", "message", "reasoning", "message"]);
+        assert_eq!(converted["output"][1]["content"][0]["text"], "hello ");
+        assert_eq!(converted["output"][3]["content"][0]["text"], "world");
+        assert_eq!(converted["output_text"], "hello world");
+        assert_eq!(converted["reasoning_content"], "plan-aplan-b");
     }
 
     #[test]
@@ -3612,17 +4172,18 @@ mod tests {
         );
 
         assert_eq!(
-            converted["output"][0]["content"][0]["type"].as_str(),
+            converted["output"][0]["type"].as_str(),
             Some("function_call")
         );
+        assert_eq!(converted["output"][0]["call_id"].as_str(), Some("tool_1"));
         assert_eq!(
-            converted["output"][0]["content"][0]["call_id"].as_str(),
-            Some("tool_1")
-        );
-        assert_eq!(
-            converted["output"][0]["content"][0]["arguments"].as_str(),
+            converted["output"][0]["arguments"].as_str(),
             Some("{\"city\":\"Paris\"}")
         );
+        assert_eq!(converted["output"][0]["status"].as_str(), Some("completed"));
+        // Tool calls are output items, never message content parts.
+        assert!(converted["output"][0].get("content").is_none());
+        assert_eq!(converted["status"].as_str(), Some("completed"));
     }
 
     #[test]

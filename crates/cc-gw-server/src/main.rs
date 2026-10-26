@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{
     Arc, Mutex, RwLock,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -110,6 +110,85 @@ struct AppState {
     version_check_package_name: String,
     sessions: auth::SessionStore,
     event_bus: tokio::sync::broadcast::Sender<cc_gw_core::events::GatewayEvent>,
+    /// Self-upgrade wiring: who launched this process, how cc-gw was installed,
+    /// and where the upgrade helper writes its progress.
+    upgrade: Arc<UpgradeContext>,
+    /// Wall-clock start time; a stale `draining` state file must not stop a
+    /// freshly started server, so only states newer than this are honored.
+    server_started_at_ms: i64,
+    /// Random per-process token written into upgrade state. The drain watcher
+    /// only honors state addressed to this instance, which is immune to PID
+    /// reuse and to wall-clock steps.
+    upgrade_instance_token: String,
+    /// Set once an upgrade asked us to stop accepting proxy traffic.
+    draining: Arc<AtomicBool>,
+    /// Serializes "check no upgrade is running → write state → spawn helper" so
+    /// two concurrent POSTs cannot both start a helper.
+    upgrade_start_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Flipped to `true` once in-flight requests have drained (or timed out).
+    shutdown_tx: tokio::sync::watch::Sender<bool>,
+}
+
+/// Everything the server needs to trigger a self-upgrade. Populated from the
+/// environment the CLI passes when it spawns the Rust binary; empty for direct
+/// `cargo run` / hand-launched binaries, which fall back to manual upgrades.
+#[derive(Clone)]
+struct UpgradeContext {
+    cli_path: Option<PathBuf>,
+    node_bin: Option<PathBuf>,
+    service_mode: String,
+    install_method: Option<String>,
+    install_writable: bool,
+    state_path: PathBuf,
+    log_dir: PathBuf,
+    drain_timeout: std::time::Duration,
+    shutdown_grace: std::time::Duration,
+}
+
+impl UpgradeContext {
+    fn from_env(home_dir: &Path, log_dir: &Path) -> Self {
+        let non_empty = |key: &str| {
+            std::env::var(key)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        };
+        let duration_from_env = |key: &str, default_ms: u64| {
+            std::time::Duration::from_millis(
+                non_empty(key)
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .unwrap_or(default_ms),
+            )
+        };
+        Self {
+            cli_path: non_empty("CC_GW_CLI_PATH").map(PathBuf::from),
+            node_bin: non_empty("CC_GW_NODE_BIN").map(PathBuf::from),
+            service_mode: non_empty("CC_GW_SERVICE_MODE").unwrap_or_else(|| "unknown".to_string()),
+            install_method: non_empty("CC_GW_INSTALL_METHOD"),
+            install_writable: non_empty("CC_GW_INSTALL_WRITABLE")
+                .map(|value| value != "0")
+                .unwrap_or(true),
+            state_path: home_dir.join("upgrade-state.json"),
+            log_dir: log_dir.to_path_buf(),
+            drain_timeout: duration_from_env("CC_GW_UPGRADE_DRAIN_TIMEOUT_MS", 15_000),
+            shutdown_grace: duration_from_env("CC_GW_UPGRADE_SHUTDOWN_GRACE_MS", 8_000),
+        }
+    }
+
+    #[cfg(test)]
+    fn disabled(home_dir: &Path, log_dir: &Path) -> Self {
+        Self {
+            cli_path: None,
+            node_bin: None,
+            service_mode: "unknown".to_string(),
+            install_method: None,
+            install_writable: false,
+            state_path: home_dir.join("upgrade-state.json"),
+            log_dir: log_dir.to_path_buf(),
+            drain_timeout: std::time::Duration::from_millis(15_000),
+            shutdown_grace: std::time::Duration::from_millis(8_000),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -235,7 +314,11 @@ struct StreamingLogContext {
     log_id: i64,
     endpoint_id: String,
     api_key_id: i64,
-    started_at: i64,
+    /// Monotonic request start. TTFT/TPOT and stream latency deliberately use
+    /// `Instant` instead of wall-clock deltas so an NTP step (or a
+    /// suspend/resume) mid-stream cannot produce negative or wildly inflated
+    /// timings.
+    started_instant: std::time::Instant,
     store_response_payload: bool,
     /// Backend that actually served the request; rewritten into the log row
     /// at finalize time when failover picked a later aggregate candidate.
@@ -377,6 +460,10 @@ async fn main() -> Result<()> {
         warn!("web ui dist not found; /ui will return 404 until frontend is built");
     }
 
+    let upgrade = UpgradeContext::from_env(&paths.home_dir, &paths.log_dir);
+    let server_started_at_ms = chrono::Utc::now().timestamp_millis();
+    let (shutdown_tx, _) = tokio::sync::watch::channel(false);
+
     let state = AppState {
         config: Arc::new(RwLock::new(config.clone())),
         paths: Arc::new(paths),
@@ -409,7 +496,15 @@ async fn main() -> Result<()> {
             .unwrap_or_else(|_| "@chenpu17/cc-gw".to_string()),
         sessions: auth::SessionStore::default(),
         event_bus: tokio::sync::broadcast::channel(256).0,
+        upgrade: Arc::new(upgrade),
+        server_started_at_ms,
+        upgrade_instance_token: generate_upgrade_instance_token(),
+        draining: Arc::new(AtomicBool::new(false)),
+        upgrade_start_lock: Arc::new(tokio::sync::Mutex::new(())),
+        shutdown_tx,
     };
+
+    spawn_upgrade_drain_watcher(state.clone());
 
     let app = build_router(state.clone());
     let mut tasks = JoinSet::new();
@@ -417,6 +512,7 @@ async fn main() -> Result<()> {
     if let Some(http) = config.effective_http() {
         let addr = socket_addr(http.host.as_deref(), http.port)?;
         let app = app.clone();
+        let mut shutdown_rx = state.shutdown_tx.subscribe();
         tasks.spawn(async move {
             info!("http listening on http://{}", addr);
             let listener = TcpListener::bind(addr).await?;
@@ -424,6 +520,9 @@ async fn main() -> Result<()> {
                 listener,
                 app.into_make_service_with_connect_info::<SocketAddr>(),
             )
+            .with_graceful_shutdown(async move {
+                let _ = shutdown_rx.wait_for(|value| *value).await;
+            })
             .await?;
             Result::<()>::Ok(())
         });
@@ -432,10 +531,18 @@ async fn main() -> Result<()> {
     if let Some(https) = config.effective_https() {
         let addr = socket_addr(https.host.as_deref(), https.port)?;
         let app = app.clone();
+        let handle = axum_server::Handle::new();
+        let mut shutdown_rx = state.shutdown_tx.subscribe();
+        let handle_for_shutdown = handle.clone();
         tasks.spawn(async move {
             info!("https listening on https://{}", addr);
             let tls = RustlsConfig::from_pem_file(&https.cert_path, &https.key_path).await?;
+            tokio::spawn(async move {
+                let _ = shutdown_rx.wait_for(|value| *value).await;
+                handle_for_shutdown.graceful_shutdown(Some(std::time::Duration::from_secs(2)));
+            });
             axum_server::bind_rustls(addr, tls)
+                .handle(handle)
                 .serve(app.into_make_service_with_connect_info::<SocketAddr>())
                 .await
                 .map_err(|error| anyhow!(error))?;
@@ -551,6 +658,14 @@ fn build_router(state: AppState) -> Router {
         .route("/api/db/info", get(admin_routes::api_db_info))
         .route("/api/db/compact", post(admin_routes::api_db_compact))
         .route("/api/version/check", get(admin_routes::api_version_check))
+        .route(
+            "/api/version/upgrade",
+            post(admin_routes::api_version_upgrade),
+        )
+        .route(
+            "/api/version/upgrade/status",
+            get(admin_routes::api_version_upgrade_status),
+        )
         .route("/api/stats/overview", get(admin_routes::api_stats_overview))
         .route("/api/stats/daily", get(admin_routes::api_stats_daily))
         .route("/api/stats/model", get(admin_routes::api_stats_model))
@@ -638,6 +753,129 @@ fn socket_addr(host: Option<&str>, port: u16) -> Result<SocketAddr> {
 
 fn config_snapshot(state: &AppState) -> GatewayConfig {
     state.config.read().expect("config lock poisoned").clone()
+}
+
+/// Random per-process identifier written into upgrade state so a helper run can
+/// be addressed to exactly one gateway instance without relying on PIDs (which
+/// can be reused) or wall-clock timestamps (which can step backwards).
+fn generate_upgrade_instance_token() -> String {
+    use rand::RngCore;
+
+    let mut bytes = [0_u8; 16];
+    rand::rng().fill_bytes(&mut bytes);
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Decide whether a state-file snapshot asks this process to drain. Kept pure so
+/// the phase/timestamp rules (the part that can strand a freshly restarted
+/// gateway) are unit-testable.
+fn upgrade_state_requests_drain(
+    value: &Value,
+    server_started_at_ms: i64,
+    server_pid: u32,
+    instance_token: &str,
+) -> bool {
+    if value.get("phase").and_then(Value::as_str) != Some("draining") {
+        return false;
+    }
+    // Prefer the instance the run was started for: a concurrently running
+    // gateway sharing `CC_GW_HOME` (or a backward clock step) must not stop the
+    // wrong process.
+    if let Some(addressed_token) = value.get("instanceToken").and_then(Value::as_str) {
+        return addressed_token == instance_token;
+    }
+    if let Some(addressed_pid) = value.get("serverPid").and_then(Value::as_u64) {
+        return addressed_pid == u64::from(server_pid);
+    }
+    let updated_at = value
+        .get("updatedAt")
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    // Ignore a stale state file left behind by a previous run.
+    updated_at >= server_started_at_ms
+}
+
+/// The upgrade helper signals "stop now" by writing `phase: "draining"` into
+/// the shared state file. A local file is used instead of a signal or an HTTP
+/// call so the same mechanism works on Windows (where SIGTERM is a hard kill),
+/// with HTTPS-only listeners, and with web auth enabled.
+fn spawn_upgrade_drain_watcher(state: AppState) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_millis(500));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            if state.draining.load(Ordering::SeqCst) {
+                continue;
+            }
+            let Ok(raw) = tokio::fs::read_to_string(&state.upgrade.state_path).await else {
+                continue;
+            };
+            let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+                continue;
+            };
+            if !upgrade_state_requests_drain(
+                &value,
+                state.server_started_at_ms,
+                std::process::id(),
+                &state.upgrade_instance_token,
+            ) {
+                continue;
+            }
+            if state.draining.swap(true, Ordering::SeqCst) {
+                continue;
+            }
+
+            let active = state.active_requests.load(Ordering::Relaxed);
+            info!("upgrade requested; draining {active} active request(s) before shutdown");
+            record_and_broadcast_event(
+                &state,
+                RecordEventInput {
+                    event_type: "upgrade_draining".to_string(),
+                    level: Some("info".to_string()),
+                    source: Some("upgrade".to_string()),
+                    title: Some("Gateway restarting for upgrade".to_string()),
+                    message: Some(format!("{active} active request(s) before shutdown")),
+                    ..Default::default()
+                },
+            );
+
+            let state = state.clone();
+            tokio::spawn(async move {
+                let deadline = tokio::time::Instant::now() + state.upgrade.drain_timeout;
+                while state.active_requests.load(Ordering::Relaxed) > 0 {
+                    if tokio::time::Instant::now() >= deadline {
+                        warn!(
+                            "drain timeout reached with {} active request(s); shutting down anyway",
+                            state.active_requests.load(Ordering::Relaxed)
+                        );
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+                let _ = state.shutdown_tx.send(true);
+                tokio::time::sleep(state.upgrade.shutdown_grace).await;
+                warn!("shutdown grace elapsed; forcing process exit");
+                std::process::exit(0);
+            });
+        }
+    });
+}
+
+/// Reject new proxy traffic once an upgrade starts draining. The admin UI and
+/// `/health` stay reachable so the browser can follow the restart.
+fn draining_response() -> Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        [(header::RETRY_AFTER, "5")],
+        Json(json!({
+            "error": {
+                "type": "service_unavailable",
+                "message": "cc-gw is restarting for an upgrade; retry in a few seconds"
+            }
+        })),
+    )
+        .into_response()
 }
 
 fn replace_config(state: &AppState, config: GatewayConfig) -> Result<()> {
@@ -838,6 +1076,10 @@ async fn dynamic_fallback(
     let Some(route_match) = match_custom_route(&config, uri.path()) else {
         return (StatusCode::NOT_FOUND, "not found").into_response();
     };
+
+    if state.draining.load(Ordering::Relaxed) && method != Method::GET {
+        return draining_response();
+    }
 
     match (method, route_match) {
         (Method::GET, CustomRouteMatch::OpenAiModels(endpoint_id, protocol)) => {
